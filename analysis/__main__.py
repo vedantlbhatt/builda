@@ -766,12 +766,17 @@ def _report(a) -> int:
     function builds it — so printing it here is the honest way to see what would leave the
     machine before any of it does.
     """
+    from . import profile as pf_mod
     from . import report as rp_mod
 
     root = pathlib.Path(a.path).expanduser()
     facts, sessions = _narrative_inputs(root)
     days = a.days or rp_mod.DEFAULT_WINDOW_DAYS
     doc = rp_mod.build(
+        # The profile travels in so the report can say what it rests on. Without it the
+        # document answers a thirty day question with whatever it found and never says
+        # which.
+        profile=pf_mod.corpus_profile(facts),
         trends=_recent_trends(facts, days),
         fanout=_corpus_fanout(root),
         contributions=_corpus_contributions(facts),

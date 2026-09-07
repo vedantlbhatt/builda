@@ -1,5 +1,6 @@
 import type {
   BuilderReport,
+  ReportCoverage,
   ReportAgents,
   ReportContributions,
   ReportQuality,
@@ -125,4 +126,37 @@ export function hasAnything(r: BuilderReport): boolean {
   return Boolean(
     r.trends.length || r.agents || r.contributions || r.quality || r.prompting
   );
+}
+
+
+/**
+ * What the report rests on, in one line — or null when there is nothing to caveat.
+ *
+ * THE BUG THIS EXISTS FOR. A fresh machine answers a thirty day question with two days of
+ * transcripts and says nothing about the difference. Read out loud, "109 commits, none
+ * written alone" then sounds like a fact about a person when it is a fact about a
+ * container that has existed since Tuesday.
+ *
+ * It states both numbers and judges neither. There is no threshold and no warning colour:
+ * "30 days asked for, 2 days on this machine" needs no adjective, and a reader who has
+ * been building for a month knows instantly that the rest of it is somewhere else.
+ *
+ * Silent when the span covers the window, because then there is nothing to say.
+ */
+export function coverageLine(c: ReportCoverage): string | null {
+  if (c.spans_days >= c.window_days) return null;
+  const d = c.spans_days === 1 ? 'day' : 'days';
+  return `${c.window_days} days asked for; these transcripts span ${c.spans_days} ${d}.`;
+}
+
+/**
+ * The second half, and the one that is actually actionable: where the rest would be.
+ *
+ * Only shown when the gap is stark. A machine holding 28 of 30 days has nothing missing;
+ * one holding 2 of 30 is either a new install, a different computer, or sessions that ran
+ * in the cloud and were never captured.
+ */
+export function coverageHint(c: ReportCoverage): string | null {
+  if (c.spans_days * 2 > c.window_days) return null;
+  return 'Sessions on another machine, or in Claude Code on the web, are not in this.';
 }

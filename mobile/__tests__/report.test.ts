@@ -2,12 +2,15 @@ import { describe, expect, test } from 'bun:test';
 
 import type {
   ReportAgents,
+  ReportCoverage,
   ReportContributions,
   ReportQuality,
   ReportTrend,
 } from '../src/generated/report';
 import {
   assistedShare,
+  coverageHint,
+  coverageLine,
   fanoutLine,
   fanoutWaste,
   greenLine,
@@ -184,5 +187,58 @@ describe('time to green', () => {
     // A refused recovery must never render as "0m back to green", which would read as
     // the best possible score for a corpus that has no score at all.
     expect(greenLine(quality({ time_to_green: null }))).toBeNull();
+  });
+});
+
+
+describe('what the numbers rest on', () => {
+  /**
+   * THE BUG THIS EXISTS FOR. A fresh machine answers a thirty day question with two days
+   * of transcripts and says nothing. "109 commits, none written alone" then reads as a
+   * fact about a person when it is a fact about a container that has existed since
+   * Tuesday.
+   */
+  const coverage = (over: Partial<ReportCoverage> = {}): ReportCoverage => ({
+    window_days: 30,
+    spans_days: 2,
+    active_days: 2,
+    sessions: 21,
+    first_at: '2026-09-05T04:55:33Z',
+    last_at: '2026-09-06T22:26:13Z',
+    ...over,
+  });
+
+  test('it states both numbers and judges neither', () => {
+    expect(coverageLine(coverage())).toBe(
+      '30 days asked for; these transcripts span 2 days.'
+    );
+  });
+
+  test('a machine that covers the window says nothing at all', () => {
+    // Silence is right here: there is no caveat to make.
+    expect(coverageLine(coverage({ spans_days: 30 }))).toBeNull();
+    expect(coverageLine(coverage({ spans_days: 45 }))).toBeNull();
+  });
+
+  test('one day is a day', () => {
+    expect(coverageLine(coverage({ spans_days: 1 }))).toContain('span 1 day.');
+  });
+
+  test('a stark gap says where the rest would be', () => {
+    expect(coverageHint(coverage())).toContain('another machine');
+  });
+
+  test('a near-complete window does not accuse the user of hiding data', () => {
+    // 28 of 30 days has nothing missing, and telling somebody to go look elsewhere for
+    // two days would be noise.
+    expect(coverageHint(coverage({ spans_days: 28 }))).toBeNull();
+  });
+
+  test('days you BUILT and how far back the transcripts go are different numbers', () => {
+    // Two sittings a month apart: 2 active days across 30. Reading one as the other is
+    // exactly how this went wrong.
+    const c = coverage({ spans_days: 30, active_days: 2 });
+    expect(coverageLine(c)).toBeNull();
+    expect(c.active_days).toBe(2);
   });
 });

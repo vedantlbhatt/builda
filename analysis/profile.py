@@ -457,6 +457,10 @@ def _corpus_commits(ss: Sequence[SessionFact]) -> tuple[int | None, str]:
     return sum(s.commit_count for s in known), basis
 
 
+def _iso(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts, dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None) -> dict:
     """Every corpus metric, each with its basis, its sample and its reason for absence."""
     ss = [s for s in sessions]
@@ -1023,7 +1027,15 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         "prompts_with_text": len(texts),
         "tool_calls": tool_total,
         "active_hours": round(active_hours, 2),
+        # Days you BUILT, which is not the same as how long the transcripts go back and
+        # was being read as though it were. Somebody with two active days a month apart
+        # and somebody with two consecutive days both report `days: 2`, and only one of
+        # them has a month of history. `spans_days` is the calendar distance between the
+        # first sitting and the last, so the two can never be confused again.
         "days": len(days),
+        "spans_days": ((days[-1] - days[0]).days + 1) if days else 0,
+        "first_at": _iso(ss[0].started_at) if ss else None,
+        "last_at": _iso(ss[-1].ended_at) if ss else None,
         "min_sessions": MIN_SESSIONS,
         "enough_sessions": n_sessions >= MIN_SESSIONS,
         "missing": {k: v["reason"] for k, v in m.items() if v["value"] is None and v["reason"]},

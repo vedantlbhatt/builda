@@ -18,6 +18,9 @@ WHAT IS IN IT, AND WHY EACH BLOCK EARNED ITS PLACE:
   quality        the two of DORA's four questions a transcript can answer, and the module
                  that refuses the other two rather than greping `fix` out of git log.
   prompting      how often a prompt lands cleanly. A COUNT AND NOTHING ELSE.
+  coverage       what all of the above actually rests on. A window is a QUESTION and
+                 this is how much of it the machine could answer, which is the one thing
+                 a report can get catastrophically wrong in silence.
   languages      what you actually build in, by lines the agent added. Every code stats
                  product has this and this one did not; the language NAME is all that
                  travels, and a name is not a path.
@@ -65,6 +68,7 @@ MAX_LANGUAGES = 12
 
 def build(
     *,
+    profile: dict | None = None,
     trends: Sequence = (),
     fanout=None,
     contributions=None,
@@ -86,6 +90,7 @@ def build(
         "report_version": REPORT_VERSION,
         "generated_at": ts.isoformat().replace("+00:00", "Z"),
         "window_days": window_days,
+        "coverage": _coverage(profile, window_days),
         "trend_headline": tr_mod.headline(trimmed, window_days) if trimmed else None,
         "trends": [_trend(t) for t in trimmed],
         "agents": _agents(fanout),
@@ -93,6 +98,39 @@ def build(
         "quality": _quality(sessions),
         "prompting": _prompting(sessions),
         "languages": _languages(sessions),
+    }
+
+
+def _coverage(profile: dict | None, window_days: int) -> dict | None:
+    """What the report rests on: the window asked for, beside what was actually there.
+
+    THE BUG THIS EXISTS FOR. Run this in a fresh container and it will answer a thirty day
+    question with two days of transcripts and say nothing about the difference. I did
+    exactly that and read the result out as a fact about a person who has been building
+    for over a month: "109 commits, none written alone" was a statement about a container
+    that had existed for two days, and there was no number anywhere in the document that
+    would have caught it.
+
+    BOTH NUMBERS, ALWAYS, AND NO VERDICT. There is no threshold here and no "partial"
+    flag, because the honest thing is not a warning at some ratio somebody picked: it is
+    printing what was asked for beside what was found and letting the reader see it. 30
+    against 2 needs no adjective.
+
+    `spans_days` is the calendar distance from the first sitting to the last, which is a
+    different question from how many days had a sitting in them. Two sittings a month
+    apart are 2 active days across 30, and reading one as the other is how this went
+    wrong in the first place.
+    """
+    if not profile:
+        return None
+    sample = profile.get("sample") or {}
+    return {
+        "window_days": window_days,
+        "spans_days": int(sample.get("spans_days") or 0),
+        "active_days": int(sample.get("days") or 0),
+        "sessions": int(sample.get("sessions") or 0),
+        "first_at": sample.get("first_at"),
+        "last_at": sample.get("last_at"),
     }
 
 

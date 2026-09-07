@@ -142,6 +142,21 @@ export interface ReportLanguages {
   reason?: string | null;
 }
 
+export interface ReportCoverage {
+  /** the window that was ASKED FOR. Repeated from the top level so this block is readable on its own. */
+  window_days: number;
+  /** the calendar distance from the first sitting on this machine to the last. NOT the same as days built: two sittings a month apart span 30 days and are 2 active days. */
+  spans_days: number;
+  /** days that actually had a sitting. */
+  active_days: number;
+  /** sittings the numbers above rest on. */
+  sessions: number;
+  /** the earliest sitting found. Null when there are none. (ISO 8601) */
+  first_at?: string | null;
+  /** the latest. (ISO 8601) */
+  last_at?: string | null;
+}
+
 export interface BuilderReport {
   /** the spec version these rules came from. A retuned threshold is a recompute, not a migration. */
   report_version: number;
@@ -149,6 +164,8 @@ export interface BuilderReport {
   generated_at: string;
   /** how far back the blocks below look. */
   window_days: number;
+  /** WHAT THESE NUMBERS ACTUALLY REST ON. A window is a question; this is how much of it the machine could answer. Both numbers are always reported and neither is judged: a reader who asked for 30 days and is told the transcripts span 2 knows immediately that the rest of their history is somewhere else. Null when the report was built with no profile to read it from. */
+  coverage?: ReportCoverage | null;
   /** the one sentence version of the trends, phrased to match the window. Null when nothing moved enough to say. (max 200 chars) */
   trend_headline?: string | null;
   /** you against you, two equal windows back to back. Never a window against all of history, which would report the trend of the corpus growing. (max 24 items) */

@@ -6,6 +6,8 @@ import { colors, space } from '../theme';
 import { ShareBars } from './ShareBars';
 import {
   assistedShare,
+  coverageHint,
+  coverageLine,
   fanoutLine,
   fanoutWaste,
   greenLine,
@@ -36,12 +38,48 @@ const c = colors('dark');
 export function ReportSections({ report }: { report: BuilderReport }) {
   return (
     <>
+      <Coverage report={report} />
       <Trends report={report} />
       <Languages report={report} />
       <Agents report={report} />
       <Commits report={report} />
       <Habits report={report} />
     </>
+  );
+}
+
+/**
+ * What everything below rests on. FIRST, not in a footnote: a caveat under the numbers is
+ * a caveat nobody reads, and the whole point is that it changes how the numbers are read.
+ */
+function Coverage({ report }: { report: BuilderReport }) {
+  const c0 = report.coverage;
+  if (!c0) return null;
+  const line = coverageLine(c0);
+  if (!line) return null;
+  const hint = coverageHint(c0);
+  return (
+    <View
+      style={{
+        backgroundColor: c.card,
+        borderRadius: 16,
+        padding: space.lg,
+        marginTop: space.md,
+        borderWidth: 1,
+        borderColor: c.border,
+      }}
+    >
+      <Text style={{ color: c.text, fontSize: 14, lineHeight: 20 }}>{line}</Text>
+      {hint && (
+        <Text style={{ color: c.textDim, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
+          {hint}
+        </Text>
+      )}
+      <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.sm }}>
+        {c0.sessions} {c0.sessions === 1 ? 'sitting' : 'sittings'} across {c0.active_days}{' '}
+        {c0.active_days === 1 ? 'day' : 'days'} you built.
+      </Text>
+    </View>
   );
 }
 

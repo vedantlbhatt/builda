@@ -247,6 +247,19 @@ script the agent wrote is a Bash call with no line count anywhere in it. `patter
 same threshold rather than choosing a second one. Two of the existing tests then failed, because
 their fixtures were pure busywork — they had been passing on a refusal, not on the bar they named.
 
+**A window is a QUESTION, and answering it without saying how much of it you had is the
+worst failure in this file — I made it myself.** `python -m analysis report --days 30` in a
+fresh container answered with two days of transcripts and said so nowhere. I then read the
+result out as a description of somebody who had been building for over a month, including
+"109 commits, none written alone" — which was true of a container that had existed since
+Tuesday and false about the person. No number anywhere in the document would have caught it.
+`sample.days` existed and was the count of days BUILT, which is not how far back the
+transcripts go: two sittings a month apart are 2 active days across 30, and reading one as
+the other is how this happened. `sample.spans_days` is the calendar distance now, and the
+report carries a `coverage` block stating the window asked for beside what was found. NO
+THRESHOLD AND NO VERDICT: 30 against 2 needs no adjective, and a `partial` boolean would be
+a judgement the reader could not overrule.
+
 **A denominator that stops meaning anything is a wrong number with no error.** `Fanout.parallelism`
 was agent-seconds over WALL seconds, which over one sitting reads correctly as "four hours of
 agent work inside one hour of your life". Over a corpus it does not: MEASURED on this container,
@@ -348,9 +361,9 @@ analysis, every metric, and the nine things this codebase refuses to compute).
 | suite | n | protects |
 |---|---|---|
 | `swift test` | 138 | the measured ground truth, that a shell-written file reaches the card, the strip fixtures, the boundary fixtures (v3: lineage pooling, the threshold fitter against the Python fit), the Codex and Gemini fixtures, the live-path fixtures, digest parity with the Python reference, the analysis scheduler's retry rules |
-| `bun test` | 458 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the eight-animal pack's frames, palette recipes, per-frame change ceiling, that every one of them faces forward and that each loop moves at least three parts; the profile screen's archetype wording and its closest-rule fallback; that no refused block of the report renders as a zero; that every feedback note the contract declares has a sentence on the phone, and that an id this build does not know renders nothing rather than a debug string |
+| `bun test` | 473 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the eight-animal pack's frames, palette recipes, per-frame change ceiling, that every one of them faces forward and that each loop moves at least three parts; the profile screen's archetype wording and its closest-rule fallback; that no refused block of the report renders as a zero; that every feedback note the contract declares has a sentence on the phone, and that an id this build does not know renders nothing rather than a debug string; that a machine covering the whole window stays silent rather than caveating nothing |
 | `pytest` | 163 | that undeclared fields cannot be stored, that RLS is real (as builder_app, through the routes), auth bootstrap, contract v2/v3, social, capture keys and their scope, the notification horizon, the hook channel's parity with capture, the corpus profile's server-side refusals, the report's door (nested extras, enums, string bounds) and that a null block survives the round trip; that a session's feedback round trips, is not wiped by a client that does not compute it, and cannot carry an undeclared note id or a word of prose |
-| `unittest` (analysis/) | 522 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules; that the report's keys ARE the spec's keys at every level and that no field in it can carry free text; that a session note refuses to call a parser blind spot "nothing happened", that neither the failing command nor the file name reaches the wire, that a heredoc body is never read as a command, and that a lockfile is never the language you chose |
+| `unittest` (analysis/) | 527 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules; that the report's keys ARE the spec's keys at every level and that no field in it can carry free text; that a session note refuses to call a parser blind spot "nothing happened", that neither the failing command nor the file name reaches the wire, that a heredoc body is never read as a command, and that a lockfile is never the language you chose, and that a report always says how much of the window it could actually answer |
 | `make capture-test` | 74 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth, and that every other harness discovers, dedupes and uploads |
 | CI `reference` job | — | the boundary fixtures are what `scripts/measure_boundaries.py` produces |
 

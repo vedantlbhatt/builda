@@ -46,6 +46,7 @@ ENUM_FIELDS: dict[str, dict[str, str]] = {
     "ReportPrompting": {},
     "ReportLanguage": {},
     "ReportLanguages": {},
+    "ReportCoverage": {},
     "BuilderReport": {},
 }
 
@@ -161,12 +162,24 @@ class ReportLanguages(BaseModel):
     reason: str | None = Field(default=None, max_length=200)
 
 
+class ReportCoverage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    window_days: int
+    spans_days: int
+    active_days: int
+    sessions: int
+    first_at: datetime | None = None
+    last_at: datetime | None = None
+
+
 class BuilderReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_version: int
     generated_at: datetime
     window_days: int
+    coverage: ReportCoverage | None = None
     trend_headline: str | None = Field(default=None, max_length=200)
     trends: list[ReportTrend] = Field(max_length=24)
     agents: ReportAgents | None = None

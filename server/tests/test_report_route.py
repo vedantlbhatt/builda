@@ -36,6 +36,14 @@ REPORT = {
     "trend_headline": (
         "How often you test is up 100% on the 7 days before, which is the way you want it."
     ),
+    "coverage": {
+        "window_days": 30,
+        "spans_days": 2,
+        "active_days": 2,
+        "sessions": 21,
+        "first_at": "2026-09-05T04:55:33Z",
+        "last_at": "2026-09-06T22:26:13Z",
+    },
     "trends": [
         {
             "metric": "test_runs_per_hour",
@@ -123,6 +131,11 @@ def test_a_report_round_trips_through_the_profile(client, paired):
     assert got["contributions"]["days"][0]["day"] == "2026-09-05"
     assert got["trends"][0]["metric"] == "test_runs_per_hour"
     assert got["languages"]["languages"][0]["name"] == "Python"
+    # The window asked for, beside what was actually on the machine. A report that lost
+    # this in transit is a report that answers a 30 day question with 2 days and says so
+    # nowhere.
+    assert got["coverage"]["window_days"] == 30
+    assert got["coverage"]["spans_days"] == 2
 
 
 def test_a_refused_block_stays_null_rather_than_becoming_a_zero(client, paired):

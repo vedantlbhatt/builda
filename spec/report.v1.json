@@ -344,6 +344,40 @@
         "nullable": true,
         "doc": "why the split is null, when it is."
       }
+    ],
+    "ReportCoverage": [
+      {
+        "name": "window_days",
+        "type": "int",
+        "doc": "the window that was ASKED FOR. Repeated from the top level so this block is readable on its own."
+      },
+      {
+        "name": "spans_days",
+        "type": "int",
+        "doc": "the calendar distance from the first sitting on this machine to the last. NOT the same as days built: two sittings a month apart span 30 days and are 2 active days."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days that actually had a sitting."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings the numbers above rest on."
+      },
+      {
+        "name": "first_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "the earliest sitting found. Null when there are none."
+      },
+      {
+        "name": "last_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "the latest."
+      }
     ]
   },
   "fields": [
@@ -361,6 +395,13 @@
       "name": "window_days",
       "type": "int",
       "doc": "how far back the blocks below look."
+    },
+    {
+      "name": "coverage",
+      "type": "object",
+      "item": "ReportCoverage",
+      "nullable": true,
+      "doc": "WHAT THESE NUMBERS ACTUALLY REST ON. A window is a question; this is how much of it the machine could answer. Both numbers are always reported and neither is judged: a reader who asked for 30 days and is told the transcripts span 2 knows immediately that the rest of their history is somewhere else. Null when the report was built with no profile to read it from."
     },
     {
       "name": "trend_headline",

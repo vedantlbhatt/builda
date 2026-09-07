@@ -103,6 +103,60 @@ class Shape(unittest.TestCase):
         self.assertTrue(rp.build()["generated_at"].endswith("Z"))
 
 
+class WhatTheNumbersRestOn(unittest.TestCase):
+    """A window is a QUESTION; coverage is how much of it the machine could answer.
+
+    THE BUG THIS EXISTS FOR, and I walked into it myself: a fresh container answered a
+    thirty day question with two days of transcripts and said nothing about the
+    difference. "109 commits, none written alone" then reads as a fact about a person when
+    it is a fact about a container that had existed since Tuesday. No number anywhere in
+    the document would have caught it.
+    """
+
+    def profile(self, *, spans, active, sessions=10):
+        return {
+            "sample": {
+                "spans_days": spans,
+                "days": active,
+                "sessions": sessions,
+                "first_at": "2026-09-05T04:55:33Z",
+                "last_at": "2026-09-06T22:26:13Z",
+            }
+        }
+
+    def test_the_window_asked_for_travels_beside_what_was_found(self):
+        got = rp.build(profile=self.profile(spans=2, active=2), window_days=30)["coverage"]
+        self.assertEqual(got["window_days"], 30)
+        self.assertEqual(got["spans_days"], 2)
+
+    def test_days_you_built_is_not_how_far_back_the_transcripts_go(self):
+        """Two sittings a month apart are 2 active days across 30, and reading one as the
+        other is exactly how this went wrong. Both numbers, separately, always."""
+        got = rp.build(profile=self.profile(spans=30, active=2), window_days=30)["coverage"]
+        self.assertEqual(got["active_days"], 2)
+        self.assertEqual(got["spans_days"], 30)
+
+    def test_the_block_matches_the_spec(self):
+        got = rp.build(profile=self.profile(spans=2, active=2))
+        self.assertEqual(
+            set(got["coverage"]),
+            {f["name"] for f in SPEC["objects"]["ReportCoverage"]},
+        )
+
+    def test_no_profile_is_null_rather_than_a_block_of_zeroes(self):
+        """Zeroes here would say "you have never built anything", which is a far worse
+        sentence than saying nothing."""
+        self.assertIsNone(rp.build()["coverage"])
+
+    def test_there_is_no_verdict_and_no_threshold_in_the_document(self):
+        """The honest thing is not a warning at some ratio somebody picked. It is printing
+        what was asked for beside what was found; 30 against 2 needs no adjective, and a
+        boolean here would be a judgement the client could not overrule."""
+        got = rp.build(profile=self.profile(spans=2, active=2), window_days=30)["coverage"]
+        for key in got:
+            self.assertNotIn(key, ("partial", "warning", "enough", "reason"))
+
+
 class NothingToSay(unittest.TestCase):
     """Null is not zero, in every block. An empty chart reads as 'you did nothing'."""
 
@@ -177,6 +231,12 @@ class WhatMayTravel(unittest.TestCase):
             "reason",  # a refusal, written by a module in this package
             "trend_headline",  # trends.headline, from LABEL and two numbers
             "generated_at",
+            # ReportCoverage: the first and last sitting, as timestamps. A clock reading
+            # is not free text and cannot carry a word anybody typed — and the session
+            # start and end times are already on the wire for every session, so these two
+            # are a restatement of what the server has rather than anything new.
+            "first_at",
+            "last_at",
         }
         strings = {
             f["name"]

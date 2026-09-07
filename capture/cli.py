@@ -450,10 +450,14 @@ def cmd_report(a: argparse.Namespace) -> int:
     """
     key = cl.capture_key(a.key)
 
+    from analysis import profile as pf
     from analysis import report as rp
 
     facts, events, trends, fanout, contributions = _corpus(a)
     doc = rp.build(
+        # Same profile the narrative reads, so the coverage the phone shows is the
+        # coverage the numbers were computed over.
+        profile=pf.corpus_profile(facts),
         trends=trends,
         fanout=fanout,
         contributions=contributions,

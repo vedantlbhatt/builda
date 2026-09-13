@@ -51,6 +51,12 @@ section.
 - Running: the final capture of every screen into shots/final/ (+ videos); project analytics
   (engine, report block, server; docs/projects.md); the stack page with real tech logos.
   Then: the Projects tab UI, the artifact.
+- Visualizations the owner liked the sound of (16:40), to build next: project rivers (a
+  streamgraph of hours per project by week), a rank race (bump chart of projects by week) and a
+  session swarm (every session a dot, sized by length, coloured by creature, tap to open) in
+  Projects; a Sankey on Money (tokens to models to projects to commits, waste splitting off).
+  Also on the list: day ridgelines, tool chords, commit constellation, session fingerprint,
+  burn river, the month as a pixel mosaic. The owner loved the stack bubble cloud (ee3c87c).
 - Fixed from the capture pass: the time lapse crashed (bayer2 used before definition in a
   worklet; 293f273).
 - Next: one simulator capture pass of every screen, the native recolour (Live Activity,

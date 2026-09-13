@@ -14,16 +14,20 @@
  *  - a clock time is `you/numbers.clockOf`.
  * What is new here is only what a tile adds: aging the engine's numbers by the seconds since
  * `computed_at` (for display, docs/overnight-integration.md 3.5), the 15 second hold on the
- * order, the ten minutes a finished tile stays, and the tile's copy.
+ * order, the ten minutes a finished tile stays, the tile's copy, the one place a tile reads a
+ * phase differently from the Lock Screen (`tilePhase`: a turn the engine called done is a
+ * finished tile, never a running one), and the crew rule that gives each session its creature
+ * (`crewCreatures`, DESIGN-V2 2.2).
  */
 
 import type { SessionDetail } from '../data/api';
-import type { LiveActivity, LiveEta, LiveState } from '../generated/live';
+import type { LiveActivity, LiveEta, LiveState, Phase } from '../generated/live';
 import { etaRefusal } from '../copy/live';
 import { commas } from '../copy/numbers';
 import { spoken } from '../copy/plain';
+import type { Animal } from '../pixel/animals';
 import { HARNESS_NAMES, isHarness } from '../pixel/harness';
-import { layout } from '../theme';
+import { CREW_RING, layout } from '../theme';
 import { clockOf, dayOf } from '../you/numbers';
 import type { LiveStateWire } from './sentence';
 import {
@@ -35,6 +39,7 @@ import {
   STALE_SECONDS,
   surfaceSentenceOf,
   trajectoryOf,
+  waitsOnBackground,
   type LiveStates,
 } from './surface';
 
@@ -85,8 +90,13 @@ export const FINISHED_HORIZON_SECONDS = 3600 + FINISHED_SHOW_MS / 1000;
  */
 export const HOLD_MAX_MS = 60_000;
 
-/** "22m", "1h 05m": LiveDisplay.swift `LiveCopy.duration`, so a tile and the widget say the same minute. */
+/**
+ * "22m", "1h 05m": LiveDisplay.swift `LiveCopy.duration`, so a tile and the widget say the same
+ * minute. A worklet as well: a tile's elapsed figure writes every frame of its count with it, so
+ * the frames and the resting string can never differ in shape.
+ */
 export function elapsedLabel(seconds: number): string {
+  'worklet';
   const total = Math.floor(Math.max(0, seconds) / 60);
   const h = Math.floor(total / 60);
   const m = total % 60;
@@ -98,6 +108,23 @@ export function elapsedLabel(seconds: number): string {
 /** `(screen - 2 gutters - one tile gap) / 2`: 174.5pt on a 393pt phone. */
 export function tileWidth(screenWidth: number): number {
   return (screenWidth - 2 * layout.gutter - layout.tileGap * (TILE_COLUMNS - 1)) / TILE_COLUMNS;
+}
+
+/**
+ * Which size tile `index` of `count` is. The first, who needs you most, leads across the width;
+ * the rest go two to a row; an unpaired last one spans the width too, so a row never ends on a
+ * hole. The house style's "everything the same size" is on the banned list: the order is also
+ * the hierarchy.
+ */
+export function tileVariant(index: number, count: number): 'lead' | 'wide' | 'half' {
+  if (index <= 0) return 'lead';
+  const rest = count - 1;
+  return rest % 2 === 1 && index === count - 1 ? 'wide' : 'half';
+}
+
+/** A tile's width: the lead and the wide span the gutters, a half is `tileWidth`. */
+export function tileWidthFor(variant: 'lead' | 'wide' | 'half', screenWidth: number): number {
+  return variant === 'half' ? tileWidth(screenWidth) : screenWidth - 2 * layout.gutter;
 }
 
 /** 188pt, grown with the reader's text size up to `TILE_MAX_SCALE`, so the grid stays even. */
@@ -260,10 +287,64 @@ export interface TileModel {
   /** The line under the files: the ETA, or when the wait began; null when there is nothing honest to say. */
   eta: string | null;
   stale: boolean;
+  /**
+   * Whole minutes since the session started, for the tile's counted figure (`elapsedLabel` of
+   * it is the corner's text); null on a finished tile, which shows what it landed instead, and
+   * when the row carries no start.
+   */
+  elapsedMin: number | null;
+  /**
+   * Elapsed over the repository's typical run, 0 to 1 in 2% steps, for the pixel track along
+   * the tile's foot. Only while the ETA line is an answer: working on current data, the engine
+   * answered, and not circling or lost (a run going nowhere has nothing to count down). Null
+   * otherwise, so a refused ETA draws no track at all rather than an empty one.
+   */
+  track: number | null;
+  /**
+   * The row is still live but the engine called the turn done: finished, not looked at yet
+   * (`needs_you.reason` `finished_unreviewed`, analysis/__main__.py's words). A finished tile.
+   */
+  unreviewed: boolean;
   /** What VoiceOver reads for the whole tile. */
   label: string;
   /** Changes exactly when something the tile draws changes (for `React.memo`). */
   key: string;
+}
+
+/**
+ * The phase a TILE shows: `surface.phaseOf`, except that a turn the engine called `done` is done
+ * while the row is still live.
+ *
+ * The engine only says `done` about a turn that ended (activity `waiting_on_you`) with work
+ * landed cleanly (analysis/live.py, the turn ended rule), so `phaseOf`, which checks the waiting
+ * activity first, reads every such row as needs you: the Lock Screen's content state for it is
+ * pinned that way (`spec/fixtures/live/content_state.json`, `done_after_commit`). On a tile it
+ * put "Finished, with two files changed" under a live corner and counted the session among the
+ * RUNNING ones in the summary. A finished session is never running: here it is a finished tile,
+ * counted as finished, gone ten minutes after the turn ended like any other (`visibleRows`). The
+ * ORDER is untouched: it is still the engine's score (`finished_unreviewed`, 30).
+ */
+export function tilePhase(s: SessionDetail, wire: LiveStateWire | null | undefined, nowMs: number): Phase {
+  if (s.state !== 'final' && wire?.verdict?.state === 'done' && !waitsOnBackground(wire)) return 'done';
+  return phaseOf(s, wire, nowMs);
+}
+
+/** Elapsed over typical in 2% steps, so a tile redraws its track at most fifty times a run. */
+const TRACK_STEPS = 50;
+
+/**
+ * The track under a working tile: elapsed over the repository's typical run, aged to now, from
+ * the engine's ETA block. Null whenever the ETA line is not an answer (`etaLine`): refused,
+ * circling or lost. Past the typical run it is full, never a second lap.
+ */
+export function trackOf(eta: LiveEta | null | undefined, ageSeconds: number, verdict: TileVerdict | null): number | null {
+  if (verdict === 'circling' || verdict === 'lost') return null;
+  const typical = eta?.typical_s;
+  const elapsed = eta?.elapsed_s;
+  if (typeof typical !== 'number' || !(typical > 0) || typeof elapsed !== 'number' || !Number.isFinite(elapsed)) return null;
+  if (typeof eta?.remaining_s !== 'number') return null;
+  const ratio = (elapsed + Math.max(0, ageSeconds)) / typical;
+  return Math.round(Math.min(1, Math.max(0, ratio)) * TRACK_STEPS) / TRACK_STEPS;
 }
 
 /**
@@ -364,13 +445,14 @@ export function harnessName(harness: string): string {
 export function tileModel(s: SessionDetail, nowMs: number): TileModel {
   const wire = toWire(s.live_state);
   const stale = isStale(s, nowMs);
-  const phase = phaseOf(s, wire, nowMs);
+  const phase = tilePhase(s, wire, nowMs);
   const kind: TileKind = phase === 'done' ? 'finished' : phase;
   const age = ageSecondsOf(s, nowMs);
   const sentence = stale ? surfaceSentenceOf(s, wire, phase, nowMs) : sentenceOf(s, agedWire(s, nowMs), phase, nowMs);
 
   const started = parseMs(s.started_at);
-  const elapsed = elapsedLabel(started === null ? 0 : (nowMs - started) / 1000);
+  const elapsedSeconds = started === null ? 0 : Math.max(0, (nowMs - started) / 1000);
+  const elapsed = elapsedLabel(elapsedSeconds);
   // Amber says "needs you" and nothing else, and only about data that is current: a wait the
   // Mac stopped reporting forty minutes ago is said in the dim ink, with when it was taken.
   const corner: TileModel['corner'] =
@@ -429,6 +511,9 @@ export function tileModel(s: SessionDetail, nowMs: number): TileModel {
     landed,
     eta,
     stale,
+    elapsedMin: kind === 'finished' || started === null ? null : Math.floor(elapsedSeconds / 60),
+    track: kind === 'working' && !stale ? trackOf(s.live_state?.eta, age, verdict) : null,
+    unreviewed: kind === 'finished' && s.state !== 'final',
     label,
   };
   return { ...model, key: JSON.stringify(model) };
@@ -510,6 +595,84 @@ export function holdOrder(held: HeldOrder, target: readonly string[], nowMs: num
   return { order: sameIds(kept, held.ids) ? held : { ids: kept, sortedAtMs: held.sortedAtMs }, resortInMs: wait };
 }
 
+// ------------------------------------------------------------------ the crew
+
+/**
+ * FNV-1a, 32 bit, over the UTF-8 bytes of `s`: offset basis 0x811C9DC5, prime 0x01000193
+ * (DESIGN-V2 2.2, whose three test vectors `__tests__/mission.test.ts` holds).
+ */
+export function fnv1a32(s: string): number {
+  let h = 0x811c9dc5;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const bytes =
+      cp < 0x80
+        ? [cp]
+        : cp < 0x800
+          ? [0xc0 | (cp >> 6), 0x80 | (cp & 63)]
+          : cp < 0x10000
+            ? [0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)]
+            : [0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)];
+    for (const b of bytes) h = Math.imul(h ^ b, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** The creature a session's id hashes onto, before any step: `CREW_RING[fnv1a32(id) % 8]`. */
+export function crewHashed(clientSessionId: string): Animal {
+  return CREW_RING[fnv1a32(clientSessionId) % CREW_RING.length]!;
+}
+
+/**
+ * Each session's creature (DESIGN-V2 2.2, "every session is its own builder"): the ring creature
+ * its client session id hashes onto, stepped forward along the ring past any creature a session
+ * running at its start already wears. Taken oldest first; with all eight worn the hashed one
+ * stands. Never Bit, so no session wears the brand's amber.
+ *
+ * The phone sees only the rows it holds, so a session that ran alongside this one and has since
+ * left the list cannot push it along the ring here. `kept` carries every creature this process
+ * has already drawn for a session, and a kept creature never changes: a tile does not change
+ * colour under someone because a neighbour finished. UNVERIFIED PARITY: the design names a
+ * Python twin (`crew_creature` in analysis/live.py) that does not exist yet, so this is the only
+ * implementation and the test holds it to the design's vectors and rules, not to a second one.
+ */
+export function crewCreatures(rows: readonly SessionDetail[], kept: ReadonlyMap<string, Animal> = new Map()): Map<string, Animal> {
+  const ring = CREW_RING as readonly Animal[];
+  const byStart = [...rows].sort((a, b) => {
+    const d = (parseMs(a.started_at) ?? 0) - (parseMs(b.started_at) ?? 0);
+    return d !== 0 ? d : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  const out = new Map<string, Animal>();
+  // The sessions that began earlier and had not ended by now, with when they end (a live one,
+  // or a final one with no end, never does). Taken in start order, a session that ended before
+  // this one began ended before every later one began too, so it leaves the list for good:
+  // a whole saved history costs its concurrency, not its square.
+  const running: { end: number; creature: Animal }[] = [];
+  for (const s of byStart) {
+    const start = parseMs(s.started_at);
+    if (start !== null) {
+      for (let k = running.length - 1; k >= 0; k--) if (running[k]!.end <= start) running.splice(k, 1);
+    }
+    let pick = kept.get(s.id);
+    if (!pick) {
+      const worn = new Set(running.map((r) => r.creature));
+      const base = fnv1a32(s.client_session_id || s.id) % ring.length;
+      pick = ring[base]!;
+      for (let k = 0; k < ring.length; k++) {
+        const c = ring[(base + k) % ring.length]!;
+        if (!worn.has(c)) {
+          pick = c;
+          break;
+        }
+      }
+    }
+    out.set(s.id, pick);
+    const end = s.state === 'final' ? parseMs(s.ended_at) : null;
+    running.push({ end: end ?? Number.POSITIVE_INFINITY, creature: pick });
+  }
+  return out;
+}
+
 /** A finger counts as down only for HOLD_MAX_MS after it went down with no end reported. */
 export function isHeld(downSinceMs: number | null, nowMs: number): boolean {
   return downSinceMs !== null && nowMs - downSinceMs < HOLD_MAX_MS;
@@ -551,7 +714,8 @@ export function noteFinishes(
 
 /**
  * Which rows get a tile: every live row, except one whose turn the engine called done more than
- * ten minutes ago (its activity's `since_s`, aged); plus every FINAL row the phone saw finish in
+ * ten minutes ago (its activity's `since_s`, aged: the engine only calls a turn done while its
+ * activity is the wait that followed it, so that is when it finished); plus every FINAL row the phone saw finish in
  * the last ten minutes whose last record is inside FINISHED_HORIZON_SECONDS. A row is never
  * shown twice.
  */
@@ -565,7 +729,7 @@ export function visibleRows(
   const ids = new Set<string>();
   for (const s of live) {
     const wire = toWire(s.live_state);
-    if (phaseOf(s, wire, nowMs) === 'done' && s.state !== 'final') {
+    if (tilePhase(s, wire, nowMs) === 'done' && s.state !== 'final') {
       const since = (s.live_state?.activity?.since_s ?? 0) + ageSecondsOf(s, nowMs);
       if (since * 1000 >= FINISHED_SHOW_MS) continue;
     }
@@ -620,6 +784,44 @@ export function summaryParts(c: MissionCounts): { text: string; accent: boolean 
 export function summaryLine(c: MissionCounts): string | null {
   const parts = summaryParts(c);
   return parts.length ? parts.map((p) => p.text).join(' · ') : null;
+}
+
+/** The summary band's words: one big number, what it counts, and the lines under it. */
+export interface SummaryHead {
+  figure: number;
+  /** What the figure counts: "needs you", "running", "finished". */
+  word: string;
+  /** Under it, one idea a line: "3 running", "Nothing needs you.", "1 finished", "1 not updating". */
+  lines: string[];
+  /** The band read aloud, figure first. */
+  label: string;
+}
+
+/**
+ * The summary band (DESIGN-DIRECTION 7.1's "3 running · 1 needs you", set as a chapter): the
+ * loudest number is the one that asks for you, so a wait leads when there is one; otherwise how
+ * many run, with "Nothing needs you." under it; otherwise how many finished. Rows the Mac stopped
+ * reporting on are their own line, and while there are any the band does not claim that nothing
+ * needs you: a wait nobody can see is not the absence of one. Null when there is nothing at all.
+ */
+export function summaryHead(models: readonly Pick<TileModel, 'kind' | 'stale'>[]): SummaryHead | null {
+  const c = countsOf(models);
+  const quiet = models.filter((m) => m.stale && m.kind !== 'finished').length;
+  const finished = c.finished > 0 ? `${c.finished} finished` : null;
+  const notUpdating = quiet > 0 ? `${quiet} not updating` : null;
+  let head: Omit<SummaryHead, 'label'>;
+  if (c.needsYou > 0) {
+    head = { figure: c.needsYou, word: 'needs you', lines: [`${c.running} running`, finished, notUpdating].filter((x): x is string => x !== null) };
+  } else if (c.running > 0) {
+    const nothing = quiet > 0 ? null : 'Nothing needs you.';
+    head = { figure: c.running, word: 'running', lines: [nothing, finished, notUpdating].filter((x): x is string => x !== null) };
+  } else if (c.finished > 0) {
+    head = { figure: c.finished, word: 'finished', lines: ['Nothing needs you.'] };
+  } else {
+    return null;
+  }
+  const label = [`${head.figure} ${head.word}`, ...head.lines.map((l) => l.replace(/\.$/, ''))].join(', ');
+  return { ...head, label };
 }
 
 function capitalFirst(s: string): string {
@@ -714,6 +916,16 @@ export function finishedMeta(s: SessionDetail, dayLabel: (iso: string) => string
   return parts.join(' · ');
 }
 
+/**
+ * The empty state's one line about the session that finished last: "builder finished today at
+ * 21:37 · ran 47m". A private repository says so in full.
+ */
+export function lastFinishedLine(s: SessionDetail, dayLabel: (iso: string) => string): string {
+  const meta = finishedMeta(s, dayLabel);
+  const repo = s.repo_name ?? PRIVATE_REPO;
+  return meta ? `${repo} finished ${meta}` : `${repo} finished`;
+}
+
 // ------------------------------------------------------------------ the live bar
 
 export interface BarModel {
@@ -731,6 +943,13 @@ export interface BarModel {
   /** What the ring means, in words, for VoiceOver. */
   ringLabel: string;
   label: string;
+  /** The tile's counted figure and track (`TileModel`), so the bar and the tile agree to the minute. */
+  elapsedMin: number | null;
+  track: number | null;
+  /** The tile's line under its numbers: the ETA or "since 9:37", when there is an honest one. */
+  eta: string | null;
+  verdict: TileVerdict | null;
+  unreviewed: boolean;
 }
 
 /**
@@ -784,6 +1003,11 @@ export function barModel(s: SessionDetail, nowMs: number): BarModel {
     inner,
     ringLabel,
     label,
+    elapsedMin: t.elapsedMin,
+    track: t.track,
+    eta: t.eta,
+    verdict: t.verdict,
+    unreviewed: t.unreviewed,
   };
 }
 
@@ -797,7 +1021,7 @@ export function barModel(s: SessionDetail, nowMs: number): BarModel {
  * finished sessions, so it is refused an ETA). Every sentence comes out of the engine's
  * renderer; nothing here is prose. The screen labels it a sample.
  */
-export const SAMPLE_KINDS = ['grid', 'all', 'empty', 'loading', 'error', 'stale', 'refused', 'signedout'] as const;
+export const SAMPLE_KINDS = ['grid', 'all', 'empty', 'loading', 'error', 'stale', 'refused', 'signedout', 'review'] as const;
 export type SampleKind = (typeof SAMPLE_KINDS)[number];
 
 export function parseSample(raw: string | string[] | undefined): SampleKind | null {
@@ -942,7 +1166,10 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
   });
   const seen = new Map([[finished.id, nowMs - 2 * 60_000]]);
   if (kind === 'empty') {
-    return { live: [], finals: [{ ...finished, id: 'sample-yesterday', ended_at: new Date(nowMs - 3 * 3600_000).toISOString() }], seen: new Map(), inputs: ok };
+    // Finished three hours ago after a 47 minute run: its start moves back with its end.
+    const endedMs = nowMs - 3 * 3600_000;
+    const earlier = { ...finished, id: 'sample-yesterday', ended_at: new Date(endedMs).toISOString(), started_at: new Date(endedMs - 47 * 60_000).toISOString() };
+    return { live: [], finals: [earlier], seen: new Map(), inputs: ok };
   }
 
   const needs = sampleRow('sample-needs-you', 'builder', 'claude_code', 47, nowMs, {
@@ -1045,6 +1272,24 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
     ),
   });
 
+  if (kind === 'review') {
+    // A turn the engine called done while the row is still live: the tile says finished, not
+    // looked at yet, and the summary counts it as finished, never running (`tilePhase`).
+    const done = sampleRow('sample-review', 'RideGT', 'claude_code', 26, nowMs, {
+      live_state: sampleState(
+        nowMs,
+        {
+          activity: { kind: 'waiting_on_you', role: 'unknown', attempt: 0, since_s: 3 * 60, files: 0, calls: 0, file_id: null },
+          verdict: { state: 'done', basis: 'turn_ended', reason: null, file_id: null, evidence: { ...EVIDENCE_ZERO, checkpoints: 2, files_changed: 2, commits: 1 } },
+          needs_you: { score: 31, reason: 'finished_unreviewed' },
+        },
+        2,
+        rideGtEta(26)
+      ),
+      stats: { ...sampleRow('x', null, 'x', 0, nowMs, {}).stats!, lines_added_agent: 64, lines_removed_agent: 12, commit_count: 1 },
+    });
+    return { live: [done, converging, starting], finals: [], seen: new Map(), inputs: ok };
+  }
   if (kind === 'refused') {
     const bare = (s: SessionDetail): SessionDetail => ({ ...s, live_state: null });
     return { live: [needs, bare(converging), bare(starting)], finals: [], seen: new Map(), inputs: ok };

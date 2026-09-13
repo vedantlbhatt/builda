@@ -1,50 +1,84 @@
+/**
+ * Mission control, in the house style (design-refs/HOUSE-STYLE.md; the reference is the analysis
+ * page, `src/insights/**`): one chapter. It opens on a full bleed band in the builder's creature
+ * hue that prints itself, with the one number that matters set huge in dark ink ("1 needs you",
+ * or "3 running" with "Nothing needs you." under it) and the running crew printed along its foot.
+ * Under it, on the warm dark ground with a slow radar turning very quietly behind, each session is
+ * a tile printed in its own creature's hue (`MissionTile.tsx`), the one who needs you most first
+ * and set largest.
+ *
+ * When nothing runs, the screen IS the reward: the whole screen is the builder's band, Bit asleep
+ * on it, "Nothing needs you." huge, "Go do something else." under it, and the last finished
+ * session as one line you can open.
+ *
+ * The rules are the ones mission control always had, pure in `mission.ts` and pinned by its
+ * tests: the engine's order (the Lock Screen's), at most one re-sort every 15 s and never under
+ * a finger (`holdOrder`), a finished tile for ten minutes, the five screen states. Motion:
+ * tiles enter on AnimatedList's stagger and glide to new places on its layout spring; nothing
+ * moves under a thumb.
+ *
+ * Sources, named: the band, the print, the count up and the reveal clock are the analysis
+ * page's (`insights/Band.tsx`, `Num.tsx`, `reveal.tsx`); react-bits ports from `ui/bits`
+ * (AnimatedList, StarBorder, Radar, SplitText, SpotlightCard's layer); the loading mark is the
+ * flip wave pattern from Appllama's loader set (a 5 by 5 grid flipping along its diagonal and
+ * settling centre out; the pattern only, drawn here from scratch, that repository is GPL).
+ */
 import { useIsFocused } from '@react-navigation/native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, useWindowDimensions, View, type GestureResponderEvent } from 'react-native';
-import Animated, { FadeIn, FadeOut, FadingTransition, LayoutAnimationConfig, LinearTransition } from 'react-native-reanimated';
+import { SymbolView } from 'expo-symbols';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
 
 import type { SessionDetail } from '../data/api';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
+import { Band, BandWords, FRINGE } from '../insights/Band';
+import { CreaturePrint } from '../insights/Creature';
+import { fitSize } from '../insights/format';
+import { figure, GUTTER, Refusal, type as kitType } from '../insights/kit';
+import { GROUND, ON_HUE, type Hue as BandHue } from '../insights/palette';
+import { Block, RevealPage, Section, useClock, usePageReveal } from '../insights/reveal';
+import { useRevealScroll } from '../insights/RevealScroll';
 import { ANIMAL_KEY } from '../onboarding/keys';
 import { resolveAnimal, type Animal } from '../pixel/animals';
-import { HarnessGlyph } from '../pixel/HarnessGlyph';
-import { PixelAnimal, PixelAnimalIcon } from '../pixel/PixelAnimal';
-import { PixelBadge } from '../pixel/PixelBadge';
-import { colors, dayLabel, layout, space } from '../theme';
-import { Button, REDUCED_FADE, Row, Section, SNAP, Surface, T, useReduceMotion } from '../ui';
-import { exitMs, T as DUR } from '../ui/motion';
-import { Bone } from '../you/States';
+import { PixelSprite } from '../pixel/PixelSprite';
+import { dayLabel, layout } from '../theme';
+import { useAccent, type AccentState } from '../theme/accent';
+import { T, useReduceMotion } from '../ui';
+import { Radar } from '../ui/bits/backgrounds';
+import { AnimatedList } from '../ui/bits/components/AnimatedList';
+import { SplitText } from '../ui/bits/text';
 import { staleLine } from '../you/load';
 import {
-  countsOf,
+  crewCreatures,
+  crewHashed,
   EMPTY_HOLD,
-  finishedMeta,
   holdOrder,
   HOLD_MAX_MS,
   isHeld,
   lastFinished,
+  lastFinishedLine,
   missionOrderIds,
   missionSample,
   missionScreen,
   noteFinishes,
   refusalLine,
-  summaryParts,
+  summaryHead,
   tileHeight,
   tileModel,
-  tileWidth,
+  tileVariant,
+  tileWidthFor,
   topNeedsYou,
   visibleRows,
   type HeldOrder,
   type MissionInputs,
   type SampleKind,
+  type SummaryHead,
   type TileModel,
 } from './mission';
-import { MissionTile, MissionTileSkeleton } from './MissionTile';
+import { inked, LiveNum, MissionTile, StandaloneReveal } from './MissionTile';
 import { refreshLiveSurfaces } from './useLiveSurfaces';
-
-const c = colors('dark');
 
 /** Same cadence as Sessions and the Mac's live upload (`LIVE_UPLOAD_MIN_INTERVAL_SEC`, 60 s). */
 export const LIVE_REFRESH_MS = 60_000;
@@ -71,8 +105,8 @@ export function useNow(tickMs: number, active = true): number {
 }
 
 /**
- * The builder's own creature: their pick, else the default. The same read the live debug route
- * makes for the Lock Screen, so the tile and the card beside it on the Lock Screen are one animal.
+ * The builder's own creature: their pick, else the default. Sessions wear their crew creature
+ * now (`sessionCreature`); this stays for anything that shows the builder themself.
  */
 export function useCreature(): Animal {
   const [chosen, setChosen] = useState<string | null>(null);
@@ -88,7 +122,7 @@ export function useCreature(): Animal {
       return () => {
         live = false;
       };
-    }, [])
+    }, []),
   );
   return resolveAnimal(chosen);
 }
@@ -104,13 +138,42 @@ let lastLiveIds: string[] = [];
 /** The last time a sync worked in this process, for "Showing what was saved at 9:41". */
 let lastGoodSyncMs: number | null = null;
 
+/**
+ * Every creature this process has drawn for a session (`mission.crewCreatures`' `kept`): once a
+ * tile has a colour it keeps it, on the grid, the Sessions doorway and the live bar alike.
+ */
+let crewKept: Map<string, Animal> = new Map();
+/** Enough for a whole saved Sessions list (it asks too) and every live row; a few kilobytes. */
+const CREW_KEPT_MAX = 4096;
+
+/** The crew for these rows, remembered for the rest of the process. */
+export function crewFor(rows: readonly SessionDetail[]): Map<string, Animal> {
+  const out = crewCreatures(rows, crewKept);
+  let changed = false;
+  for (const [id, c] of out) {
+    if (crewKept.get(id) !== c) changed = true;
+  }
+  if (changed) {
+    const next = new Map([...crewKept, ...out]);
+    // Oldest first out: a Map iterates in insertion order.
+    while (next.size > CREW_KEPT_MAX) next.delete(next.keys().next().value as string);
+    crewKept = next;
+  }
+  return out;
+}
+
+/** One session's creature, for a screen that holds only that session (the live bar). */
+export function sessionCreature(s: Pick<SessionDetail, 'id' | 'client_session_id'>): Animal {
+  return crewKept.get(s.id) ?? crewHashed(s.client_session_id || s.id);
+}
+
 export interface MissionData {
   /** Live rows from the cache, then from the server; null until the cache has been read. */
   live: SessionDetail[] | null;
   /** Final rows the phone saw finish in the last ten minutes. */
   finals: SessionDetail[];
   seen: ReadonlyMap<string, number>;
-  /** The latest finished session, for the empty state's one row. */
+  /** The latest finished session, for the empty state's one line. */
   lastFinal: SessionDetail | null;
   inputs: Omit<MissionInputs, 'rows'>;
   refreshing: boolean;
@@ -163,7 +226,7 @@ export function useMission(sample: SampleKind | null): MissionData {
       seenFinal = noteFinishes(seenFinal, [...lastLiveIds, ...before.map((s) => s.id)], nowIds, nowMs);
       lastLiveIds = nowIds;
       const finished = (await Promise.all([...seenFinal.keys()].map((id) => cache.getDetail(id)))).filter(
-        (s): s is SessionDetail => s !== null
+        (s): s is SessionDetail => s !== null,
       );
       const recent = await cache.listSessions(20);
       if (!failed) lastGoodSyncMs = nowMs;
@@ -194,7 +257,7 @@ export function useMission(sample: SampleKind | null): MissionData {
       void load();
       const timer = setInterval(() => void load(), LIVE_REFRESH_MS);
       return () => clearInterval(timer);
-    }, [load, sample])
+    }, [load, sample]),
   );
 
   // The sample is fixed at the moment it was asked for, so its clocks age like real ones.
@@ -260,7 +323,7 @@ function useHeldOrder(target: readonly string[]) {
     () => () => {
       if (timer.current) clearTimeout(timer.current);
     },
-    []
+    [],
   );
 
   const set = useCallback(
@@ -279,7 +342,7 @@ function useHeldOrder(target: readonly string[]) {
         });
       }
     },
-    [settle]
+    [settle],
   );
 
   const handlers = useMemo(
@@ -294,41 +357,72 @@ function useHeldOrder(target: readonly string[]) {
       onMomentumScrollBegin: () => set('momentum', true),
       onMomentumScrollEnd: () => set('momentum', false),
     }),
-    [set]
+    [set],
   );
 
   return { ids: held.ids, handlers };
 }
 
+/** The accent as a chapter hue (`insights/Band` reads ink, partner and light). */
+function bandHue(a: AccentState): BandHue {
+  return { ink: a.ink, partner: a.partner, light: a.light };
+}
+
+/** Plays `children(true)` once the block this sits in has run `at` ms of its clock. */
+function WhenClock({ at, children }: { at: number; children: (play: boolean) => ReactNode }) {
+  const clock = useClock();
+  const [play, setPlay] = useState(false);
+  useAnimatedReaction(
+    () => clock.value >= at,
+    (now, was) => {
+      if (now && !was) runOnJS(setPlay)(true);
+    },
+  );
+  return <>{children(play)}</>;
+}
+
+const noop = () => undefined;
+
 // ------------------------------------------------------------------ the screen
 
 /**
- * Mission control (DESIGN-DIRECTION 7.1): every running session as a tile, two to a row, the one
- * that needs you first. The whole screen body, used by the Now tab (inline) and by `/live` (the
- * same grid pushed full screen), so the two can never differ.
+ * Mission control: the whole screen body, used by the Now tab (inline, where the summary band is
+ * a doorway into `/live`) and by `/live` (the same chapter pushed full screen), so the two can
+ * never differ about who comes first.
  *
- * Five states from `mission.missionScreen`: a skeleton shaped like two tiles while the first
- * answer is on its way; Bit and "Nothing needs you." with the last finished session as one row;
- * signed out with Sign in; could not check, with Try again; and the grid, with one line at the
- * top when it is showing what was saved because the refresh failed. The refusal is a sentence
- * under the grid when sessions came without the engine's state.
+ * Five states from `mission.missionScreen`: the flip wave while the first answer is on its way;
+ * the full screen band when nothing needs you; signed out with the way to sign in; could not
+ * check, with Try again; and the chapter, with one sentence on the ground above it when it is
+ * showing what was saved because the refresh failed. The refusal is a sentence under the grid
+ * when sessions came without the engine's state.
  */
-export function MissionControl({ sample = null }: { sample?: SampleKind | null }) {
+export function MissionControl({ sample = null, doorway = false }: { sample?: SampleKind | null; doorway?: boolean }) {
   const router = useRouter();
   const focused = useIsFocused();
   const data = useMission(sample);
   const now = useNow(CLOCK_TICK_MS, focused);
-  const creature = useCreature();
+  const accent = useAccent();
+  const reduce = useReduceMotion();
+  const page = usePageReveal(reduce);
+  const { scrollRef, onScroll, onLayout: onRevealLayout } = useRevealScroll(page, noop);
   const { width, fontScale } = useWindowDimensions();
-  const tileW = tileWidth(width);
-  const tileH = tileHeight(fontScale);
+  const [viewportH, setViewportH] = useState(0);
+  const onLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      onRevealLayout(e);
+      const h = e.nativeEvent.layout.height;
+      setViewportH((v) => (Math.abs(v - h) < 1 ? v : h));
+    },
+    [onRevealLayout],
+  );
 
   const rows = useMemo(
     () => (data.live === null ? null : visibleRows(data.live, data.finals, data.seen, now)),
-    [data.live, data.finals, data.seen, now]
+    [data.live, data.finals, data.seen, now],
   );
   const screen = missionScreen({ ...data.inputs, rows });
   const models = useMemo(() => new Map((rows ?? []).map((s) => [s.id, tileModel(s, now)] as const)), [rows, now]);
+  const crew = useMemo(() => crewFor(rows ?? []), [rows]);
   const target = useMemo(() => (rows ? missionOrderIds(rows, now) : []), [rows, now]);
   const hold = useHeldOrder(target);
   // Before anything is placed, the first placement is the target itself, drawn in this render
@@ -342,218 +436,477 @@ export function MissionControl({ sample = null }: { sample?: SampleKind | null }
   for (const id of [...lastModels.current.keys()]) if (!ids.includes(id) && !models.has(id)) lastModels.current.delete(id);
   const shown = ids.map((id) => models.get(id) ?? lastModels.current.get(id)).filter((m): m is TileModel => m !== undefined);
 
-  const counts = countsOf([...models.values()]);
   const top = topNeedsYou(ids, models);
+  const head = summaryHead([...models.values()]);
   const refusal = rows ? refusalLine(rows) : null;
   const open = useCallback((id: string) => router.push(`/session/${id}`), [router]);
-
-  const reduce = useReduceMotion();
-  const motion = useMemo(
-    () =>
-      reduce
-        ? { layout: FadingTransition.duration(REDUCED_FADE), entering: FadeIn.duration(REDUCED_FADE), exiting: FadeOut.duration(REDUCED_FADE) }
-        : {
-            // Moves glide on SNAP, critically damped: a tile arrives at its new place without
-            // overshooting into its neighbour.
-            layout: new LinearTransition().springify(SNAP.duration).dampingRatio(SNAP.dampingRatio),
-            entering: FadeIn.duration(DUR.enter),
-            exiting: FadeOut.duration(exitMs(DUR.enter)),
-          },
-    [reduce]
-  );
+  const openLive = useCallback(() => router.push('/live'), [router]);
 
   const signedIn = data.inputs.signedIn;
+  const ready = screen.kind === 'ready';
+  const hue = useMemo(() => bandHue(accent), [accent]);
+  const halfMin = tileHeight(fontScale);
+
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      refreshControl={
-        signedIn && !data.sample ? (
-          <RefreshControl refreshing={data.refreshing} onRefresh={data.refresh} tintColor={c.accent} />
-        ) : undefined
-      }
-      contentContainerStyle={{
-        paddingHorizontal: layout.gutter,
-        paddingTop: space.md,
-        paddingBottom: space.xxl,
-        gap: space.tile,
-      }}
-      {...hold.handlers}
-    >
-      {data.sample ? (
-        <T role="label" tone="dim">
-          sample sessions, not yours
-        </T>
+    <View style={styles.screen}>
+      {/* A radar turning very slowly behind the grid, in two warm greys a step off the ground
+          (react-bits Radar through `ui/bits/backgrounds`): mission control is watching, and it
+          never competes with a tile. Still under Reduce Motion, off when nothing is running. */}
+      {(ready || screen.kind === 'loading') && viewportH > 0 ? (
+        <Radar
+          width={width}
+          height={viewportH}
+          ink={RADAR_INK}
+          partner={RADAR_PARTNER}
+          speed={0.4}
+          scale={1.35}
+          center={{ x: width / 2, y: Math.min(viewportH * 0.4, 320) }}
+          style={StyleSheet.absoluteFill}
+        />
       ) : null}
-
-      {screen.kind === 'loading' ? <MissionSkeleton width={tileW} height={tileH} /> : null}
-
-      {screen.kind === 'signedOut' ? (
-        <View style={{ gap: space.md }}>
-          <PixelBadge
-            state="sleeping"
-            size={64}
-            title="Nothing running that we can see."
-            text="Sign in, and your agents show up here while they run."
-            style={{ padding: 0 }}
-          />
-          <Button label="Sign in" size="compact" block={false} onPress={() => router.push('/settings')} />
-        </View>
-      ) : null}
-
-      {screen.kind === 'error' ? (
-        <View style={{ gap: space.md }}>
-          <PixelBadge state="sleeping" size={64} title="Could not check what is running." text={screen.message} style={{ padding: 0 }} />
-          <Button label="Try again" size="compact" block={false} onPress={() => void data.refresh()} />
-        </View>
-      ) : null}
-
-      {(screen.kind === 'empty' || screen.kind === 'ready') && screen.stale ? (
-        <T role="meta" tone="dim" accessibilityRole="alert">
-          {staleLine(screen.stale, now)}
-        </T>
-      ) : null}
-
-      {screen.kind === 'empty' ? (
-        <View style={{ gap: layout.sectionGap }}>
-          <PixelBadge
-            state="sleeping"
-            size={64}
-            title="Nothing needs you."
-            text="Go do something else. We'll tap you when that changes."
-            style={{ padding: 0 }}
-          />
-          {data.lastFinal ? <LastFinished session={data.lastFinal} onOpen={open} /> : null}
-        </View>
-      ) : null}
-
-      {screen.kind === 'ready' ? (
-        <>
-          <Summary parts={summaryParts(counts)} />
-          <LayoutAnimationConfig skipEntering>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: layout.tileGap }}>
-              {shown.map((m) => (
-                <Animated.View key={m.id} layout={motion.layout} entering={motion.entering} exiting={motion.exiting} style={{ width: tileW, height: tileH }}>
-                  <MissionTile model={m} creature={creature} animate={m.id === top} width={tileW} height={tileH} onOpen={open} />
-                </Animated.View>
-              ))}
-            </View>
-          </LayoutAnimationConfig>
-          {refusal ? (
-            <T role="meta" tone="dim">
-              {refusal}
-            </T>
+      <Animated.ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentInsetAdjustmentBehavior="automatic"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onLayout={onLayout}
+        refreshControl={
+          signedIn && !data.sample ? <RefreshControl refreshing={data.refreshing} onRefresh={data.refresh} tintColor={GROUND.dim} /> : undefined
+        }
+        // The empty band fills the screen to its foot; the grid keeps room under its last tile.
+        contentContainerStyle={screen.kind === 'empty' ? styles.contentEmpty : styles.content}
+        {...hold.handlers}
+      >
+        <RevealPage page={page}>
+          {data.sample ? (
+            <Section style={styles.note}>
+              <Block>
+                <T role="label" tone="dim">
+                  sample sessions, not yours
+                </T>
+              </Block>
+            </Section>
           ) : null}
-        </>
-      ) : null}
-    </ScrollView>
-  );
-}
 
-/** "3 running · 1 needs you": `meta` in textDim, the needs you count in amber 13/600. */
-function Summary({ parts }: { parts: { text: string; accent: boolean }[] }) {
-  if (parts.length === 0) return null;
-  return (
-    <T role="meta" tone="dim" accessibilityRole="header">
-      {parts.map((p, i) => (
-        <React.Fragment key={p.text}>
-          {i > 0 ? ' · ' : null}
-          {p.accent ? (
-            <T role="meta" tone="accent" weight={600}>
-              {p.text}
-            </T>
-          ) : (
-            p.text
-          )}
-        </React.Fragment>
-      ))}
-    </T>
-  );
-}
+          {screen.kind === 'loading' ? (
+            <Section style={styles.pad}>
+              <Block style={styles.waiting}>
+                <FlipWave color={accent.ink} />
+                <T maxFontSizeMultiplier={1.6} style={kitType.dim}>
+                  Checking what is running.
+                </T>
+              </Block>
+            </Section>
+          ) : null}
 
-/** The skeleton: the summary line's bone and two tiles, the shape of the smallest real answer. */
-function MissionSkeleton({ width, height }: { width: number; height: number }) {
-  return (
-    <View style={{ gap: space.tile }} accessible accessibilityLabel="Checking what is running">
-      <Bone width={140} height={13} />
-      <View style={{ flexDirection: 'row', gap: layout.tileGap }}>
-        <MissionTileSkeleton width={width} height={height} />
-        <MissionTileSkeleton width={width} height={height} />
-      </View>
+          {screen.kind === 'signedOut' ? (
+            <Section style={styles.pad}>
+              <Block style={styles.stateBlock}>
+                <PixelSprite state="sleeping" size={64} />
+                <T maxFontSizeMultiplier={1.6} style={kitType.heading}>
+                  Nothing running that we can see.
+                </T>
+                <T maxFontSizeMultiplier={1.6} style={kitType.dim}>
+                  Sign in, and your agents show up here while they run.
+                </T>
+                <WordLink label="Sign in" color={accent.text} onPress={() => router.push('/settings')} />
+              </Block>
+            </Section>
+          ) : null}
+
+          {screen.kind === 'error' ? (
+            <Section style={styles.pad}>
+              <Block style={styles.stateBlock}>
+                <PixelSprite state="sleeping" size={64} />
+                <T maxFontSizeMultiplier={1.6} style={kitType.heading}>
+                  Could not check what is running.
+                </T>
+                <Refusal>{screen.message}</Refusal>
+                <WordLink label="Try again" color={accent.text} onPress={() => void data.refresh()} />
+              </Block>
+            </Section>
+          ) : null}
+
+          {ready && screen.stale ? (
+            <Section style={styles.note}>
+              <Block>
+                <Refusal>{staleLine(screen.stale, now)}</Refusal>
+              </Block>
+            </Section>
+          ) : null}
+
+          {screen.kind === 'empty' && accent.ready ? (
+            <EmptyBand
+              hue={hue}
+              viewportH={viewportH}
+              stale={screen.stale ? staleLine(screen.stale, now) : null}
+              last={data.lastFinal}
+              onOpen={open}
+              width={width}
+            />
+          ) : null}
+
+          {ready && head && accent.ready ? (
+            <SummaryBand
+              head={head}
+              hue={hue}
+              creatures={shown.map((m) => crew.get(m.id)).filter((c): c is Animal => c !== undefined)}
+              width={width}
+              title={doorway ? 'Mission control' : 'Right now'}
+              onPress={doorway ? openLive : undefined}
+            />
+          ) : null}
+
+          {ready ? (
+            <Section style={styles.grid}>
+              <AnimatedList
+                scroll={false}
+                data={shown}
+                keyExtractor={(m) => m.id}
+                style={styles.tiles}
+                renderItem={({ item: m, index }) => {
+                  const variant = tileVariant(index, shown.length);
+                  return (
+                    <MissionTile
+                      model={m}
+                      creature={crew.get(m.id) ?? crewHashed(m.id)}
+                      animate={m.id === top}
+                      variant={variant}
+                      width={tileWidthFor(variant, width)}
+                      minHeight={variant === 'half' ? halfMin : 0}
+                      delay={Math.min(index, 6) * 70}
+                      onOpen={open}
+                    />
+                  );
+                }}
+              />
+            </Section>
+          ) : null}
+
+          {ready && refusal ? (
+            <Section style={styles.after}>
+              <Block>
+                <Refusal>{refusal}</Refusal>
+              </Block>
+            </Section>
+          ) : null}
+        </RevealPage>
+      </Animated.ScrollView>
     </View>
   );
 }
 
-/** The empty state's one row: the session that finished last, pushing to it. */
-function LastFinished({ session: s, onOpen }: { session: SessionDetail; onOpen: (id: string) => void }) {
+/** Two warm greys a step off the ground (tokens: card, then border), so the radar is felt, not seen. */
+const RADAR_PARTNER = GROUND.card;
+const RADAR_INK = GROUND.border;
+
+// ------------------------------------------------------------------ the summary band
+
+/**
+ * "1 needs you", or "3 running": the one number that matters, counted up from 0, the word beside
+ * it at the same size, one idea a line under it, and the running crew printed along the band's
+ * foot in mission order. On the Now tab the band is a doorway into `/live` (its title carries
+ * the arrow and the whole band is the tap target, the house's navigation); on `/live` it is the
+ * chapter's opening.
+ */
+const SummaryBand = React.memo(SummaryBandImpl, (a, b) =>
+  a.head.label === b.head.label &&
+  a.hue === b.hue &&
+  a.creatures.join() === b.creatures.join() &&
+  a.width === b.width &&
+  a.title === b.title &&
+  a.onPress === b.onPress,
+);
+
+function SummaryBandImpl({
+  head,
+  hue,
+  creatures,
+  width,
+  title,
+  onPress,
+}: {
+  head: SummaryHead;
+  hue: BandHue;
+  creatures: readonly Animal[];
+  width: number;
+  title: string;
+  onPress?: () => void;
+}) {
+  const inner = width - GUTTER * 2;
+  const line = `${head.figure} ${head.word}`;
+  const size = fitSize(line, inner, 64, 34);
+  const big = figure(size, ON_HUE);
   return (
-    <Section label="Last finished">
-      <Surface padding={0}>
-        <Row
-          title={s.repo_name ?? 'private repo'}
-          monoTitle
-          meta={finishedMeta(s, (iso) => dayLabel(iso))}
-          leading={<HarnessGlyph harness={s.harness} size={16} ink="dim" />}
-          chevron
-          onPress={() => onOpen(s.id)}
-        />
-      </Surface>
+    <Section>
+      <Band hue={hue} title={title} onPress={onPress} accessibilityLabel={onPress ? `${head.label}. Opens mission control` : head.label}>
+        <BandWords delay={240}>
+          <View style={styles.headline} accessible accessibilityLabel={`${head.figure} ${head.word}`}>
+            <LiveNum value={head.figure} final={String(head.figure)} figure={{ kind: 'count' }} textStyle={big} delay={300} />
+            <T allowFontScaling={false} style={big}>{` ${head.word}`}</T>
+          </View>
+        </BandWords>
+        {head.lines.map((l, i) => (
+          <BandWords key={l} delay={340 + i * 60}>
+            <T maxFontSizeMultiplier={1.3} style={i === 0 ? kitType.bandCaption : kitType.bandNote}>
+              {l}
+            </T>
+          </BandWords>
+        ))}
+        <CrewRow creatures={creatures} delay={420} />
+      </Band>
     </Section>
   );
 }
 
-// ------------------------------------------------------------------ the entry row
+/** The crew, printed along a band's foot in order: one creature per session, in the dark ink. */
+function CrewRow({ creatures, delay }: { creatures: readonly Animal[]; delay: number }) {
+  if (creatures.length === 0) return null;
+  const shown = creatures.slice(0, 8);
+  return (
+    <View style={styles.crew} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {shown.map((c, i) => (
+        <CreaturePrint key={`${c}.${i}`} animal={c} size={32} color={ON_HUE} delay={delay + i * 70} spread={260} />
+      ))}
+    </View>
+  );
+}
+
+// ------------------------------------------------------------------ the empty state
 
 /**
- * The block at the top of Sessions while something is running: ONE row into mission control
- * (DESIGN-DIRECTION 7.1), "3 running" with "1 needs you" in amber, and the top session's
- * sentence under it, in mission control's order, so the row and the grid it opens agree about
- * who comes first. The builder's creature leads it, and moves only when a session needs you.
+ * Nothing needs you: the reward. The whole screen is the builder's band; Bit asleep on it; the
+ * line set huge and arriving a word at a time once the band has printed (react-bits SplitText);
+ * "Go do something else." under it; and at the foot, the session that finished last, as one line
+ * that opens it. Still under Reduce Motion: the band at rest, the words at rest, Bit asleep.
+ */
+const EmptyBand = React.memo(EmptyBandImpl);
+
+function EmptyBandImpl({
+  hue,
+  viewportH,
+  stale,
+  last,
+  onOpen,
+  width,
+}: {
+  hue: BandHue;
+  viewportH: number;
+  stale: string | null;
+  last: SessionDetail | null;
+  onOpen: (id: string) => void;
+  width: number;
+}) {
+  const inner = width - GUTTER * 2;
+  const size = fitSize('needs you.', inner, 60, 40);
+  // The band fills what the scroll view shows: its padding, its title and the dissolve under it
+  // come off the viewport's height.
+  const fill = Math.max(420, viewportH - FRINGE - 44 - 30);
+  const lastLine = last ? lastFinishedLine(last, (iso) => dayLabel(iso)) : null;
+  return (
+    <Section>
+      <Band hue={hue} title="All quiet">
+        <View style={[styles.empty, { minHeight: fill }]}>
+          <BandWords delay={200}>
+            <PixelSprite state="sleeping" size={96} tone="selected" />
+          </BandWords>
+          <WhenClock at={280}>
+            {(play) => (
+              <SplitText
+                text="Nothing needs you."
+                by="words"
+                play={play}
+                color={ON_HUE}
+                textStyle={{ fontSize: size, lineHeight: Math.round(size * 1.04), fontWeight: '800', letterSpacing: -Math.round(size * 0.035 * 10) / 10 }}
+                accessibilityRole="header"
+                style={styles.emptyHead}
+              />
+            )}
+          </WhenClock>
+          <BandWords delay={620}>
+            <T maxFontSizeMultiplier={1.3} style={inked(22, '700', ON_HUE, 27)}>
+              Go do something else.
+            </T>
+          </BandWords>
+          <View style={styles.spacer} />
+          {stale ? (
+            <BandWords delay={700}>
+              <Refusal onHue>{stale}</Refusal>
+            </BandWords>
+          ) : null}
+          {last && lastLine ? (
+            <BandWords delay={760}>
+              <Pressable
+                onPress={() => onOpen(last.id)}
+                accessibilityRole="link"
+                accessibilityLabel={`${lastLine}. Opens the session`}
+                hitSlop={8}
+                style={({ pressed }) => [styles.lastLine, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+              >
+                <T maxFontSizeMultiplier={1.4} style={[kitType.bandNote, styles.shrink]}>
+                  {lastLine}
+                </T>
+                <SymbolView name="arrow.right" tintColor={ON_HUE} weight="bold" size={14} style={styles.arrow} />
+              </Pressable>
+            </BandWords>
+          ) : null}
+        </View>
+      </Band>
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------ small parts
+
+/** Navigation as words: a line of text in the accent with an arrow after it (the house style). */
+function WordLink({ label, color, onPress }: { label: string; color: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" hitSlop={10} style={({ pressed }) => [styles.link, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+      <T maxFontSizeMultiplier={1.4} style={inked(17, '700', color, 22)}>
+        {label}
+      </T>
+      <SymbolView name="arrow.right" tintColor={color} weight="bold" size={15} style={styles.arrow} />
+    </Pressable>
+  );
+}
+
+/** One loop of the flip wave. */
+const WAVE_MS = 2400;
+const WAVE = 5;
+
+/**
+ * The loading mark: a 5 by 5 grid of cells in the accent that fold down along the diagonal and
+ * come back from the centre out, the flip wave pattern from Appllama's loader set (the pattern
+ * only: this is drawn from scratch; that repository is GPL). Cells change size, never opacity,
+ * so the hue never goes brown. Reduce Motion: a still checker.
+ */
+function FlipWave({ color }: { color: string }) {
+  const reduce = useReduceMotion();
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (reduce) return;
+    t.value = 0;
+    t.value = withRepeat(withTiming(1, { duration: WAVE_MS, easing: Easing.linear }), -1, false);
+    return () => cancelAnimation(t);
+  }, [reduce, t]);
+  const cells = Array.from({ length: WAVE * WAVE }, (_, i) => i);
+  return (
+    <View style={styles.wave} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {cells.map((i) => (
+        <WaveCell key={i} row={Math.floor(i / WAVE)} col={i % WAVE} t={t} color={color} still={reduce} />
+      ))}
+    </View>
+  );
+}
+
+const WAVE_CELL = 7;
+const WAVE_GAP = 3;
+
+function WaveCell({ row, col, t, color, still }: { row: number; col: number; t: SharedValue<number>; color: string; still: boolean }) {
+  // Down along the diagonal over the first half of the loop, back from the centre out after it.
+  const down = ((row + col) / ((WAVE - 1) * 2)) * 0.42;
+  const up = 0.55 + (Math.hypot(row - 2, col - 2) / Math.hypot(2, 2)) * 0.3;
+  const style = useAnimatedStyle(() => {
+    if (still) return { transform: [{ scale: (row + col) % 2 === 0 ? 1 : 0.34 }] };
+    const x = t.value;
+    const fold = Math.min(1, Math.max(0, (x - down) / 0.1));
+    const back = Math.min(1, Math.max(0, (x - up) / 0.12));
+    return { transform: [{ scale: 1 - 0.66 * fold + 0.66 * back }] };
+  });
+  return <Animated.View style={[{ width: WAVE_CELL, height: WAVE_CELL, backgroundColor: color }, style]} />;
+}
+
+// ------------------------------------------------------------------ the Sessions doorway
+
+/**
+ * The block at the top of Sessions while something is running: a band in the builder's hue that
+ * opens mission control, the same words as its summary ("1 needs you", "2 running"), the top
+ * session's sentence under them in mission control's order, and the crew along its foot. A
+ * session the engine called done is finished here as on the grid, never running.
  *
- * `onPress` is accepted for the caller that still passes one and is not used: the row opens
+ * `onPress` is accepted for the caller that still passes one and is not used: the band opens
  * `/live`, and the tile there opens the session.
  */
 export function LiveSessions({
   sessions,
 }: {
   sessions: SessionDetail[];
-  /** Unused: the row opens mission control. */
+  /** Unused: the band opens mission control. */
   onPress?: (id: string) => void;
 }) {
   const router = useRouter();
   const focused = useIsFocused();
   const now = useNow(CLOCK_TICK_MS, focused);
-  const creature = useCreature();
-  if (sessions.length === 0) return null;
+  const accent = useAccent();
+  const { width } = useWindowDimensions();
+  const rows = useMemo(() => visibleRows(sessions, [], new Map(), now), [sessions, now]);
+  const crew = useMemo(() => crewFor(rows), [rows]);
+  if (rows.length === 0 || !accent.ready) return null;
 
-  const models = new Map(sessions.map((s) => [s.id, tileModel(s, now)] as const));
-  const order = missionOrderIds(sessions, now);
+  const models = new Map(rows.map((s) => [s.id, tileModel(s, now)] as const));
+  const order = missionOrderIds(rows, now);
+  const head = summaryHead([...models.values()]);
+  if (!head) return null;
   const first = models.get(order[0] ?? '') ?? null;
-  const parts = summaryParts(countsOf([...models.values()]));
-  const needs = topNeedsYou(order, models) !== null;
-  const plain = parts.filter((p) => !p.accent).map((p) => p.text).join(' · ') || `${sessions.length} running`;
-  const accent = parts.find((p) => p.accent)?.text ?? null;
+  const inner = width - layout.gutter * 2 - GUTTER * 2;
+  const size = fitSize(`${head.figure} ${head.word}`, inner, 48, 30);
+  const big = figure(size, ON_HUE);
 
   return (
-    <Section label="Live now">
-      <Surface padding={0}>
-        <Row
-          title={plain}
-          meta={first ? `${first.repo} · ${first.sentence}` : undefined}
-          metaLines={2}
-          leading={needs ? <PixelAnimal animal={creature} size={32} tone="rest" /> : <PixelAnimalIcon animal={creature} size={32} tone="idle" />}
-          trailing={
-            accent ? (
-              <T role="meta" tone="accent" weight={600}>
-                {accent}
-              </T>
-            ) : undefined
-          }
-          chevron
-          onPress={() => router.push('/live')}
-          testID="live-now-row"
-        />
-      </Surface>
-    </Section>
+    <StandaloneReveal>
+      <Band
+        hue={bandHue(accent)}
+        title="Live now"
+        onPress={() => router.push('/live')}
+        accessibilityLabel={`${head.label}. Opens mission control`}
+      >
+        <BandWords delay={240}>
+          <View style={styles.headline} accessible accessibilityLabel={`${head.figure} ${head.word}`}>
+            <LiveNum value={head.figure} final={String(head.figure)} figure={{ kind: 'count' }} textStyle={big} delay={300} />
+            <T allowFontScaling={false} style={big}>{` ${head.word}`}</T>
+          </View>
+        </BandWords>
+        {head.lines.map((l, i) => (
+          <BandWords key={l} delay={340 + i * 60}>
+            <T maxFontSizeMultiplier={1.3} style={i === 0 ? kitType.bandCaption : kitType.bandNote}>
+              {l}
+            </T>
+          </BandWords>
+        ))}
+        {first ? (
+          <BandWords delay={420}>
+            <T maxFontSizeMultiplier={1.3} style={kitType.bandNote}>
+              {`${first.repo}: ${first.sentence}`}
+            </T>
+          </BandWords>
+        ) : null}
+        <CrewRow creatures={order.map((id) => crew.get(id)).filter((c): c is Animal => c !== undefined)} delay={440} />
+      </Band>
+    </StandaloneReveal>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: GROUND.bg },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
+  content: { paddingBottom: 96 },
+  contentEmpty: { paddingBottom: 0 },
+  pad: { paddingHorizontal: GUTTER, paddingTop: 28 },
+  note: { paddingHorizontal: layout.gutter, paddingTop: 14, paddingBottom: 4 },
+  after: { paddingHorizontal: layout.gutter, paddingTop: 22 },
+  grid: { paddingHorizontal: layout.gutter, paddingTop: 4 },
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: layout.tileGap },
+  waiting: { alignItems: 'flex-start', gap: 18, paddingTop: 24 },
+  stateBlock: { gap: 12 },
+  headline: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
+  crew: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  empty: { gap: 14, paddingTop: 12 },
+  emptyHead: { marginTop: 6 },
+  spacer: { flexGrow: 1 },
+  lastLine: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
+  shrink: { flexShrink: 1 },
+  arrow: { width: 15, height: 15 },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', paddingVertical: 8 },
+  wave: { width: WAVE * WAVE_CELL + (WAVE - 1) * WAVE_GAP, flexDirection: 'row', flexWrap: 'wrap', gap: WAVE_GAP },
+});

@@ -18,7 +18,15 @@ import {
   agedWire,
   barModel,
   countsOf,
+  crewCreatures,
+  crewHashed,
   elapsedLabel,
+  fnv1a32,
+  summaryHead,
+  tilePhase,
+  tileVariant,
+  tileWidthFor,
+  trackOf,
   EMPTY_HOLD,
   etaDetail,
   etaLine,
@@ -32,6 +40,7 @@ import {
   landedCommits,
   landedLines,
   lastFinished,
+  lastFinishedLine,
   leftLabel,
   missionOrderIds,
   missionSample,
@@ -53,7 +62,9 @@ import {
   type HeldOrder,
   type TileModel,
 } from '../src/live/mission';
-import { planSync } from '../src/live/surface';
+import { phaseOf, planSync } from '../src/live/surface';
+import { ANIMALS } from '../src/pixel/animals';
+import { CREW_RING } from '../src/theme';
 import { clockOf } from '../src/you/numbers';
 
 const NOW = Date.parse('2026-09-13T09:41:00Z');
@@ -544,6 +555,207 @@ describe('the ETA refusal, for the session screen', () => {
   });
 });
 
+// ------------------------------------------------------------------ finished, not running
+
+describe('a turn the engine called done is finished on a tile, never running', () => {
+  /** The engine's done: the turn ended (the wait that follows it) with work landed cleanly. */
+  const doneState = (sinceS: number, computedAgoS = 20): LiveState =>
+    live(
+      {
+        activity: { kind: 'waiting_on_you', role: 'unknown', attempt: 0, since_s: sinceS, files: 0, calls: 0, file_id: null },
+        verdict: { state: 'done', basis: 'turn_ended', reason: null, file_id: null, evidence: { ...EVIDENCE, files_changed: 2, commits: 1 } },
+        needs_you: { score: 30 + Math.min(20, Math.floor(sinceS / 120)), reason: 'finished_unreviewed' },
+      },
+      computedAgoS,
+    );
+
+  test('the Lock Screen reads it as needs you (pinned there); the tile reads it as finished', () => {
+    const s = row('d', { live_state: doneState(180) }, { lines_added_agent: 2, lines_removed_agent: 2, commit_count: 0 });
+    const wire = toWire(s.live_state);
+    expect(phaseOf(s, wire, NOW)).toBe('needsYou');
+    expect(tilePhase(s, wire, NOW)).toBe('done');
+    const m = tileModel(s, NOW);
+    expect(m.kind).toBe('finished');
+    expect(m.unreviewed).toBe(true);
+    expect(m.corner).toEqual({ text: 'finished', tone: 'dim', weight: 600 });
+    expect(m.sentence).toBe('Finished, with two files changed');
+    expect(m.elapsedMin).toBeNull();
+    expect(m.track).toBeNull();
+    expect(landedLines(m.landed!)).toBe('+2 -2');
+  });
+
+  test('the summary counts it as finished, not running and not needing you', () => {
+    const rows = [row('d', { live_state: doneState(180) }), row('w', { live_state: live() })];
+    const models = rows.map((r) => tileModel(r, NOW));
+    expect(countsOf(models)).toEqual({ running: 1, needsYou: 0, finished: 1 });
+    expect(summaryLine(countsOf(models))).toBe('1 running · 1 finished');
+    expect(topNeedsYou(['d', 'w'], new Map(models.map((m) => [m.id, m] as const)))).toBeNull();
+  });
+
+  test('the order is still the engine\'s: finished unreviewed (30) above a session running fine (5)', () => {
+    const rows = [row('w', { live_state: live() }), row('d', { live_state: doneState(180) })];
+    expect(missionOrderIds(rows, NOW)).toEqual(['d', 'w']);
+  });
+
+  test('it leaves ten minutes after the turn ended, like every finished tile', () => {
+    expect(visibleRows([row('d', { live_state: doneState(8 * 60) })], [], new Map(), NOW).map((s) => s.id)).toEqual(['d']);
+    expect(visibleRows([row('d', { live_state: doneState(10 * 60) })], [], new Map(), NOW)).toEqual([]);
+  });
+
+  test('the live bar says finished too', () => {
+    const b = barModel(row('d', { live_state: doneState(180) }), NOW);
+    expect(b.kind).toBe('finished');
+    expect(b.corner.text).toBe('finished');
+    expect(b.unreviewed).toBe(true);
+  });
+
+  test('the review sample is a finished tile beside two running ones', () => {
+    const s = missionSample('review', NOW);
+    const rows = visibleRows(s.live, s.finals, s.seen, NOW);
+    const models = rows.map((r) => tileModel(r, NOW));
+    expect(models.find((m) => m.id === 'sample-review')?.kind).toBe('finished');
+    expect(countsOf(models)).toEqual({ running: 2, needsYou: 0, finished: 1 });
+  });
+});
+
+// ------------------------------------------------------------------ the tile's figures
+
+describe('what a tile counts', () => {
+  test('whole minutes since the start, for the counted figure; none on a finished tile', () => {
+    expect(tileModel(row('c', { live_state: live() }), NOW).elapsedMin).toBe(12);
+    expect(tileModel(row('c', { live_state: live() }), NOW + 59_000).elapsedMin).toBe(12);
+    expect(tileModel(row('c', { live_state: live() }), NOW + 60_000).elapsedMin).toBe(13);
+    expect(tileModel(final('f', 16), NOW).elapsedMin).toBeNull();
+    expect(elapsedLabel(12 * 60)).toBe(tileModel(row('c', { live_state: live() }), NOW).corner.text);
+  });
+
+  test('the track is elapsed over typical in 2% steps, aged, full past the typical run', () => {
+    // 720 s at computed_at plus 20 s since, over 1254 s: 0.59, which is 0.6 in 2% steps.
+    expect(tileModel(row('c', { live_state: live() }), NOW).track).toBe(0.6);
+    expect(trackOf({ ...ANSWERED, elapsed_s: 1300, remaining_s: 0 }, 0, 'converging')).toBe(1);
+    expect(trackOf(ANSWERED, 0, null)).toBe(0.58);
+  });
+
+  test('no track unless the ETA is an answer: refused, circling, lost, waiting and stale draw none', () => {
+    expect(trackOf(REFUSED, 0, null)).toBeNull();
+    expect(trackOf(null, 0, null)).toBeNull();
+    expect(trackOf(ANSWERED, 0, 'circling')).toBeNull();
+    expect(trackOf(ANSWERED, 0, 'lost')).toBeNull();
+    expect(tileModel(row('c', { live_state: circlingState() }), NOW).track).toBeNull();
+    expect(tileModel(row('n', { live_state: waitingState(240) }), NOW).track).toBeNull();
+    const old = row('o', { updated_at: new Date(NOW - 40 * MIN).toISOString(), live_state: live({}, 40 * 60) });
+    expect(tileModel(old, NOW).track).toBeNull();
+  });
+
+  test('the repository is the whole name, and a private one says so in two words', () => {
+    const long = 'a-repository-name-that-goes-on-for-a-while';
+    expect(tileModel(row('l', { repo_name: long, live_state: live() }), NOW).repo).toBe(long);
+    expect(tileModel(row('p', { repo_name: null, live_state: live() }), NOW).repo).toBe('private repo');
+  });
+});
+
+// ------------------------------------------------------------------ the crew
+
+describe('every session is its own builder: the crew rule', () => {
+  const at = (id: string, client: string, startedMinAgo: number, over: Partial<SessionDetail> = {}) =>
+    row(id, { client_session_id: client, started_at: new Date(NOW - startedMinAgo * MIN).toISOString(), ...over });
+
+  test('FNV-1a 32 over UTF-8, the design\'s three vectors', () => {
+    expect(fnv1a32('')).toBe(0x811c9dc5);
+    expect(fnv1a32('a')).toBe(0xe40c292c);
+    expect(fnv1a32('foobar')).toBe(0xbf9cf968);
+    expect(crewHashed('')).toBe('dog');
+    expect(crewHashed('a')).toBe('crab');
+    expect(crewHashed('foobar')).toBe('fox');
+  });
+
+  test('the ring is the eight animals, never Bit', () => {
+    expect([...CREW_RING].sort()).toEqual([...ANIMALS].sort());
+    for (let i = 0; i < 40; i++) expect(crewHashed(`session-${i}`)).not.toBe('bit');
+  });
+
+  test('a session that starts while another wears its creature steps forward along the ring', () => {
+    // "a" and "a" hash alike (crab); the later one steps to the next ring creature (dog).
+    const crew = crewCreatures([at('late', 'a', 5), at('early', 'a', 30)]);
+    expect(crew.get('early')).toBe('crab');
+    expect(crew.get('late')).toBe(CREW_RING[(CREW_RING.indexOf('crab') + 1) % CREW_RING.length]);
+  });
+
+  test('a session that finished before this one started does not push it', () => {
+    const gone = at('gone', 'a', 60, { state: 'final', ended_at: new Date(NOW - 40 * MIN).toISOString() });
+    const crew = crewCreatures([gone, at('now', 'a', 20)]);
+    expect(crew.get('now')).toBe('crab');
+  });
+
+  test('with all eight worn the hashed creature stands', () => {
+    const eight = CREW_RING.map((_, i) => at(`r${i}`, `seed-${i}`, 100 - i));
+    const worn = crewCreatures(eight);
+    expect(new Set(worn.values()).size).toBe(8);
+    const crew = crewCreatures([...eight, at('ninth', 'a', 1)]);
+    expect(crew.get('ninth')).toBe('crab');
+  });
+
+  test('a creature once drawn is kept: a tile never changes colour because a neighbour left', () => {
+    const first = crewCreatures([at('early', 'a', 30), at('late', 'a', 5)]);
+    const kept = new Map(first);
+    // The early session is gone; without `kept` the late one would fall back to crab.
+    expect(crewCreatures([at('late', 'a', 5)]).get('late')).toBe('crab');
+    expect(crewCreatures([at('late', 'a', 5)], kept).get('late')).toBe(first.get('late'));
+  });
+});
+
+// ------------------------------------------------------------------ the grid and the band
+
+describe('the grid is a hierarchy, and the band says the one number', () => {
+  test('the first tile leads, the rest go two to a row, an unpaired last one spans the width', () => {
+    expect([0].map((i) => tileVariant(i, 1))).toEqual(['lead']);
+    expect([0, 1].map((i) => tileVariant(i, 2))).toEqual(['lead', 'wide']);
+    expect([0, 1, 2].map((i) => tileVariant(i, 3))).toEqual(['lead', 'half', 'half']);
+    expect([0, 1, 2, 3].map((i) => tileVariant(i, 4))).toEqual(['lead', 'half', 'half', 'wide']);
+    expect([0, 1, 2, 3, 4].map((i) => tileVariant(i, 5))).toEqual(['lead', 'half', 'half', 'half', 'half']);
+    expect(tileWidthFor('lead', 393)).toBe(361);
+    expect(tileWidthFor('wide', 393)).toBe(361);
+    expect(tileWidthFor('half', 393)).toBe(174.5);
+  });
+
+  test('a wait leads the band; otherwise how many run, with "Nothing needs you." under it', () => {
+    const m = (kind: TileModel['kind'], stale = false) => ({ kind, stale });
+    expect(summaryHead([m('needsYou'), m('working'), m('working'), m('finished')])).toEqual({
+      figure: 1,
+      word: 'needs you',
+      lines: ['3 running', '1 finished'],
+      label: '1 needs you, 3 running, 1 finished',
+    });
+    expect(summaryHead([m('working'), m('stalled')])).toEqual({
+      figure: 2,
+      word: 'running',
+      lines: ['Nothing needs you.'],
+      label: '2 running, Nothing needs you',
+    });
+    expect(summaryHead([m('finished')])?.lines).toEqual(['Nothing needs you.']);
+    expect(summaryHead([])).toBeNull();
+  });
+
+  test('while any row has stopped reporting, the band never claims nothing needs you', () => {
+    const head = summaryHead([
+      { kind: 'working', stale: false },
+      { kind: 'needsYou', stale: true },
+    ]);
+    expect(head?.figure).toBe(2);
+    expect(head?.lines).toEqual(['1 not updating']);
+    expect(head?.lines.some((l) => /Nothing/.test(l))).toBe(false);
+  });
+
+  test('the band\'s words carry no dash, in every sample state', () => {
+    for (const kind of SAMPLE_KINDS) {
+      const s = missionSample(kind, NOW);
+      const rows = visibleRows(s.live, s.finals, s.seen, NOW);
+      const head = summaryHead(rows.map((r) => tileModel(r, NOW)));
+      for (const line of head ? [head.word, head.label, ...head.lines] : []) expect(hasDash(line)).toBe(false);
+    }
+  });
+});
+
 // ------------------------------------------------------------------ finished tiles
 
 describe('a finished tile stays ten minutes from when the phone saw it finish', () => {
@@ -637,6 +849,8 @@ describe('the screen', () => {
     expect(lastFinished([])).toBeNull();
     expect(finishedMeta(b, () => 'today')).toBe(`today at ${at('2026-09-13T09:11:00Z')} · ran 47m`);
     expect(finishedMeta(b, () => 'Sep 2')).toBe('Sep 2 · ran 47m');
+    expect(lastFinishedLine(b, () => 'today')).toBe(`builder finished today at ${at('2026-09-13T09:11:00Z')} · ran 47m`);
+    expect(lastFinishedLine({ ...b, repo_name: null }, () => 'Sep 2')).toBe('private repo finished Sep 2 · ran 47m');
   });
 
   test('every sample state is the state it is named for', () => {
@@ -655,6 +869,9 @@ describe('the screen', () => {
     expect(stale.screen).toEqual({ kind: 'ready', stale: { savedAt: NOW - 40 * MIN, message: 'Builda is not reachable right now.' } });
     expect(stale.rows.some((r) => isStale(r, NOW))).toBe(true);
     expect(refusalLine(screenOf('refused').rows)).not.toBeNull();
+    const review = screenOf('review');
+    expect(review.screen.kind).toBe('ready');
+    expect(review.rows.map((r) => tileModel(r, NOW).kind)).toContain('finished');
   });
 
   test('?sample= reads its kinds and nothing else', () => {
@@ -773,5 +990,51 @@ describe('mission control builds from the kit', () => {
     expect(tile).toMatch(/\{animate \? \(\s*<PixelAnimal /);
     const grid = files.find((f) => f.name.endsWith('LiveSessions.tsx'))!.src;
     expect(grid).toMatch(/animate=\{m\.id === top\}/);
+  });
+
+  test('the comet wraps only the tile that animates: one StarBorder, behind `animate`', () => {
+    const tile = files.find((f) => f.name.endsWith('MissionTile.tsx'))!.src;
+    expect((tile.match(/<StarBorder\b/g) ?? []).length).toBe(1);
+    expect(tile).toMatch(/\{animate && !m\.stale \? \(\s*<StarBorder /);
+  });
+
+  test('nothing is cut short: no line limits and no ellipsis anywhere mission control sets words', () => {
+    // "pr…epo" was a repository cut in the middle to fit a corner. Words wrap here; tiles grow.
+    for (const f of files) {
+      expect({ file: f.name, cut: f.src.match(/ellipsizeMode|numberOfLines/g) ?? [] }).toEqual({ file: f.name, cut: [] });
+    }
+  });
+
+  test('the words the views set themselves carry no dash either', () => {
+    // The dash characters themselves (`copy/plain.DASH`'s class); the spaced hyphen half of that
+    // rule would read every `width - pad` in the code as copy.
+    for (const f of files) expect({ file: f.name, dash: f.src.match(/[—–―−]/g) ?? [] }).toEqual({ file: f.name, dash: [] });
+    // And every string the views write out whole, spaced hyphen included.
+    const literals = files.flatMap((f) => [
+      ...(f.src.match(/'[^'\n]*'|`[^`\n]*`/g) ?? []),
+      // JSX text set on its own line between tags ("Checking what is running.").
+      ...(f.src.match(/^\s*[A-Za-z][^<>{}();=\n]*[a-z.]\s*$/gm) ?? []),
+    ]);
+    expect(literals.filter((l) => hasDash(l.replace(/\$\{[^}]*\}/g, '')))).toEqual([]);
+    // Not a scan of nothing: the copy is in there.
+    expect(literals.some((l) => l.includes('Checking what is running.'))).toBe(true);
+    expect(literals.some((l) => l.includes('Go do something else.'))).toBe(true);
+    expect(literals.some((l) => l.includes('not updating'))).toBe(true);
+  });
+
+  test('every colour comes from the tokens: no hex literal in the views', () => {
+    for (const f of files) {
+      expect({ file: f.name, hex: f.src.match(/'#[0-9A-Fa-f]{3,8}'/g) ?? [] }).toEqual({ file: f.name, hex: [] });
+    }
+  });
+
+  test('sessions wear their crew creature, and the harness is the owner\'s real logo', () => {
+    const tile = files.find((f) => f.name.endsWith('MissionTile.tsx'))!.src;
+    expect(tile).toMatch(/<HarnessLogo /);
+    expect(tile).not.toMatch(/HarnessGlyph/);
+    const grid = files.find((f) => f.name.endsWith('LiveSessions.tsx'))!.src;
+    expect(grid).toMatch(/crewFor\(/);
+    const bar = files.find((f) => f.name.endsWith('LiveBar.tsx'))!.src;
+    expect(bar).toMatch(/sessionCreature\(session\)/);
   });
 });

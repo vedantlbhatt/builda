@@ -54,18 +54,17 @@ section.
 - Waiting on its review, then committing: the Money Sankey (`src/money/`), the stack tools
   chapter over the report's sessions, `burn._human` parity, Wrapped card 2's margin,
   `dev-auth?quiet=1`. Captures in `shots/money/`. Then the artifact republish.
-- Visualizations the owner liked the sound of (16:40), to build next: project rivers (a
-  streamgraph of hours per project by week), a rank race (bump chart of projects by week) and a
-  session swarm (every session a dot, sized by length, coloured by creature, tap to open) in
-  Projects; a Sankey on Money (tokens to models to projects to commits, waste splitting off).
-  Also on the list: day ridgelines, tool chords, commit constellation, session fingerprint,
-  burn river, the month as a pixel mosaic. The owner loved the stack bubble cloud (ee3c87c).
+- Visualizations the owner liked the sound of (16:40): project rivers, the rank race and the
+  session swarm are built (bf7407d); the Money Sankey is built and in review fixes. Still on
+  the list, not started: day ridgelines, tool chords, commit constellation, session
+  fingerprint, burn river, the month as a pixel mosaic. The owner loved the stack bubble cloud
+  (ee3c87c).
 - Fixed from the capture pass: the time lapse crashed (bayer2 used before definition in a
   worklet; 293f273).
-- Next: one simulator capture pass of every screen, the native recolour (Live Activity,
-  island, widget in the creature hue) + rebuild, the adversarial review that was stopped
-  (privacy, numbers, code), the artifact.
-- Pushing every commit to github.com/vedantlbhatt/builder, branch claude/overnight-analysis.
+- Done since that plan: the capture pass (shots/final, shots/now), the native recolour
+  (8e7dff7), the adversarial review and its fixes, the artifact (version 5 at 19:20).
+- Pushing every commit to github.com/vedantlbhatt/builda (renamed from builder by the owner;
+  the old URL redirects), branch claude/overnight-analysis.
 
 ## Reference material
 

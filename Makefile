@@ -42,6 +42,7 @@ gen:
 	@python3 scripts/gen_report.py
 	@python3 scripts/gen_live.py
 	@if [ -f scripts/gen_copy.py ]; then python3 scripts/gen_copy.py; else echo "gen_copy.py: not written yet, nothing to generate"; fi
+	@python3 scripts/gen_stack_logos.py
 	@python3 scripts/gen_live_fixtures.py
 	@python3 scripts/gen_fixtures.py
 
@@ -71,7 +72,7 @@ check-gen: gen
 		Packages/BuilderKit/Sources/BuilderAnalysis/Resources/analysis_schema.json \
 		server/builder/static/upload-fields.json PRIVACY.md spec/fixtures \
 		mobile/targets/widget/_shared/Palette.swift mobile/targets/widget/_shared/HarnessMarks.swift \
-		mobile/src/pixel/harnessLogos.ts \
+		mobile/src/pixel/harnessLogos.ts mobile/src/stack/stackLogos.ts \
 		|| (echo ""; echo "FAIL: generated files are stale or hand-edited. Run 'make gen' and commit."; exit 1)
 	@echo "generated files match their specs"
 

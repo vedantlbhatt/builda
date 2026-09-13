@@ -49,7 +49,7 @@ export interface StackView {
 }
 
 /** What put an item on the list, said for the rows no session used. */
-const EVIDENCE_ONLY: Record<ReportStackItem['evidence'], string> = {
+export const EVIDENCE_ONLY: Record<ReportStackItem['evidence'], string> = {
   manifest: 'named in a manifest, not seen in a session',
   language: 'in the languages the agent wrote',
   command: 'seen in a command',

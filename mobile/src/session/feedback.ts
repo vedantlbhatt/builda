@@ -1,3 +1,4 @@
+import { mins } from '../copy/numbers';
 import type { FeedbackNoteWire } from '../generated/contract';
 
 /**
@@ -32,14 +33,14 @@ export interface Note {
  * Minutes the way a person says them. Never "0 minutes": a note about a stretch that
  * lasted under a minute would not have been worth writing, and printing zero would make
  * the sentence contradict its own existence.
+ *
+ * `feedback._mins`, the engine's one rule for a duration a person reads ("under a minute",
+ * "12 minutes", "1h 05m"), through its port in `copy/numbers.ts`. This used to be a second
+ * copy that rounded ties up and said "1h" on the hour, so the heading over these notes and
+ * the session summary that points at them could print two durations for one total.
  */
 export function minutes(seconds: number): string {
-  const m = Math.round(seconds / 60);
-  if (m < 1) return 'under a minute';
-  if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`;
-  const h = Math.floor(m / 60);
-  const rest = m % 60;
-  return rest ? `${h}h ${String(rest).padStart(2, '0')}m` : `${h}h`;
+  return mins(seconds);
 }
 
 /**

@@ -28,7 +28,18 @@ import { analysisFooter, celebrationFor, labelize, pct, SENSITIVE_WARNING } from
 /** How long Bit cheers beside a shipped headline before settling into a still idle pose. */
 export const CELEBRATION_MS = 3000;
 
-export function AnalysisView({ analysis: a }: { analysis: SessionAnalysis }) {
+export function AnalysisView({
+  analysis: a,
+  still = false,
+}: {
+  analysis: SessionAnalysis;
+  /**
+   * Keep Bit still: another creature on the screen may move (a running session's live bar),
+   * and a screen animates one creature at most (DESIGN-DIRECTION 3.5). No cheer either: a
+   * checkpoint analysis of a session still running has nothing finished to cheer.
+   */
+  still?: boolean;
+}) {
   const highlights = a.highlights ?? [];
   const dimensions = a.dimensions ?? [];
   const moves = a.decision_patterns ?? [];
@@ -39,7 +50,7 @@ export function AnalysisView({ analysis: a }: { analysis: SessionAnalysis }) {
   // At most one Bit per card. A shipped session gets the cheer beside its headline; any
   // other outcome gets the quiet idle pose beside the archetype. Two mascots in one
   // section would make him the subject of the analysis rather than a companion to it.
-  const celebration = celebrationFor(a);
+  const celebration = still ? null : celebrationFor(a);
 
   return (
     <>
@@ -59,7 +70,7 @@ export function AnalysisView({ analysis: a }: { analysis: SessionAnalysis }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile, marginTop: space.xs }}>
               {a.outcome ? <Stat value={labelize(a.outcome)} label="outcome" style={{ flex: 1 }} /> : null}
               {a.archetype ? <Stat value={labelize(a.archetype)} label="archetype" style={{ flex: 1 }} /> : null}
-              {a.archetype && !celebration ? <PixelSprite state="idle" size={32} fps={2} /> : null}
+              {a.archetype && !celebration ? <PixelSprite state="idle" size={32} fps={2} paused={still} /> : null}
             </View>
           )}
         </Surface>

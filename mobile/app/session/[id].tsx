@@ -1,22 +1,37 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { AnalysisView } from '../../src/analysis/AnalysisView';
+import { clock } from '../../src/copy/numbers';
 import { describeEnd } from '../../src/analysis/format';
 import { heading, renderable } from '../../src/session/feedback';
-import { RecapCard, toCardModel, type CardModel } from '../../src/card/RecapCard';
+import { headline, RecapCard, toCardModel } from '../../src/card/RecapCard';
 import { shareCard } from '../../src/card/export';
-import { ApiError, type FeedItem, type SessionDetail } from '../../src/data/api';
+import { ApiError, OFFLINE_MESSAGE, type FeedItem, type SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
 import { api, SAMPLE_SESSION } from '../../src/data/client';
+import { LiveBar } from '../../src/live/LiveBar';
+import { LIVE_REFRESH_MS } from '../../src/live/LiveSessions';
+import { etaDetail } from '../../src/live/mission';
 import { RecapSheet } from '../../src/recap/RecapSheet';
+import { BurnSection } from '../../src/session/BurnSection';
+import { burnCoversTokens, burnView } from '../../src/session/burnView';
+import { DecisionList } from '../../src/session/DecisionList';
+import { decisionRows } from '../../src/session/decisions';
+import { sessionLinks } from '../../src/session/links';
+import { resolveSessionLoad, type LoadFailure } from '../../src/session/load';
+import { parseSampleVariant, sampleOutcome, type SampleVariant } from '../../src/session/samples';
+import { SessionLinks } from '../../src/session/SessionLinks';
+import { SessionError, SessionMissing, SessionSignedOut, SessionSkeleton, StaleLine } from '../../src/session/SessionStates';
+import { summaryParagraph, titleBesideCard } from '../../src/session/summary';
+import { TitleLine } from '../../src/session/TitleLine';
 import { detailAfterPost } from '../../src/social/composeFlow';
 import { visibilityLabel } from '../../src/social/format';
 import { PixelBadge } from '../../src/pixel/PixelBadge';
 import { classShare, decodeColumns } from '../../src/strip/decode';
 import { StripClass } from '../../src/generated/strip';
-import { colors, compactNumber, duration, layout, space } from '../../src/theme';
+import { colors, compactNumber, layout, space } from '../../src/theme';
 import { Button, SHAPE, Section, StatGrid, Surface, T, type StatItem } from '../../src/ui';
 
 const c = colors('dark');
@@ -33,11 +48,24 @@ function sharedFromDetail(s: SessionDetail): boolean {
   return s.post_id !== null;
 }
 
-function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
+/** The short code printed on the card: the sample's own, else the id's first six. */
+function shortCode(id: string): string {
+  return id === 'sample' ? 'builder.dev/s/sample' : `builder.dev/s/${id.slice(0, 6)}`;
+}
+
+/** What a thrown load says, as `load.ts` reads it. Status -1 is neither the phone nor the server. */
+function failureOf(e: unknown): LoadFailure {
+  if (e instanceof ApiError) return { status: e.status, message: e.message };
+  return { status: -1, message: e instanceof Error ? e.message : 'Something went wrong on the way.' };
+}
+
+function SessionScreenInner({ id, recap, variant }: { id: string; recap?: string; variant: SampleVariant }) {
   const { width } = useWindowDimensions();
   const router = useRouter();
-  const [model, setModel] = useState<CardModel | null>(null);
   const [session, setSession] = useState<SessionDetail | null>(null);
+  // The last load's failure, null when it worked or has not finished. With a session on
+  // screen it makes the page STALE (one line at the top); without one it is the page.
+  const [failure, setFailure] = useState<LoadFailure | null>(null);
   const [sharing, setSharing] = useState(false);
   const [recapOpen, setRecapOpen] = useState(false);
   const [post, setPost] = useState<FeedItem | null>(null);
@@ -48,38 +76,51 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
   const [shared, setShared] = useState(false);
   const [looking, setLooking] = useState(false);
   const [lookupFailed, setLookupFailed] = useState(false);
-  // The last detail load could not reach the server. The screen renders from the cache
-  // and the recap says why Post is off, rather than failing at the tap.
-  const [offline, setOffline] = useState(false);
   const cardRef = useRef(null);
 
+  // The last detail load could not reach the server. The screen renders from the cache
+  // and the recap says why Post is off, rather than failing at the tap. Only a transport
+  // failure means "offline": a 404 or a 500 is the server answering.
+  const offline = failure?.status === 0;
+  const model = useMemo(() => (session ? toCardModel(session, shortCode(id)) : null), [session, id]);
+
   const load = useCallback(async () => {
-    const show = (s: SessionDetail, code: string) => {
+    const show = (s: SessionDetail) => {
       setSession(s);
-      setModel(toCardModel(s, code));
       setShared(sharedFromDetail(s));
     };
     if (id === 'sample') {
-      show(SAMPLE_SESSION, 'builder.dev/s/sample');
+      const out = sampleOutcome(SAMPLE_SESSION, variant, Date.now(), OFFLINE_MESSAGE);
+      if (out.session) show(out.session);
+      setFailure(out.failure);
       return;
     }
-    const cached = await cache.getDetail(id!);
-    if (cached) show(cached, `builder.dev/s/${id!.slice(0, 6)}`);
+    const cached = await cache.getDetail(id);
+    if (cached) show(cached);
     try {
-      const fresh = await api.session(id!);
-      await cache.putDetail(fresh);
-      show(fresh, `builder.dev/s/${id!.slice(0, 6)}`);
-      setOffline(false);
+      const fresh = await api.session(id);
+      // The cache is a convenience: failing to write it is not failing to load.
+      await cache.putDetail(fresh).catch(() => undefined);
+      show(fresh);
+      setFailure(null);
     } catch (e) {
-      // Offline with a cached copy is fine; offline without one shows the spinner. Only
-      // a transport failure means "offline" — a 404 or a 500 is the server answering.
-      setOffline(e instanceof ApiError && e.status === 0);
+      setFailure(failureOf(e));
     }
-  }, [id]);
+  }, [id, variant]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A running session re-reads itself on the live list's own beat (`LIVE_REFRESH_MS`, one
+  // constant for every live screen) while its screen is open, so the live bar and the
+  // decisions never trail the list this was opened from.
+  const running = (session?.state ?? 'final') === 'live';
+  useEffect(() => {
+    if (!running || id === 'sample') return;
+    const timer = setInterval(() => void load(), LIVE_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [running, id, load]);
 
   // A session posted on a previous visit, after a restart, or from another device: the
   // detail names the post and this mount does not hold it. Load the row, so it can carry
@@ -121,33 +162,65 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
     setRecapOpen(true);
   }, [recap, session, id, postPending]);
 
-  if (!model || !session) {
+  const contentWidth = width - layout.gutter * 2;
+  const loadState = resolveSessionLoad(session, failure);
+
+  const scrollStyle = { flex: 1, backgroundColor: c.bg } as const;
+  const contentStyle = {
+    paddingHorizontal: layout.gutter,
+    paddingTop: space.md,
+    paddingBottom: space.xxl,
+    gap: layout.sectionGap,
+  } as const;
+
+  if (loadState.kind !== 'ready' || !model) {
+    const retry = () => {
+      setFailure(null);
+      void load();
+    };
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: c.bg, paddingHorizontal: layout.gutter }}>
-        <PixelBadge state="thinking" text="Reading your session…" style={{ paddingHorizontal: 0 }} />
-      </View>
+      <ScrollView style={scrollStyle} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={contentStyle}>
+        {loadState.kind === 'missing' ? (
+          <SessionMissing onBack={() => (router.canGoBack() ? router.back() : router.replace('/sessions'))} />
+        ) : loadState.kind === 'signedOut' ? (
+          <SessionSignedOut onSignIn={() => router.push('/settings')} />
+        ) : loadState.kind === 'error' ? (
+          <SessionError message={loadState.message} onRetry={retry} />
+        ) : (
+          <SessionSkeleton width={contentWidth} />
+        )}
+      </ScrollView>
     );
   }
 
-  const contentWidth = width - layout.gutter * 2;
+  const s = loadState.session;
   const share = model.strip ? classShare(decodeColumns(model.strip)) : null;
 
   // Boundary fields are optional on read: an older server omits them, and the row is
   // skipped rather than shown as "0s / 0s".
-  const state = session.state ?? 'final';
-  const hasSplit = session.attended_seconds !== undefined || session.autonomous_seconds !== undefined;
-  const endNote = describeEnd(session);
+  const state = s.state ?? 'final';
+  const hasSplit = s.attended_seconds !== undefined || s.autonomous_seconds !== undefined;
+  const endNote = describeEnd(s);
   // Only the notes THIS build can render. An id it does not know renders nothing rather
   // than "went_nowhere: 3", which reads as a bug and says less than silence.
-  const notes = renderable(session.feedback);
+  const notes = renderable(s.feedback);
   const noteHeading = heading(notes);
+
+  // The words under the card. A harness title the card already shows as its headline is
+  // not said twice.
+  const shownTitle = titleBesideCard(s, headline(model));
+  const paragraph = summaryParagraph(s);
+  const burn = burnView(s);
+  const decisions = decisionRows(s.live_state?.decisions, s.started_at);
+  const etaNote = state === 'live' ? etaDetail(s.live_state?.eta) : null;
+  const links = sessionLinks(s, id === 'sample' && variant !== 'final' ? variant : undefined);
 
   /** A post landed, from either sheet: remember it, then show it. */
   const landed = (p: FeedItem, thenOpen: boolean) => {
     setPost(p);
     setShared(true);
     setRecapOpen(false);
-    const next = detailAfterPost(session, p);
+    const next = detailAfterPost(s, p);
     setSession(next);
     void cache.putDetail(next).catch(() => undefined);
     if (thenOpen) router.push(`/post/${p.id}`);
@@ -174,37 +247,50 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
 
   // Every number the session has, as one 3-up grid. Absent, not zero: a token count the
   // editor never wrote is a refusal sentence, and commits are dropped when there were none.
+  // A running session's status is the live bar's to say, at the top, not a cell here.
+  // Durations here are exact (`copy.clock`, the CLI's numbers block rule): the paragraph
+  // rounds to the minute and the card floors, and a cell must read true beside both.
   const numbers: StatItem[] = [];
-  if (state === 'live') numbers.push({ value: 'Live', label: 'status' });
-  numbers.push({ value: duration(model.activeSeconds), label: 'active' });
+  numbers.push({ value: clock(model.activeSeconds), label: 'active' });
   if (hasSplit) {
-    numbers.push({ value: duration(session.attended_seconds ?? 0), label: 'attended' });
-    numbers.push({ value: duration(session.autonomous_seconds ?? 0), label: 'autonomous' });
+    numbers.push({ value: clock(s.attended_seconds ?? 0), label: 'attended' });
+    numbers.push({ value: clock(s.autonomous_seconds ?? 0), label: 'autonomous' });
   }
-  numbers.push({ value: duration(model.wallSeconds), label: 'elapsed' });
+  numbers.push({ value: clock(model.wallSeconds), label: 'elapsed' });
   numbers.push({ value: `${model.prompts}`, label: 'prompts' });
   numbers.push({ value: `${model.filesTouched}`, label: 'files touched' });
   numbers.push({ value: model.agentLines.toLocaleString(), label: 'agent lines' });
   if (model.commits > 0) numbers.push({ value: `${model.commits}`, label: 'commits' });
   // Cursor accounts usage server-side and writes {0,0} locally, so a "0" here would be a
-  // claim about the session rather than about Cursor.
-  numbers.push(
-    model.tokensReported
-      ? { value: compactNumber(model.totalTokens), label: 'tokens' }
-      : { value: null, label: 'tokens', refusal: 'not recorded by this editor' }
-  );
+  // claim about the session rather than about Cursor. When the burn section above already
+  // says this session's tokens (the same figure, or the only one there is), it is not said a
+  // third time here; when the two counts differ, both stay and the note there says why.
+  if (!burnCoversTokens(burn)) {
+    numbers.push(
+      model.tokensReported
+        ? { value: compactNumber(model.totalTokens), label: 'tokens' }
+        : { value: null, label: 'tokens', refusal: 'not recorded by this editor' }
+    );
+  }
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        paddingHorizontal: layout.gutter,
-        paddingTop: space.md,
-        paddingBottom: space.xxl,
-        gap: layout.sectionGap,
-      }}
-    >
+    <ScrollView style={scrollStyle} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={contentStyle}>
+      {loadState.stale ? <StaleLine text={loadState.stale} /> : null}
+
+      {/* A running session opens on the bar that mirrors its Lock Screen card
+          (DESIGN-DIRECTION 7.1, Flighty's cross-surface rule). The bar's ring is a dotted
+          track when there is no ETA; the reason is said under it, a sentence from the data. */}
+      {state === 'live' ? (
+        <View style={{ gap: space.sm }}>
+          <LiveBar session={s} />
+          {etaNote ? (
+            <T role="meta" tone="dim">
+              {etaNote}
+            </T>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={{ gap: space.md }}>
         {/* The card, rendered at the width it will be captured at. Live preview rather than
             a separate "export" path: what you see is literally the view that gets captured.
@@ -233,6 +319,10 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
             This session predates the detail your editor keeps. Its hours still count.
           </T>
         )}
+
+        {/* What happened, in words, before the actions and before any grid: the engineer
+            voice title and the plain English paragraph (roadmap 1.4 and 1.5). */}
+        <TitleLine title={shownTitle} paragraph={paragraph} />
 
         {/* Sharing to the feed is an act, never automatic, and only for a finished session:
             a live card's numbers keep moving and a recap that moves is not a recap. */}
@@ -263,7 +353,7 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
                           // Forget the id too, or the loader above would fetch a deleted post.
                           setSession((cur) => (cur ? { ...cur, post_id: null, is_shared: false } : cur));
                           // The cached detail is what the next visit shows first.
-                          void cache.putDetail({ ...session, post_id: null, is_shared: false }).catch(() => undefined);
+                          void cache.putDetail({ ...s, post_id: null, is_shared: false }).catch(() => undefined);
                         } catch (e) {
                           Alert.alert('Could not delete', e instanceof Error ? e.message : 'try again');
                         }
@@ -327,7 +417,7 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
 
       <RecapSheet
         visible={recapOpen}
-        session={session}
+        session={s}
         post={post}
         offline={offline}
         onClose={() => setRecapOpen(false)}
@@ -335,6 +425,17 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
         onAlreadyPosted={alreadyPosted}
         onRetryConnection={() => void load()}
       />
+
+      {/* Where the tokens went: the burn block's numbers, then its costliest stretches, or
+          its refusal as a sentence. The sentences about the whole session are the
+          paragraph's, above; this is the evidence under them. */}
+      <BurnSection view={burn} />
+
+      {/* The hard to undo things the agent did, from the live engine while it runs. */}
+      <DecisionList rows={decisions} />
+
+      {/* The map and the time lapse, each only when its data is on this session. */}
+      <SessionLinks links={links} />
 
       <Section label="Numbers">
         <Surface>
@@ -368,8 +469,10 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
         </Section>
       )}
 
-      {session.analysis ? (
-        <AnalysisView analysis={session.analysis} />
+      {s.analysis ? (
+        // A running session's checkpoint analysis keeps its sprite still: the live bar's
+        // creature is the one that may move on this screen.
+        <AnalysisView analysis={s.analysis} still={state === 'live'} />
       ) : (
         <Section label="Analysis">
           <Surface>
@@ -380,7 +483,9 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
                 Analysis not available for this session
               </T>
             ) : (
-              <PixelBadge state="thinking" text="Analysis runs when the session ends" style={{ padding: 0 }} />
+              // Still, not thinking: the live bar at the top carries this screen's one
+              // animating creature (DESIGN-DIRECTION 3.5).
+              <PixelBadge state="thinking" text="Analysis runs when the session ends" paused style={{ padding: 0 }} />
             )}
           </Surface>
         </Section>
@@ -429,8 +534,12 @@ function LegendItem({
  * focused route of the same name), which carried session A's post, drafts and recap
  * latch onto session B — Delete on A's post from B's screen. Keying on the id makes it a
  * fresh mount. Found by review; every in-app path already pushes a new screen.
+ *
+ * `variant` opens the built in sample in one of its states (`src/session/samples.ts`), in
+ * dev builds only: a release build always shows the finished sample.
  */
 export default function SessionScreen() {
-  const { id, recap } = useLocalSearchParams<{ id: string; recap?: string }>();
-  return <SessionScreenInner key={id ?? 'none'} id={id ?? ''} recap={recap} />;
+  const { id, recap, variant } = useLocalSearchParams<{ id: string; recap?: string; variant?: string }>();
+  const which = id === 'sample' && __DEV__ ? parseSampleVariant(variant) : 'final';
+  return <SessionScreenInner key={`${id ?? 'none'}:${which}`} id={id ?? ''} recap={recap} variant={which} />;
 }

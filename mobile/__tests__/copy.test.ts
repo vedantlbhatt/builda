@@ -3,8 +3,11 @@
  *
  * Every string literal, template fragment and piece of JSX text under `app/` and `src/` is
  * read through the TypeScript parser, so a comment is never mistaken for copy and a regex or
- * a `.split('-')` is never mistaken for a dash. What fails: an em dash, an en dash, or a
- * hyphen with whitespace on both sides (" - "), which is a dash typed on a keyboard.
+ * a `.split('-')` is never mistaken for a dash. What fails is `plain.has_dash`, through the
+ * phone's one copy of it (`src/copy/plain.ts`): an em dash, an en dash, a horizontal bar, a
+ * U+2212 minus sign, or a hyphen alone between spaces (" - ", " -- "), a dash typed on a
+ * keyboard. FOUND IN INTEGRATION (2026-09-13): this test carried a third, two character copy
+ * of the rule, so a minus sign in a debug readout passed here while the engine's rule failed it.
  * Generated files are skipped: their text comes from the specs and the generators, which
  * carry their own checks.
  *
@@ -15,14 +18,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
 
+import { DASH, DASH_CHARS } from '../src/copy/plain';
+
 const MOBILE = join(import.meta.dir, '..');
 const ROOTS = ['app', 'src'];
 const SKIP_DIRS = new Set(['generated', 'node_modules']);
 
-/** The three ways a dash gets typed. */
-const DASH = /[—–]|\s-\s/;
-/** Em and en dashes alone: what a block of code may not carry either. */
-const TYPOGRAPHIC_DASH = /[—–]/;
+/** The dash characters alone, never a spaced hyphen: what a block of code may not carry either. */
+const TYPOGRAPHIC_DASH = new RegExp(`[${DASH_CHARS.join('')}]`);
 
 /**
  * A template literal whose own text runs over several source lines is a block of code
@@ -134,6 +137,7 @@ describe('the scan itself', () => {
       "const g = `+${add} -${del}`;",
       "import x from '../some-module';",
       "const h = 'escaped \\u2014 dash';",
+      "const i = '+420 \\u221288 and a bar \\u2015 too';",
       'const sksl = `',
       '  float r = v - w;',
       '`;',
@@ -141,7 +145,7 @@ describe('the scan itself', () => {
       '— still banned in code`;',
     ].join('\n');
     const lines = findDashes('probe.tsx', probe).map((h) => h.line);
-    expect(lines).toEqual([3, 4, 5, 6, 11, 16]);
+    expect(lines).toEqual([3, 4, 5, 6, 11, 12, 17]);
   });
 });
 

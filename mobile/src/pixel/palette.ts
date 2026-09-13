@@ -1,152 +1,66 @@
-import { StripClass } from '../generated/strip';
 import { colors, type Scheme } from '../theme';
 import type { Animal, AnimalGlyph } from './animals';
 import type { Glyph } from './frames';
 
 /**
- * Glyph → sRGB hex, per scheme. Every colour comes from `colors(scheme)` so the mascot
- * re-tints with the app; only the dark body amber is derived, and it is derived by
- * multiplying the accent rather than hard-coding a second amber that would drift from
- * `design/tokens.json` the first time someone re-tuned the accent.
+ * ONE INK for the whole pixel family: Bit, the eight creatures, every state and every
+ * frame. There is no second tone, no data hue and no per-animal colour.
+ *
+ * The pack used to be twelve colours across nine icons: a teal octopus, a grey cat, a bone
+ * owl, a sage whale, and a dark amber (the accent x0.45, 2.6:1 on the background) for the
+ * crab's eyes and feet that read as black at 32 pt. That second tone is the "orange and
+ * black" the owner asked to lose. Now a creature is told apart by its shape, and the colour
+ * only says which state its tile is in:
+ *
+ *   rest      the accent amber on a dark surface (10.4:1 on `bg`), and ink on a light one,
+ *             where amber is 1.7:1 and DESIGN-DIRECTION 3.1 keeps it off glyphs and text.
+ *             The creature as the subject: the mascot hero, the carousel centre, the icon
+ *   idle      `text`, on an unselected picker tile. The harness picker draws its glyphs in
+ *             `text` until a tile is chosen, so a creature on a tile does too: in both
+ *             pickers amber means "selected" and nothing else (the owner's "the same picker
+ *             thing"; DESIGN-DIRECTION 3.1 spends amber on the selected state)
+ *   selected  `onAccent` ink, on the amber tile of the picker (DESIGN-DIRECTION 5)
+ *   faint     `textFaint`, for a carousel neighbour. Never the amber at reduced opacity:
+ *             amber at 0.45 over `bg` is the muddy brown CLAUDE.md already warns about
+ *
+ * Every value is a token from `design/tokens.json` through `colors()`, so re-tuning the accent
+ * re-tunes every creature with it. If a second tone ever returns it must be at least 3:1 on
+ * `bg`, which is no darker than the accent x0.55.
+ */
+export type InkTone = 'rest' | 'idle' | 'selected' | 'faint';
+
+/** The `colors()` key each tone resolves to, per scheme. */
+export type InkToken = 'accent' | 'text' | 'textFaint' | 'onAccent';
+
+export const GLYPH_INK: Record<Scheme, Record<InkTone, InkToken>> = {
+  dark: { rest: 'accent', idle: 'text', selected: 'onAccent', faint: 'textFaint' },
+  light: { rest: 'text', idle: 'text', selected: 'onAccent', faint: 'textFaint' },
+};
+
+/** The one ink, as sRGB hex, for a scheme and a tone. */
+export function glyphInk(scheme: Scheme, tone: InkTone = 'rest'): string {
+  return colors(scheme)[GLYPH_INK[scheme][tone]];
+}
+
+/**
+ * Glyph → sRGB hex for Bit. Four roles and one colour: the roles only tell `motion.ts` which
+ * pixels are a spark, a tool or a trail (`frames.ts`), so every one of them is the same ink.
  */
 export type SpritePalette = Record<Glyph, string>;
 
-/** Body-shadow factor. 0.62 keeps the shadow unmistakably amber, not brown. */
-export const BODY_DARK_FACTOR = 0.62;
-
-export function spritePalette(scheme: Scheme): SpritePalette {
-  const c = colors(scheme);
-  return {
-    b: c.accent,
-    d: scale(c.accent, BODY_DARK_FACTOR),
-    e: c.bg,
-    w: c.text,
-    h: c.strip[StripClass.human_edit],
-    z: c.textDim,
-  };
+export function spritePalette(scheme: Scheme, tone: InkTone = 'rest'): SpritePalette {
+  const ink = glyphInk(scheme, tone);
+  return { b: ink, w: ink, h: ink, z: ink };
 }
 
-/** Multiply each sRGB channel of a `#rrggbb` colour by `factor`, clamped to 0–255. */
-export function scale(hex: string, factor: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return hex;
-  const n = parseInt(m[1]!, 16);
-  const ch = (shift: number) =>
-    Math.max(0, Math.min(255, Math.round(((n >> shift) & 0xff) * factor)))
-      .toString(16)
-      .padStart(2, '0');
-  return `#${ch(16)}${ch(8)}${ch(0)}`.toUpperCase();
-}
-
-// ─── the animal pack ─────────────────────────────────────────────────────────────────
-
-/**
- * The two colours of one animal: `b` the body, `d` the accent (`animals.ts`). Not a
- * `SpritePalette` — an animal has two roles and only two, and giving it the mascot's six
- * would let a sixth colour into a frame without a test noticing.
- */
+/** The one role of an animal frame (`animals.ts`). */
 export type AnimalPalette = Record<AnimalGlyph, string>;
 
 /**
- * The four hues an animal may be built from. Each is a SEMANTIC token, so each already
- * flips with the scheme: `bone` is the text colour, which is near-white on the dark
- * background and near-black on the light one. That is why a snowy owl and a grey cat both
- * stay legible in both schemes without a second table — the pack inherits the contrast
- * decision the surface tokens already made.
+ * An animal's palette. The animal is accepted so a caller never has to know that every
+ * creature shares one ink, and so a per-animal tone would be a change here and nowhere else;
+ * today it is the same for all eight, which the tests assert.
  */
-type Hue = 'amber' | 'teal' | 'bone' | 'grey';
-
-function hues(scheme: Scheme): Record<Hue, string> {
-  const c = colors(scheme);
-  return {
-    amber: c.accent,
-    teal: c.strip[StripClass.human_edit],
-    bone: c.text,
-    grey: c.textDim,
-  };
-}
-
-/**
- * How one colour is built: take a hue, optionally blend it toward a second, optionally
- * multiply it. Nothing is a literal — every animal colour traces back to `design/tokens.json`,
- * so re-tuning the amber there re-tunes the crab, the fox and the bee with it.
- */
-interface Recipe {
-  hue: Hue;
-  /** Blend toward this hue by `t` (0 = none, 1 = fully the other hue). */
-  toward?: { hue: Hue; t: number };
-  /** Multiply each channel afterwards. < 1 darkens; the shadow rule from `scale`. */
-  by?: number;
-}
-
-/** Linear sRGB-hex blend. `t` of 0 is `a`, 1 is `b`. */
-export function mix(a: string, b: string, t: number): string {
-  const pa = parse(a);
-  const pb = parse(b);
-  if (!pa || !pb) return a;
-  const k = Math.max(0, Math.min(1, t));
-  const ch = (i: number) =>
-    Math.round(pa[i]! * (1 - k) + pb[i]! * k)
-      .toString(16)
-      .padStart(2, '0');
-  return `#${ch(0)}${ch(1)}${ch(2)}`.toUpperCase();
-}
-
-function parse(hex: string): [number, number, number] | null {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return null;
-  const n = parseInt(m[1]!, 16);
-  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-}
-
-/**
- * Eight pairs, one per animal.
- *
- * The set has to read as a family (they are all built from the same four tokens) while
- * staying individually recognisable at 16 px, where SHAPE does most of the work and
- * colour only has to say "a different one". So the bodies spread across the hue circle
- * the tokens allow — two ambers of different weight, a gold, a grey, a bone, a teal and a
- * sage — and where two bodies are close their accents are not.
- *
- * The crab and the bee are both the plain accent amber, deliberately: they are both amber
- * creatures, and forcing one off the token to make a table of eight unique bodies would
- * have bought a uniqueness nobody looks for with a colour nobody would pick. They are
- * told apart by their accents (rust against grey) and, at 16 px, overwhelmingly by shape.
- * What the tests do enforce is that the PAIRS are all distinct.
- */
-const ANIMAL_COLOURS: Record<Animal, { body: Recipe; accent: Recipe }> = {
-  /** Amber shell, dark rust eyes and pincer line — the Claude crab's own reading. */
-  crab: { body: { hue: 'amber' }, accent: { hue: 'amber', by: 0.45 } },
-  /** Teal mantle, deep teal tentacle tips. */
-  octopus: { body: { hue: 'teal' }, accent: { hue: 'teal', by: 0.5 } },
-  /**
-   * Gold coat, rust ear, nose and paws. The coat is amber blended halfway to GREY, not
-   * to bone: bone is the text colour, so blending toward it makes the dog nearly black in
-   * the light scheme and the rust accent then has nothing to sit on.
-   */
-  dog: { body: { hue: 'amber', toward: { hue: 'grey', t: 0.5 } }, accent: { hue: 'amber', by: 0.45 } },
-  /** Grey cat, amber eyes and paws. */
-  cat: { body: { hue: 'grey' }, accent: { hue: 'amber' } },
-  /** Snowy owl: bone body, brown facial disc, wing bars and feet. */
-  owl: { body: { hue: 'bone' }, accent: { hue: 'amber', by: 0.6 } },
-  /** Deep amber fox, bone ear insides, chest and tail tip. */
-  fox: { body: { hue: 'amber', by: 0.78 }, accent: { hue: 'bone' } },
-  /** Sage: teal blended halfway to grey, so it is not the octopus. Bone spout and belly. */
-  whale: { body: { hue: 'teal', toward: { hue: 'grey', t: 0.5 } }, accent: { hue: 'bone' } },
-  /** Amber bee, grey wings — wings are the one thing on a bee you can see through. */
-  bee: { body: { hue: 'amber' }, accent: { hue: 'grey' } },
-};
-
-function resolve(recipe: Recipe, palette: Record<Hue, string>): string {
-  let out = palette[recipe.hue];
-  if (recipe.toward) out = mix(out, palette[recipe.toward.hue], recipe.toward.t);
-  if (recipe.by !== undefined) out = scale(out, recipe.by);
-  return out;
-}
-
-/** The two colours of `animal` in `scheme`. */
-export function animalPalette(animal: Animal, scheme: Scheme): AnimalPalette {
-  const h = hues(scheme);
-  const recipe = ANIMAL_COLOURS[animal];
-  return { b: resolve(recipe.body, h), d: resolve(recipe.accent, h) };
+export function animalPalette(_animal: Animal, scheme: Scheme, tone: InkTone = 'rest'): AnimalPalette {
+  return { b: glyphInk(scheme, tone) };
 }

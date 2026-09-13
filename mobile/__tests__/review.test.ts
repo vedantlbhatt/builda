@@ -95,9 +95,12 @@ describe('the tab roots', () => {
 });
 
 describe('Bit sits on the text edge, not its transparent frame', () => {
-  test('the 64pt empty state pulls Bit left by its four empty columns', () => {
-    expect(spriteLeftInset('idle', 64)).toBe(16);
-    expect(spriteLeftInset('sleeping', 48)).toBe(12);
+  test('the 64pt empty state pulls Bit left by its two empty columns', () => {
+    // Bit is ten cells wide, columns 3 to 12, since his side bolts went (shots/identity round
+    // 6: bolts, slot eyes and two legs made him Clawd). Idle's breath widens him to column 2,
+    // so idle is pulled 2 x 4 pt at 64; asleep he never breathes out, 3 x 3 pt at 48.
+    expect(spriteLeftInset('idle', 64)).toBe(8);
+    expect(spriteLeftInset('sleeping', 48)).toBe(9);
   });
 
   test('no state is pulled past its own first drawn cell', () => {

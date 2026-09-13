@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { countGlyphs, isValidFrame, mirror } from '../src/pixel/frames';
+import { EYES, countGlyphs, eyesOpen, isValidFrame } from '../src/pixel/frames';
 import {
   CUT,
   MOTION,
@@ -18,20 +18,14 @@ import {
   blinkGapMs,
   blinks,
   bodyCount,
-  breathPeriodMs,
   clampTempo,
   closeEyes,
   components,
   crossfadeFor,
   decompose,
-  gestureGapMs,
-  gestures,
-  glanceAside,
   initLayers,
-  isEyeHighlight,
   layerFrames,
   layerOpacities,
-  pickGesture,
   runCrossfade,
   settleFor,
   splitFrames,
@@ -49,14 +43,14 @@ function seq(values: number[]): () => number {
 }
 
 describe('the motion table', () => {
-  test('idle life: 4 s breath at 1.03, blinks in [3, 6] s with a 120 ms closed frame, gestures in [15, 40] s', () => {
-    expect(MOTION.breath.periodMs.idle).toBe(4000);
-    expect(MOTION.breath.scale).toBe(1.03);
+  test('idle life: the drawn loop, and blinks in [3, 6] s with a 120 ms closed frame', () => {
+    // Rest 2 s, breath 1 s, rest 2 s, antenna tip 1 s: the family's loop (`animals.ts`,
+    // rule 7). It replaced a 1.03 scale breath and a 2.5 degree tilt, both of which ran
+    // forever and kept the sprite off whole pixels.
+    expect(MOTION.idle).toEqual({ beatMs: 500, holds: [4, 2, 4, 2] });
     expect(MOTION.blink).toEqual({ minGapMs: 3000, maxGapMs: 6000, closedMs: 120 });
-    expect(MOTION.gesture.minGapMs).toBe(15000);
-    expect(MOTION.gesture.maxGapMs).toBe(40000);
-    expect(MOTION.gesture.tiltDeg).toBeGreaterThanOrEqual(2);
-    expect(MOTION.gesture.tiltDeg).toBeLessThanOrEqual(3);
+    expect('breath' in MOTION).toBe(false);
+    expect('gesture' in MOTION).toBe(false);
   });
 
   test('frame changes cross-fade in 60–90 ms; state changes settle in 220 ms from 0.94', () => {
@@ -71,11 +65,7 @@ describe('the motion table', () => {
     expect(MOTION.building.impactCells).toBe(1);
     expect(MOTION.building.sparkFadeMs).toBe(240);
     expect(MOTION.thinking).toEqual({ dotLoopMs: 1200, dotStaggerMs: 150, dotLow: 0.3 });
-    expect(MOTION.breath.periodMs.thinking).toBe(3000);
-    expect(MOTION.sleeping.zRiseMs).toBe(1800);
-    expect(MOTION.sleeping.zStaggerMs).toBe(600);
-    expect(MOTION.sleeping.zRiseCells).toBe(4);
-    expect(MOTION.breath.periodMs.sleeping).toBe(5000);
+    expect(MOTION.sleeping).toEqual({ zRiseMs: 1800, zStaggerMs: 600, zRiseCells: 4 });
     expect(MOTION.celebrating.riseMs).toBe(600);
     expect(MOTION.celebrating.confettiMs).toBe(1400);
     expect(MOTION.celebrating.idleAfterMs).toBe(3000);
@@ -105,10 +95,10 @@ describe('tempo', () => {
     expect(clampTempo(1.4)).toBe(1.4);
   });
 
-  test('scales beats and breath, not blinks', () => {
+  test('scales beats and the idle loop, not blinks', () => {
     expect(timelineLengthMs(timelineFor('building', 2))).toBe(timelineLengthMs(timelineFor('building')) / 2);
-    expect(breathPeriodMs('idle', 2)).toBe(2000);
-    expect(breathPeriodMs('sleeping', 0.5)).toBe(10000);
+    expect(timelineLengthMs(timelineFor('idle', 2))).toBe(3000);
+    expect(timelineLengthMs(timelineFor('idle', 0.5))).toBe(12000);
     expect(blinkGapMs(seq([0.5]))).toBe(4500); // no tempo parameter exists to pass
   });
 });
@@ -139,8 +129,21 @@ describe('timelines', () => {
     expect(timelineFor('celebrating').map((b) => b.ms)).toEqual([320, 320, 320]);
   });
 
-  test('idle, blink, thinking and sleeping are held: their motion is breath and overlays', () => {
-    for (const s of ['idle', 'blink', 'thinking', 'sleeping'] as const) {
+  test('idle and blink loop rest · breath · rest · tip, the rest pose two thirds of the time', () => {
+    for (const s of ['idle', 'blink'] as const) {
+      expect(timelineFor(s)).toEqual([
+        { frame: 0, ms: 2000 },
+        { frame: 1, ms: 1000 },
+        { frame: 2, ms: 2000 },
+        { frame: 3, ms: 1000 },
+      ]);
+    }
+    const base = decompose('idle').base;
+    expect(base[0]).toBe(base[2]); // the rest pose is one object, so the repeat is no change
+  });
+
+  test('thinking and sleeping are held: their motion is the overlays', () => {
+    for (const s of ['thinking', 'sleeping'] as const) {
       expect(timelineFor(s)).toHaveLength(1);
       expect(timelineLengthMs(timelineFor(s))).toBe(0);
     }
@@ -155,7 +158,8 @@ describe('timelines', () => {
     expect(beatAt(tl, 1180)).toEqual({ index: 3, frame: 3, elapsedMs: 0 });
     expect(beatAt(tl, 1560)).toEqual({ index: 0, frame: 0, elapsedMs: 0 });
     expect(beatAt(tl, 1560 + 381)).toEqual({ index: 1, frame: 1, elapsedMs: 1 });
-    expect(beatAt(timelineFor('idle'), 99_999)).toEqual({ index: 0, frame: 0, elapsedMs: 99_999 });
+    expect(beatAt(timelineFor('thinking'), 99_999)).toEqual({ index: 0, frame: 0, elapsedMs: 99_999 });
+    expect(beatAt(timelineFor('idle'), 2500)).toEqual({ index: 1, frame: 1, elapsedMs: 500 });
   });
 
   test('every beat frame indexes a real base frame', () => {
@@ -179,13 +183,6 @@ describe('cadences', () => {
     expect(gaps[1]).toBe(6000);
   });
 
-  test('gesture gaps stay inside [15, 40] s; the gesture alternates by coin', () => {
-    expect(gestureGapMs(seq([0]))).toBe(15000);
-    expect(gestureGapMs(seq([1]))).toBe(40000);
-    expect(pickGesture(seq([0.2]))).toBe('tilt');
-    expect(pickGesture(seq([0.8]))).toBe('aside');
-  });
-
   test('stagger arithmetic: dots, z glyphs and confetti all fit inside one loop', () => {
     expect(staggered(3, MOTION.thinking.dotStaggerMs)).toEqual([0, 150, 300]);
     expect(300 + MOTION.thinking.dotLoopMs / 2).toBeLessThan(MOTION.thinking.dotLoopMs); // last dot peaks inside the loop
@@ -196,9 +193,8 @@ describe('cadences', () => {
     expect(last).toBeLessThan(MOTION.celebrating.confettiMs); // the last piece launches before the first lands
   });
 
-  test('who blinks and who gestures', () => {
+  test('who blinks', () => {
     expect(SPRITE_STATES.filter(blinks)).toEqual(['idle', 'blink', 'building', 'thinking', 'waving']);
-    expect(SPRITE_STATES.filter(gestures)).toEqual(['idle', 'blink']);
   });
 });
 
@@ -233,7 +229,7 @@ describe('cross-fade layers', () => {
   });
 
   test('a held timeline never changes layers', () => {
-    const samples = runCrossfade(timelineFor('idle'), ['x'], [0, 1000, 60_000], MOTION.crossfade);
+    const samples = runCrossfade(timelineFor('thinking'), ['x'], [0, 1000, 60_000], MOTION.crossfade);
     for (const s of samples) {
       expect(s.layers.front).toBe(0);
       expect(s.opacities).toEqual([1, 0]);
@@ -261,15 +257,14 @@ function merge(a: string[], b: string[]): string[] {
 }
 
 describe('splitFrames: only what differs cross-fades', () => {
-  test('the wave: the body is shared, two arm pixels go out and two come in', () => {
+  test('the wave: the body is shared, two hand pixels go out and two come in', () => {
     const [up, out] = framesFor('waving') as [string[], string[]];
     const s = splitFrames(up, out);
-    expect(countGlyphs(s.outgoing, ['b', 'd', 'e', 'w', 'h', 'z'])).toBe(2);
-    expect(countGlyphs(s.incoming, ['b', 'd', 'e', 'w', 'h', 'z'])).toBe(2);
+    expect(countGlyphs(s.outgoing, ['b', 'w', 'h', 'z'])).toBe(2);
+    expect(countGlyphs(s.incoming, ['b', 'w', 'h', 'z'])).toBe(2);
     expect(bodyCount(s.shared)).toBe(bodyCount(up) - 2);
-    // The face never fades: every eye pixel is shared.
-    expect(countGlyphs(s.shared, ['e'])).toBe(6);
-    expect(countGlyphs(s.shared, ['w'])).toBe(2);
+    // The face never fades: the eye holes stay open in the shared layer.
+    expect(eyesOpen(s.shared)).toBe(true);
     expect(merge(s.shared, s.outgoing)).toEqual(up);
     expect(merge(s.shared, s.incoming)).toEqual(out);
   });
@@ -288,16 +283,16 @@ describe('splitFrames: only what differs cross-fades', () => {
     }
     const idle = framesFor('idle')[0]!;
     const s = splitFrames(idle, closeEyes(idle));
-    expect(countGlyphs(s.outgoing, ['e', 'w'])).toBe(4); // the upper eye row goes
-    expect(countGlyphs(s.incoming, ['b'])).toBe(4); // and becomes body
+    expect(countGlyphs(s.outgoing, ['b', 'w', 'h', 'z'])).toBe(0); // the eyes were holes
+    expect(countGlyphs(s.incoming, ['b'])).toBe(EYES.length); // and become body, two 2x2 eyes
   });
 
   test('identical frames share everything; the pair is memoised', () => {
     const f = framesFor('idle')[0]!;
     const s = splitFrames(f, f);
     expect(s.shared).toEqual(f);
-    expect(countGlyphs(s.outgoing, ['b', 'd', 'e', 'w', 'h', 'z'])).toBe(0);
-    expect(countGlyphs(s.incoming, ['b', 'd', 'e', 'w', 'h', 'z'])).toBe(0);
+    expect(countGlyphs(s.outgoing, ['b', 'w', 'h', 'z'])).toBe(0);
+    expect(countGlyphs(s.incoming, ['b', 'w', 'h', 'z'])).toBe(0);
     const [up, out] = framesFor('waving') as [string[], string[]];
     expect(splitFrames(up, out)).toBe(splitFrames(up, out));
     expect(splitFrames(up, out)).not.toBe(splitFrames(out, up));
@@ -327,28 +322,19 @@ describe('frame surgery', () => {
     expect(closeEyes(closed)).toBe(closed);
   });
 
-  test('closeEyes leaves sparks alone and leaves shut eyes alone', () => {
+  test('closeEyes fills the eight eye cells and nothing else, sparks and all', () => {
     const strike = framesFor('building')[2]!;
     const closed = closeEyes(strike);
-    expect(countGlyphs(closed, ['w'])).toBe(countGlyphs(strike, ['w']) - 2);
-    expect(countGlyphs(closed, ['e'])).toBe(4);
+    expect(EYES.length).toBe(8);
+    expect(countGlyphs(closed, ['w'])).toBe(countGlyphs(strike, ['w']));
+    expect(countGlyphs(closed, ['b'])).toBe(countGlyphs(strike, ['b']) + EYES.length);
+    for (const [x, y] of EYES) expect(closed[y]![x]).toBe('b');
+  });
+
+  test('closeEyes leaves eyes that are not open alone: asleep is slits, not a blink', () => {
     const asleep = framesFor('sleeping')[0]!;
+    expect(eyesOpen(asleep)).toBe(false);
     expect(closeEyes(asleep)).toBe(asleep);
-  });
-
-  test('glanceAside moves the highlight to the other side of each pupil and nothing else', () => {
-    const idle = framesFor('idle')[0]!;
-    const aside = glanceAside(idle);
-    expect(aside[7]).toBe('....bewbbewb....');
-    expect(aside.filter((r, i) => r !== idle[i])).toHaveLength(1);
-    expect(mirror(aside)).not.toEqual(aside);
-    expect(glanceAside(framesFor('sleeping')[0]!)).toBe(framesFor('sleeping')[0]!);
-  });
-
-  test('isEyeHighlight tells a highlight from a spark', () => {
-    const strike = framesFor('building')[2]!;
-    expect(isEyeHighlight(strike, 5, 7)).toBe(true);
-    expect(isEyeHighlight(strike, 14, 10)).toBe(false);
   });
 
   test('components: 8-connected, row-major', () => {
@@ -396,7 +382,7 @@ describe('decomposition', () => {
     }
     // The bubble trail stays in the base; only the dots move.
     expect(countGlyphs(base[0]!, ['z'])).toBe(2);
-    expect(base[0]![1]).toBe('.......hh.......');
+    expect(base[0]![1]).toBe('.'.repeat(16));
   });
 
   test('sleeping: one held body, three z glyphs lowest-first, no z left in the base', () => {
@@ -417,16 +403,16 @@ describe('decomposition', () => {
   test('building: the hammer stays in the base; sparks fire on the strike and the rest beat', () => {
     const { base, overlays } = decompose('building');
     expect(base).toHaveLength(4);
-    for (const f of base) expect(countGlyphs(f, ['h'])).toBeGreaterThanOrEqual(7);
+    for (const f of base) expect(countGlyphs(f, ['h'])).toBeGreaterThanOrEqual(5);
     expect(overlays.map((o) => [o.kind, o.beat, countGlyphs(o.frame, ['w'])])).toEqual([
-      ['spark', 2, 3],
+      ['spark', 2, 2],
       ['spark', 3, 1],
     ]);
     expect(overlays.map((o) => o.beat)).toContain(MOTION.building.strikeBeat);
-    for (const f of base) expect(countGlyphs(f, ['w'])).toBe(2); // the two eye highlights only
+    for (const f of base) expect(countGlyphs(f, ['w'])).toBe(0); // every spark is lifted
   });
 
-  test('celebrating: confetti lifted per pixel, antenna and eyes kept, arms kept', () => {
+  test('celebrating: confetti lifted per pixel, antenna, eyes and arms kept', () => {
     const { base, overlays } = decompose('celebrating');
     expect(base).toHaveLength(3);
     expect(overlays.length).toBeGreaterThanOrEqual(8);
@@ -435,11 +421,19 @@ describe('decomposition', () => {
       expect(countGlyphs(o.frame, ['h', 'w', 'z'])).toBe(1);
     }
     for (const f of base) {
-      expect(countGlyphs(f, ['h'])).toBe(4); // antenna bulb only
-      expect(countGlyphs(f, ['w'])).toBe(2); // eye highlights only
-      expect(countGlyphs(f, ['z'])).toBe(0);
+      expect(countGlyphs(f, ['h', 'w', 'z'])).toBe(0); // the antenna is body now
+      expect(eyesOpen(f)).toBe(true);
     }
     expect(base.map(bodyCount)).toEqual(SPRITES.celebrating.map(bodyCount));
+    // No hop: the pump moves the arms and nothing else, six cells a beat where the old hop
+    // repainted fifty-six.
+    for (let i = 0; i < base.length; i++) {
+      const a = base[i]!;
+      const b = base[(i + 1) % base.length]!;
+      let n = 0;
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (a[y]![x] !== b[y]![x]) n += 1;
+      expect(n).toBeLessThanOrEqual(8);
+    }
   });
 
   test('idle and blink share one decomposition; waving is its own two frames', () => {

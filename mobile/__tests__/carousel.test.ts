@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ANIMALS, type Animal } from '../src/pixel/animals';
+import { ANIMALS, DEFAULT_ANIMAL, type Animal } from '../src/pixel/animals';
 import { indexOf, openOn, step, view } from '../src/pixel/carousel';
 
 /**
@@ -10,11 +10,11 @@ import { indexOf, openOn, step, view } from '../src/pixel/carousel';
  */
 describe('stepping', () => {
   test('the right chevron moves forward one', () => {
-    expect(step('crab', 1)).toBe(ANIMALS[1]!);
+    expect(step(ANIMALS[0]!, 1)).toBe(ANIMALS[1]!);
   });
 
   test('the left chevron moves back one', () => {
-    expect(step(ANIMALS[1]!, -1)).toBe('crab');
+    expect(step(ANIMALS[1]!, -1)).toBe(ANIMALS[0]!);
   });
 
   test('the right chevron on the last creature wraps to the first', () => {
@@ -84,8 +84,9 @@ describe('what it opens on', () => {
     expect(openOn(null, 'whale')).toBe('whale');
   });
 
-  test('the first in the pack when there is neither', () => {
+  test('the default, the first in the pack, when there is neither', () => {
     expect(openOn(null, null)).toBe(ANIMALS[0]!);
+    expect(openOn(null, null)).toBe(DEFAULT_ANIMAL);
   });
 
   test('nonsense on either side still opens on something real', () => {

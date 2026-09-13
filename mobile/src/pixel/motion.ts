@@ -4,14 +4,18 @@
  * number and every rule runs under `bun test`. `PixelSprite.tsx` is the only place that
  * turns these into `Animated` values, and it contains no timing constants of its own.
  *
- * The register is Claude's own product motion: slow, eased, restrained. Idle breathes
- * rather than loops; frames cross-fade rather than cut; a state change settles in with a
- * short ease-out rather than popping. Nothing bounces. Every duration and easing lives in
- * `MOTION` so the table in the review is the table in the code.
+ * The register is Claude's own product motion: slow, eased, restrained. Idle is the pixel
+ * family's loop (rest, a breath drawn in four cells, rest, one gesture) with the rest pose
+ * on screen most of the time; frames cross-fade rather than cut; a state change settles in
+ * with a short ease-out rather than popping. Nothing bounces, and nothing drifts, breathes
+ * on a scale or tilts in a loop: a whole-sprite transform that runs forever puts a pixel
+ * glyph between device pixels for most of its life. The one-off entrance keeps its settle.
+ * Every duration and easing lives in `MOTION` so the table in the review is the table in
+ * the code.
  */
 
 import { ANIMAL_FRAMES, type Animal } from './animals';
-import { BODY_GLYPHS, EMPTY, GRID, type Frame } from './frames';
+import { BODY_GLYPHS, EMPTY, EYES, GRID, eyesOpen, type Frame } from './frames';
 import { SPRITES, type SpriteState } from './sprites';
 
 /**
@@ -19,7 +23,7 @@ import { SPRITES, type SpriteState } from './sprites';
  * tables stay serialisable and testable without React Native.
  *
  *   linear   a cross-fade between two crisp frames; anything curved reads as a stutter
- *   inOut    breathing, the wave's wrist, the thinking dots — symmetric, no attack
+ *   inOut    the wave's wrist, the thinking dots — symmetric, no attack
  *   out      arrivals: the settle, the hammer rebound, a spark dying
  *   outBack  the celebration rise only — ease-out with a small overshoot (see `backOvershoot`)
  */
@@ -31,15 +35,15 @@ export interface Fade {
 }
 
 export const MOTION = {
-  /** Whole-sprite scale, 1.0 → 1.03 → 1.0, ease-in-out. Per-state period in ms. */
-  breath: {
-    scale: 1.03,
-    periodMs: { idle: 4000, blink: 4000, thinking: 3000, sleeping: 5000, building: 4000, celebrating: 4000, waving: 4000 } as Record<SpriteState, number>,
-  },
+  /**
+   * Idle, and the blink state that folds into it: `SPRITES.idle` is `[REST, BREATH, REST,
+   * TIP]`, and each frame is held for `holds[i]` beats. The rest pose is on screen for two
+   * thirds of the loop; the breath and the antenna tip are a second each. The same shape as
+   * every creature's loop (`ANIMAL_MOTION`), so Bit and the pack idle in one register.
+   */
+  idle: { beatMs: 500, holds: [4, 2, 4, 2] },
   /** Two-frame blink: eyes shut for `closedMs`, on a uniformly random gap in [min, max]. */
   blink: { minGapMs: 3000, maxGapMs: 6000, closedMs: 120 },
-  /** Idle only. A head tilt (rotate 0 → tiltDeg → 0) or a one-pixel glance aside. */
-  gesture: { minGapMs: 15000, maxGapMs: 40000, tiltDeg: 2.5, tiltMs: 900, asideMs: 700 },
   /** Frame changes within a state: layer-alpha cross-fade. 60–90 ms; 75 is the middle. */
   crossfade: { ms: 75, easing: 'linear' } as Fade,
   /** State changes: scale fromScale → 1 with opacity 0 → 1, ease-out. */
@@ -67,8 +71,6 @@ export const MOTION = {
     zRiseMs: 1800,
     zStaggerMs: 600,
     zRiseCells: 4,
-    /** The body sags this many sprite pixels at the bottom of each breath. */
-    settleCells: 1,
   },
   celebrating: {
     beatMs: 320,
@@ -104,11 +106,6 @@ export function clampTempo(tempo: number | undefined): number {
   return Math.min(MOTION.tempo.max, Math.max(MOTION.tempo.min, tempo));
 }
 
-/** Breath period for a state, shortened by tempo. Blink and gesture gaps are NOT tempo-scaled: they are life, not work. */
-export function breathPeriodMs(state: SpriteState, tempo = 1): number {
-  return Math.round(MOTION.breath.periodMs[state] / clampTempo(tempo));
-}
-
 // ─── beats ───────────────────────────────────────────────────────────────────────────
 
 /** Hold frame `frame` (an index into the state's BASE frames, see `decompose`) for `ms`. */
@@ -121,15 +118,23 @@ export interface Beat {
  * The looping frame timeline of a state at a given tempo. A one-beat timeline is HELD —
  * the state's motion is all overlays and transforms — and its `ms` is unused.
  *
+ *   idle, blink  rest · breath · rest · tip, held 4 · 2 · 4 · 2 beats of 500 ms
  *   building     0 · 1 · 2 (+ hold) · 3 at 380 ms
  *   celebrating  0 · 1 · 2 at 320 ms
  *   waving       up · out, twice, then rest on up for 2 s
  *   everything else is held
+ *
+ * Tempo shortens every beat. Blink gaps are NOT tempo-scaled: they are life, not work.
  */
 export function timelineFor(state: SpriteState, tempo = 1): Beat[] {
   const rate = clampTempo(tempo);
   const t = (ms: number) => Math.round(ms / rate);
   switch (state) {
+    case 'idle':
+    case 'blink': {
+      const { beatMs, holds } = MOTION.idle;
+      return decompose(state).base.map((_, i) => ({ frame: i, ms: t(beatMs * (holds[i] ?? 1)) }));
+    }
     case 'building': {
       const b = MOTION.building;
       return decompose(state).base.map((_, i) => ({
@@ -205,17 +210,6 @@ export function blinkGapMs(rng: Rng = Math.random): number {
   return uniform(MOTION.blink.minGapMs, MOTION.blink.maxGapMs, rng);
 }
 
-/** Gap before the next idle micro-gesture. Uniform in [15, 40] s. */
-export function gestureGapMs(rng: Rng = Math.random): number {
-  return uniform(MOTION.gesture.minGapMs, MOTION.gesture.maxGapMs, rng);
-}
-
-export type Gesture = 'tilt' | 'aside';
-
-export function pickGesture(rng: Rng = Math.random): Gesture {
-  return rng() < 0.5 ? 'tilt' : 'aside';
-}
-
 /** `[0, step, 2·step, …]` for `n` items. */
 export function staggered(n: number, stepMs: number): number[] {
   return Array.from({ length: n }, (_, i) => i * stepMs);
@@ -224,11 +218,6 @@ export function staggered(n: number, stepMs: number): number[] {
 /** Which states blink: open eyes, and not already busy with their own face. */
 export function blinks(state: SpriteState): boolean {
   return state !== 'sleeping' && state !== 'celebrating';
-}
-
-/** Which states get the idle micro-gestures. */
-export function gestures(state: SpriteState): boolean {
-  return state === 'idle' || state === 'blink';
 }
 
 // ─── cross-fade layers ───────────────────────────────────────────────────────────────
@@ -412,42 +401,16 @@ export function only(pixels: Pixel[], ch?: string): Frame {
   return rows.map((r) => r.join(''));
 }
 
-/** A `w` beside an `e` is an eye highlight; any other `w` is a spark or confetti. */
-export function isEyeHighlight(frame: Frame, x: number, y: number): boolean {
-  const row = frame[y]!;
-  return row[x] === 'w' && (row[x - 1] === 'e' || row[x + 1] === 'e');
-}
-
-/** The antenna bulb: teal at columns 7–8 in the top three rows (rows 0–1 when hopping). */
-export function isAntenna(x: number, y: number, ch: string): boolean {
-  return ch === 'h' && (x === 7 || x === 8) && y <= 2;
-}
-
-function eyePixels(frame: Frame): Pixel[] {
-  return pixelsOf(frame, (x, y, ch, f) => ch === 'e' || isEyeHighlight(f, x, y));
-}
-
 /**
- * The frame with its eyes shut: the upper eye row (the first row holding an `e`) becomes
- * body; the lower row keeps its `e`s, which is what the drawn `blink` frame does. A frame
- * whose eyes are already closed (four eye pixels) is returned unchanged, by identity.
+ * The frame blinking: both eye holes (`EYES`) filled with the body. The same four cells in
+ * Bit and in every creature, so one function blinks all nine. A frame whose eyes are not
+ * both open (asleep, already shut) is returned unchanged, by identity.
  */
 export function closeEyes(frame: Frame): Frame {
-  const eyes = eyePixels(frame);
-  if (eyes.length < 8) return frame;
-  const top = Math.min(...eyes.map((p) => p.y));
+  if (!eyesOpen(frame)) return frame;
   const rows = frame.map((r) => r.split(''));
-  for (const p of eyes) if (p.y === top) rows[p.y]![p.x] = 'b';
+  for (const [x, y] of EYES) rows[y]![x] = 'b';
   return rows.map((r) => r.join(''));
-}
-
-/**
- * The frame glancing aside: each eye highlight swaps to the other side of its pupil
- * (`we` → `ew`). Open eyes only; otherwise the same object.
- */
-export function glanceAside(frame: Frame): Frame {
-  if (eyePixels(frame).length < 8) return frame;
-  return frame.map((row) => row.replace(/we/g, 'ew'));
 }
 
 // ─── decomposition: base frames + animated overlays ──────────────────────────────────
@@ -512,7 +475,8 @@ function build(state: SpriteState): Decomposed {
       };
     }
     case 'building': {
-      const sparksOf = (f: Frame) => pixelsOf(f, (x, y, ch, fr) => ch === 'w' && !isEyeHighlight(fr, x, y));
+      // Every `w` is a spark: Bit has no eye highlight any more.
+      const sparksOf = (f: Frame) => pixelsOf(f, (_x, _y, ch) => ch === 'w');
       const overlays: Overlay[] = [];
       frames.forEach((f, beat) => {
         const s = sparksOf(f);
@@ -521,12 +485,8 @@ function build(state: SpriteState): Decomposed {
       return { base: frames.map((f) => without(f, sparksOf(f))), overlays };
     }
     case 'celebrating': {
-      const confettiOf = (f: Frame) =>
-        pixelsOf(
-          f,
-          (x, y, ch, fr) =>
-            (ch === 'h' || ch === 'w' || ch === 'z') && !isAntenna(x, y, ch) && !isEyeHighlight(fr, x, y)
-        );
+      // Every `h`, `w` and `z` is confetti: the antenna is body now, and there is no glint.
+      const confettiOf = (f: Frame) => pixelsOf(f, (_x, _y, ch) => ch === 'h' || ch === 'w' || ch === 'z');
       return {
         base: frames.map((f) => without(f, confettiOf(f))),
         overlays: confettiOf(frames[0]!).map((p, index) => ({ kind: 'confetti' as const, frame: only([p]), index })),
@@ -582,101 +542,39 @@ export function bodyCount(frame: Frame): number {
 // ─── the animal pack ─────────────────────────────────────────────────────────────────
 
 /**
- * A whole-sprite drift: the ONE thing an animal does that its frames do not draw.
+ * An animal's idle loop. The frames are `ANIMAL_FRAMES[animal]`, `[REST, BREATH, REST,
+ * GESTURE]` (the whale's gesture is two frames), and each is held for `holds[i]` beats.
  *
- * A crab that sidestepped by being redrawn one column over would repaint every pixel of
- * its shell twice a second — the cross-fade would dip the whole body (see `splitFrames`)
- * and the subtlety budget in `animals.ts` would be blown by a movement that is not even
- * a change of pose. So the pose is in the frames and the travel is a transform, exactly
- * as the mascot's breath and impact already are.
- *
- * `cells` is in SPRITE pixels, so it scales with the sprite: 1 cell of a 64 pt animal is
- * 4 pt. One or two, never more — past that it stops being an idle and becomes a journey.
+ * What an animal does NOT do any more is the point of this table. It does not drift: the
+ * crab used to sidestep two cells end to end and the bee to hover two cells at 900 ms, and a
+ * continuous translate or scale leaves a pixel icon off whole device pixels most of the
+ * time. It does not breathe on a scale either; the breath is drawn, in four cells. It blinks
+ * on Bit's cadence (`blinkGapMs`, `closeEyes`), applied by the renderer.
  */
-export interface Drift {
-  axis: 'x' | 'y';
-  cells: number;
-  /** One full there-and-back. */
-  periodMs: number;
-}
-
 export interface AnimalMotion {
-  /**
-   * How long one frame is held. 300–600 ms: under 300 a two-frame loop flickers, over
-   * 600 it reads as a slideshow of two pictures rather than one creature moving.
-   */
+  /** One beat, 400–600 ms. Under that the loop reads as busy; over it, as a slideshow. */
   beatMs: number;
-  /**
-   * Per-frame multipliers on `beatMs`, when a loop is not metronomic. The owl's blink is
-   * the only one: a real blink is ~120 ms (`MOTION.blink.closedMs`), so holding the shut
-   * frame for a beat would make the owl look asleep rather than blinking.
-   */
-  holds?: number[];
-  drift: Drift | null;
-  /** Breath period, ms. The same 1.03 scale the mascot uses. */
-  breathMs: number;
+  /** Beats each frame of the loop is held for. The rest pose holds for over half the loop. */
+  holds: number[];
   /** What the loop IS, in one line, for the contact sheet and for review. */
   note: string;
 }
 
+/**
+ * Beats differ a little per animal so a row of creatures does not tick in unison; the holds
+ * are the same shape for all eight: rest 4, breath 2, rest 3, gesture 2.
+ */
 export const ANIMAL_MOTION: Record<Animal, AnimalMotion> = {
-  crab: {
-    beatMs: 300,
-    // Two beats to the step, so the claw snip lands on the turn of the sidestep.
-    drift: { axis: 'x', cells: 1, periodMs: 1680 },
-    breathMs: 4200,
-    note: 'claws snip, eight legs step, one blink, sidestepping a pixel',
-  },
-  octopus: {
-    beatMs: 320,
-    drift: { axis: 'y', cells: 1, periodMs: 3400 },
-    breathMs: 4600,
-    note: 'arms curl out and back through four positions, blinking mid stroke',
-  },
-  dog: {
-    beatMs: 300,
-    drift: null,
-    breathMs: 3600,
-    note: 'tail tip swings past each flank in turn, ears bounce, one blink',
-  },
-  cat: {
-    beatMs: 380,
-    drift: null,
-    breathMs: 4800,
-    note: 'tail sweeps through four positions, one ear twitches, one blink',
-  },
-  owl: {
-    beatMs: 340,
-    // The blink is frames 1 to 3 and a blink is not a nap: half, shut and half again go
-    // past in 0.28 of a beat each, which is 95 ms, the same rule the three-frame owl had.
-    holds: [1, 0.28, 0.28, 0.28, 1, 1, 1, 1, 1, 1, 1, 1],
-    drift: null,
-    breathMs: 5000,
-    note: 'blinks, turns its head each way, flattens its tufts, shuffles its feet',
-  },
-  fox: {
-    beatMs: 360,
-    drift: null,
-    breathMs: 4000,
-    note: 'one ear folds, then the other, breathing in between, and one blink',
-  },
-  whale: {
-    beatMs: 380,
-    drift: { axis: 'y', cells: 1, periodMs: 4200 },
-    breathMs: 5200,
-    note: 'the spout builds, plumes and clears, flippers tuck, one blink',
-  },
-  bee: {
-    beatMs: 300,
-    // A wing beat at 300 ms is a moth. The six wing frames go past at 0.4 of a beat,
-    // 120 ms each, and the abdomen and the blink take the full beat.
-    holds: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 1, 1, 1, 1, 0.4, 0.4],
-    // The fastest drift in the pack, and the only 2-cell one: a bee that hovers gently
-    // is a moth.
-    drift: { axis: 'y', cells: 2, periodMs: 900 },
-    breathMs: 3000,
-    note: 'wings beat through five positions, abdomen tapers, one blink',
-  },
+  cat: { beatMs: 550, holds: [4, 2, 3, 2], note: 'the neck fills, then the tail tip flicks out' },
+  dog: { beatMs: 450, holds: [4, 2, 3, 2], note: 'the chest fills, then one ear flops out' },
+  fox: { beatMs: 500, holds: [4, 2, 3, 2], note: 'the jaw fills, then one ear folds' },
+  owl: { beatMs: 600, holds: [4, 2, 3, 2], note: 'the chest puffs, then the tufts flatten' },
+  bee: { beatMs: 400, holds: [4, 2, 3, 2], note: 'the lowest band swells, then the antennae twitch out' },
+  // The spout is two frames, rising then spraying, a beat each: the same two beats of gesture.
+  // It is the whale's gesture and not its rest pose: a stalk on a round amber body is a pumpkin.
+  whale: { beatMs: 450, holds: [4, 2, 3, 1, 1], note: 'the belly fills, then the spout rises and sprays' },
+  octopus: { beatMs: 500, holds: [4, 2, 3, 2], note: 'the neck swells, then the two outer arm tips lift and point out' },
+  crab: { beatMs: 450, holds: [4, 2, 3, 2], note: 'the shell swells, then both claws snip shut' },
 };
 
 /** The looping frame timeline of an animal at a given tempo, holds applied. */
@@ -685,11 +583,6 @@ export function animalTimeline(animal: Animal, tempo = 1): Beat[] {
   const m = ANIMAL_MOTION[animal];
   return ANIMAL_FRAMES[animal].map((_, i) => ({
     frame: i,
-    ms: Math.round((m.beatMs * (m.holds?.[i] ?? 1)) / rate),
+    ms: Math.round((m.beatMs * (m.holds[i] ?? 1)) / rate),
   }));
-}
-
-/** Breath period for an animal, shortened by tempo — the mascot's rule, per animal. */
-export function animalBreathMs(animal: Animal, tempo = 1): number {
-  return Math.round(ANIMAL_MOTION[animal].breathMs / clampTempo(tempo));
 }

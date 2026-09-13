@@ -117,6 +117,9 @@ const FINAL_BURN: SessionBurn = {
 function finalSample(base: SessionDetail): SessionDetail {
   return {
     ...base,
+    // A current capture sends the lines the agent removed (overnight-integration 5.4); the base
+    // predates it. The same 186 burn counts, so the ledger's red line and burn agree.
+    stats: base.stats ? { ...base.stats, lines_removed_agent: FINAL_BURN.lines_removed ?? undefined } : base.stats,
     state: 'final',
     end_reason: 'idle_gap',
     attended_seconds: 15_120,

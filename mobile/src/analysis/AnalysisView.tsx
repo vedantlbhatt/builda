@@ -1,45 +1,54 @@
-import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import type { SessionAnalysis } from '../generated/analysis';
-import { PixelSprite } from '../pixel/PixelSprite';
-import { layout, space } from '../theme';
-import { Bar, Hairline, Row, Section, Stat, StatGrid, Surface, SymbolIcon, T, useColors } from '../ui';
-import { analysisFooter, celebrationFor, labelize, pct, SENSITIVE_WARNING } from './format';
+import { Band, BandWords } from '../insights/Band';
+import { GrowBar } from '../insights/Bars';
+import { numSpec } from '../insights/format';
+import { figure, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
+import { Num } from '../insights/Num';
+import { DIMENSION_HUE, GROUND, ON_HUE, SPECTRUM, type Hue } from '../insights/palette';
+import { Block, Section } from '../insights/reveal';
+import { READING_HEADLINE } from '../session/type';
+import { analysisFooter, labelize, pct, SENSITIVE_WARNING } from './format';
 
 /**
- * The model-written reading of a session, below the card and the numbers.
+ * The model-written reading of a session, as a chapter of the session page in the house style
+ * (design-refs/HOUSE-STYLE.md): its own band in its own hue with the model's headline set large
+ * in dark ink and the outcome and the type beside it, then the reading on the warm ground, one
+ * idea to a line, and the five dimensions as bars in their five hues that grow to their scores
+ * while the scores count up.
  *
- * SHORT ON PURPOSE (spec/analysis.v1.json, docs/analysis.md). The reading is a headline,
- * at most two sentences and up to three highlights; the long blocks this screen used to
- * render (features, work mix, pivots, friction) were removed from the schema because
- * nobody read them. The corpus numbers people actually want (planning ratio, steer rate,
- * velocity, archetype) are COMPUTED and live on the profile, not here.
- *
- * Every section is still skipped when the model left it empty: the spec's honesty rule
- * says a field the model could not ground is null/empty, never guessed, and an empty card
- * would turn that silence into a claim. Nothing here is computed; this view only lays out
- * what the analysis already says.
- *
- * States are words (DESIGN-DIRECTION 9): the outcome and the archetype are a value over a
- * label, the way every other number on the screen is, not a coloured chip.
+ * SHORT ON PURPOSE (spec/analysis.v1.json, docs/analysis.md). The reading is a headline, at
+ * most two sentences and up to three highlights; the corpus numbers people actually want
+ * (planning ratio, steer rate, velocity, archetype) are COMPUTED and live on the profile, not
+ * here. Every part is skipped when the model left it empty: the spec's honesty rule says a
+ * field the model could not ground is empty, never guessed, and an empty part would turn that
+ * silence into a claim. Nothing here is computed; this only lays out what the analysis says.
  */
 
-/** How long Bit cheers beside a shipped headline before settling into a still idle pose. */
+/**
+ * How long a cheer lasts beside a shipped headline. The reading on this page no longer cheers
+ * (the session's creature is printed on the hero band, and a page prints one creature); the
+ * recap sheet still does, on the same beat.
+ */
 export const CELEBRATION_MS = 3000;
 
 export function AnalysisView({
   analysis: a,
+  hue,
+  width,
   still = false,
 }: {
   analysis: SessionAnalysis;
+  hue: Hue;
+  width: number;
   /**
-   * Keep Bit still: another creature on the screen may move (a running session's live bar),
-   * and a screen animates one creature at most (DESIGN-DIRECTION 3.5). No cheer either: a
-   * checkpoint analysis of a session still running has nothing finished to cheer.
+   * A running session's checkpoint reading: said as one, since the session it reads is not done.
    */
   still?: boolean;
 }) {
+  const inner = width - GUTTER * 2;
   const highlights = a.highlights ?? [];
   const dimensions = a.dimensions ?? [];
   const moves = a.decision_patterns ?? [];
@@ -47,201 +56,196 @@ export function AnalysisView({
   const tags = a.tags ?? [];
   const style = a.build_style;
   const prompting = a.prompting;
-  // At most one Bit per card. A shipped session gets the cheer beside its headline; any
-  // other outcome gets the quiet idle pose beside the archetype. Two mascots in one
-  // section would make him the subject of the analysis rather than a companion to it.
-  const celebration = still ? null : celebrationFor(a);
+  const styleRows = style
+    ? ([
+        ['planning', style.planning],
+        ['iteration', style.iteration],
+        ['steering', style.steering],
+        ['verification', style.verification],
+        ['scope', style.scope_control],
+      ] as const)
+    : [];
 
   return (
-    <>
-      <Section label="Analysis">
-        <Surface style={{ gap: space.tile }}>
-          {a.headline ? (
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
-              <T role="title" style={{ flex: 1 }}>
-                {a.headline}
-              </T>
-              {celebration ? <CelebrationSprite /> : null}
+    <Section style={styles.section}>
+      <Band hue={hue} title={still ? 'The reading so far' : 'The reading'}>
+        {a.headline ? (
+          <BandWords delay={260}>
+            <Words style={[READING_HEADLINE, styles.onHue]}>{a.headline}</Words>
+          </BandWords>
+        ) : null}
+        {a.outcome || a.archetype ? (
+          <BandWords delay={360}>
+            <View style={styles.pairs}>
+              {a.outcome ? (
+                <View>
+                  <Words style={type.bandCaption}>{labelize(a.outcome)}</Words>
+                  <Words style={type.bandNote}>outcome</Words>
+                </View>
+              ) : null}
+              {a.archetype ? (
+                <View>
+                  <Words style={type.bandCaption}>{labelize(a.archetype)}</Words>
+                  <Words style={type.bandNote}>how it read you</Words>
+                </View>
+              ) : null}
+            </View>
+          </BandWords>
+        ) : null}
+        {!a.headline && !a.outcome && !a.archetype ? (
+          <BandWords delay={300}>
+            <Refusal onHue>The model wrote no headline for this session.</Refusal>
+          </BandWords>
+        ) : null}
+      </Band>
+
+      {a.summary || highlights.length ? (
+        <Block style={styles.block}>
+          {a.summary ? <Words style={type.body}>{a.summary}</Words> : null}
+          {highlights.length ? (
+            <View style={styles.list}>
+              {highlights.map((h, i) => (
+                <View key={i} style={[styles.item, i > 0 ? styles.hairTop : null]}>
+                  <Words style={[type.mono, styles.index]}>{String(i + 1).padStart(2, '0')}</Words>
+                  <Words style={[type.body, styles.fill]}>{h}</Words>
+                </View>
+              ))}
             </View>
           ) : null}
-          {a.summary ? <T role="body">{a.summary}</T> : null}
-          {highlights.length > 0 && <Bullets items={highlights} />}
-          {(a.outcome || a.archetype) && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile, marginTop: space.xs }}>
-              {a.outcome ? <Stat value={labelize(a.outcome)} label="outcome" style={{ flex: 1 }} /> : null}
-              {a.archetype ? <Stat value={labelize(a.archetype)} label="archetype" style={{ flex: 1 }} /> : null}
-              {a.archetype && !celebration ? <PixelSprite state="idle" size={32} fps={2} paused={still} /> : null}
-            </View>
-          )}
-        </Surface>
-      </Section>
+        </Block>
+      ) : null}
 
-      {style && (
-        <Section label="How you built it">
-          <Surface padding={0}>
-            <Row title="Planning" value={labelize(style.planning)} hairline />
-            <Row title="Iteration" value={labelize(style.iteration)} hairline />
-            <Row title="Steering" value={labelize(style.steering)} hairline />
-            <Row title="Verification" value={labelize(style.verification)} hairline />
-            <Row title="Scope" value={labelize(style.scope_control)} />
-          </Surface>
-          {style.architecture_note ? (
-            <T role="meta" tone="dim">
-              {style.architecture_note}
-            </T>
-          ) : null}
-        </Section>
-      )}
-
-      {dimensions.length > 0 && (
-        <Section label="Dimensions">
-          <Surface style={{ gap: space.md }}>
-            {dimensions.map((d) => (
-              <View key={d.dimension} style={{ gap: space.xs }}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
-                  <T role="row" style={{ flex: 1 }}>
-                    {labelize(d.dimension)}
-                  </T>
-                  <T role="row">{Math.round(d.score)}</T>
+      {dimensions.length ? (
+        <Block style={styles.block}>
+          <Kicker>the five dimensions, this session</Kicker>
+          <View style={styles.dims}>
+            {dimensions.map((d, i) => {
+              const ink = SPECTRUM[DIMENSION_HUE[d.dimension]].ink;
+              const score = Math.round(Math.min(100, Math.max(0, d.score)));
+              return (
+                <View key={d.dimension} style={styles.dim}>
+                  <View style={styles.dimHead}>
+                    <Words style={[type.lead, styles.fill]}>{labelize(d.dimension)}</Words>
+                    <Num spec={numSpec(score, String(score))} textStyle={figure(28, ink)} delay={80 + i * 140} />
+                  </View>
+                  <GrowBar frac={score / 100} color={ink} height={8} delay={80 + i * 140} />
+                  {d.rationale ? <Words style={type.meta}>{d.rationale}</Words> : null}
                 </View>
-                <Bar progress={d.score / 100} />
-                {d.rationale ? (
-                  <T role="meta" tone="dim">
-                    {d.rationale}
-                  </T>
-                ) : null}
-              </View>
-            ))}
-          </Surface>
-        </Section>
-      )}
+              );
+            })}
+          </View>
+        </Block>
+      ) : null}
 
-      {moves.length > 0 && (
-        <Section label="Your moves">
-          <Surface padding={0}>
-            {moves.map((m, i) => (
-              <View key={`${m.pattern}-${i}`}>
-                {i > 0 ? <Hairline inset={layout.gutter} /> : null}
-                <View style={{ gap: space.xs, paddingHorizontal: layout.gutter, paddingVertical: space.tile }}>
-                  <T role="row">{m.pattern}</T>
-                  {m.prompt_excerpt ? <Quote text={m.prompt_excerpt} /> : null}
-                  {m.effect ? (
-                    <T role="meta" tone="dim">
-                      {m.effect}
-                    </T>
-                  ) : null}
-                </View>
-              </View>
-            ))}
-          </Surface>
-        </Section>
-      )}
-
-      {prompting && (
-        <Section label="Prompting">
-          <Surface style={{ gap: space.md }}>
-            <View style={{ gap: space.xs }}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
-                <T role="row" style={{ flex: 1 }}>
-                  Specificity
-                </T>
-                <T role="row">{Math.round(prompting.specificity)}</T>
-              </View>
-              <Bar progress={prompting.specificity / 100} />
+      {styleRows.length ? (
+        <Block style={styles.block}>
+          <Kicker>how it was built</Kicker>
+          {styleRows.map(([k, v], i) => (
+            <View key={k} style={[styles.pair, i > 0 ? styles.hairTop : null]}>
+              <Words style={[type.dim, styles.pairKey]}>{k}</Words>
+              <Words style={[type.lead, styles.fill]}>{labelize(v)}</Words>
             </View>
-            <StatGrid
-              items={[
-                { value: labelize(prompting.tone), label: 'tone' },
-                { value: pct(prompting.correction_share), label: 'corrections' },
-                { value: pct(prompting.question_share), label: 'questions' },
-              ]}
-            />
-            {prompting.note ? (
-              <T role="meta" tone="dim">
-                {prompting.note}
-              </T>
-            ) : null}
-          </Surface>
-        </Section>
-      )}
+          ))}
+          {style?.architecture_note ? <Words style={[type.meta, styles.after]}>{style.architecture_note}</Words> : null}
+        </Block>
+      ) : null}
 
-      {growth.length > 0 && (
-        <Section label="Growth edge">
-          <Surface>
-            <Bullets items={growth} />
-          </Surface>
-        </Section>
-      )}
+      {prompting ? (
+        <Block style={styles.block}>
+          <Kicker>prompting</Kicker>
+          <View style={styles.dimHead}>
+            <Words style={[type.lead, styles.fill]}>specificity</Words>
+            <Num spec={numSpec(Math.round(prompting.specificity), String(Math.round(prompting.specificity)))} textStyle={figure(28, hue.ink)} delay={80} />
+          </View>
+          <GrowBar frac={Math.min(1, Math.max(0, prompting.specificity / 100))} color={hue.ink} height={8} delay={80} />
+          <View style={styles.list}>
+            <Line value={pct(prompting.correction_share)} label="of your prompts corrected course" ink={hue.ink} delay={220} />
+            <Line value={pct(prompting.question_share)} label="asked rather than directed" ink={hue.ink} delay={340} />
+          </View>
+          <Words style={[type.dim, styles.after]}>{`The tone read as ${labelize(prompting.tone)}.`}</Words>
+          {prompting.note ? <Words style={[type.meta, styles.after]}>{prompting.note}</Words> : null}
+        </Block>
+      ) : null}
 
-      {tags.length > 0 && (
-        <Section label="Tags">
-          <Surface>
-            {/* Words, not chips: a row of outlined pills reads as a form to fill in. */}
-            <T role="row">{tags.join('  ·  ')}</T>
-          </Surface>
-        </Section>
-      )}
+      {moves.length ? (
+        <Block style={styles.block}>
+          <Kicker>your moves</Kicker>
+          {moves.map((m, i) => (
+            <View key={`${m.pattern}${i}`} style={[styles.move, i > 0 ? styles.hairTop : null]}>
+              <Words style={type.lead}>{m.pattern}</Words>
+              {m.prompt_excerpt ? <Quote text={m.prompt_excerpt} /> : null}
+              {m.effect ? <Words style={type.meta}>{m.effect}</Words> : null}
+            </View>
+          ))}
+        </Block>
+      ) : null}
 
-      <View style={{ gap: space.sm }}>
-        <T role="meta" tone="dim">
-          {analysisFooter(a)}
-        </T>
+      {growth.length ? (
+        <Block style={styles.block}>
+          <Kicker>try next</Kicker>
+          {growth.map((g, i) => (
+            <View key={i} style={[styles.item, i > 0 ? styles.hairTop : null]}>
+              <Words style={[type.mono, styles.index]}>{String(i + 1).padStart(2, '0')}</Words>
+              <Words style={[type.body, styles.fill]}>{g}</Words>
+            </View>
+          ))}
+        </Block>
+      ) : null}
+
+      <Block style={styles.block}>
+        {tags.length ? <Words style={[type.dim, styles.tags]}>{tags.join('  ·  ')}</Words> : null}
+        <Words style={type.meta}>{analysisFooter(a)}</Words>
         {a.contains_sensitive ? (
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }}>
-            <SymbolIcon name="exclamationmark.triangle" size={15} tone="text" />
-            <T role="meta" weight={600} style={{ flex: 1 }}>
-              {SENSITIVE_WARNING}
-            </T>
+          <View style={styles.after}>
+            <Refusal>{SENSITIVE_WARNING}</Refusal>
           </View>
         ) : null}
-      </View>
-    </>
+      </Block>
+    </Section>
   );
 }
 
-/** A short list with plain bullets in `textDim`: the bullet is punctuation, not decoration. */
-function Bullets({ items }: { items: readonly string[] }) {
+/** A share from the reading as a line of print: the figure in the chapter's ink, what it counts. */
+function Line({ value, label, ink, delay }: { value: string; label: string; ink: string; delay: number }) {
   return (
-    <View style={{ gap: space.sm }}>
-      {items.map((h, i) => (
-        <View key={i} style={{ flexDirection: 'row', gap: space.sm }}>
-          <T role="body" tone="dim">
-            {'•'}
-          </T>
-          <T role="body" style={{ flex: 1 }}>
-            {h}
-          </T>
-        </View>
-      ))}
+    <View style={styles.lineRow}>
+      <Num spec={numSpec(0, value)} textStyle={figure(28, ink)} delay={delay} />
+      <Words style={[type.lead, styles.fill]}>{label}</Words>
     </View>
   );
 }
 
 /**
- * A prompt, verbatim: a 2pt rule in the hairline colour and the words in quotes. The rule
- * is neutral on purpose; an amber one would spend the accent on punctuation.
+ * A prompt, verbatim: a 2 pt rule in the hairline colour and the words in quotes. The rule is
+ * neutral on purpose; a hue would spend identity on punctuation.
  */
 export function Quote({ text, lines }: { text: string; lines?: number }) {
-  const c = useColors();
   return (
-    <View style={{ borderLeftWidth: 2, borderLeftColor: c.border, paddingLeft: space.sm }}>
-      <T role="meta" style={{ fontStyle: 'italic' }} numberOfLines={lines}>
-        {`“${text}”`}
-      </T>
+    <View style={styles.quote}>
+      <Words style={[type.meta, styles.italic]} lines={lines}>{`“${text}”`}</Words>
     </View>
   );
 }
 
-/**
- * One cheer, then stillness. Mounts celebrating, and after CELEBRATION_MS switches to a
- * paused idle frame: the headline is the thing to read, and a mascot that keeps bouncing
- * beside it for the whole scroll is a distraction, not a reward.
- */
-function CelebrationSprite() {
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setDone(true), CELEBRATION_MS);
-    return () => clearTimeout(t);
-  }, []);
-  return <PixelSprite state={done ? 'idle' : 'celebrating'} size={48} fps={4} paused={done} />;
-}
+const styles = StyleSheet.create({
+  section: { marginTop: 56 },
+  onHue: { color: ON_HUE },
+  pairs: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 28, rowGap: 8, marginTop: 14 },
+  block: { paddingHorizontal: GUTTER, marginTop: 28 },
+  list: { marginTop: 12 },
+  item: { flexDirection: 'row', gap: 14, paddingVertical: 10, alignItems: 'baseline' },
+  index: { width: 22, color: GROUND.faint },
+  fill: { flex: 1 },
+  hairTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: GROUND.border },
+  dims: { gap: 18 },
+  dim: { gap: 6 },
+  dimHead: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
+  pair: { flexDirection: 'row', gap: 12, paddingVertical: 10, alignItems: 'baseline' },
+  pairKey: { width: 104 },
+  after: { marginTop: 10 },
+  lineRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingVertical: 6 },
+  move: { paddingVertical: 12, gap: 6 },
+  tags: { marginBottom: 10 },
+  quote: { borderLeftWidth: 2, borderLeftColor: GROUND.border, paddingLeft: 8 },
+  italic: { fontStyle: 'italic' },
+});

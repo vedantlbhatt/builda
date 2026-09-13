@@ -1,31 +1,32 @@
+/**
+ * The codebase map and the time lapse of this session, as doorways (`/you/map/[id]`,
+ * `/you/timelapse/[id]`): each page's name set large, what is behind it in one line with its
+ * number, an arrow in the session's hue. Words, never a row with a chevron (house style rule 5).
+ * A doorway exists only when its data is on the session (`links.ts`): one that opened onto
+ * nothing would be a promise the page behind it cannot keep.
+ */
 import { useRouter } from 'expo-router';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 
-import { Row, Section, Surface } from '../ui';
+import { GUTTER, Kicker } from '../insights/kit';
+import { Block } from '../insights/reveal';
 import type { SessionLink } from './links';
+import { Door } from './parts';
 
-/**
- * The codebase map and the time lapse of this session, as two pushed pages (`/you/map/[id]`,
- * `/you/timelapse/[id]`). Kit rows with a chevron, the same rows the You tab lists its pages
- * with; a row exists only when its data is on the session (`links.ts`).
- */
-export function SessionLinks({ links }: { links: readonly SessionLink[] }) {
+export function SessionLinks({ links, color }: { links: readonly SessionLink[]; color: string }) {
   const router = useRouter();
   if (!links.length) return null;
   return (
-    <Section label="map and time lapse">
-      <Surface padding={0}>
-        {links.map((l, i) => (
-          <Row
-            key={l.key}
-            title={l.title}
-            meta={l.meta}
-            chevron
-            hairline={i < links.length - 1}
-            onPress={() => router.push(l.href)}
-          />
-        ))}
-      </Surface>
-    </Section>
+    <Block style={styles.block}>
+      <Kicker>go further</Kicker>
+      {links.map((l, i) => (
+        <Door key={l.key} title={l.title} line={l.meta} color={color} hairline={i > 0} onPress={() => router.push(l.href)} />
+      ))}
+    </Block>
   );
 }
+
+const styles = StyleSheet.create({
+  block: { paddingHorizontal: GUTTER, marginTop: 30 },
+});

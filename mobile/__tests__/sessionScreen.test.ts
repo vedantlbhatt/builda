@@ -98,7 +98,7 @@ describe('which state the screen is in', () => {
 
   test('a running session re-reads itself on the live list\'s own beat, the one constant, never a second one', () => {
     const screen = readFileSync(join(MOBILE, 'app', 'session', '[id].tsx'), 'utf8');
-    expect(screen).toContain("import { LIVE_REFRESH_MS } from '../../src/live/LiveSessions';");
+    expect(screen).toMatch(/import \{[^}]*\bLIVE_REFRESH_MS\b[^}]*\} from '\.\.\/\.\.\/src\/live\/LiveSessions';/);
     expect(screen).toMatch(/setInterval\(.*, LIVE_REFRESH_MS\)/);
     expect(/LIVE_REFRESH_MS\s*=/.test(screen)).toBe(false);
   });
@@ -273,71 +273,147 @@ describe('the sample, in every state', () => {
   });
 });
 
-// ------------------------------------------------------------------ the kit rules, over the new files
+// ------------------------------------------------------------------ the house style, over the files
 
 /** Source with comments removed, as `screens.test.ts` reads it. */
 function code(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
 }
 
-const FILES = [
-  'app/session/[id].tsx',
+const ROUTES = ['app/session/[id].tsx', 'app/(tabs)/sessions.tsx'].map((name) => ({ name, src: readFileSync(join(MOBILE, name), 'utf8') }));
+
+const CHAPTERS = [
   ...readdirSync(join(MOBILE, 'src', 'session'))
     .filter((f) => f.endsWith('.tsx'))
     .map((f) => `src/session/${f}`),
+  'src/analysis/AnalysisView.tsx',
+  'src/strip/StripDraw.tsx',
 ].map((name) => ({ name, src: readFileSync(join(MOBILE, name), 'utf8') }));
 
-describe('the session screen\'s components build from the kit', () => {
-  test('it reads every component the screen added', () => {
-    expect(FILES.map((f) => f.name)).toEqual(
+const ALL = [...ROUTES, ...CHAPTERS];
+
+describe('the session screens are built in the house style (design-refs/HOUSE-STYLE.md)', () => {
+  test('it reads every chapter the two screens are made of', () => {
+    expect(CHAPTERS.map((f) => f.name)).toEqual(
       expect.arrayContaining([
+        'src/session/SessionPage.tsx',
+        'src/session/SessionsScreen.tsx',
+        'src/session/Hero.tsx',
+        'src/session/Route.tsx',
         'src/session/BurnSection.tsx',
+        'src/session/SpikeChart.tsx',
+        'src/session/WeekBars.tsx',
         'src/session/DecisionList.tsx',
         'src/session/SessionLinks.tsx',
         'src/session/SessionStates.tsx',
+        'src/session/Share.tsx',
         'src/session/TitleLine.tsx',
-      ])
+      ]),
     );
   });
 
-  test('text goes through <T>, sizes through the roles, radii through the rule and all continuous', () => {
-    for (const f of FILES) {
+  test('the routes only compose: no bare Text, no size of their own (screens.test.ts holds them too)', () => {
+    for (const f of ROUTES) {
       const c = code(f.src);
       const imports = c.match(/import\s*\{([^}]*)\}\s*from\s*'react-native'/g) ?? [];
       const bareText = imports.some((i) => /[{,\s]Text[,\s}]/.test(i));
-      const fontSize = c.match(/fontSize:\s*\d+/g) ?? [];
-      const literalRadius = c.match(/borderRadius:\s*\d+/g) ?? [];
+      expect({ file: f.name, bareText, fontSize: c.match(/fontSize:\s*\d+/g) ?? [] }).toEqual({ file: f.name, bareText: false, fontSize: [] });
+    }
+  });
+
+  test('every size is named once: the chapter kit (`type`, `figure`) or `session/type.ts`, never a literal in a component', () => {
+    for (const f of ALL) expect({ file: f.name, fontSize: code(f.src).match(/fontSize:\s*\d+/g) ?? [] }).toEqual({ file: f.name, fontSize: [] });
+  });
+
+  test('no boxed card, no row with a chevron, no uniform stat grid: the banned list', () => {
+    for (const f of ALL) {
+      const c = code(f.src);
+      const kit = (c.match(/import\s*\{([^}]*)\}\s*from\s*'[./]*(?:src\/)?ui'/g) ?? []).join(' ');
+      const banned = ['Surface', 'Row', 'StatGrid', 'Stat', 'Button', 'Section'].filter((n) => new RegExp(`[{,\\s]${n}[,\\s}]`).test(kit));
+      const chevron = /chevron/.test(c);
+      const local = [...c.matchAll(/function (Section|Row|Stat|Card|Button|Chip)\b/g)].map((m) => m[1]);
+      expect({ file: f.name, banned, chevron, local }).toEqual({ file: f.name, banned: [], chevron: false, local: [] });
+    }
+  });
+
+  test('no gradient, no emoji, no amber outline, and every rounded rectangle is continuous', () => {
+    for (const f of ALL) {
+      const c = code(f.src);
       const radii = (c.match(/borderRadius[:=]/g) ?? []).length;
       const curves = (c.match(/borderCurve:\s*'continuous'/g) ?? []).length;
-      expect({ file: f.name, bareText, fontSize, literalRadius, curves }).toEqual({
+      const amber = c.match(/border(?:Left|Top|Right|Bottom)?Color:[^,}\n]*\bc\.accent\b/g) ?? [];
+      expect({ file: f.name, gradient: /Gradient\b/.test(c), emoji: /\p{Extended_Pictographic}/u.test(f.src), amber, curves }).toEqual({
         file: f.name,
-        bareText: false,
-        fontSize: [],
-        literalRadius: [],
+        gradient: false,
+        emoji: false,
+        amber: [],
         curves: radii,
       });
     }
   });
 
-  test('no hand rolled Section, Row, Stat, Card or Button; no amber outline, gradient or emoji', () => {
-    for (const f of FILES) {
+  test('the words on the page are dash free and the kickers are lower case', () => {
+    for (const f of ALL) {
       const c = code(f.src);
-      const local = [...c.matchAll(/function (Section|Row|Stat|Card|Button|Chip)\b/g)].map((m) => m[1]);
-      const amber = c.match(/border(?:Left|Top|Right|Bottom)?Color:[^,}\n]*\bc\.accent\b/g) ?? [];
-      expect({ file: f.name, local, amber, gradient: /Gradient\b/.test(c), emoji: /\p{Extended_Pictographic}/u.test(f.src) }).toEqual({
-        file: f.name,
-        local: [],
-        amber: [],
-        gradient: false,
-        emoji: false,
-      });
+      const jsxText = [...c.matchAll(/>\s*([^<>{}\n][^<>{}]*?)\s*</g)].map((m) => m[1]!).filter((t) => /[a-z]{2}/i.test(t));
+      const props = [...c.matchAll(/\b(?:title|line|text|action|label)="([^"]+)"/g)].map((m) => m[1]!);
+      for (const t of [...jsxText, ...props]) expect({ file: f.name, t, dash: hasDash(t) }).toEqual({ file: f.name, t, dash: false });
+      for (const k of [...c.matchAll(/<Kicker>([^<{]+)<\/Kicker>/g)].map((m) => m[1]!.trim())) {
+        expect({ file: f.name, k, lower: k === k.toLocaleLowerCase() }).toEqual({ file: f.name, k, lower: true });
+      }
     }
   });
 
-  test('section labels are lower case words, never capitals', () => {
-    for (const f of FILES) {
-      const labels = [...code(f.src).matchAll(/<Section label="([^"]+)"/g)].map((m) => m[1]!);
-      for (const l of labels) expect({ file: f.name, l, lower: l === l.toLocaleLowerCase() || l === 'Numbers' || l === 'Analysis' }).toEqual({ file: f.name, l, lower: true });
+  test('every number that counts is drawn by the chapter kit: `Num` or `BandFigure` read the reveal clock', () => {
+    const page = CHAPTERS.find((f) => f.name === 'src/session/SessionPage.tsx')!.src;
+    for (const part of ['RevealPage', 'useRevealScroll', 'useChapterStages', 'LiveBar']) expect({ part, used: page.includes(part) }).toEqual({ part, used: true });
+    const list = CHAPTERS.find((f) => f.name === 'src/session/SessionsScreen.tsx')!.src;
+    for (const part of ['AnimatedList', 'BandFigure', 'useAccent', 'StripDraw']) expect({ part, used: list.includes(part) }).toEqual({ part, used: true });
+  });
+
+  test('the list re-syncs on the live list\'s own beat too, never a second constant', () => {
+    const list = CHAPTERS.find((f) => f.name === 'src/session/SessionsScreen.tsx')!.src;
+    expect(list).toMatch(/import \{[^}]*LIVE_REFRESH_MS[^}]*\} from '\.\.\/live\/LiveSessions';/);
+    expect(/LIVE_REFRESH_MS\s*=/.test(list)).toBe(false);
+  });
+
+  test('every helper a worklet calls is itself a worklet: the drawn parts call only the motion curves and Skia', () => {
+    // FOUND IN INTEGRATION (2026-09-13): a plain helper called from a worklet crashed the app
+    // ("Tried to synchronously call a non-worklet function exitMs on the UI thread").
+    const worklets = ['src/strip/StripDraw.tsx', 'src/session/SpikeChart.tsx', 'src/session/WeekBars.tsx', 'src/session/parts.tsx'];
+    const allowed = new Set([
+      // the page's curves, each marked 'worklet' in insights/motion.ts
+      'phase', 'ease', 'spring',
+      // Skia, Math, and the one hop back to JS
+      'createPicture', 'drawRect', 'drawLine', 'setColor', 'setAlphaf', 'setAntiAlias', 'setStyle', 'setStrokeWidth', 'Paint', 'Color', 'XYWHRect',
+      'sin', 'max', 'min', 'floor', 'round', 'runOnJS',
+    ]);
+    /** Every body passed to a worklet hook: from its opening parenthesis to the one that closes it. */
+    const bodies = (src: string): string[] => {
+      const out: string[] = [];
+      for (const m of src.matchAll(/use(?:DerivedValue|AnimatedStyle|AnimatedReaction|AnimatedProps)\(/g)) {
+        let depth = 0;
+        let i = m.index! + m[0].length - 1;
+        const from = i;
+        for (; i < src.length; i++) {
+          if (src[i] === '(') depth++;
+          else if (src[i] === ')' && --depth === 0) break;
+        }
+        out.push(src.slice(from, i + 1));
+      }
+      return out;
+    };
+    let scanned = 0;
+    for (const name of worklets) {
+      for (const body of bodies(code(readFileSync(join(MOBILE, name), 'utf8')))) {
+        scanned++;
+        // Calls, not declarations or keywords; `setReached` is handed to runOnJS, never called.
+        const calls = [...body.matchAll(/(?<![\w.]function\s)\b([A-Za-z_]\w*)\(/g)].map((m) => m[1]!).filter((c) => !['if', 'for', 'return', 'use', 'useAnimatedStyle', 'useDerivedValue', 'useAnimatedReaction', 'useAnimatedProps'].includes(c));
+        const strangers = [...new Set(calls.filter((c) => !allowed.has(c)))];
+        expect({ file: name, strangers }).toEqual({ file: name, strangers: [] });
+      }
     }
+    // The scan reached every worklet: six bodies across the four files, not zero.
+    expect(scanned).toBeGreaterThanOrEqual(6);
   });
 });

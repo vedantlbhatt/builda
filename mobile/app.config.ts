@@ -20,7 +20,7 @@ import { resolveApiBaseUrl } from './src/config/apiBaseUrl.ts';
 const apiBaseUrl = resolveApiBaseUrl(process.env);
 
 const config: ExpoConfig = {
-  name: 'Builder',
+  name: 'Builda',
   slug: 'builder',
   scheme: 'builder',
   version: '0.1.0',
@@ -52,7 +52,7 @@ const config: ExpoConfig = {
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
-        'Builder uses the camera only to scan the pairing code shown by the Mac agent.',
+        'Builda uses the camera only to scan the pairing code shown by the Mac agent.',
       NSSupportsLiveActivities: true,
     },
   },
@@ -84,9 +84,9 @@ const config: ExpoConfig = {
     // in `IOSConfig.Permissions.applyPermissions`).
     [
       'expo-image-picker',
-      { photosPermission: 'Builder attaches the photos you choose to the sessions you share.' },
+      { photosPermission: 'Builda attaches the photos you choose to the sessions you share.' },
     ],
-    ['expo-av', { microphonePermission: 'Builder records the voice note you add to a shared session.' }],
+    ['expo-av', { microphonePermission: 'Builda records the voice note you add to a shared session.' }],
     // The widget extension from targets/widget (Home Screen widget + Live Activity). Ahead of
     // the fmt patch, the order the SDK 53 + Xcode 26.5 lab build ran them in.
     '@bacons/apple-targets',

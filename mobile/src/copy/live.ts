@@ -55,9 +55,9 @@ export function etaRefusal(eta: LiveEta): string | null {
 
 /**
  * The Lock Screen with Settings > Show details on Lock Screen OFF (DESIGN-DIRECTION 7.2):
- * "Builder · 2 running", and nothing about which repository or what it is doing. The Lock
+ * "Builda · 2 running", and nothing about which repository or what it is doing. The Lock
  * Screen is public; this is what a person who turned details off agreed it may say.
  */
 export function lockScreenWithoutDetails(running: number): string {
-  return `Builder · ${running} running`;
+  return `Builda · ${running} running`;
 }

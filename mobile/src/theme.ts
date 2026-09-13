@@ -124,14 +124,14 @@ export function duration(seconds: number): string {
 }
 
 /**
- * The hour a Builder day starts (`Tuning.dayBoundaryHour` on the Mac, the same 4 in ingest,
+ * The hour a Builda day starts (`Tuning.dayBoundaryHour` on the Mac, the same 4 in ingest,
  * derivation and the graph): a sitting that runs past midnight belongs to the day it began.
  */
 export const DAY_BOUNDARY_HOUR = 4;
 
 const DAY_MS = 86_400_000;
 
-/** Local calendar day number of `t` on the Builder clock (days start at 04:00). */
+/** Local calendar day number of `t` on the Builda clock (days start at 04:00). */
 function builderDay(t: number): number {
   const d = new Date(t - DAY_BOUNDARY_HOUR * 3_600_000);
   return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);

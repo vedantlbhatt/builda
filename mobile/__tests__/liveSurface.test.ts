@@ -1066,12 +1066,12 @@ print(json.dumps(out))
 describe('Show details on Lock Screen, off', () => {
   const ctx = { nowMs: NOW, creature: 'owl', runningCount: 1, details: false, runningTotal: 2 };
 
-  test('the card says Builder and how many are running, and nothing a session is doing', () => {
+  test('the card says Builda and how many are running, and nothing a session is doing', () => {
     const s = row('a', {}, { lines_removed_agent: 88 });
     const st = toState(s, waiting(240), ctx);
     expect(toAttrs(s, false).repo).toBe(DETAILS_OFF_TITLE);
     expect(st.sentence).toBe(lockScreenWithoutDetails(2));
-    expect(st.sentence).toBe('Builder · 2 running');
+    expect(st.sentence).toBe('Builda · 2 running');
     expect(st.phase).toBe('working');
     expect([st.trajectory, st.progress, st.filesChanged, st.etaEpoch, st.sinceEpoch]).toEqual(['none', -1, -1, null, null]);
     expect([st.linesAdded, st.linesRemoved, st.commits]).toEqual([null, null, null]);
@@ -1083,13 +1083,13 @@ describe('Show details on Lock Screen, off', () => {
     expect([final.phase, final.sentence, final.commits]).toEqual(['done', 'Finished', null]);
   });
 
-  test('the plan starts cards named Builder and never alerts with the repository or the sentence', () => {
+  test('the plan starts cards named Builda and never alerts with the repository or the sentence', () => {
     const base = { liveStates: {}, activitiesEnabled: true, creature: 'crab' as const, nowMs: NOW, details: false };
     const first = planSync({ ...base, sessions: [row('a'), row('b')], liveStates: { a: working(), b: working() }, tracked: new Map() });
     for (const a of first.actions) {
       const start = a as Extract<SyncAction, { kind: 'start' }>;
       expect(start.attrs.repo).toBe(DETAILS_OFF_TITLE);
-      expect(start.state.sentence).toBe('Builder · 2 running');
+      expect(start.state.sentence).toBe('Builda · 2 running');
     }
     const tracked = apply(first);
     // a minute later (the drawn minute moves the content key, so the card does update) and in

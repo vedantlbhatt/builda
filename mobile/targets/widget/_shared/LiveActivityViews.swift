@@ -306,7 +306,7 @@ struct IslandCompactTrailing: View {
   }
 }
 
-/// Minimal: the creature inside its 26pt ring, so it says Builder and how far along at once
+/// Minimal: the creature inside its 26pt ring, so it says Builda and how far along at once
 /// (StandBy shows this view on its own); the raised hand when it needs you. The first build
 /// put a bare file count here, which read as a countdown in a spinner.
 @available(iOS 17.0, *)

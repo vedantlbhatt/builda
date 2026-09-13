@@ -294,7 +294,7 @@ describe('DecryptedText: the frames (react-bits port), seeded', () => {
     expect((frames.length - 1) * DECRYPT_TICK_MS).toBeLessThanOrEqual(1600);
   });
 
-  test('the charset is Builder\'s, not the original alphabet', () => {
+  test('the charset is Builda\'s, not the original alphabet', () => {
     expect(DECRYPT_CHARSET).toBe('01{}[]<>/=+*');
   });
 });

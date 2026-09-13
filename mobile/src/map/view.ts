@@ -104,7 +104,7 @@ export interface RefusalCopy {
   action: RefusalAction;
 }
 
-/** "at 14:02" on the same Builder day, else "on Aug 29". Null for a time that does not parse. */
+/** "at 14:02" on the same Builda day, else "on Aug 29". Null for a time that does not parse. */
 export function whenOf(iso: string | null | undefined, now: number): string | null {
   if (!iso) return null;
   const t = Date.parse(iso);

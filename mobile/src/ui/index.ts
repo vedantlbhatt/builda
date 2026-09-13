@@ -1,5 +1,5 @@
 /**
- * Builder's UI kit (DESIGN-DIRECTION 3, 6, 7 and 8). Every screen builds from these; the
+ * Builda's UI kit (DESIGN-DIRECTION 3, 6, 7 and 8). Every screen builds from these; the
  * tokens they draw with live in design/tokens.json and nowhere else.
  *
  * Pure modules (`motionSpec`, `shape`, `typeStyle`, `digits`, `format`, `decrypt`, `dithering`,

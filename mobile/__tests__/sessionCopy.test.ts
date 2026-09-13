@@ -268,7 +268,7 @@ describe('decisions, ETA refusals and the Lock Screen with details off', () => {
   });
 
   test('details off, the Lock Screen names no repository and no activity', () => {
-    expect(lockScreenWithoutDetails(2)).toBe('Builder · 2 running');
+    expect(lockScreenWithoutDetails(2)).toBe('Builda · 2 running');
     expect(hasDash(lockScreenWithoutDetails(1))).toBe(false);
   });
 });

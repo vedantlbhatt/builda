@@ -116,8 +116,8 @@ describe('the words', () => {
   });
 
   test('the tools sentence names the tools the count came from', () => {
-    expect(toolsFound(77, false, ['Claude Code'])).toBe('Builder found 77 sessions from Claude Code on your account and picked it.');
-    expect(toolsFound(80, false, ['Claude Code', 'Codex'])).toBe('Builder found 80 sessions on your account, from Claude Code and Codex, and picked them.');
+    expect(toolsFound(77, false, ['Claude Code'])).toBe('Builda found 77 sessions from Claude Code on your account and picked it.');
+    expect(toolsFound(80, false, ['Claude Code', 'Codex'])).toBe('Builda found 80 sessions on your account, from Claude Code and Codex, and picked them.');
   });
 
   test('connect says what it can do: signing in when signed out, nothing to connect when sessions arrive', () => {

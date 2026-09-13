@@ -14,7 +14,7 @@
 module.exports = (config) => ({
   type: 'widget',
   name: 'BuilderWidgets',
-  displayName: 'Builder',
+  displayName: 'Builda',
   bundleIdentifier: '.widgets',
   // 17.0, not the plugin's 18.0 default: containerBackground and #Preview for widgets are 17.
   deploymentTarget: '17.0',

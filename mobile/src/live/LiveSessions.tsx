@@ -120,7 +120,7 @@ export interface MissionData {
 }
 
 function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : 'Builder is not reachable right now.';
+  return e instanceof Error && e.message ? e.message : 'Builda is not reachable right now.';
 }
 
 /**

@@ -21,7 +21,7 @@ export const BACK = 'Back';
 
 export const HELLO = {
   headline: 'Your build sessions, read back to you.',
-  body: 'Builder reads what your coding agents write and tells you how every session went.',
+  body: 'Builda reads what your coding agents write and tells you how every session went.',
 } as const;
 
 export const NAME = {
@@ -64,7 +64,7 @@ export const TOOLS = {
   headline: 'Pick your tools.',
   // Two sentences on two lines: wrapped as one paragraph, "Pick" hung alone off the end of
   // the first line.
-  unknown: 'Builder reads the sessions these tools write.\nPick the ones you use.',
+  unknown: 'Builda reads the sessions these tools write.\nPick the ones you use.',
 } as const;
 
 /**
@@ -75,9 +75,9 @@ export const TOOLS = {
 export function toolsFound(total: number, partial: boolean, tools: readonly string[] = []): string {
   const n = partial ? `more than ${grouped(total)}` : grouped(total);
   const sessions = total === 1 && !partial ? '1 session' : `${n} sessions`;
-  if (tools.length === 1) return `Builder found ${sessions} from ${tools[0]} on your account and picked it.`;
-  if (tools.length > 1) return `Builder found ${sessions} on your account, from ${listOf(tools)}, and picked them.`;
-  return `Builder found ${sessions} on your account and picked the tools ${total === 1 && !partial ? 'it came' : 'they came'} from.`;
+  if (tools.length === 1) return `Builda found ${sessions} from ${tools[0]} on your account and picked it.`;
+  if (tools.length > 1) return `Builda found ${sessions} on your account, from ${listOf(tools)}, and picked them.`;
+  return `Builda found ${sessions} on your account and picked the tools ${total === 1 && !partial ? 'it came' : 'they came'} from.`;
 }
 
 /**
@@ -99,7 +99,7 @@ export const CONNECT = {
   codePlaceholder: 'XXXX-XXXX',
   pair: 'Pair',
   pairing: 'Pairing',
-  badCode: 'That is not a Builder pairing code. It is eight letters and digits, the way builder pair shows it.',
+  badCode: 'That is not a Builda pairing code. It is eight letters and digits, the way builder pair shows it.',
   rejected: 'That code was not recognised, or it expired. Run builder pair again.',
   hookTitle: 'Or send sessions from Claude Code',
   hookBody: 'One paste in a terminal on the machine that runs it, and its sessions come here with nothing installed.',

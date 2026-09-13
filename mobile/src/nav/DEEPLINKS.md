@@ -1,6 +1,6 @@
 # Routes and deep links
 
-Every screen Builder has, the link that opens it, and what a screenshot harness needs to know to
+Every screen Builda has, the link that opens it, and what a screenshot harness needs to know to
 drive them with `xcrun simctl openurl`. The scheme is `builder://` (`app.config.ts`). The route
 files are in `mobile/app/`; the rules behind the gate and dev auth are in `src/nav/rules.ts` and
 pinned by `__tests__/nav.test.ts` and `__tests__/nativeIntent.test.ts`.
@@ -12,7 +12,7 @@ SIM=231E27A6-ADA7-48AA-8230-302A04689772          # iPhone 16 Pro, iOS 18.2
 xcrun simctl openurl $SIM "builder://wrapped?card=7"
 ```
 
-iOS sometimes asks **"Open in Builder?"** before handing a custom scheme to the app (it did on
+iOS sometimes asks **"Open in Builda?"** before handing a custom scheme to the app (it did on
 the first link of a session here, and not on the next ones). Confirm it, then screenshot:
 
 ```bash
@@ -289,7 +289,7 @@ shows the finished sample). No server, no Mac and no network needed; the states 
 | `builder://session/sample?variant=refused` | a Cursor session: the burn section's refusal as a sentence, the tokens stat refused under Numbers |
 | `builder://session/sample?variant=short` | three stretches: the numbers, and why no stretch is singled out |
 | `builder://session/sample?variant=quiet` | an older producer: the harness's own title, no burn block ("No cost breakdown was sent with this session.") |
-| `builder://session/sample?variant=stale` | the finished sample under the stale line ("Builder is not reachable right now. Showing what this phone saved.") |
+| `builder://session/sample?variant=stale` | the finished sample under the stale line ("Builda is not reachable right now. Showing what this phone saved.") |
 | `builder://session/sample?variant=loading` | the skeleton, held (it never resolves) |
 | `builder://session/sample?variant=missing` | Bit, "This session is not here.", Back to sessions |
 | `builder://session/sample?variant=error` | Bit, "Could not load this session.", the reason, Try again |

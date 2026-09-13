@@ -97,14 +97,14 @@ describe('the privacy switches', () => {
   });
 
   test('a switch the server refused does not move, and the line says why', async () => {
-    const { api } = fakeApi(() => new ApiError(503, 'Builder is not reachable right now.'));
+    const { api } = fakeApi(() => new ApiError(503, 'Builda is not reachable right now.'));
     let forgot = 0;
     const out = await privacy.setPrivacySwitch(api, { quotes: true, live_names: true }, 'live_names', false, async () => {
       forgot += 1;
     });
     expect(out.ok).toBe(false);
     expect(out.prefs).toEqual({ quotes: true, live_names: true });
-    expect(out.message).toBe('Nothing changed: Builder is not reachable right now.');
+    expect(out.message).toBe('Nothing changed: Builda is not reachable right now.');
     // Nothing was deleted on the server, so nothing is cleared here either.
     expect(forgot).toBe(0);
   });
@@ -118,7 +118,7 @@ describe('the privacy switches', () => {
     expect(privacy.FILE_NAMES_TITLE).toBe('File names');
     expect(privacy.LOCK_SCREEN_TITLE).toBe('Show details on Lock Screen');
     // what the card with details off actually draws (surface.withoutDetails), and no less
-    expect(privacy.lockScreenDetail(false)).toContain('only Builder, how many sessions are running');
+    expect(privacy.lockScreenDetail(false)).toContain('only Builda, how many sessions are running');
     expect(privacy.lockScreenDetail(false)).toContain('no repository and nothing about what it is doing');
   });
 

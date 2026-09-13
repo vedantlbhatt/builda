@@ -168,7 +168,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
   if (model.filesTouched > 0) stats.push([`${model.filesTouched}`, 'files']);
   stats.push([`${model.prompts}`, model.prompts === 1 ? 'prompt' : 'prompts']);
   // Tokens only when the harness reports them. Cursor never does, and a "0" there reads
-  // as a bug in Builder rather than as a fact about Cursor.
+  // as a bug in Builda rather than as a fact about Cursor.
   if (model.tokensReported) stats.push([compactNumber(model.totalTokens), 'tokens']);
 
   const stripWidth = width - 152 * s;

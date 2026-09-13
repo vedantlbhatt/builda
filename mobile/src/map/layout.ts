@@ -16,7 +16,7 @@
  *     islands are packed around the middle (`pack.ts`), top of the repository first, then by
  *     depth, so deeper folders tend to sit further out. Every file is one cell of one size,
  *     so three files look like three files and four hundred like a codebase, which is the
- *     brief's "the repo drawn as a shape" and the pixel grid Builder's identity is drawn on.
+ *     brief's "the repo drawn as a shape" and the pixel grid Builda's identity is drawn on.
  *
  * STABLE ACROSS REFRESHES. Every order here comes from the ids, which are HMACs of the paths
  * under the machine's private salt: folders by depth then folder id, files in a folder by file

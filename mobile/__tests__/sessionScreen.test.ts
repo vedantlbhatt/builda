@@ -20,7 +20,7 @@ import { burnView } from '../src/session/burnView';
 import { sessionTitle, summarySentences } from '../src/session/summary';
 
 const MOBILE = join(import.meta.dir, '..');
-const OFFLINE = 'Builder is not reachable right now.';
+const OFFLINE = 'Builda is not reachable right now.';
 
 const BASE = {
   id: 'sample',
@@ -75,7 +75,7 @@ describe('which state the screen is in', () => {
     expect(resolveSessionLoad(s, { status: 0, message: OFFLINE })).toEqual({
       kind: 'ready',
       session: s,
-      stale: 'Builder is not reachable right now. Showing what this phone saved.',
+      stale: 'Builda is not reachable right now. Showing what this phone saved.',
     });
   });
 
@@ -92,8 +92,8 @@ describe('which state the screen is in', () => {
   });
 
   test('the stale line is one sentence per part, whatever the message looked like', () => {
-    expect(staleLine('builder took too long to answer')).toBe('Builder took too long to answer. Showing what this phone saved.');
-    expect(staleLine('Builder took too long to answer.')).toBe('Builder took too long to answer. Showing what this phone saved.');
+    expect(staleLine('builda took too long to answer')).toBe('Builda took too long to answer. Showing what this phone saved.');
+    expect(staleLine('Builda took too long to answer.')).toBe('Builda took too long to answer. Showing what this phone saved.');
   });
 
   test('a running session re-reads itself on the live list\'s own beat, the one constant, never a second one', () => {

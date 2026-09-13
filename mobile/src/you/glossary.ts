@@ -18,7 +18,7 @@ export interface TermRow {
   id: VocabTerm;
   word: string;
   definition: string;
-  /** "Aug 29": the Builder day a session first ran into it. */
+  /** "Aug 29": the Builda day a session first ran into it. */
   firstSeen: string | null;
 }
 

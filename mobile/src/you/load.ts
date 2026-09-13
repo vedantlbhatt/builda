@@ -44,7 +44,7 @@ export function resolveLoad<T>(s: LoadInputs<T>): YouLoad<T> {
   return { kind: 'loading' };
 }
 
-/** "Builder is not reachable right now. Showing what was saved at 9:41." */
+/** "Builda is not reachable right now. Showing what was saved at 9:41." */
 export function staleLine(stale: Stale, now: number = Date.now()): string {
   const lead = stale.message.trim().replace(/\.?$/, '.');
   if (stale.savedAt === null) return `${lead} Showing what was saved last.`;

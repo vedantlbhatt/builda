@@ -20,7 +20,7 @@ const ROWS: readonly TimelineRow[] = [
 ];
 
 /**
- * Step 5: stay in the loop (DESIGN-DIRECTION 4). What Builder will tap you about, as the
+ * Step 5: stay in the loop (DESIGN-DIRECTION 4). What Builda will tap you about, as the
  * paywall studies' trial timeline (three rows on a 3pt connector), before iOS asks. Continue
  * raises the system prompt; "Not now" is a text button of equal weight and asks nothing, so
  * the prompt is never spent on someone who has already said no.

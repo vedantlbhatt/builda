@@ -48,7 +48,7 @@ function sentence(message: string): string {
   return /[.!?]$/.test(up) ? up : `${up}.`;
 }
 
-/** "Builder is not reachable right now. Showing what this phone saved." */
+/** "Builda is not reachable right now. Showing what this phone saved." */
 export function staleLine(message: string): string {
   return `${sentence(message)} Showing what this phone saved.`;
 }

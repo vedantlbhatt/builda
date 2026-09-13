@@ -134,7 +134,7 @@ export function WrappedCardView({
           <Answer face={face} variant={variant} play={playing} hidden={pending && !playing} delay={delay} />
           {variant === 'share' ? (
             <T role="label" tone="faint" style={{ marginTop: space.sm }}>
-              Builder
+              Builda
             </T>
           ) : null}
         </View>

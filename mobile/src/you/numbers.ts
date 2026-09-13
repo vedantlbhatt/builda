@@ -47,7 +47,7 @@ interface Ymd {
 }
 
 /**
- * The Builder day an instant belongs to, in the phone's zone, where days start at 04:00
+ * The Builda day an instant belongs to, in the phone's zone, where days start at 04:00
  * (`theme.DAY_BOUNDARY_HOUR`, the same 4 as ingest and the graph): a term first met at 01:30
  * was met on the evening before.
  */
@@ -56,7 +56,7 @@ function builderDay(t: number): Ymd {
   return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
 }
 
-/** An instant as the Builder day it happened on: "Aug 29", the year when it is not this one. */
+/** An instant as the Builda day it happened on: "Aug 29", the year when it is not this one. */
 export function dayOf(iso: string, now: number = Date.now()): string | null {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
@@ -65,7 +65,7 @@ export function dayOf(iso: string, now: number = Date.now()): string | null {
   return day.y === builderDay(now).y ? base : `${base}, ${day.y}`;
 }
 
-/** The month an instant's Builder day falls in, as a sortable key: "2026-09". */
+/** The month an instant's Builda day falls in, as a sortable key: "2026-09". */
 export function monthKey(iso: string): string | null {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;

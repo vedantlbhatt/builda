@@ -316,7 +316,7 @@ function Waiting({
   // no cards in it: never a skeleton that waits for nothing.
   const status = deck.status === 'ready' ? 'no_cards' : deck.status;
   const empty = EMPTY[status];
-  // The api layer's own words for a failed request ("Builder is not reachable right now.").
+  // The api layer's own words for a failed request ("Builda is not reachable right now.").
   const text = status === 'error' ? (deck.error ?? empty.text) : empty.text;
   const action =
     status === 'signed_out'
@@ -356,7 +356,7 @@ const EMPTY = {
   error: {
     creature: 'sleeping',
     title: 'Could not load your cards.',
-    text: 'Builder is not reachable right now.',
+    text: 'Builda is not reachable right now.',
     action: 'Try again',
   },
 } as const;

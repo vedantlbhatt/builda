@@ -167,7 +167,7 @@ export default function FactionsScreen() {
                 style={pill}
                 onPress={() =>
                   void Share.share({
-                    message: `Join ${justCreated.name} on Builder with code ${justCreated.join_code}`,
+                    message: `Join ${justCreated.name} on Builda with code ${justCreated.join_code}`,
                   })
                 }
               >

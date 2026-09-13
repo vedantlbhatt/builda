@@ -46,11 +46,11 @@ export const LOCK_SCREEN_ON =
   'The repository, when it is public, and what the session is doing, on the Lock Screen and in the Dynamic Island, where anyone holding your phone can read them.';
 /**
  * What the card says with the switch off, as the simulator drew it (integration, 2026-09-13):
- * "Builder · 1 running", the tool and the elapsed timer, with no repository, sentence, verdict,
+ * "Builda · 1 running", the tool and the elapsed timer, with no repository, sentence, verdict,
  * count or alert (`surface.withoutDetails`). The copy promises exactly that and no less.
  */
 export const LOCK_SCREEN_OFF =
-  'The Lock Screen and the Dynamic Island say only Builder, how many sessions are running, the tool and how long it has run: no repository and nothing about what it is doing.';
+  'The Lock Screen and the Dynamic Island say only Builda, how many sessions are running, the tool and how long it has run: no repository and nothing about what it is doing.';
 
 /** What a switch's row says under its title. */
 export function lockScreenDetail(on: boolean): string {

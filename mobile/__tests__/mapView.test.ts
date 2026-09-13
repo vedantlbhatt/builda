@@ -227,7 +227,7 @@ describe('the words for numbers', () => {
     expect([1, 2, 3, 14].map(times)).toEqual(['once', 'twice', '3 times', '14 times']);
   });
 
-  test('when: the clock on the same Builder day, the date otherwise, nothing for a bad time', () => {
+  test('when: the clock on the same Builda day, the date otherwise, nothing for a bad time', () => {
     const today = new Date(NOW - 3_600_000).toISOString();
     expect(whenOf(today, NOW)).toMatch(/^at \d{1,2}:\d{2}$/);
     expect(whenOf('2026-08-29T15:00:00Z', NOW)).toMatch(/^on Aug (28|29|30)$/);

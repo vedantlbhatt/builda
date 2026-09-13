@@ -143,7 +143,7 @@ struct HomeWidgetView: View {
 }
 
 /// The repo top left with the creature small beside it on the right (the Home Screen already
-/// labels the widget "Builder", so the mark only has to be recognisable), the big number, the
+/// labels the widget "Builda", so the mark only has to be recognisable), the big number, the
 /// sentence on up to three lines, and the state. The small widget, and the left of the medium.
 ///
 /// The big number is the one that matters for the state: how long it has waited on you when it

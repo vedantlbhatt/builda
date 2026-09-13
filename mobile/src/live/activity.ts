@@ -54,7 +54,7 @@ export interface SyncOptions {
   staleInSeconds?: number;
   /**
    * Settings > Show details on Lock Screen (`cache.getLockScreenDetails`). Default on. Off: the
-   * cards say "Builder · N running", and since a card's attributes (its repository) cannot
+   * cards say "Builda · N running", and since a card's attributes (its repository) cannot
    * change, a move of the switch ends every card for the next sync to start again.
    */
   details?: boolean;
@@ -287,7 +287,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
 }
 
 /**
- * End every Builder activity now and forget them (sign out; the debug route's state=end).
+ * End every Builda activity now and forget them (sign out; the debug route's state=end).
  *
  * In the same queue as the syncs. FOUND IN CAPTURE (2026-09-13): this cleared the memory
  * outside it, so a sync already in flight (a link iOS delivered late) started an activity

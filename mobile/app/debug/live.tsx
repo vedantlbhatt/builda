@@ -37,7 +37,7 @@ import { ANIMAL_KEY } from '../icon';
  *
  *   { "sessions": [ { "session": { "id": "...", ...SessionDetail }, "live": { ...live_state } } ],
  *     "finished"?: [ { "id": "...", ...SessionDetail } ],   rows that just went final
- *     "fresh"?: true,      end every Builder activity first, so this one STARTS
+ *     "fresh"?: true,      end every Builda activity first, so this one STARTS
  *     "creature"?: "owl",  "stale"?: 10,  "widget"?: true }
  *
  * A session row needs only `id`; the rest defaults to a live claude_code row with no stats.
@@ -102,7 +102,7 @@ async function run(req: DebugLiveRequest): Promise<string[]> {
 
   if (req.state === 'end') {
     await endAllLiveActivities();
-    out.push('ended every Builder Live Activity');
+    out.push('ended every Builda Live Activity');
   } else if (req.state) {
     const common = { creature, today: DEBUG_TODAY, nowMs, staleInSeconds: req.staleInSeconds ?? undefined };
     if (req.state === 'done' && !activityFor('debug-builder')) {
@@ -220,7 +220,7 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
   out.push(liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build');
   if (p.fresh) {
     await endAllLiveActivities();
-    out.push('ended every Builder Live Activity first');
+    out.push('ended every Builda Live Activity first');
   }
   const sessions = p.sessions.map((x) => fillRow(x.session, nowMs, x.session.state === 'final' ? 'final' : 'live'));
   const liveStates = Object.fromEntries(p.sessions.map((x) => [x.session.id, x.live]));

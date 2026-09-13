@@ -4,7 +4,7 @@
  *
  * Ported from react-bits `TextAnimations/DecryptedText/DecryptedText.tsx` by David Haz
  * (MIT + Commons Clause; the notice is in `digits.ts`). What the port keeps: sequential
- * reveal from the start, spaces never scrambled. What it changes: the charset is Builder's
+ * reveal from the start, spaces never scrambled. What it changes: the charset is Builda's
  * `01{}[]<>/=+*`, the tick is 40ms, a tick reveals the next VISIBLE character (a space never
  * costs a tick), and a long quote reveals several characters per tick so the whole thing
  * finishes inside `DECRYPT_MAX_TICKS` ticks (1.6s) instead of running for seconds.

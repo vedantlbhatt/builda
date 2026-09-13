@@ -58,10 +58,10 @@ const c = colors('dark');
 /** The sign-in buttons: the same 52pt capsule as every primary action. */
 const SIGN_IN_HEIGHT = 52;
 
-/** "Builder · v0.1.0" — the version is read from the config, never typed here twice. */
+/** "Builda · v0.1.0" — the version is read from the config, never typed here twice. */
 function appLine(): string {
   const v = Constants.expoConfig?.version;
-  return v ? `Builder · v${v}` : 'Builder';
+  return v ? `Builda · v${v}` : 'Builda';
 }
 
 export default function SettingsScreen() {
@@ -208,7 +208,7 @@ export default function SettingsScreen() {
         <Section label="Account">
           <Surface style={{ gap: space.sm }}>
             <T role="meta" tone="dim" style={{ marginBottom: space.xs }}>
-              Builder works without an account. You are seeing a sample session. Sign in to
+              Builda works without an account. You are seeing a sample session. Sign in to
               sync your own from the Mac agent.
             </T>
             <AppleAuthentication.AppleAuthenticationButton

@@ -274,7 +274,7 @@ describe('numbers', () => {
     expect(maskDollars('4112.2M tokens, 95% cache reads')).toBe('4112.2M tokens, 95% cache reads');
   });
 
-  test('an instant belongs to the Builder day it happened on: 01:30 is the evening before', () => {
+  test('an instant belongs to the Builda day it happened on: 01:30 is the evening before', () => {
     expect(dayOf(new Date(2026, 7, 30, 1, 30).toISOString(), NOW)).toBe('Aug 29');
     expect(dayOf(new Date(2026, 7, 30, 4, 30).toISOString(), NOW)).toBe('Aug 30');
     expect(dayOf(new Date(2025, 11, 30, 12, 0).toISOString(), NOW)).toBe('Dec 30, 2025');
@@ -735,8 +735,8 @@ describe('the five states', () => {
 
   test('the stale line names what failed and when the page on screen was saved', () => {
     const at = new Date(2026, 8, 13, 9, 41).getTime();
-    expect(staleLine({ savedAt: at, message: 'Builder is not reachable right now.' }, NOW)).toBe(
-      'Builder is not reachable right now. Showing what was saved at 9:41.',
+    expect(staleLine({ savedAt: at, message: 'Builda is not reachable right now.' }, NOW)).toBe(
+      'Builda is not reachable right now. Showing what was saved at 9:41.',
     );
     expect(staleLine({ savedAt: new Date(2026, 7, 29, 20, 0).getTime(), message: 'Timed out' }, NOW)).toBe('Timed out. Showing what was saved on Aug 29.');
     expect(staleLine({ savedAt: null, message: 'Timed out' }, NOW)).toBe('Timed out. Showing what was saved last.');

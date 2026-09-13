@@ -1,7 +1,7 @@
 import { tokens } from '../generated/tokens';
 
 /**
- * Builder's one texture: a 1-bit, one-hue dither (DESIGN-DIRECTION 6 and 8). Everything
+ * Builda's one texture: a 1-bit, one-hue dither (DESIGN-DIRECTION 6 and 8). Everything
  * here is pure so the tests can hold it, and so a data field (a contribution grid, a
  * session strip) is computed once in JS at exactly the resolution the shader dithers at.
  *

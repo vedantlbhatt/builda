@@ -652,7 +652,7 @@ describe('the screen', () => {
     expect(screenOf('error').screen.kind).toBe('error');
     expect(screenOf('signedout').screen.kind).toBe('signedOut');
     const stale = screenOf('stale');
-    expect(stale.screen).toEqual({ kind: 'ready', stale: { savedAt: NOW - 40 * MIN, message: 'Builder is not reachable right now.' } });
+    expect(stale.screen).toEqual({ kind: 'ready', stale: { savedAt: NOW - 40 * MIN, message: 'Builda is not reachable right now.' } });
     expect(stale.rows.some((r) => isStale(r, NOW))).toBe(true);
     expect(refusalLine(screenOf('refused').rows)).not.toBeNull();
   });

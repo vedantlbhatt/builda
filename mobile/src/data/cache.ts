@@ -434,7 +434,7 @@ export const DEVICE_KEY_PREFIX = 'device.';
  * Settings > Show details on Lock Screen (DESIGN-DIRECTION 7.2). The Lock Screen and the
  * Dynamic Island are public: anyone near the phone reads them. On, they carry the repository
  * (public repositories only; otherwise "private repo") and the one sentence; off, only
- * "Builder" and how many sessions are running. A property of THIS phone's screen, not of the
+ * "Builda" and how many sessions are running. A property of THIS phone's screen, not of the
  * account, so it is a device key and survives sign out.
  */
 export const LOCK_SCREEN_DETAILS_KEY = `${DEVICE_KEY_PREFIX}lock_screen_details`;

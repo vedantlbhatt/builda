@@ -70,7 +70,7 @@ export default function PairScreen() {
 
       const code = parsePairingCode(text);
       if (!code) {
-        setStatus({ kind: 'error', text: 'That is not a Builder pairing code.' });
+        setStatus({ kind: 'error', text: 'That is not a Builda pairing code.' });
         later(() => {
           lockRef.current = false;
         }, RESCAN_DELAY_MS);
@@ -133,7 +133,7 @@ export default function PairScreen() {
     return canAsk ? (
       <Notice
         title="Camera access"
-        text="Builder uses the camera only to read the pairing code on your Mac."
+        text="Builda uses the camera only to read the pairing code on your Mac."
         actions={
           <>
             <Button label="Allow camera" onPress={() => void requestPermission()} />

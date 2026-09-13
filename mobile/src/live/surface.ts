@@ -72,9 +72,9 @@ export const PAYLOAD_LIMIT_BYTES = 4096;
 export const PRIVATE_REPO = 'private repo';
 /**
  * What a card names instead of the repository with Settings > Show details on Lock Screen OFF
- * (`src/data/privacy.ts LOCK_SCREEN_OFF`: Builder, how many are running, the tool and its timer).
+ * (`src/data/privacy.ts LOCK_SCREEN_OFF`: Builda, how many are running, the tool and its timer).
  */
-export const DETAILS_OFF_TITLE = 'Builder';
+export const DETAILS_OFF_TITLE = 'Builda';
 /** `live.NEEDS_YOU_REASONS`: the agent waits on its own background job (score 10). */
 export const BACKGROUND_REASON = 'waiting_on_background';
 const REPO_MAX = 60;
@@ -97,7 +97,7 @@ const minuteFloor = (seconds: number): number => Math.floor(seconds / 60) * 60;
 
 /**
  * The card's attributes, fixed for the life of the activity. `details` false (Settings > Show
- * details on Lock Screen off) names Builder instead of the repository; since attributes cannot
+ * details on Lock Screen off) names Builda instead of the repository; since attributes cannot
  * change, `activity.ts` ends every card when the switch moves and the next sync starts them
  * again with the new name.
  */
@@ -314,7 +314,7 @@ export interface StateContext {
 }
 
 /**
- * The card with Show details on Lock Screen OFF: "Builder · 2 running" and nothing about which
+ * The card with Show details on Lock Screen OFF: "Builda · 2 running" and nothing about which
  * repository or what it is doing (`src/data/privacy.ts LOCK_SCREEN_OFF`). The phase stays only
  * as far as working or finished: needs you, stalled and the verdict are what a session is
  * doing, and so are its counts and its clocks. A finished card says "Finished".
@@ -458,7 +458,7 @@ export interface PlanInput {
   /** Seconds until the surfaces say "Not updating". Default STALE_SECONDS; the debug route shortens it. */
   staleInSeconds?: number;
   /**
-   * Settings > Show details on Lock Screen. Off: every card says "Builder · N running" and no
+   * Settings > Show details on Lock Screen. Off: every card says "Builda · N running" and no
    * update carries an alert, whose title and body would name the repository and what it is
    * doing. Default on.
    */

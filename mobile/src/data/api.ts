@@ -752,9 +752,9 @@ export interface TokenPair {
 export type RepoVisibility = 'public' | 'anonymous' | 'excluded';
 
 /** What a transport failure says on screen (ApiError status 0). */
-export const OFFLINE_MESSAGE = 'Builder is not reachable right now.';
+export const OFFLINE_MESSAGE = 'Builda is not reachable right now.';
 /** What a request that ran past the timeout says on screen. */
-export const TIMEOUT_MESSAGE = 'Builder took too long to answer.';
+export const TIMEOUT_MESSAGE = 'Builda took too long to answer.';
 
 export class ApiError extends Error {
   status: number;

@@ -17,7 +17,7 @@ import { Button, T } from '../../src/ui';
  * Step 3: your tools (DESIGN-DIRECTION 5's `HarnessPicker`, multi select). Signed in, the
  * account's sessions are counted per tool (`GET /v1/sessions`, the list the Sessions tab
  * already reads): the tools they came from come first and start picked, and the sentence over
- * them names them with the count ("Builder found 77 sessions from Claude Code on your account
+ * them names them with the count ("Builda found 77 sessions from Claude Code on your account
  * and picked it"). Every tile stays tappable. Signed out, or with nothing counted yet, the
  * sentence asks and nothing is picked.
  *

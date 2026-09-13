@@ -267,7 +267,7 @@ export interface TileModel {
 }
 
 /**
- * "9:37" on the Builder day it is now, else the day ("Sep 12"): a stale row left live over
+ * "9:37" on the Builda day it is now, else the day ("Sep 12"): a stale row left live over
  * a night must not read as this morning. The same rule as the stale note (`you/load.staleLine`).
  */
 export function clockOrDay(ms: number, nowMs: number): string {
@@ -923,7 +923,7 @@ export interface MissionSample {
 /** The sample for one `?sample=` kind. `grid` is six tiles, one of each kind a person meets most. */
 export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
   const ok = { signedIn: true, synced: true, error: null, savedAt: nowMs - 20_000 };
-  const offline = 'Builder is not reachable right now.';
+  const offline = 'Builda is not reachable right now.';
   if (kind === 'signedout') return { live: [], finals: [], seen: new Map(), inputs: { ...ok, signedIn: false } };
   if (kind === 'loading') return { live: [], finals: [], seen: new Map(), inputs: { ...ok, synced: false } };
   if (kind === 'error') return { live: [], finals: [], seen: new Map(), inputs: { ...ok, synced: false, error: offline } };

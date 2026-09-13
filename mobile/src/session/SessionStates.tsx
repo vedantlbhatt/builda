@@ -89,7 +89,7 @@ export function SessionMissing({ onBack }: { onBack: () => void }) {
     <SessionEmptyState
       state="sleeping"
       title="This session is not here."
-      text="It may have been deleted, or its repository taken out of Builder."
+      text="It may have been deleted, or its repository taken out of Builda."
       action="Back to sessions"
       onAction={onBack}
     />

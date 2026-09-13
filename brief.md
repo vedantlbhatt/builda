@@ -147,6 +147,16 @@ the plan. The money view must say so in words, never "you spent".
 `3665e85`). Kept: bundle id `com.vedantlbhatt.Builder`, App Group, APNs topic, the `builder://`
 scheme and code identifiers, because a bundle id change breaks signing, push and widget data.
 
+## Owner, 15:55: a Projects section, and the stack page revamped
+
+"Have a projects section where users keep track of their behaviours for each project. Right
+now it's overall profile or per session, but I want a breakdown of their project stats too...
+brainstorm what we can get out of project level statistics: how they build each project,
+what their most worked on ones are." And: "revamp the tech stack page too" (the old list).
+Plan: `docs/projects.md` (metrics, privacy class, refusals), `analysis/projects.py`, a
+`projects` report block, a Projects tab in the house style; the stack page rebuilt around real
+technology logos (Simple Icons, CC0) in brand colours.
+
 ## Design mandate
 
 Use these, do not hand roll:

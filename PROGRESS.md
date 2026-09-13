@@ -48,7 +48,11 @@ section.
 - Landed after the review: native recolour (8e7dff7), privacy fixes (5f4e675), numbers fixes
   (9969477). All suites green: analysis 1218, capture 137, bun 2052, tsc clean, server 331,
   lint, make gen stable. Stack re synced with the corrected numbers (160 sessions).
-- Running: the final capture of every screen into shots/final/ (+ videos), then the artifact.
+- Running: the final capture of every screen into shots/final/ (+ videos); project analytics
+  (engine, report block, server; docs/projects.md); the stack page with real tech logos.
+  Then: the Projects tab UI, the artifact.
+- Fixed from the capture pass: the time lapse crashed (bayer2 used before definition in a
+  worklet; 293f273).
 - Next: one simulator capture pass of every screen, the native recolour (Live Activity,
   island, widget in the creature hue) + rebuild, the adversarial review that was stopped
   (privacy, numbers, code), the artifact.

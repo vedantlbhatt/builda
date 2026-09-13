@@ -544,3 +544,68 @@ def test_session_finished_push_sees_the_users_tokens(client, pairing_user, monke
     assert sent == 1
     assert posted and posted[0].endswith("/3/device/abc123")
     assert "sandbox" in posted[0]
+
+
+# ------------------------------------------------------------ the phone and the machine (0024)
+
+
+def test_only_the_phones_sign_in_flips_a_switch_or_links(
+    client, google_jwks, google_key, created_users
+):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): `PUT /v1/privacy/prefs` took any device
+    token, and the device flow `capture pair` walks mints one. Through the real routes: the
+    phone signs in with Google and flips a switch; it approves a pairing code; the machine
+    that polls gets a token that may read the switches and upload, and is refused (403)
+    both the switch and linking an identity of its own, which would have made it a phone."""
+    r = client.post(
+        "/v1/auth/google",
+        json={
+            "id_token": google_token(google_key, f"g-{uuid.uuid4()}"),
+            "machine_id": MACHINE_A,
+            "platform": "ios",
+        },
+    )
+    assert r.status_code == 200, r.text
+    created_users.append(r.json()["user_id"])
+    phone = {"authorization": f"Bearer {r.json()['access_token']}"}
+    assert client.put("/v1/privacy/prefs", json={"quotes": True}, headers=phone).status_code == 200
+
+    started = client.post(
+        "/v1/auth/device/start",
+        json={
+            "machine_id": MACHINE_B,
+            "label": "Claude Code (box)",
+            "platform": "linux",
+            "agent_version": "cap",
+        },
+    ).json()
+    assert (
+        client.post(
+            "/v1/auth/device/approve", json={"user_code": started["user_code"]}, headers=phone
+        ).status_code
+        == 200
+    )
+    polled = client.post(
+        "/v1/auth/device/poll", json={"device_code": started["device_code"]}
+    ).json()
+    mac = {"authorization": f"Bearer {polled['access_token']}"}
+
+    assert client.get("/v1/privacy/prefs", headers=mac).json() == {
+        "quotes": True,
+        "live_names": False,
+    }
+    for body in ({"live_names": True}, {"quotes": False}):
+        refused = client.put("/v1/privacy/prefs", json=body, headers=mac)
+        assert refused.status_code == 403, refused.text
+    linked = client.post(
+        "/v1/auth/google",
+        json={"id_token": google_token(google_key, f"g-{uuid.uuid4()}"), "machine_id": MACHINE_B},
+        headers=mac,
+    )
+    assert linked.status_code == 403, linked.text
+    with owner_engine().connect() as c:
+        flows = c.execute(
+            text("SELECT platform, grant_flow FROM devices WHERE user_id = :u ORDER BY platform"),
+            {"u": r.json()["user_id"]},
+        ).all()
+    assert [tuple(f) for f in flows] == [("ios", "sign_in"), ("linux", "device_flow")]

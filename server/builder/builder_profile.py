@@ -40,6 +40,8 @@ from collections import Counter
 
 from sqlalchemy import text
 
+from . import quotes as quote_store
+
 #: docs/analysis.md: never compute an archetype from one run. Three is the smallest count
 #: at which "most common" and "the other one" are different things.
 MIN_SESSIONS = 3
@@ -297,7 +299,29 @@ def corpus_metrics(db, user_id: str, window_days: int) -> dict | None:
         return None
 
     facts = [_session_fact(ap, r) for r in _final_rows(db, user_id, window_days)]
-    return ap.corpus_profile(facts)
+    return refuse_overlapping_model_commits(ap, ap.corpus_profile(facts))
+
+
+def refuse_overlapping_model_commits(ap, profile: dict) -> dict:
+    """Null each model row's `commits` and `usd_per_commit` when the corpus's commit windows
+    overlap, with the reason in `commits_refusal`; the code when they do not is null.
+
+    FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a model's commits are the SUM of the
+    stored per session git log counts over the sittings it wrote most of, and two sittings
+    running at once in one repository both count every commit in the overlap. The machine
+    claims each commit once by its SHA before it sums (`profile.attribute_commits`); the
+    server stores no SHA, so its sum is the 31% high figure CLAUDE.md measured, and the
+    dollars per commit priced off it flatter every model. The test for "could two sittings
+    have seen the same commit" is the one that refuses `totals.total_commits`
+    (`profile._corpus_commits`, carried as `totals.commit_basis`): one rule, one function.
+    The dollars are unaffected: they are priced per session and never double count."""
+    refused = profile["totals"].get("commit_basis") == ap.COMMITS_OVERLAPPING
+    for row in profile.get("model_costs") or []:
+        if refused:
+            row["commits"] = None
+            row["usd_per_commit"] = None
+        row["commits_refusal"] = ap.COMMITS_OVERLAPPING if refused else None
+    return profile
 
 
 def eta_history(db, user_id: str, *, repo_hash: str | None = None) -> list | None:
@@ -497,6 +521,10 @@ def builder_quotes(db, user_id: str) -> dict | None:
     Turning the switch off deletes the row in the same transaction; the read checks the
     switch as well, so a row that somehow outlived it still shows nothing. Owner only by
     RLS on both tables, and read by this route alone: no social query joins it.
+
+    Only the quotes whose sessions are still on the server (`quotes.held_only`), and None
+    when none is. FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a quote typed in an
+    excluded repository was served after the repository's sessions were deleted.
     """
     row = db.execute(
         text(
@@ -508,7 +536,7 @@ def builder_quotes(db, user_id: str) -> dict | None:
         ),
         {"u": user_id},
     ).first()
-    return row.body if row else None
+    return quote_store.held_only(db, user_id, row.body) if row else None
 
 
 # ------------------------------------------------------------------------- report

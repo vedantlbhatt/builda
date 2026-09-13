@@ -23,6 +23,7 @@ import os
 import pathlib
 import re
 import stat
+import subprocess
 import tempfile
 import unittest
 
@@ -245,6 +246,100 @@ class TheLine(_Watch):
         # Nothing visible is said as that: too small yet and retired look the same from here.
         self.assertEqual(watch.describe(SID, 0, {"live": []}), [f"{SID[:8]}  +0 B  no visible session"])
         self.assertEqual(watch.describe(SID, 9, {"live": []}), [f"{SID[:8]}  +9 B  no visible session"])
+
+
+def _git_repo(where: pathlib.Path, origin: str) -> pathlib.Path:
+    where.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(where)], check=True)
+    subprocess.run(["git", "-C", str(where), "remote", "add", "origin", origin], check=True)
+    return where
+
+
+def cwd_line(i: int, cwd: pathlib.Path, text: str = "the payroll secret plan") -> bytes:
+    rec = {
+        "type": "user", "uuid": f"u-{i}", "timestamp": "2026-09-13T07:00:00.000Z", "cwd": str(cwd),
+        "promptSource": "typed", "message": {"role": "user", "content": text},
+    }
+    return (json.dumps(rec) + "\n").encode()
+
+
+class ExcludedRepository(_Watch):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): `capture live` never read
+    `BUILDER_CAPTURE_EXCLUDE`, so a sitting in a repository the person excluded went to the
+    server as its RAW transcript, prompts and all, while `capture sync` sent nothing from it.
+    The rule is `analysis.corpus.excluded`, the one every wire bound path applies; on this
+    channel it is applied to every record's working directory, because the bytes of a
+    sitting that touched the repository are that repository's words."""
+
+    def setUp(self):
+        super().setUp()
+        base = pathlib.Path(self.tmp.name)
+        self.secret = _git_repo(base / "secret", "https://github.com/acme/secret-payroll.git")
+        self.open = _git_repo(base / "open", "https://github.com/acme/open-thing.git")
+        os.environ["BUILDER_CAPTURE_EXCLUDE"] = "github.com/acme/secret-payroll"
+        # A watcher made after the variable is set, as `capture live` makes one.
+        self.w = watch.Watcher(
+            cl.Client(self.url), tz=dt.UTC, heartbeat=30.0, clock=lambda: self.now, say=self.said.append
+        )
+
+    def tearDown(self):
+        os.environ.pop("BUILDER_CAPTURE_EXCLUDE", None)
+        super().tearDown()
+
+    def test_an_excluded_repository_is_never_posted(self):
+        self.append(cwd_line(1, self.secret))
+        rc = watch.run(
+            cl.Client(self.url), transcripts=[], root=self.path.parents[1], tz=dt.UTC, every=5.0,
+            heartbeat=30.0, once=True, clock=lambda: self.now, say=self.said.append,
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.posts(), [], "an excluded repository's transcript left the machine")
+        self.assertTrue(any("BUILDER_CAPTURE_EXCLUDE" in s for s in self.said), self.said)
+        self.assertFalse(any("payroll" in s for s in self.said), "the sentence names no repository")
+
+    def test_a_sitting_that_moves_into_an_excluded_repository_stops_there(self):
+        """Lines already sent cannot be unsent; nothing after the first record in the
+        excluded repository leaves, the heartbeat included."""
+        self.append(cwd_line(1, self.open, "fix the page"))
+        self.w.tick([self.path])
+        self.assertEqual(len(self.posts()), 1)
+        self.append(cwd_line(2, self.secret))
+        self.now += 5
+        self.w.tick([self.path])
+        self.now += 60
+        self.w.tick([self.path])
+        self.assertEqual(len(self.posts()), 1)
+        self.assertNotIn(b"payroll", b"".join(body for _, body in self.posts()))
+        self.assertEqual(sum("BUILDER_CAPTURE_EXCLUDE" in s for s in self.said), 1, "said once")
+
+    def test_a_restarted_watcher_reads_what_came_before_its_offset(self):
+        """The offset says what the SERVER has; the check reads the whole transcript, so a
+        watcher started after the sitting entered the repository still sends nothing."""
+        self.append(cwd_line(1, self.secret) + cwd_line(2, self.open, "fix the page"))
+        self.w.store_offset(SID, len(cwd_line(1, self.secret)))
+        self.w.tick([self.path])
+        self.assertEqual(self.posts(), [])
+
+    def test_a_repository_that_is_not_excluded_still_posts(self):
+        self.append(cwd_line(1, self.open, "fix the page"))
+        self.w.tick([self.path])
+        self.assertEqual(self.server.chunks[SID], cwd_line(1, self.open, "fix the page"))
+
+    def test_the_rule_is_the_corpus_cuts(self):
+        """One rule, one function: the watcher asks `analysis.corpus.excluded`."""
+        src = (ROOT / "capture" / "watch.py").read_text()
+        self.assertIn("corpus.excluded(", src)
+        self.assertIn("repo.identity_for(", src)
+
+    def test_an_explicit_excluded_transcript_is_refused_with_a_sentence(self):
+        self.append(cwd_line(1, self.secret))
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(["live", "--server", self.url, "--transcript", str(self.path), "--once"])
+        self.assertEqual(rc, 1)
+        self.assertIn("BUILDER_CAPTURE_EXCLUDE", err.getvalue())
+        self.assertNotIn("payroll", err.getvalue() + out.getvalue())
+        self.assertEqual(self.posts(), [])
 
 
 class Command(_Watch):

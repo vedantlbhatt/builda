@@ -37,6 +37,11 @@ __pycache__/
 # macOS
 .DS_Store
 
+# Editor swap files. Vim's carries the user name, the host name and the path of the file
+# being edited (an untracked one sat in mobile/, found in review 2026-09-13).
+*.swp
+.*.swp
+
 # Assembled app bundle
 build/
 server/.venv/

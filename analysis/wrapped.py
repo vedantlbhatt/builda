@@ -246,7 +246,7 @@ _LIST_MARKER = re.compile(r"^\s*(\d{1,2}|[a-zA-Z])[.)]\s+")
 #: quoted, even masked: the sentence around a key is usually about the key.
 REDACTED = "[redacted]"
 
-#: A token whose letters and digits interleave (`Q7ZK2M9X4P`, `f7b1eb6`, an OAuth `code=`)
+#: A token whose letters and digits interleave (`Q7ZK2M9X4P`, `a1b2c3d`, an OAuth `code=`)
 #: is an IDENTIFIER: a team id, a one time code, a key, a hash. People do not type prose
 #: that way; they paste values that way. The shape is the one section 2.2 first called
 #: gibberish, and it is exactly the shape brief.md warned about ("the cryptic prompt filter
@@ -353,9 +353,15 @@ def quotable(text: str | None) -> bool:
 #: error carrying a home directory path, a letters only password as the most cryptic
 #: prompt, a pasted customer complaint with a name and a street address, and distress
 #: ("I HATE MYSELF") as "Your angriest prompt. We have all been there."
+#: FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): the labels people put in front of a
+#: password when they type one (`pw`, `pwd`, `pin`, `login`) named none of these, so
+#: "pw xkcdmbrptw" passed all three filters and was uploaded. A prompt that says "fix the
+#: login page" is no longer quoted either: a prompt wrongly left unquoted costs a quote,
+#: never a claim. The server runs this same pattern (`server/builder/quotes.py` imports
+#: `_private`), so there is one list.
 _SECRET_WORDS = re.compile(
-    r"\b(pass(word|wd|code|phrase)|secret|token|bearer|api[\s_-]?key|private key|"
-    r"credentials?|otp|2fa|ssn)\b",
+    r"\b(pass(word|wd|code|phrase)|passwd|passcode|pw|pwd|pin|login|secret|token|bearer|"
+    r"api[\s_-]?key|private key|credentials?|otp|2fa|ssn)\b",
     re.I,
 )
 _HOME_PATH = re.compile(r"(?:^|[\s'\"(=:])(?:/Users/|/home/|/root/|~/|[A-Za-z]:\\)")
@@ -546,8 +552,8 @@ REFUSALS: dict[str, str | dict[str, str]] = {
     "no_crash_out": "no prompt read as a crash out",
     # What was checked and the bar it failed, never "not cryptic enough".
     "no_cryptic_prompt": {
-        "zero": "no short prompt of {min_tokens} or more words to read ({min_chars} to "
-        "{max_chars} characters, no path, link or hash)",
+        "zero": "no short prompt with {min_tokens} or more words of {min_token_chars} or more "
+        "characters to read ({min_chars} to {max_chars} characters, no path, link or hash)",
         "one": "the 1 short prompt was not mostly keyboard mash (five letters in a row with "
         "no vowel)",
         "other": "none of the {n:short prompt} was mostly keyboard mash (five letters in a "
@@ -1257,12 +1263,18 @@ CRYPTIC_MIN_CHARS, CRYPTIC_MAX_CHARS = 4, 80
 #: A prompt of one token is never the cryptic prompt: a letters only password and a
 #: keyboard mash have the same shape (FOUND IN REVIEW: `xkcdmbrptw` was crowned).
 CRYPTIC_MIN_TOKENS = 2
+#: ...and only a token this long counts toward the two. FOUND IN THE ADVERSARIAL REVIEW
+#: (2026-09-13): a short label in front of a password ("pw xkcdmbrptw") made it two tokens,
+#: and the card crowned the password. Not a new number: it is `CRYPTIC_MIN_CHARS`, the least
+#: that can be mostly gibberish, applied to each word instead of to the whole prompt.
+CRYPTIC_MIN_TOKEN_CHARS = CRYPTIC_MIN_CHARS
 CRYPTIC_BASIS = "vowelless_runs"
 
 #: Constants a refusal template names (`refusal_text`), so the wire need not carry them
 #: on every card: the cryptic bar's own numbers. The phone gets the same table.
 REFUSAL_CONSTANTS: dict[str, int] = {
     "min_tokens": CRYPTIC_MIN_TOKENS,
+    "min_token_chars": CRYPTIC_MIN_TOKEN_CHARS,
     "min_chars": CRYPTIC_MIN_CHARS,
     "max_chars": CRYPTIC_MAX_CHARS,
 }
@@ -1275,7 +1287,7 @@ def _cryptic_candidate(text: str) -> bool:
     alnum = _NOT_ALNUM.sub("", s)
     if len(alnum) < 4:
         return False
-    if len(s.split()) < CRYPTIC_MIN_TOKENS:
+    if sum(1 for tok in s.split() if len(tok) >= CRYPTIC_MIN_TOKEN_CHARS) < CRYPTIC_MIN_TOKENS:
         return False
     if any(len(tok) >= CRYPTIC_MAX_TOKEN for tok in s.split()):
         return False

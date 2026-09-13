@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from sqlalchemy import text
 
 from .. import live_store, quotes
-from ..auth import CurrentDevice, current_device, current_uploader
+from ..auth import CurrentDevice, current_device, current_phone, current_uploader
 from ..contract import ANONYMOUS_FIELDS, CONTRACT_VERSION, PUBLIC_FIELDS
 from ..db import db_session
 from ..quotes_spec import QuotesUpload
@@ -47,11 +47,15 @@ def privacy_fields_text():
     lines += [f"  {f}" for f in fields]
     lines += [
         "",
-        "Never sent, in any mode: prompt text, assistant text, thinking, tool inputs or",
-        "outputs, file contents, diffs, file paths, file names, directory names, commit",
-        "messages, commit SHAs, branch names, cwd, git remote URLs, repository names for",
-        "repositories you have not marked public, MCP server names, terminal commands or",
-        "their output, environment variables, URLs fetched, hostname, IP address.",
+        "Never in a session upload, in any mode: prompt text, assistant text, thinking,",
+        "tool inputs or outputs, file contents, diffs, file paths, file names, directory",
+        "names, commit messages, commit SHAs, branch names, cwd, git remote URLs, repository",
+        "names for repositories you have not marked public, MCP server names, terminal",
+        "commands or their output, environment variables, URLs fetched, hostname, IP address.",
+        "",
+        "The Claude Code hook and `python -m capture live` are a separate channel that sends",
+        "the raw transcript to this server, which keeps only the fields above and deletes",
+        "the raw bytes when the session is final (PRIVACY.md, The raw transcript channel).",
         "",
         f"Public-repo-only fields: {sorted(set(PUBLIC_FIELDS) - set(ANONYMOUS_FIELDS))}",
     ]
@@ -87,9 +91,11 @@ def get_prefs(device: CurrentDevice = Depends(current_device)):
 
 
 @router.put("/privacy/prefs")
-def put_prefs(body: PrefsUpdate, device: CurrentDevice = Depends(current_device)):
-    """Flip one switch or both. `current_device`: only the phone flips a switch, never a
-    capture key, so a machine cannot opt its own account into sending more.
+def put_prefs(body: PrefsUpdate, device: CurrentDevice = Depends(current_phone)):
+    """Flip one switch or both. `current_phone`: only the phone flips a switch, never a
+    capture key and never a paired machine's device flow token (403, FOUND IN THE
+    ADVERSARIAL REVIEW 2026-09-13: `current_device` let `capture pair`'s token turn both on),
+    so a machine cannot opt its own account into sending more.
 
     OFF DELETES, IN THIS TRANSACTION: quotes off deletes every stored quote and answers how
     many (`quotes_deleted`, a measured count, 0 included); File names off forgets every
@@ -205,6 +211,10 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
                 ),
                 {"u": str(device.user_id), "r": str(repo.id)},
             )
+            # The quotes typed in its sessions (FOUND IN THE ADVERSARIAL REVIEW,
+            # 2026-09-13): they outlived the sweep, stored and shown on the Wrapped cards.
+            # A quote names its session, and those sessions are gone now.
+            quotes.drop_unheld(db, str(device.user_id))
         elif body.visibility == "anonymous":
             # Dropping to anonymous must strip the name and the title everywhere it was
             # already stored, not just stop sending them from now on.

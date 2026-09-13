@@ -35,10 +35,26 @@ MAX_LIVE_CAPTURE_KEYS = 10
 CAPTURE_KEY_TOUCH_INTERVAL_SEC = 60
 
 
+#: How a device's tokens were granted (`devices.grant_flow`, 0024). `register_device` is the
+#: one writer and every grant names its own; the migration's CHECK list is pinned to this
+#: tuple by server/tests/test_contract.py.
+SIGN_IN = "sign_in"  # Sign in with Apple or Google: the phone
+DEVICE_FLOW = "device_flow"  # RFC 8628 pairing: the Mac app and `capture pair`
+CAPTURE_KEY = "capture_key"  # the device a capture key uploads as (0011)
+GRANT_FLOWS = (SIGN_IN, DEVICE_FLOW, CAPTURE_KEY)
+
+#: The 403 a paired machine gets from a switch only the phone flips. It says where the
+#: switch is, because the person reading it is at a terminal.
+PHONE_ONLY = "only the phone changes this: turn it on or off in the Builda app's Settings"
+
+
 @dataclass
 class CurrentDevice:
     user_id: uuid.UUID
     device_id: uuid.UUID
+    #: `devices.grant_flow` (0024), read with the revocation check. None only for a device
+    #: made without the route (a test's hand built one); `current_phone` refuses it too.
+    grant_flow: str | None = None
 
 
 @dataclass
@@ -194,7 +210,14 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
 
 
 def register_device(
-    db, user_id: str, machine_id: str, label: str, platform: str, agent_version: str
+    db,
+    user_id: str,
+    machine_id: str,
+    label: str,
+    platform: str,
+    agent_version: str,
+    *,
+    grant_flow: str,
 ) -> str:
     """Create or refresh the device row for (user, machine), un-revoking it if needed.
 
@@ -202,16 +225,23 @@ def register_device(
     that writes `devices`, and the viewer must already be set to `user_id` when it runs.
     `devices` is RLS-protected with an owner policy: with the viewer unset this INSERT is
     a WITH CHECK violation, which surfaced as a bare 500 from `/v1/auth/device/poll`.
+
+    `grant_flow` (0024) is how THIS grant was made, and a refreshed row takes the newest:
+    the tokens it is about to mint are that flow's. Keyword only and required, so a new
+    sign in path cannot land without saying which it is.
     """
+    if grant_flow not in GRANT_FLOWS:
+        raise ValueError(f"unknown grant flow {grant_flow!r}")
     set_viewer(db, user_id)
     row = db.execute(
         text(
             """
-            INSERT INTO devices (user_id, label, platform, agent_version, machine_id)
-            VALUES (:u, :label, :platform, :ver, :mid)
+            INSERT INTO devices (user_id, label, platform, agent_version, machine_id, grant_flow)
+            VALUES (:u, :label, :platform, :ver, :mid, :flow)
             ON CONFLICT (user_id, machine_id) DO UPDATE
               SET agent_version = EXCLUDED.agent_version,
                   label = EXCLUDED.label,
+                  grant_flow = EXCLUDED.grant_flow,
                   revoked_at = NULL
             RETURNING id
             """
@@ -222,6 +252,7 @@ def register_device(
             "platform": platform,
             "ver": agent_version,
             "mid": machine_id,
+            "flow": grant_flow,
         },
     ).one()
     return str(row.id)
@@ -270,6 +301,7 @@ def create_capture_key(db, user_id: str, name: str) -> dict:
         label=name,
         platform="capture",
         agent_version="capture-key",
+        grant_flow=CAPTURE_KEY,
     )
     row = db.execute(
         text(
@@ -332,7 +364,7 @@ def _device_from_capture_key(raw: str) -> CurrentDevice:
                 text("UPDATE capture_keys SET last_used_at = now() WHERE id = :i"),
                 {"i": str(row.id)},
             )
-    return CurrentDevice(user_id=row.user_id, device_id=row.device_id)
+    return CurrentDevice(user_id=row.user_id, device_id=row.device_id, grant_flow=CAPTURE_KEY)
 
 
 # --------------------------------------------------------------------------- deps
@@ -374,6 +406,22 @@ def current_device(request: Request) -> CurrentDevice:
     return _device_from_bearer(header[7:])
 
 
+def current_phone(request: Request) -> CurrentDevice:
+    """The PHONE's dependency: a device token granted by Sign in with Apple or Google.
+
+    FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): the privacy switches were on
+    `current_device`, which accepts every device token, and `python -m capture pair` mints
+    one through the device flow, so a paired machine could opt its own account into sending
+    prompts and file names. The double opt in is the phone's switch AND the machine's flag;
+    a machine that can flip the switch has both halves. A device flow token (or a row whose
+    flow is not recorded) is a 403 that says where the switch is; a capture key never gets
+    this far (`_device_from_bearer` refuses it by prefix)."""
+    device = current_device(request)
+    if device.grant_flow != SIGN_IN:
+        raise HTTPException(403, PHONE_ONLY)
+    return device
+
+
 def optional_current_device(request: Request) -> CurrentDevice | None:
     """The sign-in routes' half-open door: no header means "create", a header means "link".
 
@@ -388,6 +436,17 @@ def optional_current_device(request: Request) -> CurrentDevice | None:
     if not header.lower().startswith("bearer "):
         raise HTTPException(401, "malformed authorization header")
     return _device_from_bearer(header[7:])
+
+
+def optional_linker(request: Request) -> CurrentDevice | None:
+    """`optional_current_device` for the sign in routes, where a bearer means "link this
+    identity to my account". Linking is the phone's: a paired machine that could link an
+    identity it controls would sign in as the account's phone with it, and every switch
+    `current_phone` guards would be one request away (0024). A device flow bearer is a 403."""
+    device = optional_current_device(request)
+    if device is not None and device.grant_flow != SIGN_IN:
+        raise HTTPException(403, "only the phone links another sign in to this account")
+    return device
 
 
 def _device_from_bearer(token: str) -> CurrentDevice:
@@ -412,12 +471,14 @@ def _device_from_bearer(token: str) -> CurrentDevice:
 
     with db_session(viewer_id=str(device.user_id)) as db:
         row = db.execute(
-            text("SELECT revoked_at FROM devices WHERE id = :d"), {"d": str(device.device_id)}
+            text("SELECT revoked_at, grant_flow FROM devices WHERE id = :d"),
+            {"d": str(device.device_id)},
         ).first()
     # No row covers both "deleted" and "belongs to someone else": under the owner policy
     # a device the viewer does not own is indistinguishable from one that does not exist.
     if row is None or row.revoked_at is not None:
         raise HTTPException(401, "device revoked")
+    device.grant_flow = row.grant_flow
     return device
 
 

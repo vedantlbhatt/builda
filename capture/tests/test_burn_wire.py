@@ -223,17 +223,50 @@ class TitleIds(_Burn):
                 attended_seconds=1.0, tz_offset_minutes=0, events=s.events,
             )
         )
-        self.assertEqual(got, {"verb": t["verb"], "object": t["object"], "n": t["count"], "modules": t["modules"]})
+        self.assertEqual(
+            got,
+            {"verb": t["verb"], "object": t["object"], "n": t["count"], "modules": t["modules"], "reason": None},
+        )
         # The failing runs never came back green (no recovery), so the commit and the lines
         # title it: two source files (src/a.py and the created one) in two directories.
-        self.assertEqual(got, {"verb": "shipped", "object": "source", "n": 2, "modules": 2})
+        self.assertEqual(got, {"verb": "shipped", "object": "source", "n": 2, "modules": 2, "reason": None})
         self.assertEqual(self.walk("SessionTitleIds", got), [])
         self.assertNotIn("zqx", json.dumps(got))
 
-    def test_no_title_is_null_not_a_guess(self):
+    def test_a_refused_title_is_a_reason_not_a_null(self):
+        """Null on the wire means "not computed" (an image without `analysis/`), and the
+        server keeps a stored title when it gets one. A REFUSAL is a document: no verb, no
+        object, and `vocab.session_title`'s code."""
         b = tr.Builder().prompt(0, "hello")
         b.say(5, "Hi.")
-        self.assertIsNone(sessions.title_ids(self.cut(b)))
+        got = sessions.title_ids(self.cut(b))
+        self.assertEqual(
+            got, {"verb": None, "object": None, "n": None, "modules": None, "reason": "no_tool_calls"}
+        )
+        self.assertEqual(self.walk("SessionTitleIds", got), [])
+
+    def test_the_final_cut_that_refuses_says_so_where_the_live_cut_titled(self):
+        """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13, `advrev/code/probes/title_stale.py`):
+        14 script calls are too few for the checkpoint bar and get a title; 40 of the same
+        call are a sitting whose writes the transcript hides, and the title is refused. The
+        wire said null for the refusal, so the server kept the live cut's title forever."""
+        from analysis import feedback
+
+        def sitting(calls: int) -> tr.Builder:
+            b = tr.Builder().prompt(0, "fix the page")
+            for i in range(calls):
+                b.bash(10 + 5 * i, "python3 - <<'PY'\np='src/a.py'\nPY")
+            return b
+
+        live = sessions.title_ids(self.cut(sitting(feedback.MIN_TOOL_CALLS - 1)))
+        final = sessions.title_ids(self.cut(sitting(40)))
+        self.assertIsNotNone(live["verb"], live)
+        self.assertIsNone(live["reason"])
+        self.assertEqual(
+            final,
+            {"verb": None, "object": None, "n": None, "modules": None, "reason": "below_checkpoint_density"},
+        )
+        self.assertEqual(self.walk("SessionTitleIds", final), [])
 
     def test_the_payload_carries_both_blocks(self):
         s = self.cut(many_stretches())

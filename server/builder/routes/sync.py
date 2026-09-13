@@ -157,6 +157,17 @@ def sanity_gate(p: SessionUpload) -> str | None:
     ):
         return "live_names carries a path separator or NUL (basenames only)"
 
+    # A title is its verb and its object, or the reason there is none (v4 `title_ids.reason`,
+    # FOUND IN THE ADVERSARIAL REVIEW 2026-09-13). A refusal that also names a verb still
+    # renders a title on the phone, and half a title renders nothing without saying why:
+    # either is a client that set one half and forgot the other.
+    t = p.title_ids
+    if t is not None:
+        titled = t.verb is not None and t.object is not None
+        bare = t.verb is None and t.object is None
+        if not ((t.reason is None and titled) or (t.reason is not None and bare)):
+            return "title_ids must carry a verb and an object, or a reason and neither"
+
     return None
 
 
@@ -217,6 +228,33 @@ def upload_batch(body: BatchRequest, device: CurrentDevice = Depends(current_upl
 #: `capture sync --live --live-names` against an account with File names off says so.
 LIVE_NAMES_OFF = "live_names sent while file names are off for this account"
 
+#: The rejection for a session in a repository the account excluded. Excluding deletes what
+#: is stored (routes/privacy.py `set_visibility`); this keeps the next upload from any
+#: machine, the hook channel's included, from putting it back. Said to the client, which
+#: prints it (`capture sync`, the watcher's "rejected" line).
+REPO_EXCLUDED = "this repository is excluded for this account, so nothing from it is stored"
+
+
+def _repo_excluded(db, user_id: str, repo_hash: str | None) -> bool:
+    """`session_repo_excluded` (0004), the one function the RLS policies and the social
+    routes ask: SECURITY DEFINER, so it reads `repo_visibility` whoever the viewer is.
+
+    Asked by HASH, before `_upsert_repo`, so an excluded repository's upload writes nothing
+    at all: not the session, and not the `public_name` the upsert would otherwise refresh
+    on the shared `repos` row. A repository with no row cannot have been excluded (the
+    visibility row references it)."""
+    if not repo_hash:
+        return False
+    return bool(
+        db.execute(
+            text(
+                "SELECT session_repo_excluded(CAST(:u AS uuid), r.id) FROM repos r "
+                "WHERE r.repo_hash = :h"
+            ),
+            {"u": user_id, "h": repo_hash},
+        ).scalar()
+    )
+
 
 def store_payloads(db, device: CurrentDevice, payloads: list[SessionUpload]) -> Stored:
     """The per-session upsert, shared by the batch route and the hook channel
@@ -269,6 +307,11 @@ def store_payloads(db, device: CurrentDevice, payloads: list[SessionUpload]) -> 
             unchanged += 1
             continue
 
+        if _repo_excluded(db, user_id, p.repo_hash):
+            # FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): the exclusion sweep deleted the
+            # sessions and the next upload recreated them, the live row and its pushes.
+            rejected.append({"client_session_id": p.client_session_id, "reason": REPO_EXCLUDED})
+            continue
         repo_id = _upsert_repo(db, p)
         session_id = _upsert_session(db, device, p, repo_id, existing)
         _upsert_strip(db, session_id, p)
@@ -434,7 +477,10 @@ def _upsert_session(db, device: CurrentDevice, p: SessionUpload, repo_id, existi
               title = EXCLUDED.title,
               title_source = EXCLUDED.title_source,
               -- COALESCE, as `feedback` and `analysis` (0023): a client that does not
-              -- compute a title (the Mac) must not erase the one another client did.
+              -- compute a title (the Mac) sends null and must not erase the one another
+              -- client did. A REFUSAL is not null: it is a document with `reason` set and
+              -- no verb, and like a burn refusal it replaces a stale title (the live cut's,
+              -- after the final cut refused one).
               title_ids = COALESCE(EXCLUDED.title_ids, sessions.title_ids),
               agent_observed_at = EXCLUDED.agent_observed_at,
               updated_at = now()

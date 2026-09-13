@@ -10,8 +10,10 @@
  *     session's screen.
  *
  * Both start OFF, and turning either off DELETES what it let through: the server does it in
- * the same request, and for file names this phone clears its own cached copy too. The
- * third switch, Show details on Lock Screen, is this phone's alone (`cache.ts`).
+ * the same request, and this phone clears its own copy too: the cached file names
+ * (`cache.forgetLiveNames`) and any quote an older build saved with the builder profile
+ * (`builderCache.forgetCachedQuotes`). The third switch, Show details on Lock Screen, is this
+ * phone's alone (`cache.ts`).
  *
  * Pure apart from the calls it is handed, so `__tests__/privacyToggles.test.ts` runs it
  * without React Native.
@@ -101,20 +103,24 @@ export interface ToggleOutcome {
 }
 
 /**
- * Move one switch. Sends ONLY that key (the other is never rewritten), and when file names
- * go off, clears this phone's cached names as well (`forgetLiveNames`), so turning it off
- * deletes them everywhere they were. On a failure nothing changes and the message says why.
+ * Move one switch. Sends ONLY that key (the other is never rewritten), and when a switch goes
+ * off, clears this phone's own copy as well: the cached names (`forgetLiveNames`) for file
+ * names, the saved builder profile's quotes (`forgetQuotes`) for quotes. So turning either off
+ * deletes what it let through everywhere it was. On a failure nothing changes and the message
+ * says why. FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): quotes off cleared nothing here.
  */
 export async function setPrivacySwitch(
   api: Pick<Api, 'setPrivacyPrefs'>,
   current: PrivacyPrefs,
   key: PrivacySwitch,
   on: boolean,
-  forgetLiveNames: () => Promise<unknown>
+  forgetLiveNames: () => Promise<unknown>,
+  forgetQuotes: () => Promise<unknown>
 ): Promise<ToggleOutcome> {
   try {
     const result = await api.setPrivacyPrefs({ [key]: on });
     if (key === 'live_names' && !on) await forgetLiveNames();
+    if (key === 'quotes' && !on) await forgetQuotes();
     const prefs = { quotes: result.quotes === true, live_names: result.live_names === true };
     return { prefs, message: toggledLine(key, on, result), ok: true };
   } catch (e) {

@@ -58,13 +58,26 @@ describe('the privacy switches', () => {
   test('quotes off calls setPrivacyPrefs({quotes: false}) and shows the deleted count', async () => {
     const { api, sent } = fakeApi(() => ({ quotes: false, live_names: true, quotes_deleted: 2 }));
     let forgot = 0;
-    const out = await privacy.setPrivacySwitch(api, { quotes: true, live_names: true }, 'quotes', false, async () => {
-      forgot += 1;
-    });
+    let quotesForgot = 0;
+    const out = await privacy.setPrivacySwitch(
+      api,
+      { quotes: true, live_names: true },
+      'quotes',
+      false,
+      async () => {
+        forgot += 1;
+      },
+      async () => {
+        quotesForgot += 1;
+      },
+    );
     expect(sent).toEqual([{ quotes: false }]);
     expect(out).toEqual({ prefs: { quotes: false, live_names: true }, message: 'Quotes off. 2 quotes deleted.', ok: true });
-    // Quotes are the server's to delete; the phone's cached file names are untouched.
+    // The phone's cached file names are untouched...
     expect(forgot).toBe(0);
+    // ...and its saved copy of the builder profile is rewritten without them (FOUND IN THE
+    // ADVERSARIAL REVIEW, 2026-09-13: an older build saved them there, and off never cleared it).
+    expect(quotesForgot).toBe(1);
   });
 
   test('the deleted count is said as the server said it: one, none, or not at all', () => {
@@ -77,7 +90,11 @@ describe('the privacy switches', () => {
 
   test('quotes on says the machine half of the double opt in', async () => {
     const { api, sent } = fakeApi(() => ({ quotes: true, live_names: false }));
-    const out = await privacy.setPrivacySwitch(api, OFF, 'quotes', true, async () => 0);
+    let quotesForgot = 0;
+    const out = await privacy.setPrivacySwitch(api, OFF, 'quotes', true, async () => 0, async () => {
+      quotesForgot += 1;
+    });
+    expect(quotesForgot).toBe(0);
     expect(sent).toEqual([{ quotes: true }]);
     expect(out.prefs).toEqual({ quotes: true, live_names: false });
     expect(out.message).toContain(privacy.QUOTES_MACHINE_COMMAND);
@@ -86,10 +103,19 @@ describe('the privacy switches', () => {
   test('file names off sends only live_names and clears the names this phone cached', async () => {
     const { api, sent } = fakeApi(() => ({ quotes: true, live_names: false }));
     let forgot = 0;
-    const out = await privacy.setPrivacySwitch(api, { quotes: true, live_names: true }, 'live_names', false, async () => {
-      forgot += 1;
-      return 3;
-    });
+    const out = await privacy.setPrivacySwitch(
+      api,
+      { quotes: true, live_names: true },
+      'live_names',
+      false,
+      async () => {
+        forgot += 1;
+        return 3;
+      },
+      async () => {
+        throw new Error('file names off must not touch the saved quotes');
+      },
+    );
     expect(sent).toEqual([{ live_names: false }]);
     expect(forgot).toBe(1);
     expect(out.prefs).toEqual({ quotes: true, live_names: false });
@@ -99,9 +125,18 @@ describe('the privacy switches', () => {
   test('a switch the server refused does not move, and the line says why', async () => {
     const { api } = fakeApi(() => new ApiError(503, 'Builda is not reachable right now.'));
     let forgot = 0;
-    const out = await privacy.setPrivacySwitch(api, { quotes: true, live_names: true }, 'live_names', false, async () => {
-      forgot += 1;
-    });
+    const out = await privacy.setPrivacySwitch(
+      api,
+      { quotes: true, live_names: true },
+      'live_names',
+      false,
+      async () => {
+        forgot += 1;
+      },
+      async () => {
+        forgot += 1;
+      },
+    );
     expect(out.ok).toBe(false);
     expect(out.prefs).toEqual({ quotes: true, live_names: true });
     expect(out.message).toBe('Nothing changed: Builda is not reachable right now.');
@@ -134,7 +169,7 @@ describe('the privacy switches', () => {
 
   test('Settings drives all three switches from this module and the cache', () => {
     const src = readFileSync(join(import.meta.dir, '..', 'app', 'settings.tsx'), 'utf8');
-    for (const name of ['setPrivacySwitch', 'loadPrivacyPrefs', 'forgetLiveNames', 'setLockScreenDetails', 'getLockScreenDetails']) {
+    for (const name of ['setPrivacySwitch', 'loadPrivacyPrefs', 'forgetLiveNames', 'forgetCachedQuotes', 'setLockScreenDetails', 'getLockScreenDetails']) {
       expect({ name, used: src.includes(name) }).toEqual({ name, used: true });
     }
     // The old sentence said file names never leave the machine; with the opt in that is false.

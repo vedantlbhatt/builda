@@ -23,7 +23,13 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
-from test_contract import SAMPLE_ANALYSIS, SAMPLE_BURN, SAMPLE_TITLE_IDS, valid_payload
+from test_contract import (
+    SAMPLE_ANALYSIS,
+    SAMPLE_BURN,
+    SAMPLE_TITLE_IDS,
+    SAMPLE_TITLE_REFUSAL,
+    valid_payload,
+)
 
 TEST_DB = os.environ.get("BUILDER_TEST_DB")
 pytestmark = pytest.mark.skipif(not TEST_DB, reason="set BUILDER_TEST_DB to run")
@@ -126,6 +132,30 @@ def _pair(client, created_users) -> tuple[str, dict]:
 @pytest.fixture
 def paired(client, created_users):
     return _pair(client, created_users)
+
+
+def _phone(uid: str) -> dict:
+    """The account's PHONE: a device registered the way Sign in with Apple and Google
+    register one (`grant_flow` sign_in, 0024), and its bearer. The phone is the one device
+    that flips a privacy switch; `paired` is a machine (the device flow `capture pair`
+    walks), which may not. Minted in process through the one writer, `register_device`,
+    because no test holds an Apple identity token; test_auth.py walks the Google route."""
+    from builder.auth import SIGN_IN, issue_access_token, register_device
+    from builder.db import db_session
+
+    with db_session() as db:
+        did = register_device(
+            db, uid, uuid.uuid4().hex * 2, "test-phone", "ios", "test", grant_flow=SIGN_IN
+        )
+    return {"authorization": f"Bearer {issue_access_token(uid, did)}"}
+
+
+def _phone_for(headers: dict) -> dict:
+    """`_phone` of the account a bearer belongs to (its `sub`)."""
+    import jwt
+
+    token = headers["authorization"].removeprefix("Bearer ")
+    return _phone(jwt.decode(token, options={"verify_signature": False})["sub"])
 
 
 def _payload(**overrides) -> dict:
@@ -520,6 +550,93 @@ def test_a_burn_refusal_replaces_a_stored_answer(client, paired):
     assert _upload(client, headers, _payload(client_session_id=csid, burn=refused))["accepted"] == 1
     sid = _owner_rows(uid)[0].id
     assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["burn"] == refused
+
+
+def test_an_upload_after_exclusion_is_refused_and_stores_nothing(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): excluding a repository deleted its
+    sessions, and the next upload from any machine (a `capture sync` without the local
+    variable, a hook tail) recreated the session, its live row and the pushes that follow:
+    `store_payloads` never asked `repo_visibility`. It asks now, with the one function the
+    policies use (`session_repo_excluded`), and the client reads why."""
+    from test_contract import SAMPLE_LIVE
+
+    uid, headers = paired
+    rhash = uuid.uuid4().hex * 2
+    csid = uuid.uuid4().hex * 2
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=20)
+    first = _live(started, 15, client_session_id=csid, repo_hash=rhash, live=SAMPLE_LIVE)
+    assert _upload(client, headers, first)["accepted"] == 1
+    r = client.post(
+        "/v1/repos/visibility", json={"repo_hash": rhash, "visibility": "excluded"}, headers=headers
+    )
+    assert r.status_code == 200 and r.json()["sessions_deleted"] == 1, r.text
+
+    again = _live(started, 16, client_session_id=csid, repo_hash=rhash, live=SAMPLE_LIVE)
+    out = _upload(client, headers, again)
+    assert (out["accepted"], out["unchanged"]) == (0, 0), out
+    assert out["rejected"] == [
+        {
+            "client_session_id": csid,
+            "reason": "this repository is excluded for this account, so nothing from it is stored",
+        }
+    ]
+    assert _owner_rows(uid) == []
+    with owner_engine().connect() as c:
+        live_rows = c.execute(
+            text("SELECT count(*) FROM session_live WHERE user_id = :u"), {"u": uid}
+        ).scalar()
+    assert live_rows == 0
+    # Every other repository still uploads.
+    assert _upload(client, headers, _payload(repo_hash=uuid.uuid4().hex * 2))["accepted"] == 1
+
+
+def test_a_title_refusal_clears_a_stale_title(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a live cut at 14 tool calls is titled,
+    and the same sitting's final cut at 40 is refused (its checkpoints fell below the bar:
+    a title would describe what the transcript hides). The wire said null for a refusal and
+    for "not computed" alike, and the upsert's COALESCE kept the live title forever. A
+    refusal is a document now, `reason` set and no verb, and it replaces what was stored;
+    a client that computes no title (the Mac) still leaves the stored document alone."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    assert (
+        _upload(client, headers, _payload(client_session_id=csid, title_ids=SAMPLE_TITLE_IDS))[
+            "accepted"
+        ]
+        == 1
+    )
+    sid = _owner_rows(uid)[0].id
+    refused = _payload(client_session_id=csid, title_ids=SAMPLE_TITLE_REFUSAL)
+    assert _upload(client, headers, refused)["accepted"] == 1
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["title_ids"] == (
+        SAMPLE_TITLE_REFUSAL
+    )
+    listed = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert [s["title_ids"] for s in listed] == [SAMPLE_TITLE_REFUSAL]
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["title_ids"] == (
+        SAMPLE_TITLE_REFUSAL
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {**SAMPLE_TITLE_IDS, "reason": "no_tool_calls"},
+        {"verb": None, "object": "source", "n": 3, "modules": None, "reason": None},
+        {"verb": "shipped", "object": None, "n": 3, "modules": None, "reason": None},
+        {"verb": None, "object": None, "n": None, "modules": None, "reason": None},
+    ],
+)
+def test_a_title_is_a_verb_and_an_object_or_a_reason_never_both(client, paired, bad):
+    """A refusal with a verb still renders a title on the phone, and a verb with no object
+    renders nothing without saying why: either is a client that set one half and forgot
+    the other."""
+    uid, headers = paired
+    out = _upload(client, headers, _payload(title_ids=bad))
+    assert out["accepted"] == 0
+    assert out["rejected"][0]["reason"].startswith("title_ids"), out
+    assert _owner_rows(uid) == []
 
 
 def test_burn_and_title_ids_read_back_null_never_missing(client, paired):

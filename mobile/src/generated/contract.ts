@@ -22,6 +22,7 @@ export type BurnRefusal = "no_token_counts" | "below_session_floor" | "nothing_i
 export type BurnRepeat = "shell" | "edit" | "read" | "other";
 export type TitleVerb = "debugged" | "wired" | "refactored" | "shipped" | "committed" | "tested" | "built" | "explored" | "worked_through" | "edited" | "looked_around";
 export type TitleObject = "test" | "source" | "config" | "docs" | "migration" | "style" | "build" | "dependency" | "unknown" | "test_suite" | "commit" | "failure" | "codebase";
+export type TitleRefusal = "no_tool_calls" | "writes_name_no_file" | "harness_files_only" | "below_checkpoint_density";
 
 /** Legal values for the enums of the contract's own objects (v4), in contract order. */
 export const CONTRACT_ENUMS = {
@@ -30,6 +31,7 @@ export const CONTRACT_ENUMS = {
   burn_repeat: ["shell", "edit", "read", "other"],
   title_verb: ["debugged", "wired", "refactored", "shipped", "committed", "tested", "built", "explored", "worked_through", "edited", "looked_around"],
   title_object: ["test", "source", "config", "docs", "migration", "style", "build", "dependency", "unknown", "test_suite", "commit", "failure", "codebase"],
+  title_refusal: ["no_tool_calls", "writes_name_no_file", "harness_files_only", "below_checkpoint_density"],
 } as const;
 
 export interface SessionBurnCause {
@@ -91,14 +93,16 @@ export interface SessionBurn {
 }
 
 export interface SessionTitleIds {
-  /** the first title rule the session satisfied (vocab.VERBS, in the order they are tried) */
-  verb: TitleVerb;
-  /** what the title is about: a file role, or test_suite, commit, failure, codebase (vocab.OBJECTS) */
-  object: TitleObject;
+  /** the first title rule the session satisfied (vocab.VERBS, in the order they are tried). Null exactly when reason is set */
+  verb?: TitleVerb | null;
+  /** what the title is about: a file role, or test_suite, commit, failure, codebase (vocab.OBJECTS). Null exactly when reason is set */
+  object?: TitleObject | null;
   /** the number the title says (vocab session_title count): files of that role, migrations, commits, recoveries, or failures in a row. Null only for looked_around */
   n?: number | null;
   /** distinct directories the project files were written in, the refactor title's second number (vocab session_title modules). Null when no project file was written */
   modules?: number | null;
+  /** why no title rule fired (vocab.TITLE_REFUSALS): no_tool_calls, writes_name_no_file (a harness that does not say which file a patch touched), harness_files_only (only Claude Code's own scratch or notes were written), below_checkpoint_density (too few visible writes, tests or commits for a title to describe the work rather than what the transcript hides). Null when a title answered */
+  reason?: TitleRefusal | null;
 }
 
 /** The complete set of fields the phone can ever receive for a session. */
@@ -202,7 +206,7 @@ export interface SessionWire {
   live_names?: LiveNames | null;
   /** where this sitting's tokens went and whether anything came of it (analysis/burn.py over the session window): counts, shares, enums and at most three costly stretches. No prompt, path, command, file name or tool name. Computed on the machine or by the hook channel; the phone writes every sentence. Null when the producer does not compute it; a refusal is burn.reason, never a zero. */
   burn?: SessionBurn | null;
-  /** an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. Null when no title rule fired, or the producer does not compute it. */
+  /** an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles. */
   title_ids?: SessionTitleIds | null;
 }
 

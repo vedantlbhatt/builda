@@ -608,6 +608,10 @@ def test_excluding_the_repo_hides_a_public_post(client, created_users):
     uid_b, h_b = _person(client, created_users, "bob")
     bob = _handle_of(uid_b)
     sid = _session(client, h_b, uid_b)
+    # A second session from the same repository, uploaded while it could be: once the
+    # repository is excluded an upload from it is refused outright (routes/sync.py
+    # REPO_EXCLUDED), so the post route's own refusal is checked with one stored before.
+    other = _session(client, h_b, uid_b)
     post = _post(client, h_b, sid, "public")
     assert client.get(f"/v1/posts/{post['id']}", headers=h_a).status_code == 200
 
@@ -632,12 +636,16 @@ def test_excluding_the_repo_hides_a_public_post(client, created_users):
         with app_engine().connect() as c:
             c.execute(text("SELECT set_config('app.viewer_id', :v, false)"), {"v": uid_a})
             assert c.execute(text("SELECT can_view_post(:p)"), {"p": post["id"]}).scalar() is False
-        # The owner can still take it down, and cannot post another from that repository.
-        other = _session(client, h_b, uid_b)
+        # The owner can still take it down, and cannot post another from that repository,
+        # nor upload a new session into it.
         r = client.post(
             "/v1/posts", json={"session_id": other, "visibility": "public"}, headers=h_b
         )
         assert r.status_code == 403
+        refused = _upload(client, h_b, _payload())
+        assert refused["accepted"] == 0 and refused["rejected"][0]["reason"].startswith(
+            "this repository is excluded"
+        )
         assert client.delete(f"/v1/posts/{post['id']}", headers=h_b).status_code == 204
     finally:
         with owner_engine().begin() as c:

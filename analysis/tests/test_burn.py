@@ -1388,7 +1388,7 @@ class Unreadable(unittest.TestCase):
             "git -C /repo log --oneline -8 && git stash list",
             "git branch -a | head -20",
             "df -h / 2>/dev/null | awk 'NR==1 {print}'",
-            'for c in e63c8ba 0b6e41a; do echo "== $c"; git show --stat --oneline $c | head -8; done',
+            'for c in a1b2c3d 4e5f6a7; do echo "== $c"; git show --stat --oneline $c | head -8; done',
             'echo "clean=$(git status --porcelain | wc -l | tr -d \' \')"',
             "curl -s http://localhost:5001/api/health > /dev/null 2>&1",
             "X=1 timeout 5 cat a.txt",

@@ -36,6 +36,7 @@ REPORT_MAX_LENGTHS: dict[str, int] = {
 #: renaming either here is a NameError at import, not a lint warning.
 ANALYSIS_ENUM_VALUES: dict[str, list[str]] = {
     "trend_direction": ["up", "down", "steady"],
+    "agent_type": ["general-purpose", "Explore", "Plan", "fork", "workflow-subagent", "statusline-setup", "output-style-setup", "claude-code-guide", "unknown", "custom"],
     "wrapped_card": ["builder_type", "shipped", "work_style", "longest_session", "agents_at_once", "go_to_prompt", "streak", "change_course", "crash_out", "prompt_length", "deep_sessions", "time_put_in", "cryptic_prompt", "prompts_per_session", "kind_of_work"],
     "wrapped_unit": ["archetype", "lines", "style", "seconds", "sessions", "sends", "days", "share", "score", "words", "hours", "prompts_per_session", "kind"],
     "wrapped_basis": ["archetype_rules", "project_edit_tools_and_credited_shell_writes", "edit_tools_only", "uploaded_agent_lines", "absent", "autonomy_then_prompts_then_steer", "attended_seconds_rank", "sweep_over_first_to_last_event", "normalized_prompt_text_across_sessions", "days_with_a_commit_and_an_attended_session", "interrupts_and_correction_markers", "profanity_caps_punctuation_markers", "words_per_prompt", "attended_sessions_over_an_hour", "active_seconds", "vowelless_runs", "prompts_over_attended_sessions", "commit_subject_labels", "lines_by_file_role", "commit_subject_labels_then_lines_by_file_role"],
@@ -64,7 +65,7 @@ ANALYSIS_ENUM_VALUES: dict[str, list[str]] = {
 #: Which fields of which model carry which enum, read by the validators below.
 ENUM_FIELDS: dict[str, dict[str, str]] = {
     "ReportTrend": {"direction": "trend_direction"},
-    "ReportAgentType": {},
+    "ReportAgentType": {"name": "agent_type"},
     "ReportAgents": {},
     "ReportDay": {},
     "ReportContributions": {},
@@ -120,8 +121,18 @@ class ReportTrend(BaseModel):
 class ReportAgentType(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(max_length=80)
+    name: str
     agents: int
+
+    @field_validator("name")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
 
 
 class ReportAgents(BaseModel):

@@ -9,6 +9,7 @@ route that merely hid a row cannot pass for one that deleted it.
 
 import copy
 import json
+import uuid
 
 import pytest
 from sqlalchemy import text
@@ -19,6 +20,7 @@ from test_sync import (  # noqa: F401 - fixtures are picked up by name
     _owner_rows,
     _pair,
     _payload,
+    _phone_for,
     _upload,
     app_env,
     client,
@@ -62,7 +64,9 @@ def _session(client, headers) -> str:
 
 
 def _switch(client, headers, on: bool) -> dict:
-    r = client.put("/v1/privacy/prefs", json={"quotes": on}, headers=headers)
+    """The phone's switch, flipped from the account's phone (0024: a paired machine's
+    device flow token is refused)."""
+    r = client.put("/v1/privacy/prefs", json={"quotes": on}, headers=_phone_for(headers))
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -131,6 +135,72 @@ def test_turning_quotes_off_deletes_them(client, paired):
     assert "quotes_deleted" not in on and _stored(uid) is None
 
 
+def _two_repositories(client, headers) -> tuple[dict, dict]:
+    """Two final sessions, each in its own fresh repository."""
+    a = _payload(repo_hash=uuid.uuid4().hex * 2)
+    b = _payload(repo_hash=uuid.uuid4().hex * 2)
+    assert _upload(client, headers, a, b)["accepted"] == 2
+    return a, b
+
+
+def _quotes_for(*sessions) -> dict:
+    doc = _doc(sessions[0]["client_session_id"], n=len(sessions))
+    for q, s in zip(doc["quotes"], sessions, strict=True):
+        q["client_session_id"] = s["client_session_id"]
+    return doc
+
+
+def _served(client, headers) -> list[str] | None:
+    doc = client.get("/v1/profile/builder", headers=headers).json()["quotes"]
+    return None if doc is None else [q["client_session_id"] for q in doc["quotes"]]
+
+
+def test_excluding_a_repository_drops_its_quotes(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): excluding a repository deleted its
+    sessions and its build posts and left `builder_quotes` alone, so the prompts typed in
+    it stayed on the server and on the Wrapped cards. The promise is that an excluded
+    repository has NOTHING on the server. The quotes sent in it go in the same request;
+    when none is left, the row goes."""
+    uid, headers = paired
+    a, b = _two_repositories(client, headers)
+    _switch(client, headers, True)
+    assert _put(client, headers, _quotes_for(a, b)).status_code == 200
+    r = client.post(
+        "/v1/repos/visibility",
+        json={"repo_hash": a["repo_hash"], "visibility": "excluded"},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    assert [q["client_session_id"] for q in _stored(uid).body["quotes"]] == [b["client_session_id"]]
+    assert _served(client, headers) == [b["client_session_id"]]
+    client.post(
+        "/v1/repos/visibility",
+        json={"repo_hash": b["repo_hash"], "visibility": "excluded"},
+        headers=headers,
+    )
+    assert _stored(uid) is None
+    assert _served(client, headers) is None
+
+
+def test_a_quote_whose_session_is_gone_is_never_served(client, paired):
+    """The read side of the same promise, whatever deleted the session: a quote is served
+    only while the session it was sent in is on the server (`quotes.held_only`, the rule
+    the PUT already applies with `sessions_not_held`)."""
+    uid, headers = paired
+    a, b = _two_repositories(client, headers)
+    _switch(client, headers, True)
+    assert _put(client, headers, _quotes_for(a, b)).status_code == 200
+    with owner_engine().begin() as c:
+        c.execute(
+            text("DELETE FROM sessions WHERE user_id = :u AND client_session_id = :c"),
+            {"u": uid, "c": a["client_session_id"]},
+        )
+    assert _served(client, headers) == [b["client_session_id"]]
+    with owner_engine().begin() as c:
+        c.execute(text("DELETE FROM sessions WHERE user_id = :u"), {"u": uid})
+    assert _served(client, headers) is None
+
+
 def test_a_quote_over_160_is_refused(client, paired):
     uid, headers = paired
     csid = _session(client, headers)
@@ -174,6 +244,29 @@ def test_a_quote_with_a_mask_or_an_identifier_is_refused(client, paired, said):
         if len(word) > 5:
             assert word not in reason
     assert _stored(uid) is None
+
+
+@pytest.mark.parametrize(
+    "said", ["pw xkcdmbrptw", "pwd xkcdmbrptw", "pin is qwrtzxcvbn", "login admin hunterpass"]
+)
+def test_a_labelled_password_is_refused_by_the_servers_gate(said):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a letters only password behind a short
+    label passed all three filters here as it did on the machine. The gate runs the
+    machine's own `_private`, so the label joining its secret words closes both doors at
+    once. Every value is synthetic."""
+    from builder.quotes_spec import QuotesUpload
+
+    reason = quotes.quotes_gate(QuotesUpload(**_doc("a" * 64, said)))
+    assert reason is not None and "secret word" in reason, reason
+    assert said.split()[-1] not in reason
+
+
+def test_the_gate_holds_no_filter_of_its_own():
+    """One rule, one function: the server imports the machine's filters rather than keeping
+    a second list that could drift from the one the quote cards pick by."""
+    from analysis import digest, wrapped
+
+    assert quotes._filters() == (digest.mask, wrapped.quotable, wrapped._private)
 
 
 def test_a_quote_from_a_session_the_account_never_uploaded_is_refused(

@@ -15,12 +15,18 @@ Commit messages. Commit SHAs. Branch names. Your working directory. Your git rem
 The names of repositories you have not marked public. MCP server names. Terminal commands
 and their output. Environment variables. URLs fetched. Your hostname. Your IP.
 
-Not redacted versions of these. Not excerpts. There is no code path that sends them, with
-three opt-in exceptions, each off until you turn it on and each described in its own
-section below: **Session analysis** (prose your own Claude Code writes about a session),
-**Quoted prompts** (up to 3 of your prompts, for the Wrapped cards that quote you) and
-**File names** (the names of the files a running session touches, on its session screen).
-They are the only places a word you typed, or the name of a file, can travel.
+Not redacted versions of these. Not excerpts. Nothing the Mac app or `capture sync` sends
+carries them, with three opt-in exceptions, each off until you turn it on and each
+described in its own section below: **Session analysis** (prose your own Claude Code writes
+about a session), **Quoted prompts** (up to 3 of your prompts, for the Wrapped cards
+that quote you) and **File names** (the names of the files a running session touches, on
+its session screen). They are the only places a word you typed, or the name of a file, can
+travel in a session upload.
+
+One channel is different, and nothing sends by it until you install it: **the raw
+transcript channel** (the Claude Code hook, or `python -m capture live`) sends the
+transcript itself, everything above included, to your Builder server, which keeps only the
+fields in the table below. It has its own section.
 
 `tool_calls` counts calls by tool, and its keys can only be `Read`, `Edit`, `Write`, `Bash`, `mcp_other`, `other`: any other tool,
 an MCP server's included, is counted under `mcp_other` or `other`, and the server refuses
@@ -91,7 +97,7 @@ Every field, in full. `4` is the contract version.
 | `live` | live | public + anonymous | what a RUNNING session is doing now (spec/live.v1.json): enums, integers, clocks and 16 hex salted file ids. No path, file name, command, prompt or sentence. Only on state=live payloads; deleted when the session is final. |
 | `live_names` | live_names | public + anonymous | OPT-IN, OFF BY DEFAULT: the basename of each file in live.map, keyed by its id. Sent only with `capture sync --live --live-names` and stored only while the account has File names on. Owner only; shown on the session screen, never on the Lock Screen, the widget, a push or a share. |
 | `burn` | SessionBurn | public + anonymous | where this sitting's tokens went and whether anything came of it (analysis/burn.py over the session window): counts, shares, enums and at most three costly stretches. No prompt, path, command, file name or tool name. Computed on the machine or by the hook channel; the phone writes every sentence. Null when the producer does not compute it; a refusal is burn.reason, never a zero. |
-| `title_ids` | SessionTitleIds | public + anonymous | an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. Null when no title rule fired, or the producer does not compute it. |
+| `title_ids` | SessionTitleIds | public + anonymous | an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles. |
 
 ## Per-repository control
 
@@ -160,6 +166,32 @@ Activity. Turning the setting off deletes them.
 `capture sync --live --live-names`, and stored only while File names is on for your
 account. Only you can see them, on the session screen; the Lock Screen, the widget, pushes
 and shares never receive one. Turning it off deletes the names already stored.
+
+## The raw transcript channel
+
+The Claude Code hook (`curl $BUILDER_URL/v1/ingest/hook.sh`, `docs/hooks-capture.md`) and
+`python -m capture live` do not build the payload above on your machine. They send the
+**raw transcript**: your prompts, the model's replies and its thinking, every tool call and
+its output, file paths and contents, byte for byte, over TLS, to the Builder server you
+point them at (`BUILDER_URL`). That server cuts the sessions with the same code `capture
+sync` runs on a machine, so the sessions it stores are the table above and nothing more:
+the same fields, through the same door. Nothing sends a transcript until you install the
+hook or run the command.
+
+The raw bytes are held only until their session is final, or 7 days for a
+session that never finishes. Until then only your account can read them, under the same
+row level security as everything else; `DELETE /v1/ingest/transcript/<id>` drops them at
+once, and revoking the key closes the channel. If you would rather no server held your
+words even that long, use `capture sync`, which sends only the fields.
+
+`python -m capture live` reads each transcript whole before its first post and never sends
+one that has run in a repository `BUILDER_CAPTURE_EXCLUDE` names; a sitting that moves into
+one while it is watched stops there (the lines already sent before it moved stay sent), and
+a transcript you name that has run in one is refused. The hook script has no such list: it
+sends every transcript Claude Code hands it. The server refuses a
+session in a repository you set to excluded whenever the session says which repository it
+is in; a server that is not on your machine cannot resolve your working directory, so a
+hook's sessions there say none.
 
 ## Check it yourself
 

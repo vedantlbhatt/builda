@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { saveBuilderProfile } from '../data/builderCache';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { OFFLINE_MESSAGE, type BuilderProfileResponse, type Profile } from '../data/api';
@@ -71,7 +72,8 @@ export function useAnalysis(): { load: AnalysisLoad; chosenAnimal: string | null
       if (json !== shownBuilder.current) {
         shownBuilder.current = json;
         setBuilder(b.value);
-        void cache.setKv(BUILDER_PROFILE_KEY, json);
+        // Saved without the quotes (`saveBuilderProfile`): the copy on the phone never holds a prompt.
+        void saveBuilderProfile(b.value, cache);
       }
       setError(null);
     } else {

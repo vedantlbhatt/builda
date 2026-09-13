@@ -6,6 +6,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { saveBuilderProfile } from '../data/builderCache';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { OFFLINE_MESSAGE, type BuilderProfileResponse, type Profile } from '../data/api';
@@ -53,7 +54,8 @@ export function useBuilderProfile(): {
     try {
       const fresh = await api.builderProfile();
       const now = Date.now();
-      await cache.setKv(BUILDER_KEY, JSON.stringify(fresh));
+      // Saved without the quotes (`saveBuilderProfile`): the copy on the phone never holds a prompt.
+      await saveBuilderProfile(fresh, cache);
       await cache.setKv(BUILDER_SAVED_AT_KEY, String(now));
       setInputs({ data: fresh, savedAt: now, signedIn: true, error: null });
       // A fresh archetype can move the accent for someone who never picked a creature.

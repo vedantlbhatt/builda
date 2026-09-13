@@ -1108,6 +1108,17 @@ class CrypticPrompt(WrappedCase):
         self.assertFalse(wr._cryptic_candidate("sdfghjklqw"))
         self.assertFalse(wr._cryptic_candidate("xkcdmbrptw"))
 
+    def test_only_words_of_four_characters_count_toward_the_two(self):
+        """A short label is not a second word (FOUND IN THE ADVERSARIAL REVIEW: `pw` in
+        front of a password made it two tokens and the card crowned it)."""
+        for text in ("pw xkcdmbrptw", "pin is qwrtzxcvbn", "ok go", "a b c dfghj"):
+            with self.subTest(text=text):
+                self.assertFalse(wr._cryptic_candidate(text))
+        for text in ("sdfgh jklqw", "asdf ghjkl", "why did this fail"):
+            with self.subTest(text=text):
+                self.assertTrue(wr._cryptic_candidate(text))
+        self.assertEqual(wr.CRYPTIC_MIN_TOKEN_CHARS, wr.CRYPTIC_MIN_CHARS)
+
     def test_an_identifier_is_never_the_cryptic_prompt(self):
         """GROUND TRUTH, 2026-09-13, `~/.builder-overnight/corpus` (156 counted sessions).
 
@@ -1125,7 +1136,7 @@ class CrypticPrompt(WrappedCase):
         self.assertEqual(c["n"], 0)
         self.assertEqual(
             c["reason"],
-            "no short prompt of 2 or more words to read (4 to 80 characters, no path, link or hash)",
+            "no short prompt with 2 or more words of 4 or more characters to read (4 to 80 characters, no path, link or hash)",
         )
         g = by_id(result, "go_to_prompt")
         self.assertEqual((g["reason"], g["n"]), ("no prompt was sent in more than one session", 1))
@@ -1305,13 +1316,13 @@ class Quotable(unittest.TestCase):
             "Q7ZK2M9X4P",
             "same issue. http://localhost:51275/callback?code=AbCdEfGh1jKlMn0pQ&state=x1y2z3w4",
             "ok: /Users/zebrapath/Downloads/AuthKey_Z9Y8X7W6V5.p8 do it now",
-            "revert to f7b1eb6 and redeploy",
+            "revert to a1b2c3d and redeploy",
         ):
             with self.subTest(text=text):
                 self.assertFalse(wr.quotable(text))
 
     def test_an_identifier_is_interleaved_a_word_with_one_digit_is_not(self):
-        for token in ("Q7ZK2M9X4P", "f7b1eb6", "9aBcD3eFgH4iJkL5mNoPqR", "Z9Y8X7W6V5", "2hq5"):
+        for token in ("Q7ZK2M9X4P", "a1b2c3d", "9aBcD3eFgH4iJkL5mNoPqR", "Z9Y8X7W6V5", "2hq5"):
             with self.subTest(token=token):
                 self.assertTrue(wr._carries_identifier(token))
         for token in ("python3", "gpt4o", "1080p", "sha256", "5min", "v2", "h264", "iOS17"):
@@ -1435,6 +1446,30 @@ class NeverQuoted(WrappedCase):
         c = self.card(Sitting("a").prompt(0, "xkcdmbrptw").tool(5), cid="cryptic_prompt")
         self.assertIsNotNone(c["reason"])
         self.assertEqual(c["n"], 0)
+
+    #: FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a letters only password behind a short
+    #: label passed all three filters. The label made it two tokens, so it was a cryptic
+    #: candidate, the mask knows no letters only secret, and no secret word named it; the
+    #: card crowned it and `quotes_upload` sent it. Every value is synthetic.
+    LABELLED = (
+        "pw xkcdmbrptw",
+        "pwd xkcdmbrptw",
+        "pin is qwrtzxcvbn",
+        "login admin hunterpass",
+        "passwd hunterpass",
+        "passcode zqxwvbnmp",
+    )
+
+    def test_a_labelled_password_is_never_quoted_or_crowned(self):
+        for text in self.LABELLED:
+            secret = text.split()[-1]
+            with self.subTest(text=text):
+                self.assertTrue(wr._private(text))
+                a = Sitting("a").prompt(0, text).tool(5).prompt(20, "fix the page")
+                result = self.run_wrapped(a, quotes=True)
+                self.assertNotIn(secret, json.dumps(result))
+                doc = wr.quotes_upload(result, generated_at=T0 + 3600)
+                self.assertNotIn(secret, json.dumps(doc))
 
 
 class Quotes(WrappedCase):

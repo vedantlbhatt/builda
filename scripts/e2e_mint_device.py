@@ -6,6 +6,8 @@ RFC 8628 device flow (`/v1/auth/device/start`, `/v1/auth/device/poll`) and stand
 the phone tap by approving the grant as the database OWNER — exactly what
 `server/tests/test_sync.py::_pair` does with its `UPDATE device_grants` — so the tokens it
 prints were issued by the running API under its own signing key and rotate like any other.
+With `--platform ios` it also stands in for Sign in with Apple: the device is recorded as
+the sign in grant (`devices.grant_flow`, 0024), the only kind that flips a privacy switch.
 
     DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost/builder_e2e \
     python3 scripts/e2e_mint_device.py --server http://127.0.0.1:8787 --handle vedant \
@@ -100,6 +102,20 @@ def main() -> int:
     if polled.get("status") != "ok":
         print(f"poll did not return tokens: {polled}", file=sys.stderr)
         return 1
+    if a.platform == "ios":
+        # The PHONE signs in with Apple, which a script cannot do headlessly, so it walked
+        # the device flow above. Record the grant it stands in for (`devices.grant_flow`,
+        # 0024), as the owner, the way the approval above stands in for the phone's tap:
+        # only a sign in device flips the privacy switches, and a device flow one is
+        # refused (403), which is the point for every machine minted here.
+        with eng.begin() as c:
+            c.execute(
+                text(
+                    "UPDATE devices SET grant_flow = 'sign_in' "
+                    "WHERE user_id = :u AND machine_id = :m"
+                ),
+                {"u": uid, "m": machine_id},
+            )
 
     out = {
         "user_id": uid,

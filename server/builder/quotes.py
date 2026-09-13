@@ -23,6 +23,13 @@ The door has three locks, in order:
      must be one this account has uploaded. A quote from a session the server does not hold
      (an excluded repository's, whose sessions are deleted) has no business here.
 
+The same rule holds AFTER a quote is stored (`held_only`). FOUND IN THE ADVERSARIAL REVIEW
+(2026-09-13): excluding a repository deleted its sessions and its build posts and left the
+quotes typed in it on the server and on the Wrapped cards, while this docstring said they
+had no business here. Now the exclusion sweep drops them in its own transaction
+(`drop_unheld`, routes/privacy.py), and the read serves only quotes whose sessions are still
+on the server, whatever deleted one.
+
 Owner only (RLS on `builder_quotes`, 0021), read by `GET /v1/profile/builder` for its owner
 alone, and joined by no social query.
 """
@@ -89,13 +96,12 @@ def quotes_gate(doc: QuotesUpload) -> str | None:
     return None
 
 
-def sessions_not_held(db, user_id: str, doc: QuotesUpload) -> list[int]:
-    """1 based positions of the quotes whose `client_session_id` this account has not
-    uploaded. Empty when every quote's session is on the server."""
-    ids = sorted({q.client_session_id for q in doc.quotes})
+def _held(db, user_id: str, ids) -> set[str]:
+    """Which of these `client_session_id`s this account has on the server now."""
+    ids = sorted(set(ids))
     if not ids:
-        return []
-    held = {
+        return set()
+    return {
         r.client_session_id
         for r in db.execute(
             text(
@@ -105,7 +111,50 @@ def sessions_not_held(db, user_id: str, doc: QuotesUpload) -> list[int]:
             {"u": user_id, "ids": ids},
         )
     }
+
+
+def sessions_not_held(db, user_id: str, doc: QuotesUpload) -> list[int]:
+    """1 based positions of the quotes whose `client_session_id` this account has not
+    uploaded. Empty when every quote's session is on the server."""
+    held = _held(db, user_id, (q.client_session_id for q in doc.quotes))
     return [i for i, q in enumerate(doc.quotes, start=1) if q.client_session_id not in held]
+
+
+def held_only(db, user_id: str, body: dict) -> dict | None:
+    """A stored quotes document with only the quotes whose sessions are still on the
+    server, or None when none is: the rule the PUT applies (`sessions_not_held`), applied to
+    what is already stored. An excluded repository's sessions are deleted, and so is every
+    other session its owner removes; a quote typed in one is not the person's to show."""
+    quotes = [q for q in body.get("quotes") or [] if isinstance(q, dict)]
+    held = _held(db, user_id, (q.get("client_session_id") for q in quotes))
+    kept = [q for q in quotes if q.get("client_session_id") in held]
+    return {**body, "quotes": kept} if kept else None
+
+
+def drop_unheld(db, user_id: str) -> int:
+    """Drop every stored quote whose session is gone, in the caller's transaction (the
+    exclusion sweep, after it deleted the repository's sessions). The row goes when nothing
+    is left. Returns how many quotes were dropped: a measured count."""
+    row = db.execute(
+        text("SELECT body FROM builder_quotes WHERE user_id = :u FOR UPDATE"), {"u": user_id}
+    ).first()
+    if row is None:
+        return 0
+    before = len(row.body.get("quotes") or [])
+    kept = held_only(db, user_id, row.body)
+    if kept is None:
+        delete_quotes(db, user_id)
+        return before
+    dropped = before - len(kept["quotes"])
+    if dropped:
+        db.execute(
+            text(
+                "UPDATE builder_quotes SET body = CAST(:b AS jsonb), updated_at = now() "
+                "WHERE user_id = :u"
+            ),
+            {"u": user_id, "b": json.dumps(kept)},
+        )
+    return dropped
 
 
 def quotes_on_for_update(db, user_id: str) -> bool:

@@ -180,6 +180,7 @@ OBJECT_ENUM_VALUES: dict[str, list[str]] = {
     "burn_repeat": ["shell", "edit", "read", "other"],
     "title_verb": ["debugged", "wired", "refactored", "shipped", "committed", "tested", "built", "explored", "worked_through", "edited", "looked_around"],
     "title_object": ["test", "source", "config", "docs", "migration", "style", "build", "dependency", "unknown", "test_suite", "commit", "failure", "codebase"],
+    "title_refusal": ["no_tool_calls", "writes_name_no_file", "harness_files_only", "below_checkpoint_density"],
 }
 
 #: model name -> field name -> enum name, for the validators of the objects below.
@@ -187,7 +188,7 @@ OBJECT_ENUM_FIELDS: dict[str, dict[str, str]] = {
     "SessionBurnCause": {"cause": "burn_cause", "repeat": "burn_repeat"},
     "SessionBurnSpike": {},
     "SessionBurn": {"reason": "burn_refusal"},
-    "SessionTitleIds": {"verb": "title_verb", "object": "title_object"},
+    "SessionTitleIds": {"verb": "title_verb", "object": "title_object", "reason": "title_refusal"},
 }
 
 
@@ -297,12 +298,13 @@ class SessionBurn(BaseModel):
 class SessionTitleIds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    verb: str
-    object: str
+    verb: str | None = None
+    object: str | None = None
     n: int | None = None
     modules: int | None = None
+    reason: str | None = None
 
-    @field_validator("verb", "object")
+    @field_validator("verb", "object", "reason")
     @classmethod
     def _validate_enum(cls, v, info):
         allowed = OBJECT_ENUM_VALUES[OBJECT_ENUM_FIELDS[cls.__name__][info.field_name]]

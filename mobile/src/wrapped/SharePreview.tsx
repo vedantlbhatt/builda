@@ -8,13 +8,16 @@
  * in the builder's hue (the theme is their creature's colour) and ClickSpark bursts from it in
  * the CARD's hue: the one commitment on this screen.
  *
- * A card showing the owner's own prompt says so, in words, before the image can leave
- * (DESIGN-DIRECTION 6; quotes are owner only everywhere else in the app).
+ * The image is `shareItem(item)`, never the story's face: a quote is owner only, and the
+ * contract and PRIVACY.md say it is never in a share. A card that quotes the owner in the
+ * story shares its counts only answer instead. FOUND IN THE ADVERSARIAL REVIEW (2026-09-13):
+ * the preview drew the story card, quote and all, under a warning that the image would carry
+ * it, which is the promise broken with a sentence beside it.
  *
  * Reduce Motion: no lean, no sheen, no sparks; the sheet arrives with the kit's fade.
  */
 import { SymbolView } from 'expo-symbols';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,20 +30,19 @@ import { TiltedCard } from '../ui/bits/components/TiltedCard';
 import { ClickSpark } from '../ui/bits/effects/ClickSpark';
 import { commit } from '../ui/haptics';
 import { exitMs, timing, T as Durations } from '../ui/motion';
-import type { DeckItem } from './deckItems';
+import { shareItem, type DeckItem } from './deckItems';
 import { shareCardImage, SHARE_PIXELS } from './share';
 import { SHARE_RATIO, STORY_COPY } from './story';
 import { StoryCard } from './WrappedCardView';
 
-export const QUOTE_WARNING = 'This card shows your own prompt, word for word. Anyone you send the image to can read it.';
 export const SHARE_FAILED = 'The image could not be made. Try again.';
 export const SHARE_UNAVAILABLE = 'This phone has no share sheet to hand the image to.';
 
 /** Drawn at the export's width in points on a phone wide enough (360 at @3x is 1080). */
 const PREFERRED_WIDTH = SHARE_PIXELS.w / 3;
 /**
- * Everything on the preview that is not the card: the title row, the warning, the action, the
- * cancel line and the gaps between (44 + 40 + 52 + 44 + 4 x 16, rounded up).
+ * Everything on the preview that is not the card: the title row, the line a failed share says,
+ * the action, the cancel line and the gaps between (44 + 40 + 52 + 44 + 4 x 16, rounded up).
  */
 const CHROME_HEIGHT = 256;
 
@@ -52,6 +54,8 @@ export function SharePreview({ item, hue, animal, number, onClose }: { item: Dec
   const cardWidth = Math.floor(Math.min(PREFERRED_WIDTH, width - layout.gutter * 2, room / SHARE_RATIO));
   const cardHeight = Math.round(cardWidth * SHARE_RATIO);
   const shot = useRef<View>(null);
+  // What leaves the phone: the card with no quote on it, whatever the story shows.
+  const shared = useMemo(() => shareItem(item), [item]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -71,14 +75,12 @@ export function SharePreview({ item, hue, animal, number, onClose }: { item: Dec
     commit();
     setBusy(true);
     setProblem(null);
-    const outcome = await shareCardImage(shot, item.face.question);
+    const outcome = await shareCardImage(shot, shared.face.question);
     setBusy(false);
     if (outcome === 'failed') setProblem(SHARE_FAILED);
     else if (outcome === 'unavailable') setProblem(SHARE_UNAVAILABLE);
     else close();
   };
-
-  const withQuote = item.face.quote !== null;
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, styles.sheet, enter]} accessibilityViewIsModal onAccessibilityEscape={close}>
@@ -99,19 +101,14 @@ export function SharePreview({ item, hue, animal, number, onClose }: { item: Dec
         </View>
 
         <View style={styles.stage}>
-          <TiltedCard width={cardWidth} height={cardHeight} glare floating accessibilityLabel={item.face.label}>
+          <TiltedCard width={cardWidth} height={cardHeight} glare floating accessibilityLabel={shared.face.label}>
             <View ref={shot} collapsable={false} style={{ width: cardWidth, height: cardHeight }}>
-              <StoryCard item={item} hue={hue} animal={animal} width={cardWidth} height={cardHeight} variant="share" number={number} />
+              <StoryCard item={shared} hue={hue} animal={animal} width={cardWidth} height={cardHeight} variant="share" number={number} />
             </View>
           </TiltedCard>
         </View>
 
         <View style={{ gap: space.sm }}>
-          {withQuote ? (
-            <Text maxFontSizeMultiplier={1.6} style={styles.meta}>
-              {QUOTE_WARNING}
-            </Text>
-          ) : null}
           {problem !== null ? (
             <Text maxFontSizeMultiplier={1.6} style={styles.meta} accessibilityLiveRegion="polite">
               {problem}

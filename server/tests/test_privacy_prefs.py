@@ -18,6 +18,8 @@ from test_sync import (  # noqa: F401 - fixtures are picked up by name
     _live,
     _owner_rows,
     _pair,
+    _phone,
+    _phone_for,
     _upload,
     app_env,
     client,
@@ -48,23 +50,25 @@ def test_both_switches_default_off_and_the_salt_is_never_returned(client, paired
     row = _prefs_row(uid)
     assert (row.quotes, row.live_names) == (False, False)
     assert row.map_salt not in r.text
-    put = client.put("/v1/privacy/prefs", json={"live_names": True}, headers=headers)
+    put = client.put("/v1/privacy/prefs", json={"live_names": True}, headers=_phone_for(headers))
     assert row.map_salt not in put.text and set(put.json()) == {"quotes", "live_names"}
 
 
 def test_a_put_moves_only_the_switch_it_names(client, paired):
     uid, headers = paired
-    r = client.put("/v1/privacy/prefs", json={"quotes": True}, headers=headers)
+    r = client.put("/v1/privacy/prefs", json={"quotes": True}, headers=_phone_for(headers))
     assert r.json() == {"quotes": True, "live_names": False}
-    r = client.put("/v1/privacy/prefs", json={"live_names": True}, headers=headers)
+    r = client.put("/v1/privacy/prefs", json={"live_names": True}, headers=_phone_for(headers))
     assert r.json() == {"quotes": True, "live_names": True}
-    r = client.put("/v1/privacy/prefs", json={"quotes": False}, headers=headers)
+    r = client.put("/v1/privacy/prefs", json={"quotes": False}, headers=_phone_for(headers))
     assert r.json() == {"quotes": False, "live_names": True, "quotes_deleted": 0}
     assert client.get("/v1/privacy/prefs", headers=headers).json() == {
         "quotes": False,
         "live_names": True,
     }
-    r = client.put("/v1/privacy/prefs", json={"quotes": True, "live_names": False}, headers=headers)
+    r = client.put(
+        "/v1/privacy/prefs", json={"quotes": True, "live_names": False}, headers=_phone_for(headers)
+    )
     assert r.json() == {"quotes": True, "live_names": False}
 
 
@@ -76,12 +80,39 @@ def test_a_switch_takes_a_real_boolean_and_nothing_else(client, paired, body):
     """A string or a number is never read as a yes to sending a person's words, and the salt
     is not a key anyone can send."""
     uid, headers = paired
-    r = client.put("/v1/privacy/prefs", json=body, headers=headers)
+    r = client.put("/v1/privacy/prefs", json=body, headers=_phone_for(headers))
     assert r.status_code == 422, r.text
     assert client.get("/v1/privacy/prefs", headers=headers).json() == {
         "quotes": False,
         "live_names": False,
     }
+
+
+def test_a_paired_machine_cannot_flip_a_switch(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): `python -m capture pair` mints a device
+    flow token, `current_device` accepted it here, and so a paired machine could turn Quote
+    my prompts and File names on for its own account: the machine alone opting in, which
+    the double opt in exists to prevent. A device flow token is refused (403) on a write;
+    it may still read the switches, and the phone's own sign in token still flips them."""
+    uid, mac = paired
+    for body in ({"quotes": True}, {"live_names": True}, {"quotes": True, "live_names": True}):
+        r = client.put("/v1/privacy/prefs", json=body, headers=mac)
+        assert r.status_code == 403, r.text
+        assert "phone" in r.json()["detail"]
+    assert _prefs_row(uid) is None or (_prefs_row(uid).quotes, _prefs_row(uid).live_names) == (
+        False,
+        False,
+    )
+    assert client.get("/v1/privacy/prefs", headers=mac).json() == {
+        "quotes": False,
+        "live_names": False,
+    }
+    phone = _phone(uid)
+    r = client.put("/v1/privacy/prefs", json={"quotes": True}, headers=phone)
+    assert r.json() == {"quotes": True, "live_names": False}
+    # Off from the machine is refused too: the switch is the phone's in both directions.
+    assert client.put("/v1/privacy/prefs", json={"quotes": False}, headers=mac).status_code == 403
+    assert _prefs_row(uid).quotes is True
 
 
 def test_only_the_phone_flips_a_switch(client, paired):
@@ -98,7 +129,9 @@ def test_only_the_phone_flips_a_switch(client, paired):
 def test_the_switches_are_the_viewers_own(client, paired, created_users):
     a, ah = paired
     b, bh = _pair(client, created_users)
-    client.put("/v1/privacy/prefs", json={"quotes": True, "live_names": True}, headers=ah)
+    client.put(
+        "/v1/privacy/prefs", json={"quotes": True, "live_names": True}, headers=_phone_for(ah)
+    )
     assert client.get("/v1/privacy/prefs", headers=bh).json() == {
         "quotes": False,
         "live_names": False,
@@ -108,7 +141,7 @@ def test_the_switches_are_the_viewers_own(client, paired, created_users):
 
 def test_file_names_off_forgets_every_stored_name_in_the_same_request(client, paired):
     uid, headers = paired
-    client.put("/v1/privacy/prefs", json={"live_names": True}, headers=headers)
+    client.put("/v1/privacy/prefs", json={"live_names": True}, headers=_phone_for(headers))
     started = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=20)
     p = _live(started, 15, live=SAMPLE_LIVE, live_names=SAMPLE_LIVE_NAMES)
     assert _upload(client, headers, p)["accepted"] == 1
@@ -116,7 +149,7 @@ def test_file_names_off_forgets_every_stored_name_in_the_same_request(client, pa
     assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["live_names"] == (
         SAMPLE_LIVE_NAMES
     )
-    r = client.put("/v1/privacy/prefs", json={"live_names": False}, headers=headers)
+    r = client.put("/v1/privacy/prefs", json={"live_names": False}, headers=_phone_for(headers))
     assert r.json() == {"quotes": False, "live_names": False}
     with owner_engine().connect() as c:
         names = c.execute(
@@ -144,7 +177,7 @@ def test_an_off_that_cannot_delete_does_not_move_the_switch(client, paired, monk
 
     uid, headers = paired
     csid = _session(client, headers)
-    client.put("/v1/privacy/prefs", json={"quotes": True}, headers=headers)
+    client.put("/v1/privacy/prefs", json={"quotes": True}, headers=_phone_for(headers))
     assert client.put("/v1/profile/quotes", json=_doc(csid), headers=headers).status_code == 200
 
     def broken(db, user_id):
@@ -152,7 +185,7 @@ def test_an_off_that_cannot_delete_does_not_move_the_switch(client, paired, monk
 
     monkeypatch.setattr(quotes, "delete_quotes", broken)
     r = TestClient(app, raise_server_exceptions=False).put(
-        "/v1/privacy/prefs", json={"quotes": False}, headers=headers
+        "/v1/privacy/prefs", json={"quotes": False}, headers=_phone_for(headers)
     )
     assert r.status_code == 500
     assert _prefs_row(uid).quotes is True
@@ -165,7 +198,9 @@ def test_file_names_off_is_one_transaction_too(client, paired, monkeypatch):
     from builder.main import app
 
     uid, headers = paired
-    client.put("/v1/privacy/prefs", json={"quotes": True, "live_names": True}, headers=headers)
+    client.put(
+        "/v1/privacy/prefs", json={"quotes": True, "live_names": True}, headers=_phone_for(headers)
+    )
     real = live_store.set_live_names
 
     def then_fail(db, user_id, on):
@@ -174,7 +209,9 @@ def test_file_names_off_is_one_transaction_too(client, paired, monkeypatch):
 
     monkeypatch.setattr(live_store, "set_live_names", then_fail)
     r = TestClient(app, raise_server_exceptions=False).put(
-        "/v1/privacy/prefs", json={"quotes": False, "live_names": False}, headers=headers
+        "/v1/privacy/prefs",
+        json={"quotes": False, "live_names": False},
+        headers=_phone_for(headers),
     )
     assert r.status_code == 500
     row = _prefs_row(uid)

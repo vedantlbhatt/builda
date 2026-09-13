@@ -108,9 +108,15 @@ the session instead of a fact about Cursor.
 
 ## Privacy
 
-Prompts, code, diffs, file paths and file names never leave your machine. Repository names
-and session titles leave only for repositories you explicitly mark public. Everything else
-is timings, counts, and the shape of the session.
+In a session upload (the Mac app, `capture sync`), prompts, code, diffs, file paths and
+file names stay on your machine, except for three opt-ins that are off until you turn them
+on (PRIVACY.md). Repository names and session titles leave only for repositories you
+explicitly mark public. Everything else is timings, counts, and the shape of the session.
+
+The Claude Code hook and `python -m capture live` are a different channel: they send the
+raw transcript to your Builder server, which keeps only the contract's fields and deletes
+the raw bytes when the session is final. PRIVACY.md, "The raw transcript channel", says
+exactly what is sent and for how long it is held.
 
 The wire payload is defined in exactly one place,
 [`privacy/upload-contract.json`](privacy/upload-contract.json), which generates the Swift

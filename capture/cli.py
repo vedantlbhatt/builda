@@ -668,6 +668,16 @@ def cmd_live(a: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+        # This channel sends the transcript's BYTES, so a transcript that ran in a
+        # repository the person excluded is refused whole, before any post (`watch.excluded_in`,
+        # `analysis.corpus.excluded`'s rule over every record's working directory).
+        if watch.excluded_in(watch.complete_tail(p, 0)[0], repo.excluded_origins()):
+            print(
+                f"{p.name} ran in a repository BUILDER_CAPTURE_EXCLUDE excludes, so live sends "
+                "nothing from it.",
+                file=sys.stderr,
+            )
+            return 1
         paths.append(p)
     server = _server(a.server)
     c = cl.Client(server, key=key)

@@ -699,15 +699,15 @@
         "public",
         "anonymous"
       ],
-      "doc": "an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. Null when no title rule fired, or the producer does not compute it."
+      "doc": "an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles."
     }
   ],
   "_objects_note": [
     "The shapes of the two structured session fields added in v4, `burn` and `title_ids`, in the notation of spec/*.json",
     "(scripts/gen_analysis.py's emitters read it). Numbers, bools and enums only: server/tests/test_contract.py fails on any",
     "string field here. Every enum copies a Python table and is pinned to it both ways by that test: burn_cause to",
-    "analysis/burn.py _CAUSE_SENTENCES and the causes Segment detects, burn_repeat to burn._REPEAT_SENTENCES, title_verb and",
-    "title_object to analysis/vocab.py VERBS and OBJECTS; burn_refusal equals spec/report.v1.json's burn_refusal, one list of codes",
+    "analysis/burn.py _CAUSE_SENTENCES and the causes Segment detects, burn_repeat to burn._REPEAT_SENTENCES, title_verb,",
+    "title_object and title_refusal to analysis/vocab.py VERBS, OBJECTS and TITLE_REFUSALS; burn_refusal equals spec/report.v1.json's burn_refusal, one list of codes",
     "for one module's refusals. A double is a 0 to 1 share. The sentences are written on the phone from these (burn.explain is the",
     "reference; spec/fixtures/burn/session.json pins the port), so nothing here carries a word."
   ],
@@ -760,6 +760,12 @@
       "commit",
       "failure",
       "codebase"
+    ],
+    "title_refusal": [
+      "no_tool_calls",
+      "writes_name_no_file",
+      "harness_files_only",
+      "below_checkpoint_density"
     ]
   },
   "objects": {
@@ -924,13 +930,15 @@
         "name": "verb",
         "type": "enum",
         "values": "title_verb",
-        "doc": "the first title rule the session satisfied (vocab.VERBS, in the order they are tried)"
+        "nullable": true,
+        "doc": "the first title rule the session satisfied (vocab.VERBS, in the order they are tried). Null exactly when reason is set"
       },
       {
         "name": "object",
         "type": "enum",
         "values": "title_object",
-        "doc": "what the title is about: a file role, or test_suite, commit, failure, codebase (vocab.OBJECTS)"
+        "nullable": true,
+        "doc": "what the title is about: a file role, or test_suite, commit, failure, codebase (vocab.OBJECTS). Null exactly when reason is set"
       },
       {
         "name": "n",
@@ -943,6 +951,13 @@
         "type": "int",
         "nullable": true,
         "doc": "distinct directories the project files were written in, the refactor title's second number (vocab session_title modules). Null when no project file was written"
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "title_refusal",
+        "nullable": true,
+        "doc": "why no title rule fired (vocab.TITLE_REFUSALS): no_tool_calls, writes_name_no_file (a harness that does not say which file a patch touched), harness_files_only (only Claude Code's own scratch or notes were written), below_checkpoint_density (too few visible writes, tests or commits for a title to describe the work rather than what the transcript hides). Null when a title answered"
       }
     ]
   },

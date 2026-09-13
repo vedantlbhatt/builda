@@ -622,7 +622,21 @@ SAMPLE_BURN: dict = {
     "spikes_needed": 5,
 }
 
-SAMPLE_TITLE_IDS: dict = {"verb": "refactored", "object": "source", "n": 3, "modules": 2}
+SAMPLE_TITLE_IDS: dict = {
+    "verb": "refactored",
+    "object": "source",
+    "n": 3,
+    "modules": 2,
+    "reason": None,
+}
+#: A refused title (vocab.session_title's `code`): no verb, no object, the reason why.
+SAMPLE_TITLE_REFUSAL: dict = {
+    "verb": None,
+    "object": None,
+    "n": None,
+    "modules": None,
+    "reason": "below_checkpoint_density",
+}
 
 SAMPLE_QUOTES: dict = {
     "quotes_version": 1,
@@ -765,6 +779,7 @@ def test_published_leaf_paths_cover_every_live_scalar():
 def test_published_leaf_paths_cover_burn_and_title_ids():
     leaf_paths = set(json.loads(PUBLISHED.read_text())["leaf_paths"])
     actual = set(_scalar_paths({"burn": SAMPLE_BURN, "title_ids": SAMPLE_TITLE_IDS}, ""))
+    actual |= set(_scalar_paths({"title_ids": SAMPLE_TITLE_REFUSAL}, ""))
     assert actual <= leaf_paths, {"sent_but_not_declared": sorted(actual - leaf_paths)}
     declared = {p for p in leaf_paths if p.split(".")[0] in ("burn", "title_ids")}
     assert declared == actual, {"declared_but_unreachable": sorted(declared - actual)}
@@ -922,6 +937,41 @@ def test_title_enums_are_the_vocab_tables_both_ways():
     assert {"verb", "object", "count", "modules"} <= set(vocab._TITLE_WIRE)
 
 
+def test_title_refusal_is_vocabs_refusal_codes_both_ways():
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a refused title went on the wire as
+    null, which also means "not computed", so a live cut's title could never be cleared by
+    the same sitting's refused final cut. A refusal is `title_ids.reason` now, as a burn's
+    is `burn.reason`. The codes are vocab's own table, and every `_refused` call in
+    `session_title` passes one of them (read off the source), so a new refusal cannot ship
+    without a code the contract declares."""
+    import ast
+
+    _analysis()
+    from analysis import vocab
+
+    enums = _contract()["enums"]
+    assert enums["title_refusal"] == list(vocab.TITLE_REFUSALS)
+    tree = ast.parse(Path(vocab.__file__).read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "session_title")
+    codes = [
+        next(k.value.value for k in n.keywords if k.arg == "code")
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_refused"
+    ]
+    assert sorted(codes) == sorted(vocab.TITLE_REFUSALS), codes
+
+
+def test_a_title_refusal_round_trips_and_carries_no_title():
+    p = valid_payload(title_ids=SAMPLE_TITLE_REFUSAL)
+    assert p.title_ids.model_dump(mode="json") == SAMPLE_TITLE_REFUSAL
+    for bad in (
+        {**SAMPLE_TITLE_REFUSAL, "reason": "the transcript hides the work"},
+        {**SAMPLE_TITLE_REFUSAL, "reason": "vibes"},
+    ):
+        with pytest.raises(ValidationError):
+            valid_payload(title_ids=bad)
+
+
 def test_live_enums_are_the_engine_tables_both_ways():
     """Python is the reference: each live enum is a table in analysis/live.py or
     analysis/plain.py, in the same order, and `verdict_basis` is exactly the bases the
@@ -1044,6 +1094,32 @@ def test_an_enum_declared_in_two_specs_is_the_same_list():
     assert {"plain_role", "burn_cause", "burn_refusal"} <= compared, compared
 
 
+def test_privacy_md_says_what_the_raw_transcript_channel_sends():
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): the public page said "There is no code
+    path that sends them" about prompts, file contents and commands, while the Claude Code
+    hook and `capture live` send the whole transcript to the account's server. The page is
+    the only definition a reader has; it says so now, with the route's own retention."""
+    from builder.routes.ingest import RETENTION_DAYS
+
+    text = (REPO / "PRIVACY.md").read_text()
+    flat = " ".join(text.split())  # the generator wraps lines; the claims are what matter
+    assert "There is no code path that sends them" not in flat
+    assert "## The raw transcript channel" in text
+    for phrase in (
+        "**raw transcript**",
+        "python -m capture live",
+        "keeps only the fields in the table below",
+        f"{RETENTION_DAYS} days",
+        "BUILDER_CAPTURE_EXCLUDE",
+        "The hook script has no such list",
+        "the lines already sent before it moved stay sent",
+    ):
+        assert phrase in flat, phrase
+    readme = (REPO / "README.md").read_text()
+    assert "Prompts, code, diffs, file paths and file names never leave your machine." not in readme
+    assert "raw transcript" in readme
+
+
 def test_no_person_read_doc_carries_a_dash():
     """No dashes in any string a person reads (CLAUDE.md). Every field doc lands in
     PRIVACY.md or a generated type's comment, and PRIVACY.md is the public page."""
@@ -1068,3 +1144,14 @@ def test_no_person_read_doc_carries_a_dash():
         if inside or line.startswith("<!--"):
             continue
         assert not plain.has_dash(line), line
+
+
+def test_the_grant_flow_check_is_the_auth_table_both_ways():
+    """0024's CHECK list is `auth.GRANT_FLOWS`, read off the migration rather than trusted
+    to a comment (a value Python writes that Postgres refuses is a 500 on sign in)."""
+    from builder import auth
+
+    src = (MIGRATIONS / "0024_device_grant_flow.py").read_text()
+    m = re.search(r"^GRANT_FLOWS = \(([^)]*)\)$", src, re.M)
+    assert m, "0024 names its CHECK list"
+    assert tuple(re.findall(r'"([a-z_]+)"', m.group(1))) == auth.GRANT_FLOWS

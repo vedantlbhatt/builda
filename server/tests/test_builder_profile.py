@@ -12,6 +12,7 @@ Same harness as test_sync.py, whose fixtures are reused directly.
 """
 
 import copy
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -347,7 +348,11 @@ def test_the_facts_are_ranked_second_person_sentences_with_no_dashes(client, pai
     for f in facts:
         assert {"id", "text", "value", "unit"} <= set(f)
         assert "\u2014" not in f["text"] and "\u2013" not in f["text"]
-        assert any(ch.isdigit() for ch in f["text"])
+        # Every fact carries its number, except the peak hour at 0 or 12, which `profile._hour`
+        # spells "midnight" and "noon". The sessions start at now minus whole days, so this
+        # test failed only when the suite ran in those hours (seen 2026-09-13: "at noon").
+        spelled = f["id"] == "peak_hour" and f["value"] in (0, 12)
+        assert spelled or any(ch.isdigit() for ch in f["text"]), f["text"]
     assert any(f["text"].startswith("You default to Opus") for f in facts)
 
 
@@ -489,6 +494,54 @@ def test_model_costs_carry_the_price_table_key(client, paired):
     assert rows[0]["sessions"] == 2
 
 
+def _opus_sitting(started: datetime, repo: str) -> dict:
+    """One hour, priced, all Opus (the sample's model), ten commits in its git window."""
+    return _payload(
+        started_at=started,
+        ended_at=started + timedelta(hours=1),
+        tokens=BUCKETS,
+        repo_hash=repo,
+        commit_count=10,
+    )
+
+
+def test_per_model_commits_are_refused_when_the_windows_overlap(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13, `advrev/num/probes/p_model_commits.py`):
+    two sittings in one repository ten minutes apart both asked git about the same commits,
+    and the server's per model row summed them (20 for 10) and priced dollars per commit off
+    the double count. The machine claims each commit once by its SHA
+    (`profile.attribute_commits`); the server stores no SHA, so when the windows overlap,
+    the rule that already refuses `totals.total_commits`, both per model fields are null
+    with the reason. The dollars are still the dollars."""
+    uid, headers = paired
+    repo = uuid.uuid4().hex * 2
+    t0 = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
+    _upload(
+        client, headers, _opus_sitting(t0, repo), _opus_sitting(t0 + timedelta(minutes=10), repo)
+    )
+    corpus = client.get("/v1/profile/builder", headers=headers).json()["corpus"]
+    assert corpus["totals"]["total_commits"] is None
+    assert corpus["totals"]["commit_basis"] == "overlapping_session_windows"
+    (row,) = corpus["model_costs"]
+    assert (row["commits"], row["usd_per_commit"]) == (None, None), row
+    assert row["commits_refusal"] == "overlapping_session_windows"
+    assert row["usd"] > 0 and row["sessions"] == 2
+
+
+def test_per_model_commits_stand_when_no_windows_overlap(client, paired):
+    uid, headers = paired
+    t0 = datetime.now(UTC).replace(microsecond=0) - timedelta(days=3)
+    _upload(
+        client,
+        headers,
+        _opus_sitting(t0, uuid.uuid4().hex * 2),
+        _opus_sitting(t0 + timedelta(days=1), uuid.uuid4().hex * 2),
+    )
+    (row,) = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["model_costs"]
+    assert row["commits"] == 20 and row["usd_per_commit"] is not None
+    assert row["commits_refusal"] is None
+
+
 def test_window_days_is_the_query_the_phone_sends(client, paired):
     """docs/overnight-integration.md 5.3: the phone sent `?days=119`, which this route does
     not read, so it always got 90 and nothing said so. `window_days` is the name, it is
@@ -532,6 +585,9 @@ def test_quotes_are_served_to_their_owner_only_while_the_switch_is_on(client, cr
     uid_a, headers_a = _pair(client, created_users)
     uid_b, headers_b = _pair(client, created_users)
     assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] is None
+    # The session the quote was sent in: a quote is served only while it is on the server.
+    held = QUOTES_DOC["quotes"][0]["client_session_id"]
+    assert _upload(client, headers_a, _payload(client_session_id=held))["accepted"] == 1
 
     with owner_engine().begin() as c:
         c.execute(

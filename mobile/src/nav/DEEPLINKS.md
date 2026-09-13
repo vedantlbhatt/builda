@@ -8,9 +8,12 @@ pinned by `__tests__/nav.test.ts` and `__tests__/nativeIntent.test.ts`.
 ## Opening a link on the simulator
 
 ```bash
-SIM=231E27A6-ADA7-48AA-8230-302A04689772          # iPhone 16 Pro, iOS 18.2
+SIM=<UDID>          # your booted simulator: xcrun simctl list devices booted
 xcrun simctl openurl $SIM "builder://wrapped?card=7"
 ```
+
+`<UDID>` is the simulator's own id, the 36 character value in parentheses after its name in
+`xcrun simctl list devices booted` (or `booted` itself when exactly one simulator is running).
 
 iOS sometimes asks **"Open in Builda?"** before handing a custom scheme to the app (it did on
 the first link of a session here, and not on the next ones). Confirm it, then screenshot:

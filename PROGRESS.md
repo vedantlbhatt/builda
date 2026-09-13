@@ -119,11 +119,15 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   on the xcodebuild command line only (`DEVELOPMENT_TEAM=...`, never in a tracked file);
   `-allowProvisioningUpdates` registered both bundle ids and the App Group. Then
   `overnight_stack.sh iphone <id>` signs it in with a device of its own.
-- FOUND on the phone, open: dev-auth lands a signed in app on onboarding, and onboarding's
-  Sign in with Apple posts WITHOUT the bearer it already holds, so the server's linking rule
-  never runs and a second, empty user is created (the phone showed no sessions). Relinked by
-  hand in `builder_overnight` (identity, devices, capture key, push token moved; the empty user
-  deleted). Fix to decide: onboarding skips sign in when tokens exist, or sends them to link.
+- the phone's first sign in made a second, empty user, and it was NOT an app bug (a first
+  note here said it was; retracted). The dev-auth link never applied: the log has no
+  authenticated request before `POST /v1/auth/apple`, and the minted device was never used.
+  The first launch cannot reach Metro until Local Network is allowed, and the relaunch drops
+  the launch URL. So onboarding ran signed out (the Apple button only renders then), and an
+  Apple subject this database had never seen made a new user, which is the linking policy
+  working. The scripted `vedant` user has no Apple identity. Relinked by hand in
+  `builder_overnight` (identity, devices, capture key, push token moved; the empty user
+  deleted). `iphone` now says to run it only after the app has loaded once.
   Sign in with Apple itself works against the local API.
 
 ## The final artifact (plan)

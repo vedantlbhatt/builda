@@ -262,7 +262,9 @@ cmd_lan() {
 # gets a device of its OWN, minted here and never written to disk: refresh tokens rotate, and
 # a spent one presented again revokes the whole device, so a pair shared with device.json or a
 # simulator dies the second time either side refreshes. ID is the CoreDevice identifier from
-# `xcrun devicectl list devices`.
+# `xcrun devicectl list devices`. Run it only AFTER the app has loaded its JavaScript once and
+# Local Network is allowed: a first launch cannot reach Metro, the relaunch drops the link, and
+# the phone then onboards signed out and makes a new user with Sign in with Apple.
 cmd_iphone() {
   require_api
   local id="${1:-}"; [ -n "$id" ] || die "usage: $0 iphone <devicectl device id> [--onboarded]"

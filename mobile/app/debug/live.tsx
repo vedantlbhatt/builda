@@ -5,6 +5,7 @@ import { ScrollView, Text } from 'react-native';
 import type { SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
 import { activityFor, endAllLiveActivities, liveActivitiesAvailable, renderLivePreviews, syncLiveActivities, type SyncResult } from '../../src/live/activity';
+import { crewFor } from '../../src/live/crew';
 import { debugSessions, DEBUG_TODAY, parseDebugLive, type DebugLiveRequest } from '../../src/live/fixtures';
 import { buildWidgetSnapshot, payloadBytes, phaseOf, toAttrs, toState, type LiveStateWire } from '../../src/live/surface';
 import { writeWidgetSnapshot } from '../../src/live/widget';
@@ -29,6 +30,8 @@ import { ANIMAL_KEY } from '../icon';
  *   widget=1   also writes the widget snapshot (alone: only the snapshot)
  *   render=1   renders every state to Documents/live-previews with ImageRenderer
  *   stale=10   the content goes stale after 10 s, to photograph "Not updating"
+ *   creature=owl  every session wears this creature, to photograph one hue; without it each
+ *              session wears its own crew creature (`crew.ts`), as a real sync does
  *
  * `payload` replaces the fixtures with rows you give it: the SAME planner and `toState`, fed a
  * session row and the engine's `live_state` exactly as the server would hand them to the phone
@@ -93,11 +96,19 @@ function describe(label: string, r: SyncResult): string {
   return `${label}: ${parts.join(', ')}${r.errors.length ? `; ${r.errors.join('; ')}` : ''}`;
 }
 
+/**
+ * The creature each session wears: `creature=` forces one on every session (to photograph a hue);
+ * otherwise the crew rule over these rows, remembered, as the real poll does.
+ */
+function crewOf(rows: readonly SessionDetail[], forced: string | null): ReadonlyMap<string, string> {
+  return forced ? new Map(rows.map((s) => [s.id, forced])) : crewFor(rows);
+}
+
 async function run(req: DebugLiveRequest): Promise<string[]> {
   if (req.problem) return [req.problem];
   const out: string[] = [];
   const nowMs = Date.now();
-  const creature = req.creature ?? resolveAnimal(await cache.getKv(ANIMAL_KEY).catch(() => null));
+  const creature = resolveAnimal(await cache.getKv(ANIMAL_KEY).catch(() => null));
   out.push(liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build');
 
   if (req.state === 'end') {
@@ -107,14 +118,18 @@ async function run(req: DebugLiveRequest): Promise<string[]> {
     const common = { creature, today: DEBUG_TODAY, nowMs, staleInSeconds: req.staleInSeconds ?? undefined };
     if (req.state === 'done' && !activityFor('debug-builder')) {
       const first = debugSessions('working', req.n, nowMs);
-      out.push(describe('working first', await syncLiveActivities(first.sessions, first.liveStates, { ...common, writeWidget: false })));
+      const crew = crewOf(first.sessions, req.creature);
+      out.push(describe('working first', await syncLiveActivities(first.sessions, first.liveStates, { ...common, crew, writeWidget: false })));
     }
     const s = debugSessions(req.state, req.n, nowMs);
-    const r = await syncLiveActivities(s.sessions, s.liveStates, { ...common, finished: s.finished, writeWidget: req.widget });
+    const crew = crewOf([...s.sessions, ...s.finished], req.creature);
+    const r = await syncLiveActivities(s.sessions, s.liveStates, { ...common, crew, finished: s.finished, writeWidget: req.widget });
     out.push(describe(req.state, r));
+    out.push(`creatures: ${[...crew].map(([id, c]) => `${id.replace('debug-', '')} ${c}`).join(', ')}`);
   } else if (req.widget) {
     const s = debugSessions('working', req.n, nowMs);
-    const ok = writeWidgetSnapshot(buildWidgetSnapshot({ sessions: s.sessions, liveStates: s.liveStates, creature, today: DEBUG_TODAY, nowMs }));
+    const crew = crewOf(s.sessions, req.creature);
+    const ok = writeWidgetSnapshot(buildWidgetSnapshot({ sessions: s.sessions, liveStates: s.liveStates, creature, crew, today: DEBUG_TODAY, nowMs }));
     out.push(ok ? `wrote the widget snapshot (${s.sessions.length} running)` : 'no widget storage in this build');
   }
 
@@ -216,7 +231,7 @@ function fillRow(p: RowIn, nowMs: number, state: 'live' | 'final'): SessionDetai
 async function runPayload(p: DebugPayload): Promise<string[]> {
   const out: string[] = [];
   const nowMs = Date.now();
-  const creature = p.creature ?? resolveAnimal(await cache.getKv(ANIMAL_KEY).catch(() => null));
+  const creature = resolveAnimal(await cache.getKv(ANIMAL_KEY).catch(() => null));
   out.push(liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build');
   if (p.fresh) {
     await endAllLiveActivities();
@@ -225,8 +240,10 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
   const sessions = p.sessions.map((x) => fillRow(x.session, nowMs, x.session.state === 'final' ? 'final' : 'live'));
   const liveStates = Object.fromEntries(p.sessions.map((x) => [x.session.id, x.live]));
   const finished = p.finished.map((f) => fillRow(f, nowMs, 'final'));
+  const crew = crewOf([...sessions, ...finished], p.creature);
   const r = await syncLiveActivities(sessions, liveStates, {
     creature,
+    crew,
     today: DEBUG_TODAY,
     nowMs,
     finished,
@@ -239,10 +256,10 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
   for (const s of sessions) {
     const live = liveStates[s.id];
     const done = phaseOf(s, live, nowMs) === 'done';
-    const st = toState(s, live, { nowMs, creature, runningCount: Math.max(0, running - (done ? 0 : 1)) });
+    const st = toState(s, live, { nowMs, creature: crew.get(s.id), runningCount: Math.max(0, running - (done ? 0 : 1)) });
     const attrs = toAttrs(s);
     out.push(`${attrs.repo} · ${attrs.agent} · ${s.id.slice(0, 12)}`);
-    out.push(`${st.phase} · ${st.trajectory} · "${st.sentence}"`);
+    out.push(`${st.phase} · ${st.trajectory} · ${st.creature} · "${st.sentence}"`);
     out.push(
       `progress ${st.progress} · ${st.filesChanged} files changed · eta ${clock(st.etaEpoch) ?? 'refused'} · since ${clock(st.sinceEpoch) ?? 'none'} · ended ${clock(st.endedEpoch) ?? 'no'} · +${st.linesAdded ?? '?'} -${st.linesRemoved ?? '?'} · ${st.commits ?? '?'} commits · ${st.runningCount} more · ${payloadBytes(attrs, st)} bytes`
     );

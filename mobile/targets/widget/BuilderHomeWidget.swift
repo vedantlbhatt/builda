@@ -63,7 +63,9 @@ struct BuilderHomeWidget: Widget {
     StaticConfiguration(kind: kind, provider: SnapshotProvider()) { entry in
       BuilderHomeWidgetEntryView(entry: entry)
     }
-    .configurationDisplayName("Running sessions")
+    // The gallery lists this under the app's name, Builda (brief.md: every word a person reads
+    // says Builda; the kind and the types keep their code names).
+    .configurationDisplayName("Builda")
     .description("What your agents are doing, and who needs you first.")
     .supportedFamilies([.systemSmall, .systemMedium])
   }

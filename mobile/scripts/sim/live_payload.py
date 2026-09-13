@@ -3,7 +3,7 @@
 session, or for one of the Lock Screen states the fixtures in src/live/fixtures.ts do not have.
 
     python3 mobile/scripts/sim/live_payload.py self TRANSCRIPT [--record OUT.json] [--fresh] [--as-running]
-    python3 mobile/scripts/sim/live_payload.py state lost|circling|over-typical|working-eta
+    python3 mobile/scripts/sim/live_payload.py state lost|circling|over-typical|working-eta|finished
     python3 mobile/scripts/sim/live_payload.py replay live-self-1.json [--record OUT.json]
 
 Prints the link on stdout. Nothing here maps anything to the Lock Screen: the link carries
@@ -265,6 +265,19 @@ def state_payload(name: str) -> dict:
                   verdict("converging", "error_rate_down_and_new_files", errors_now=0, errors_before=2, new_files=1, checkpoints=2),
                   ridegt_eta(minutes), 5, "running_fine", changed=7, read_only=8)
         harness = "claude_code"
+    elif name == "finished":
+        # working-eta's session (the same id, so the planner sees it MOVE) after its turn ended
+        # with the work landed: the engine's done verdict while the row is still live. Finished,
+        # not looked at yet: the card ends as finished, never "needs you", and the widget lists
+        # it as finished. Send working-eta first, so there is a card to finish: the same start
+        # (a card's attributes are fixed when it starts), so the widget's "ran" and the card's agree.
+        sid, minutes, files, added = "debug-ridegt", 12, 9, 214
+        lv = live(sid, act("waiting_on_you", "unknown", since=3 * MIN, calls=0),
+                  verdict("done", "turn_ended", files_changed=3, commits=1, checkpoints=2),
+                  ridegt_eta(minutes), 31, "finished_unreviewed", changed=3, read_only=6)
+        harness = "claude_code"
+        return {"sessions": [{"session": row(sid, "RideGT", harness, minutes, now, files, added), "live": phone_live(lv)}],
+                "widget": True}
     elif name == "lost":
         # Editing files it never read: the engine's `lost` rule at its threshold.
         sid, minutes, files, added = "debug-ridegt-lost", 19, 13, 162
@@ -274,7 +287,7 @@ def state_payload(name: str) -> dict:
                   ridegt_eta(minutes), 60, "lost", changed=6, read_only=7)
         harness = "claude_code"
     else:
-        sys.exit(f"no state {name!r}: working-eta, circling, over-typical, lost")
+        sys.exit(f"no state {name!r}: working-eta, circling, over-typical, lost, finished")
     return {"sessions": [{"session": row(sid, "RideGT", harness, minutes, now, files, added), "live": phone_live(lv)}], "fresh": True}
 
 

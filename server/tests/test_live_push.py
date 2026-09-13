@@ -35,6 +35,7 @@ from test_sync import (  # noqa: F401 - fixtures are picked up by name
     _owner_rows,
     _pair,
     _payload,
+    _phone_for,
     _upload,
     app_env,
     client,
@@ -513,6 +514,12 @@ WAITING = {
     "verdict": {"state": "waiting", "basis": "turn_ended"},
     "needs_you": {"score": 82, "reason": "waiting_for_input"},
 }
+#: A turn the engine called done: the wait that follows it, with work landed cleanly.
+DONE = {
+    "since_s": 60,
+    "verdict": {"state": "done", "basis": "turn_ended"},
+    "needs_you": {"score": 30, "reason": "finished_unreviewed"},
+}
 
 
 class _Sitting:
@@ -813,6 +820,34 @@ def test_final_sends_end_with_a_dismissal_date_and_forgets_the_token(client, pai
 
 
 @needs_db
+def test_a_turn_the_engine_called_done_ends_the_card_as_finished_never_needs_you(
+    client, paired, apns
+):
+    """The owner, 2026-09-13: a finished session waiting to be looked at is FINISHED, not needs
+    you. The engine only calls a turn done while the activity is the wait that followed it, and
+    `phase_of` read that wait first, so this sent "private repo needs you" at priority 10 for a
+    session that had finished. It is the phone's rule too (`surface.planSync` ends the card on
+    the same phase), and the card keeps the creature its token carries: its session's own."""
+    uid, headers = paired
+    s = _Sitting(client, headers, uid)
+    s.send()
+    _register(client, headers, s.id, creature="whale")
+    s.send("waiting_on_you", **copy.deepcopy(DONE))
+    (p,) = apns.live()
+    aps = p["body"]["aps"]
+    assert aps["event"] == "end" and "alert" not in aps
+    assert aps["dismissal-date"] == aps["timestamp"] + live_push.DISMISS_AFTER_SECONDS
+    cs = aps["content-state"]
+    assert (cs["phase"], cs["creature"], cs["etaEpoch"]) == ("done", "whale", None)
+    assert cs["sentence"].startswith("Finished"), cs["sentence"]
+    assert cs["sinceEpoch"] is not None, "the card counts how long it ran to the turn's end"
+    assert p["headers"]["apns-priority"] == "5"
+    assert apns.banners() == [], "no needs you banner for a turn that finished"
+    assert _tokens(uid) == [], "the card has ended: nothing may push to it again"
+    assert _alerted(s.id) is None
+
+
+@needs_db
 def test_a_finished_card_is_taken_down_at_once_while_another_session_runs(client, paired, apns):
     uid, headers = paired
     s = _Sitting(client, headers, uid)
@@ -841,7 +876,8 @@ def test_every_card_counts_the_sessions_running_without_one(client, paired, apns
 @needs_db
 def test_names_never_reach_a_push(client, paired, apns):
     uid, headers = paired
-    r = client.put("/v1/privacy/prefs", json={"live_names": True}, headers=headers)
+    # The phone's switch, from the phone (0024: a paired machine's token is refused).
+    r = client.put("/v1/privacy/prefs", json={"live_names": True}, headers=_phone_for(headers))
     assert r.status_code == 200, r.text
     s = _Sitting(client, headers, uid)
     s.send(live_names=SAMPLE_LIVE_NAMES)

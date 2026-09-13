@@ -21,6 +21,9 @@ public final class BuilderPreviewRenderer: NSObject {
   @MainActor @objc public func renderAll(into dir: String) -> NSArray {
     guard #available(iOS 17.0, *) else { return [] }
     let url = URL(fileURLWithPath: dir, isDirectory: true)
+    // Afresh each time: a state this build no longer draws must not be pulled out beside the
+    // ones it does (an old lock-working-owl.png sat in the first capture of the crew hues).
+    try? FileManager.default.removeItem(at: url)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     var written: [String] = []
     for (name, view) in Self.gallery() {
@@ -49,6 +52,7 @@ public final class BuilderPreviewRenderer: NSObject {
       ("lock-lost", F.rideGT, F.lost, false),
       ("lock-stalled", F.rideGT, F.stalled, false),
       ("lock-done", F.builder, F.done, false),
+      ("lock-done-unreviewed", F.builder, F.doneUnreviewed, false),
       ("lock-done-nothing", F.builder, F.doneNothing, false),
       ("lock-nothing-yet", F.privateRepo, F.nothingYet, false),
       ("lock-stale", F.rideGT, F.working, true),
@@ -57,11 +61,15 @@ public final class BuilderPreviewRenderer: NSObject {
     for (name, a, s, stale) in lock {
       out.append((name, AnyView(LockFrame { LockScreenLiveView(d: F.display(a, s), isStale: stale) })))
     }
-    // Other creatures: the owl's face is holes in the ink, and Bit is narrow in its frame (the
-    // compact island trims the empty columns so it still sits snug to the camera).
-    var owl = F.working
-    owl.creature = "owl"
-    out.append(("lock-working-owl", AnyView(LockFrame { LockScreenLiveView(d: F.display(F.rideGT, owl), isStale: false) })))
+    // Every crew creature working, one card each: the eight hues on the dark card, the ring and
+    // the creature in each (DESIGN-V2 2.2), and every harness mark in the header.
+    let agents = ["claude_code", "codex", "gemini_cli", "cursor_ide", "cline", "opencode", "aider", "claude_code"]
+    for (i, c) in BuilderPalette.crewRing.enumerated() {
+      var s = F.working
+      s.creature = c
+      let a = BuilderSessionAttributes(sessionId: "fixture-\(c)", repo: "RideGT", agent: agents[i], startedEpoch: F.t - 12 * 60)
+      out.append(("lock-crew-\(c)", AnyView(LockFrame { LockScreenLiveView(d: F.display(a, s), isStale: false) })))
+    }
     var bit = F.needsYou
     bit.creature = "bit"
     out.append(("island-compact-bit", AnyView(CompactFrame(d: F.display(F.builder, bit), isStale: false))))
@@ -76,6 +84,7 @@ public final class BuilderPreviewRenderer: NSObject {
       ("stale", F.rideGT, F.working, true),
       ("long", F.longRun, F.workingNoEta, false),
       ("done", F.builder, F.done, false),
+      ("done-unreviewed", F.builder, F.doneUnreviewed, false),
     ]
     for (name, a, s, stale) in island {
       let d = F.display(a, s)
@@ -86,6 +95,7 @@ public final class BuilderPreviewRenderer: NSObject {
 
     let widgets: [(String, WidgetSnapshot)] = [
       ("four", F.widgetFour), ("circling", F.widgetCircling), ("one", F.widgetWorking), ("idle", F.widgetIdle),
+      ("finished", F.widgetFinished),
     ]
     for (name, snap) in widgets {
       for scheme in [ColorScheme.dark, .light] {

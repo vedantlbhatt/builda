@@ -18,6 +18,11 @@ the same way: every tone clears the contrast floor DESIGN-V2-COLOUR-MOTION.md st
 use, no identity ink sits in the red or green band data owns or within 0.10 OKLab of another
 ink or of a data hue, and every mapping names a hue that exists. The TypeScript carries the
 whole block; `theme.ts` resolves it (`hue`, `creatureHue`, `cardHue`, `harnessHue`, ...).
+
+The widget extension's SwiftUI palette (`mobile/targets/widget/_shared/Palette.swift`: the Lock
+Screen, the Dynamic Island, the Home Screen widget) is emitted from the same file, the surface
+greys, the data hues, the graph ramp and the nine hues with their light tones, so a session's
+hue on the Lock Screen is the hue its tile wears in the app. A second `make gen` writes nothing.
 """
 
 from __future__ import annotations
@@ -428,6 +433,198 @@ public enum DesignTokens {{
 """
 
 
+# ─── the widget extension's palette (SwiftUI) ──────────────────────────────────────────
+#
+# mobile/targets/widget/_shared/Palette.swift: the Lock Screen, the Dynamic Island and the Home
+# Screen widget draw from this, and it compiles into the main app too (the ImageRenderer
+# previews). It was hand written until the spectrum landed; a colour changed in tokens.json and
+# not there was a drift bug nobody would see until two screenshots sat side by side. Every
+# value is Color(.sRGB, ...) from the token's hex: SwiftUI's bare Color(red:green:blue:) is
+# Display P3, and @bacons/apple-targets writes its colorsets as display-p3 from sRGB hex.
+
+WIDGET_PALETTE = ROOT / "mobile/targets/widget/_shared/Palette.swift"
+
+
+def swift_color(h: str) -> str:
+    """`srgb(0x14, 0x12, 0x10)`: the file's one constructor, Color(.sRGB, ...) underneath."""
+    r, g, b = (h[i : i + 2] for i in (1, 3, 5))
+    return f"srgb(0x{r}, 0x{g}, 0x{b})"
+
+
+def gen_widget_palette(t: dict) -> str:
+    surf, data, graph = t["surface"], t["data"], t["graph"]["levels"]
+    spec = clean(t["spectrum"])
+    hues, creature = spec["hues"], spec["creature"]
+    bg, card = surf["bg"]["dark"], surf["card"]["dark"]
+    lbg, lcard = surf["bg"]["light"], surf["card"]["light"]
+    on_fill = surf["text"]["light"]
+    amber = hues["amber"]["dark"]
+    if surf["accent"]["dark"] != amber or surf["accent"]["light"] != amber:
+        raise SystemExit("surface.accent must be spectrum.hues.amber.dark in both schemes: the widget's amber is the brand's")
+
+    def dark_let(name: str, hexv: str, note: str = "") -> str:
+        return f"  static let {name} = {swift_color(hexv)}  // {hexv}{note}"
+
+    def scheme(scheme_name: str) -> str:
+        def pick(group: str, key: str) -> str:
+            return t[group][key][scheme_name]
+
+        rows = "\n".join(f"      {swift_color(h)},  // {h}" for h in graph[scheme_name])
+        return (
+            f"  static let {scheme_name} = Scheme(\n"
+            f"    isDark: {'true' if scheme_name == 'dark' else 'false'},\n"
+            f"    bg: {swift_color(pick('surface', 'bg'))},  // {pick('surface', 'bg')}\n"
+            f"    card: {swift_color(pick('surface', 'card'))},  // {pick('surface', 'card')}\n"
+            f"    border: {swift_color(pick('surface', 'border'))},  // {pick('surface', 'border')}\n"
+            f"    text: {swift_color(pick('surface', 'text'))},  // {pick('surface', 'text')}\n"
+            f"    textDim: {swift_color(pick('surface', 'textDim'))},  // {pick('surface', 'textDim')}\n"
+            f"    textFaint: {swift_color(pick('surface', 'textFaint'))},  // {pick('surface', 'textFaint')}\n"
+            f"    accent: amber,\n"
+            f"    add: {swift_color(pick('data', 'add'))},  // {pick('data', 'add')}\n"
+            f"    del: {swift_color(pick('data', 'del'))},  // {pick('data', 'del')}\n"
+            f"    graph: [\n{rows}\n    ]\n"
+            f"  )"
+        )
+
+    cases = []
+    for name, v in hues.items():
+        ink, lmark, ltext = v["dark"], v["light"], v["lightText"]
+        cases.append(
+            f"    case .{name}:\n"
+            f"      // ink {ink}: {contrast(ink, bg):.1f}:1 on bg {bg}, {contrast(ink, card):.1f}:1 on card, "
+            f"{contrast(on_fill, ink):.1f}:1 under onFill.\n"
+            f"      // light mark {lmark}: {contrast(lmark, lbg):.1f}:1 on {lbg}; light text {ltext}: "
+            f"{contrast(ltext, lbg):.1f}:1 on {lbg}, {contrast(ltext, lcard):.1f}:1 on white.\n"
+            f"      return Hue(.{name}, dark: dark, ink: {swift_color(ink)}, partner: {swift_color(v['partner'])},\n"
+            f"                 light: {swift_color(lmark)}, lightText: {swift_color(ltext)}, "
+            f"lightPartner: {swift_color(v['lightPartner'])})"
+        )
+    creature_cases = "\n".join(
+        f'    case "{k}": return hue(.{v}, dark: dark)' for k, v in creature.items() if k != "bit"
+    )
+    ring = ", ".join(f'"{c}"' for c in spec["crew"]["ring"])
+    hue_names = ", ".join(hues)
+    return f"""{BANNER}
+//
+// The widget extension's colours: the Lock Screen, the Dynamic Island and the Home Screen widget.
+// It also compiles into the main app (via _shared) for the ImageRenderer previews, where the
+// widget's asset catalog colours would resolve to clear, so nothing here reads a colorset.
+//
+// Every value is Color(.sRGB, ...) from the token's sRGB hex. Two traps this avoids: SwiftUI's
+// bare Color(red:green:blue:) is DISPLAY P3, and @bacons/apple-targets writes its colorsets as
+// display-p3 from sRGB hex; either would make the widget visibly more saturated than the app.
+//
+// The spectrum (DESIGN-V2-COLOUR-MOTION.md 1): each session is drawn in its crew creature's hue
+// (src/live/crew.ts decides which; the phone and the server's push both carry it as
+// `creature`). On the dark ground a hue is its ink, as a mark and as a word; on the light widget
+// a mark takes the 3:1 light tone and a word the 4.5:1 light text tone. The measurements beside
+// each hue are this generator's, against the real grounds, and gen_tokens.py refuses a hue under
+// any floor before it writes this file.
+
+import SwiftUI
+
+/// An sRGB colour from its three bytes. Never the bare Color(red:green:blue:), which is P3.
+private func srgb(_ r: Double, _ g: Double, _ b: Double) -> Color {{
+  Color(.sRGB, red: r / 255, green: g / 255, blue: b / 255, opacity: 1)
+}}
+
+enum BuilderPalette {{
+  // MARK: dark, the Lock Screen and the Dynamic Island in both appearances
+{dark_let("bg", bg)}
+{dark_let("card", card)}
+{dark_let("border", surf["border"]["dark"])}
+{dark_let("text", surf["text"]["dark"])}
+{dark_let("textDim", surf["textDim"]["dark"])}
+{dark_let("textFaint", surf["textFaint"]["dark"])}
+{dark_let("amber", amber, ", the brand: Bit's hue and the widget gallery's accent, never a session's")}
+{dark_let("add", data["add"]["dark"])}
+{dark_let("del", data["del"]["dark"])}
+  /// Ink on a solid fill of any hue.
+{dark_let("onFill", on_fill)}
+
+  /// One appearance's worth of tokens. Home Screen widgets render light and dark, so the widget
+  /// reads `BuilderPalette.scheme(colorScheme)`; the Lock Screen and island are dark only.
+  struct Scheme {{
+    let isDark: Bool
+    let bg: Color
+    let card: Color
+    let border: Color
+    let text: Color
+    let textDim: Color
+    let textFaint: Color
+    /// Amber, the brand: Bit asleep on the idle widget. Never a session's colour.
+    let accent: Color
+    let add: Color
+    let del: Color
+    /// graph.levels, 0 (no time) to 5 (8h and over): the amber ramp, never GitHub green.
+    let graph: [Color]
+
+    /// A creature's hue in this appearance: `ink` for a mark, `text` for a word.
+    func creature(_ id: String) -> Hue {{ BuilderPalette.creatureHue(id, dark: isDark) }}
+  }}
+
+{scheme("dark")}
+
+{scheme("light")}
+
+  static func scheme(_ colorScheme: ColorScheme) -> Scheme {{
+    colorScheme == .dark ? dark : light
+  }}
+
+  // MARK: the spectrum
+
+  enum HueName: String, CaseIterable {{
+    case {hue_names}
+  }}
+
+  /// One of the nine hues resolved for one appearance (`theme.ts` `Hue`).
+  ///   ink      a mark: a creature, a ring, a capsule, the needs you dot. The dark ink on dark,
+  ///            the 3:1 light mark tone on the light widget.
+  ///   text     the hue as a word (13pt semibold and up): the dark ink on dark, the 4.5:1 light
+  ///            text tone on light.
+  ///   partner  the dither's middle tone; never text, never a creature on its own.
+  ///   fill     a solid fill, the dark ink in both appearances, with `onFill` on it.
+  struct Hue: Equatable {{
+    let name: HueName
+    let ink: Color
+    let text: Color
+    let partner: Color
+    let fill: Color
+    let onFill: Color
+
+    fileprivate init(_ name: HueName, dark: Bool, ink: Color, partner: Color,
+                     light: Color, lightText: Color, lightPartner: Color) {{
+      self.name = name
+      self.ink = dark ? ink : light
+      self.text = dark ? ink : lightText
+      self.partner = dark ? partner : lightPartner
+      self.fill = ink
+      self.onFill = BuilderPalette.onFill
+    }}
+  }}
+
+  static func hue(_ name: HueName, dark: Bool = true) -> Hue {{
+    switch name {{
+{chr(10).join(cases)}
+    }}
+  }}
+
+  /// spectrum.creature: the hue each creature wears. Bit, Bit asleep and an id this build does
+  /// not know are Bit's amber; no session ever wears it (spectrum.crew.ring has no Bit).
+  static func creatureHue(_ creature: String, dark: Bool = true) -> Hue {{
+    switch creature {{
+{creature_cases}
+    default: return hue(.amber, dark: dark)
+    }}
+  }}
+
+  /// spectrum.crew.ring, the eight a session's creature is hashed onto (the rule is the phone's,
+  /// `src/live/crew.ts`; the widget only draws what it is handed).
+  static let crewRing: [String] = [{ring}]
+}}
+"""
+
+
 # ─── TypeScript ────────────────────────────────────────────────────────────────────────
 
 
@@ -461,6 +658,7 @@ def main() -> None:
     print("gen_tokens.py")
     write(ROOT / "Packages/BuilderKit/Sources/BuilderModel/Generated/DesignTokens.swift", gen_swift(t))
     write(ROOT / "mobile/src/generated/tokens.ts", gen_ts(t))
+    write(WIDGET_PALETTE, gen_widget_palette(t))
 
 
 if __name__ == "__main__":

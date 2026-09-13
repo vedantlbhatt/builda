@@ -53,6 +53,10 @@ struct LiveDisplay {
   let harness: String
   /// "Claude", "Codex", "Gemini": where a row has no room for the brand name in full.
   let harnessShort: String
+  /// The wire harness id, for its mark (`HarnessMark`).
+  let agent: String
+  /// THIS session's crew creature (src/live/crew.ts), not the builder's own: every mark on the
+  /// card, the island and the widget row is drawn in its hue.
   let creature: String
   let sentence: String
   /// When the session started. The elapsed time on the Lock Screen and in the island is a
@@ -60,18 +64,21 @@ struct LiveDisplay {
   let startDate: Date
   /// Minutes since the start at `now`: "22m", "1h 05m". For the widget, which redraws each minute.
   let elapsed: String
-  /// When the condition the sentence names began (needs you, no output, a failing command).
+  /// When the condition the sentence names began (needs you, no output, a failing command), or,
+  /// on a turn the engine called done while the session is still live, when it finished.
   let since: Date?
   /// Minutes since `since` at `now`, for the widget: "4m".
   let sinceElapsed: String?
-  /// How long a finished session ran ("47m"); nil while it runs or when its end is not known.
+  /// How long a finished session ran ("47m"): to its end, or to the moment a turn the engine
+  /// called done finished (`since`); nil while it runs or when neither is known.
   let ranFor: String?
   /// When the data behind this card was taken: "Not updating since 9:41".
   let updated: Date
   let ring: Ring
   let overTypical: Bool
-  /// Working, inside its typical run, with no verdict against it. Amber progress (the arc, the
-  /// capsule) and an ETA are drawn for this state only, so amber always means "on track".
+  /// Working, inside its typical run, with no verdict against it. Progress in the session's hue
+  /// (the arc, the capsule) and an ETA are drawn for this state only, so a coloured arc always
+  /// means "on track"; off track it is `textDim`.
   let onTrack: Bool
   /// Files the agent changed, when counted and more than none: the caption's "9 files changed".
   let filesChanged: Int?
@@ -113,13 +120,14 @@ struct LiveDisplay {
     self.repo = repo.isEmpty ? "private repo" : repo
     self.harness = LiveCopy.harnessName(agent)
     self.harnessShort = LiveCopy.harnessShort(agent)
+    self.agent = agent
     self.creature = creature
     self.sentence = sentence
     self.startDate = Date(timeIntervalSince1970: startedEpoch)
     self.elapsed = LiveCopy.duration(max(0, now - startedEpoch))
     self.since = sinceEpoch.map { Date(timeIntervalSince1970: $0) }
     self.sinceElapsed = sinceEpoch.map { LiveCopy.duration(max(0, now - $0)) }
-    self.ranFor = phase == .done ? endedEpoch.map { LiveCopy.duration(max(0, $0 - startedEpoch)) } : nil
+    self.ranFor = phase == .done ? (endedEpoch ?? sinceEpoch).map { LiveCopy.duration(max(0, $0 - startedEpoch)) } : nil
     self.updated = Date(timeIntervalSince1970: updatedEpoch)
     // Past the typical run: the ring stays full and the caption says so, never a second lap.
     let over = progress >= 1 || (etaEpoch.map { $0 <= now } ?? false)
@@ -140,6 +148,10 @@ struct LiveDisplay {
     self.linesRemoved = linesRemoved
     self.commits = commits
   }
+
+  /// The session's hue on the dark ground (the Lock Screen and the island are dark in both
+  /// appearances). The widget asks its own appearance: `BuilderPalette.Scheme.creature(_:)`.
+  var hue: BuilderPalette.Hue { BuilderPalette.creatureHue(creature) }
 
   /// The one word for this session's state, where a surface has room for one.
   var stateWord: String {
@@ -209,6 +221,9 @@ struct LiveDisplay {
 enum LiveCopy {
   static let needsYou = "needs you"
   static let finished = "finished"
+  /// A turn the engine called done while the session is still live (analysis/__main__.py's
+  /// words for `finished_unreviewed`, and the app's tile).
+  static let notLookedAt = "not looked at yet"
   static let working = "working"
   static let noNewOutput = "no new output"
   static let notUpdatingSince = "Not updating since"
@@ -221,6 +236,7 @@ enum LiveCopy {
   static let ran = "ran"
   static let nothingLanded = "nothing written, nothing committed"
   static let nothingRunning = "Nothing running."
+  static let nothingElseRunning = "Nothing else running."
   static let showsUpHere = "Your agents show up here while they run."
   static let today = "today"
   /// The sign on "-88": a hyphen, as the phone writes a negative number (src/copy/plain.ts).

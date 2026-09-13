@@ -4,6 +4,8 @@ import BuilderLive from '../../modules/builder-live';
 import type { PushEnvironment, SessionDetail } from '../data/api';
 import { api } from '../data/client';
 import { scheduleFinished, scheduleNeedsYou } from '../push/local';
+import { crewFor } from './crew';
+import { visibleRows } from './mission';
 import {
   buildWidgetSnapshot,
   endedKey,
@@ -40,8 +42,21 @@ import { writeWidgetSnapshot } from './widget';
  */
 
 export interface SyncOptions {
-  /** The builder's creature id (their pick, else their archetype's): `resolveAnimal(...)`. */
+  /**
+   * The builder's own creature id (their pick, else their archetype's): `resolveAnimal(...)`. The
+   * idle widget's, and a push token's when its session is unknown. No session wears it.
+   */
   creature?: string | null;
+  /**
+   * Each session's creature by id. Default: `crewFor` over the live rows, the rows that just
+   * finished and `around`, remembered for the process, so a card wears its tile's colour.
+   */
+  crew?: ReadonlyMap<string, string>;
+  /**
+   * The saved rows the crew rule steps a session's creature against (the Sessions list's window,
+   * `session/useCrew.CREW_WINDOW`), so a creature picked here is the one the list picks.
+   */
+  around?: readonly SessionDetail[];
   /** Rows that just went final, for the counts on their finished card. */
   finished?: SessionDetail[];
   /** For the widget's idle layout: today's attended time and the week's levels. */
@@ -185,12 +200,16 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   const details = opts.details !== false;
 
   if (mod) listen(mod);
+  // Every session's own creature (DESIGN-V2 2.2): the one its tile wears, remembered.
+  const crew = opts.crew ?? crewFor([...liveSessions, ...(opts.finished ?? []), ...(opts.around ?? [])]);
   // Details off, or signed out: the server forgets every token this process gave it, before
-  // anything else, so no push can land on the card after the person turned details off.
+  // anything else, so no push can land on the card after the person turned details off. Each
+  // token carries its session's creature, so a card the server moves keeps its colour.
   await tokens.update({
     enabled: Boolean(opts.pushTokens) && details,
     environment: ENVIRONMENT,
     creature: normalizeCreature(opts.creature),
+    crew: Object.fromEntries([...crew].map(([id, c]) => [id, normalizeCreature(c)])),
   });
 
   if (mod && lastDetails !== null && lastDetails !== details) {
@@ -232,7 +251,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
     finished: opts.finished,
     tracked,
     activitiesEnabled: Boolean(mod) && enabled,
-    creature: opts.creature,
+    crew,
     staleInSeconds: opts.staleInSeconds,
     details,
     nowMs,
@@ -279,8 +298,10 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   for (const [k, v] of next) tracked.set(k, v);
 
   if (opts.writeWidget !== false) {
+    // The rows mission control shows: a finished turn leaves the widget when it leaves the grid.
+    const shown = visibleRows(liveSessions, [], new Map(), nowMs);
     result.widget = writeWidgetSnapshot(
-      buildWidgetSnapshot({ sessions: liveSessions, liveStates, creature: opts.creature, today: opts.today, nowMs })
+      buildWidgetSnapshot({ sessions: shown, liveStates, creature: opts.creature, crew, today: opts.today, nowMs })
     );
   }
   return result;

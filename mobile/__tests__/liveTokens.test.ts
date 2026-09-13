@@ -92,6 +92,23 @@ describe('onPushToken registers the token with its session, activity, environmen
     expect(last[0]).toBe('register');
     expect((last[1] as LiveActivityRegistration).creature).toBe('fox');
   });
+
+  test('each token carries ITS session\'s crew creature, so a card the server moves keeps its colour', async () => {
+    const s = sink();
+    const other = { activityId: 'ACT-2', sessionId: 'other-session', token: 'cafe' };
+    const t = new LiveTokens(s, { ...ON, crew: { [EV.sessionId]: 'whale', [other.sessionId]: 'cat' } });
+    await t.onToken(EV);
+    await t.onToken(other);
+    const bodies = s.calls.filter((c) => c[0] === 'register').map((c) => c[1] as LiveActivityRegistration);
+    expect(bodies.map((b) => [b.kind === 'activity' ? b.activity_id : null, b.creature])).toEqual([['ACT-1', 'whale'], ['ACT-2', 'cat']]);
+    // the same crew on the next tick posts nothing; a session whose creature moved re-registers alone
+    await t.update({ ...ON, crew: { [EV.sessionId]: 'whale', [other.sessionId]: 'cat' } });
+    expect(s.calls.filter((c) => c[0] === 'register')).toHaveLength(2);
+    await t.update({ ...ON, crew: { [EV.sessionId]: 'whale', [other.sessionId]: 'bee' } });
+    const regs = s.calls.filter((c) => c[0] === 'register');
+    expect(regs).toHaveLength(3);
+    expect(regs.at(-1)![1]).toMatchObject({ activity_id: 'ACT-2', creature: 'bee' });
+  });
 });
 
 describe('ending forgets', () => {

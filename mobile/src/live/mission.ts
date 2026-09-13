@@ -14,10 +14,10 @@
  *  - a clock time is `you/numbers.clockOf`.
  * What is new here is only what a tile adds: aging the engine's numbers by the seconds since
  * `computed_at` (for display, docs/overnight-integration.md 3.5), the 15 second hold on the
- * order, the ten minutes a finished tile stays, the tile's copy, the one place a tile reads a
- * phase differently from the Lock Screen (`tilePhase`: a turn the engine called done is a
- * finished tile, never a running one), and the crew rule that gives each session its creature
- * (`crewCreatures`, DESIGN-V2 2.2).
+ * order, the ten minutes a finished tile stays, and the tile's copy. The tile's phase is the
+ * surfaces' own (`tilePhase` is `surface.phaseOf`: a turn the engine called done is finished on
+ * the tile, the Lock Screen, the island and the widget alike), and the crew rule is `crew.ts`'s,
+ * re-exported here (DESIGN-V2 2.2).
  */
 
 import type { SessionDetail } from '../data/api';
@@ -25,9 +25,8 @@ import type { LiveActivity, LiveEta, LiveState, Phase } from '../generated/live'
 import { etaRefusal } from '../copy/live';
 import { commas } from '../copy/numbers';
 import { spoken } from '../copy/plain';
-import type { Animal } from '../pixel/animals';
 import { HARNESS_NAMES, isHarness } from '../pixel/harness';
-import { CREW_RING, layout } from '../theme';
+import { layout } from '../theme';
 import { clockOf, dayOf } from '../you/numbers';
 import type { LiveStateWire } from './sentence';
 import {
@@ -39,7 +38,6 @@ import {
   STALE_SECONDS,
   surfaceSentenceOf,
   trajectoryOf,
-  waitsOnBackground,
   type LiveStates,
 } from './surface';
 
@@ -312,20 +310,20 @@ export interface TileModel {
 }
 
 /**
- * The phase a TILE shows: `surface.phaseOf`, except that a turn the engine called `done` is done
- * while the row is still live.
+ * The phase a TILE shows: `surface.phaseOf`, the one rule. A turn the engine called `done` while
+ * the row is still live is finished, not looked at yet (`needs_you.reason` `finished_unreviewed`,
+ * analysis/__main__.py's words), never needs you.
  *
- * The engine only says `done` about a turn that ended (activity `waiting_on_you`) with work
- * landed cleanly (analysis/live.py, the turn ended rule), so `phaseOf`, which checks the waiting
- * activity first, reads every such row as needs you: the Lock Screen's content state for it is
- * pinned that way (`spec/fixtures/live/content_state.json`, `done_after_commit`). On a tile it
- * put "Finished, with two files changed" under a live corner and counted the session among the
- * RUNNING ones in the summary. A finished session is never running: here it is a finished tile,
- * counted as finished, gone ten minutes after the turn ended like any other (`visibleRows`). The
- * ORDER is untouched: it is still the engine's score (`finished_unreviewed`, 30).
+ * This was the one place a tile read a phase differently from the Lock Screen: `phaseOf` checked
+ * the waiting activity first, so every such row was needs you on the Lock Screen, in the island
+ * and on the widget while the tile said finished (the owner, 2026-09-13: a finished session
+ * waiting to be looked at is FINISHED). The rule moved into `phaseOf` and its server half
+ * (`live_push.phase_of`) together, and `spec/fixtures/live/content_state.json` pins it
+ * (`done_after_commit`). A finished tile is counted as finished and goes ten minutes after the
+ * turn ended like any other (`visibleRows`). The ORDER is untouched: it is still the engine's
+ * score (`finished_unreviewed`, 30).
  */
 export function tilePhase(s: SessionDetail, wire: LiveStateWire | null | undefined, nowMs: number): Phase {
-  if (s.state !== 'final' && wire?.verdict?.state === 'done' && !waitsOnBackground(wire)) return 'done';
   return phaseOf(s, wire, nowMs);
 }
 
@@ -598,80 +596,12 @@ export function holdOrder(held: HeldOrder, target: readonly string[], nowMs: num
 // ------------------------------------------------------------------ the crew
 
 /**
- * FNV-1a, 32 bit, over the UTF-8 bytes of `s`: offset basis 0x811C9DC5, prime 0x01000193
- * (DESIGN-V2 2.2, whose three test vectors `__tests__/mission.test.ts` holds).
+ * Each session's creature, and the hash under it: the rule lives once, in `crew.ts` (the Lock
+ * Screen, the island and the widget read it too, and `crew.ts` cannot be reached through this
+ * module without an import cycle through `surface.ts`). Re-exported for the screens and tests
+ * that have always asked mission control.
  */
-export function fnv1a32(s: string): number {
-  let h = 0x811c9dc5;
-  for (const ch of s) {
-    const cp = ch.codePointAt(0) ?? 0;
-    const bytes =
-      cp < 0x80
-        ? [cp]
-        : cp < 0x800
-          ? [0xc0 | (cp >> 6), 0x80 | (cp & 63)]
-          : cp < 0x10000
-            ? [0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)]
-            : [0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)];
-    for (const b of bytes) h = Math.imul(h ^ b, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
-
-/** The creature a session's id hashes onto, before any step: `CREW_RING[fnv1a32(id) % 8]`. */
-export function crewHashed(clientSessionId: string): Animal {
-  return CREW_RING[fnv1a32(clientSessionId) % CREW_RING.length]!;
-}
-
-/**
- * Each session's creature (DESIGN-V2 2.2, "every session is its own builder"): the ring creature
- * its client session id hashes onto, stepped forward along the ring past any creature a session
- * running at its start already wears. Taken oldest first; with all eight worn the hashed one
- * stands. Never Bit, so no session wears the brand's amber.
- *
- * The phone sees only the rows it holds, so a session that ran alongside this one and has since
- * left the list cannot push it along the ring here. `kept` carries every creature this process
- * has already drawn for a session, and a kept creature never changes: a tile does not change
- * colour under someone because a neighbour finished. UNVERIFIED PARITY: the design names a
- * Python twin (`crew_creature` in analysis/live.py) that does not exist yet, so this is the only
- * implementation and the test holds it to the design's vectors and rules, not to a second one.
- */
-export function crewCreatures(rows: readonly SessionDetail[], kept: ReadonlyMap<string, Animal> = new Map()): Map<string, Animal> {
-  const ring = CREW_RING as readonly Animal[];
-  const byStart = [...rows].sort((a, b) => {
-    const d = (parseMs(a.started_at) ?? 0) - (parseMs(b.started_at) ?? 0);
-    return d !== 0 ? d : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-  const out = new Map<string, Animal>();
-  // The sessions that began earlier and had not ended by now, with when they end (a live one,
-  // or a final one with no end, never does). Taken in start order, a session that ended before
-  // this one began ended before every later one began too, so it leaves the list for good:
-  // a whole saved history costs its concurrency, not its square.
-  const running: { end: number; creature: Animal }[] = [];
-  for (const s of byStart) {
-    const start = parseMs(s.started_at);
-    if (start !== null) {
-      for (let k = running.length - 1; k >= 0; k--) if (running[k]!.end <= start) running.splice(k, 1);
-    }
-    let pick = kept.get(s.id);
-    if (!pick) {
-      const worn = new Set(running.map((r) => r.creature));
-      const base = fnv1a32(s.client_session_id || s.id) % ring.length;
-      pick = ring[base]!;
-      for (let k = 0; k < ring.length; k++) {
-        const c = ring[(base + k) % ring.length]!;
-        if (!worn.has(c)) {
-          pick = c;
-          break;
-        }
-      }
-    }
-    out.set(s.id, pick);
-    const end = s.state === 'final' ? parseMs(s.ended_at) : null;
-    running.push({ end: end ?? Number.POSITIVE_INFINITY, creature: pick });
-  }
-  return out;
-}
+export { crewCreatures, crewHashed, fnv1a32 } from './crew';
 
 /** A finger counts as down only for HOLD_MAX_MS after it went down with no end reported. */
 export function isHeld(downSinceMs: number | null, nowMs: number): boolean {

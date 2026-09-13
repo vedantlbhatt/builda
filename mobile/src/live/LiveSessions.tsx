@@ -51,8 +51,6 @@ import { AnimatedList } from '../ui/bits/components/AnimatedList';
 import { SplitText } from '../ui/bits/text';
 import { staleLine } from '../you/load';
 import {
-  crewCreatures,
-  crewHashed,
   EMPTY_HOLD,
   holdOrder,
   HOLD_MAX_MS,
@@ -77,6 +75,7 @@ import {
   type SummaryHead,
   type TileModel,
 } from './mission';
+import { crewFor, crewHashed } from './crew';
 import { inked, LiveNum, MissionTile, StandaloneReveal } from './MissionTile';
 import { refreshLiveSurfaces } from './useLiveSurfaces';
 
@@ -139,33 +138,11 @@ let lastLiveIds: string[] = [];
 let lastGoodSyncMs: number | null = null;
 
 /**
- * Every creature this process has drawn for a session (`mission.crewCreatures`' `kept`): once a
- * tile has a colour it keeps it, on the grid, the Sessions doorway and the live bar alike.
+ * Each session's creature, remembered for the process (`crew.ts`: the grid, the Sessions doorway,
+ * the live bar, the Lock Screen and the widget ask the same memory, so a session keeps one
+ * colour everywhere). Re-exported for the screens that have always asked mission control.
  */
-let crewKept: Map<string, Animal> = new Map();
-/** Enough for a whole saved Sessions list (it asks too) and every live row; a few kilobytes. */
-const CREW_KEPT_MAX = 4096;
-
-/** The crew for these rows, remembered for the rest of the process. */
-export function crewFor(rows: readonly SessionDetail[]): Map<string, Animal> {
-  const out = crewCreatures(rows, crewKept);
-  let changed = false;
-  for (const [id, c] of out) {
-    if (crewKept.get(id) !== c) changed = true;
-  }
-  if (changed) {
-    const next = new Map([...crewKept, ...out]);
-    // Oldest first out: a Map iterates in insertion order.
-    while (next.size > CREW_KEPT_MAX) next.delete(next.keys().next().value as string);
-    crewKept = next;
-  }
-  return out;
-}
-
-/** One session's creature, for a screen that holds only that session (the live bar). */
-export function sessionCreature(s: Pick<SessionDetail, 'id' | 'client_session_id'>): Animal {
-  return crewKept.get(s.id) ?? crewHashed(s.client_session_id || s.id);
-}
+export { crewFor, sessionCreature } from './crew';
 
 export interface MissionData {
   /** Live rows from the cache, then from the server; null until the cache has been read. */

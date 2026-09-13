@@ -40,7 +40,8 @@ struct BuilderLiveActivity: Widget {
       } minimal: {
         IslandMinimal(d: d, isStale: stale)
       }
-      .keylineTint(BuilderPalette.amber)
+      // The island's outline takes the session's hue, as its creature does.
+      .keylineTint(d.hue.ink)
       .widgetURL(d.url)
     }
   }

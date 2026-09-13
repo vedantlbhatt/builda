@@ -1340,11 +1340,11 @@
    "sentence": "Finished, with two files changed",
    "spoken": "Finished, with two files changed",
    "content_state": {
-    "phase": "needsYou",
+    "phase": "done",
     "sentence": "Finished, with two files changed",
     "progress": 0.133,
     "filesChanged": 2,
-    "etaEpoch": 1788253980,
+    "etaEpoch": null,
     "sinceEpoch": 1788253260,
     "endedEpoch": null,
     "trajectory": "none",
@@ -1355,12 +1355,8 @@
     "runningCount": 0,
     "updatedEpoch": 1788253590
    },
-   "relevance": 100,
-   "alert": {
-    "title": "private repo needs you",
-    "body": "Finished, with two files changed",
-    "sound": "default"
-   }
+   "relevance": 0,
+   "alert": null
   },
   {
    "name": "pending_long_tool",

@@ -5,9 +5,11 @@
  *
  * The phone starts an activity with `push: true`, ActivityKit hands `onPushToken` a token for
  * it, and this posts `{kind: 'activity', session_id, activity_id, token, environment,
- * creature}`: the server stores no creature, and the card's ContentState needs one. When the
- * phone ends an activity, or the person swipes it away, the token is forgotten on the server
- * too, so nothing pushes to a card that is gone.
+ * creature}`: the server stores no creature, and the card's ContentState needs one. The creature
+ * is THAT SESSION's crew creature (`crew.ts`, DESIGN-V2 2.2), so a card the server moves in the
+ * background keeps the colour the phone drew it in, and the server needs no copy of the crew
+ * rule. When the phone ends an activity, or the person swipes it away, the token is forgotten on
+ * the server too, so nothing pushes to a card that is gone.
  *
  * Settings > Show details on Lock Screen OFF means no token is registered and every one this
  * process registered is forgotten: a server push carries the repository and the engine's
@@ -41,7 +43,10 @@ export interface TokenSettings {
   /** Details on the Lock Screen AND signed in: only then may the server push to a card. */
   enabled: boolean;
   environment: PushEnvironment;
+  /** The builder's own creature: a token whose session `crew` does not name. */
   creature: Creature;
+  /** Each session's crew creature by session id: what its card is drawn in. */
+  crew?: Readonly<Record<string, Creature>>;
 }
 
 interface Held {
@@ -49,6 +54,8 @@ interface Held {
   token: string;
   /** Posted, and the server said yes. False while a post has not succeeded yet. */
   posted: boolean;
+  /** The creature the server holds for it, once posted. */
+  creature?: Creature;
   /** A post of this token is on its way: ActivityKit hands the same token over twice. */
   posting?: boolean;
 }
@@ -68,6 +75,11 @@ export class LiveTokens {
     return this.settings.enabled;
   }
 
+  /** The creature a session's card wears: its crew creature, else the builder's. */
+  private creatureFor(sessionId: string): Creature {
+    return this.settings.crew?.[sessionId] ?? this.settings.creature;
+  }
+
   /** The body a token is registered with. Exported through the class for the tests. */
   registration(e: TokenEvent): LiveActivityRegistration {
     return {
@@ -76,7 +88,7 @@ export class LiveTokens {
       activity_id: e.activityId,
       token: e.token.toLowerCase(),
       environment: this.settings.environment,
-      creature: this.settings.creature,
+      creature: this.creatureFor(e.sessionId),
     };
   }
 
@@ -114,8 +126,8 @@ export class LiveTokens {
   /**
    * New settings, every sync tick. Turning the switch off (or signing out) forgets every
    * registered token on the server; turning it on posts the ones held back, and a tick with
-   * the switch on retries any post that failed. The creature rides on the token, so a new
-   * creature re-registers (the server upserts on the token).
+   * the switch on retries any post that failed. The creature rides on the token, so a token
+   * whose session's creature moved re-registers (the server upserts on the token).
    */
   async update(next: TokenSettings): Promise<void> {
     const was = this.settings;
@@ -134,9 +146,9 @@ export class LiveTokens {
       }
       return;
     }
-    const redo = was.creature !== next.creature || was.environment !== next.environment;
+    const redo = was.environment !== next.environment;
     for (const [id, h] of this.held) {
-      if (!h.posted || redo) await this.post(id);
+      if (!h.posted || redo || h.creature !== this.creatureFor(h.sessionId)) await this.post(id);
     }
   }
 
@@ -156,8 +168,10 @@ export class LiveTokens {
     if (!h) return 'failed';
     h.posting = true;
     try {
-      await this.sink.register(this.registration({ activityId, sessionId: h.sessionId, token: h.token }));
+      const body = this.registration({ activityId, sessionId: h.sessionId, token: h.token });
+      await this.sink.register(body);
       h.posted = true;
+      h.creature = body.creature;
       return 'registered';
     } catch {
       h.posted = false;

@@ -24,6 +24,10 @@
  *    down at once, so it never sits on top of a running one; a finish that is news is then a
  *    notification, because no card says it.
  *  - Never both: a notification is the fallback only for a session with no activity.
+ *  - A turn the engine called done is FINISHED, not looked at yet, never needs you (`phaseOf`),
+ *    on the Lock Screen, in the island and on the widget, as on mission control's tile.
+ *  - Every session wears its own crew creature (`crew.ts`), so each card, island and widget row
+ *    is drawn in its session's hue; no session is Bit, so none is amber.
  *  - No duration inside a sentence on a surface: a Lock Screen is not redrawn between updates,
  *    so "for four minutes" is wrong a minute later. The sentence drops it and the surface says
  *    when the condition began (`sinceEpoch`), which stays true.
@@ -41,6 +45,7 @@ import { lockScreenWithoutDetails } from '../copy/live';
 import type { SessionDetail } from '../data/api';
 import { ANIMALS } from '../pixel/animals';
 import { DAY_BOUNDARY_HOUR, graphLevel } from '../theme';
+import { crewCreatures, crewHashed } from './crew';
 import { livePresenceLine, TEMPO_STALE_SECONDS } from './format';
 import { BACKGROUND_BASIS, renderLiveSentence, type LiveStateWire } from './sentence';
 
@@ -123,19 +128,27 @@ export function waitsOnBackground(live: LiveStateWire | null | undefined): boole
 }
 
 /**
- * working, needsYou, done or stalled. The engine decides when it spoke: its `waiting` verdict
- * (the turn was handed back to the person) is needs you, `done` is done, an `idle` activity
- * (no output for three minutes, which a long test run and a permission prompt both look like)
- * is stalled. A `waiting` on its own background job is working: the agent is the one waiting.
- * Without the engine, a final row is done and a live row whose last record is older than
- * STALE_SECONDS is stalled; nothing without the engine can say "needs you".
+ * working, needsYou, done or stalled. The engine decides when it spoke: its `done` verdict (a turn
+ * that ended with work landed cleanly) is done, its `waiting` verdict (the turn was handed back to
+ * the person) is needs you, an `idle` activity (no output for three minutes, which a long test
+ * run and a permission prompt both look like) is stalled. A `waiting` on its own background job
+ * is working: the agent is the one waiting. Without the engine, a final row is done and a live
+ * row whose last record is older than STALE_SECONDS is stalled; nothing without the engine can
+ * say "needs you".
+ *
+ * Done comes BEFORE the wait. The engine only calls a turn done while the activity is the wait
+ * that followed it (`waiting_on_you`), so checking the wait first read every finished turn as
+ * needs you: the amber hand and "needs you" on the Lock Screen for a session that had finished
+ * and was only waiting to be looked at, while mission control's tile said finished (the owner,
+ * 2026-09-13: FINISHED, not needs you). One rule now, here and in `live_push.phase_of`, pinned by
+ * `spec/fixtures/live/content_state.json` (`done_after_commit`); `mission.tilePhase` is this.
  */
 export function phaseOf(s: SessionDetail, live: LiveStateWire | null | undefined, nowMs: number): Phase {
   if (s.state === 'final') return 'done';
   const verdict = live?.verdict?.state ?? null;
   const kind = live?.activity?.kind ?? null;
+  if (verdict === 'done' && !waitsOnBackground(live)) return 'done';
   if ((verdict === 'waiting' || kind === 'waiting_on_you') && !waitsOnBackground(live)) return 'needsYou';
-  if (verdict === 'done') return 'done';
   if (kind === 'idle') return 'stalled';
   if (live) return 'working';
   const quiet = quietSeconds(s, nowMs);
@@ -256,13 +269,15 @@ export function etaEpochOf(s: SessionDetail, live: LiveStateWire | null | undefi
 /**
  * When the condition the surface names began, as Unix seconds down to the minute, or null:
  * needs you since the turn was handed back, stalled since the last output, circling on one
- * failing command since it started failing (a minute or more). The durations the engine puts
- * in its sentence, turned into the moment they count from, anchored like the ETA
- * (`anchorOf`). Without the engine a stalled row's quiet began at its last record.
+ * failing command since it started failing (a minute or more), and a turn the engine called done
+ * since it finished (the wait that followed it: the widget's "ran 47m" and the finished card's
+ * "ran" count to here). The durations the engine puts in its sentence, turned into the moment
+ * they count from, anchored like the ETA (`anchorOf`). Without the engine a stalled row's quiet
+ * began at its last record. A final row has no live state, so nothing.
  */
 export function sinceEpochOf(s: SessionDetail, live: LiveStateWire | null | undefined, phase: Phase, nowMs: number): number | null {
   const base = anchorOf(s, live, nowMs);
-  if (phase === 'needsYou' || phase === 'stalled') {
+  if (phase === 'needsYou' || phase === 'stalled' || phase === 'done') {
     const since = live?.activity?.since_s;
     if (isNum(since)) return minuteFloor(base - Math.max(0, since));
     if (phase === 'stalled' && !live) {
@@ -304,6 +319,7 @@ export function normalizeCreature(id: string | null | undefined): CreatureId {
 
 export interface StateContext {
   nowMs: number;
+  /** THIS session's creature (its crew creature, `crew.ts`), not the builder's own. */
   creature?: string | null;
   /** Sessions running beside this one that have no card of their own. */
   runningCount: number;
@@ -454,7 +470,12 @@ export interface PlanInput {
   finished?: readonly SessionDetail[];
   tracked: ReadonlyMap<string, Tracked>;
   activitiesEnabled: boolean;
-  creature?: string | null;
+  /**
+   * Each session's creature by id (`crew.crewFor`, which remembers them for the process, so a card
+   * wears the colour its tile wears). Default: the crew rule over these rows alone. A session
+   * missing from the map wears the creature its id hashes onto.
+   */
+  crew?: ReadonlyMap<string, string>;
   /** Seconds until the surfaces say "Not updating". Default STALE_SECONDS; the debug route shortens it. */
   staleInSeconds?: number;
   /**
@@ -519,6 +540,7 @@ export function planSync(input: PlanInput): Plan {
   const phases = new Map(rows.map((s) => [s.id, phaseOf(s, input.liveStates?.[s.id], nowMs)]));
   const running = rows.filter((s) => phases.get(s.id) !== 'done');
   const anyRunning = running.length > 0;
+  const crew = input.crew ?? crewCreatures(rows);
 
   // Which running sessions show a card: those that have one, then new starts in mission
   // control order up to the cap. The rest are "N more running" on every card.
@@ -548,7 +570,7 @@ export function planSync(input: PlanInput): Plan {
     const phase = phases.get(s.id)!;
     const ctx: StateContext = {
       nowMs,
-      creature: input.creature,
+      creature: creatureOf(s, crew),
       runningCount: phase === 'done' ? 0 : uncarded,
       details,
       runningTotal: running.length,
@@ -625,6 +647,11 @@ export function planSync(input: PlanInput): Plan {
   return { actions, tracked: next };
 }
 
+/** A session's crew creature from the map, else the one its id hashes onto: never Bit. */
+function creatureOf(s: SessionDetail, crew: ReadonlyMap<string, string>): string {
+  return crew.get(s.id) ?? crewHashed(s.client_session_id || s.id);
+}
+
 /** How long a failed start waits before the next try. */
 export function retryAfter(nowMs: number): number {
   return nowMs + RETRY_START_MS;
@@ -637,14 +664,20 @@ export interface WidgetSession {
   id: string;
   repo: string;
   agent: string;
+  /** working, needsYou or stalled; done for a turn the engine called done (finished, not looked at yet). */
   phase: Phase;
   sentence: string;
   trajectory: Trajectory;
+  /** This session's crew creature: the row, its word and its dot are drawn in that creature's hue. */
+  creature: CreatureId;
   startedEpoch: number;
   progress: number;
   filesChanged: number;
   etaEpoch: number | null;
-  /** When the condition began (needs you, no output, a failing command), for "4m" live. */
+  /**
+   * When the condition began (needs you, no output, a failing command), for "4m" live; on a
+   * finished row, when the turn finished, for "ran 47m".
+   */
   sinceEpoch: number | null;
 }
 
@@ -660,25 +693,41 @@ export interface WidgetSnapshot {
   v: 1;
   updatedEpoch: number;
   staleEpoch: number;
+  /** The builder's own creature (Bit, or their pick): the idle widget. No session row wears it. */
   creature: CreatureId;
+  /** Every session running, which can be more than the rows listed. A finished row is not running. */
   runningCount: number;
   sessions: WidgetSession[];
   today: WidgetToday | null;
 }
 
 export interface WidgetInput {
+  /**
+   * The live rows the widget may list. `activity.ts` hands it the ones mission control shows
+   * (`mission.visibleRows`), so a finished turn leaves the widget when it leaves the grid.
+   */
   sessions: readonly SessionDetail[];
   liveStates?: LiveStates;
+  /** The builder's own creature. */
   creature?: string | null;
+  /** Each session's creature by id, as `PlanInput.crew`. Default: the crew rule over these rows. */
+  crew?: ReadonlyMap<string, string>;
   today?: WidgetToday | null;
   nowMs: number;
 }
 
+/**
+ * The widget's rows, in mission control's order: every running session, and every live row whose
+ * turn the engine called done (finished, not looked at yet: mission control's finished tile,
+ * which the widget lists the same way and never counts as running). A final row is never listed.
+ */
 export function buildWidgetSnapshot(input: WidgetInput): WidgetSnapshot {
   const { nowMs } = input;
-  const running = missionOrder(input.sessions, input.liveStates, nowMs).filter(
-    (s) => phaseOf(s, input.liveStates?.[s.id], nowMs) !== 'done'
-  );
+  const ordered = missionOrder(input.sessions, input.liveStates, nowMs);
+  const phases = new Map(ordered.map((s) => [s.id, phaseOf(s, input.liveStates?.[s.id], nowMs)]));
+  const running = ordered.filter((s) => phases.get(s.id) !== 'done');
+  const listed = ordered.filter((s) => s.state !== 'final');
+  const crew = input.crew ?? crewCreatures(input.sessions);
   const updatedEpoch = Math.round(nowMs / 1000);
   const today = input.today ?? null;
   return {
@@ -687,9 +736,9 @@ export function buildWidgetSnapshot(input: WidgetInput): WidgetSnapshot {
     staleEpoch: updatedEpoch + STALE_SECONDS,
     creature: normalizeCreature(input.creature),
     runningCount: running.length,
-    sessions: running.slice(0, WIDGET_MAX_SESSIONS).map((s) => {
+    sessions: listed.slice(0, WIDGET_MAX_SESSIONS).map((s) => {
       const live = input.liveStates?.[s.id] ?? null;
-      const state = toState(s, live, { nowMs, creature: input.creature, runningCount: running.length - 1 });
+      const state = toState(s, live, { nowMs, creature: creatureOf(s, crew), runningCount: running.length - 1 });
       const attrs = toAttrs(s);
       return {
         id: s.id,
@@ -698,6 +747,7 @@ export function buildWidgetSnapshot(input: WidgetInput): WidgetSnapshot {
         phase: state.phase,
         sentence: state.sentence,
         trajectory: state.trajectory,
+        creature: state.creature,
         startedEpoch: attrs.startedEpoch,
         progress: state.progress,
         filesChanged: state.filesChanged,

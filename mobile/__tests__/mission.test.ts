@@ -569,10 +569,12 @@ describe('a turn the engine called done is finished on a tile, never running', (
       computedAgoS,
     );
 
-  test('the Lock Screen reads it as needs you (pinned there); the tile reads it as finished', () => {
+  test('one rule: the Lock Screen, the island, the widget and the tile all read it as finished', () => {
     const s = row('d', { live_state: doneState(180) }, { lines_added_agent: 2, lines_removed_agent: 2, commit_count: 0 });
     const wire = toWire(s.live_state);
-    expect(phaseOf(s, wire, NOW)).toBe('needsYou');
+    // The owner, 2026-09-13: a finished session waiting to be looked at is FINISHED, not needs
+    // you. `surface.phaseOf` (every native surface) and the tile agree, and so does the server.
+    expect(phaseOf(s, wire, NOW)).toBe('done');
     expect(tilePhase(s, wire, NOW)).toBe('done');
     const m = tileModel(s, NOW);
     expect(m.kind).toBe('finished');

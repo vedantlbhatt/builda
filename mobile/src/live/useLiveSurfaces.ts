@@ -7,6 +7,7 @@ import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { ANIMAL_KEY } from '../onboarding/keys';
 import { resolveAnimal } from '../pixel/animals';
+import { CREW_WINDOW } from '../session/useCrew';
 import { endAllLiveActivities, syncLiveActivities, type SyncResult } from './activity';
 import { liveStatesOf } from './mission';
 import { finishedSince, todayFromProfile } from './surface';
@@ -70,13 +71,17 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   const finished = (await Promise.all(gone.map((id) => cache.getDetail(id)))).filter(
     (s): s is SessionDetail => s !== null && s.state === 'final'
   );
-  const [animal, details, profile] = await Promise.all([
+  const [animal, details, profile, saved] = await Promise.all([
     cache.getKv(ANIMAL_KEY).catch(() => null),
     cache.getLockScreenDetails(),
     cache.getProfile(),
+    // The rows the Sessions list steps each session's creature against, so a card's creature
+    // is the one its row and its tile wear.
+    cache.listSessions(CREW_WINDOW).catch((): SessionDetail[] => []),
   ]);
   last = await syncLiveActivities(live, liveStatesOf(live), {
     creature: resolveAnimal(animal),
+    around: saved,
     finished,
     today: todayFromProfile(profile?.graph, nowMs),
     details,

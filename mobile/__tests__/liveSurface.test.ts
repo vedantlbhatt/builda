@@ -51,8 +51,11 @@ import {
   type SyncAction,
   type Tracked,
 } from '../src/live/surface';
+import { crewCreatures } from '../src/live/crew';
 import { ANIMALS } from '../src/pixel/animals';
 import { finishedNotification, needsYouNotification } from '../src/push/localCopy';
+import { CREW_RING, creatureHue, HUE_NAMES, hue } from '../src/theme';
+import { tokens as designTokens } from '../src/generated/tokens';
 import { routeForNotification } from '../src/push/route';
 
 const ROOT = join(import.meta.dir, '..');
@@ -246,9 +249,36 @@ describe('toState: a SessionDetail and the engine\'s live_state become one Conte
   test('the engine decides the phase when it spoke', () => {
     expect(phaseOf(row('a'), waiting(), NOW)).toBe('needsYou');
     expect(phaseOf(row('a'), { activity: { kind: 'idle', since_s: 400 } }, NOW)).toBe('stalled');
-    expect(phaseOf(row('a'), { verdict: { state: 'done', evidence: {} }, activity: { kind: 'waiting_on_you' } }, NOW)).toBe('needsYou');
     expect(phaseOf(row('a'), { verdict: { state: 'done', evidence: {} } }, NOW)).toBe('done');
     expect(phaseOf(row('a', { state: 'final' }), working(), NOW)).toBe('done');
+  });
+
+  test('a turn the engine called done is finished, not looked at yet, never needs you (the owner, 2026-09-13)', () => {
+    // The engine only says done while the activity is the wait that followed the turn, so the
+    // wait must not win: this was needs you, with an alert, on the Lock Screen and the widget.
+    const finished: LiveStateWire = {
+      activity: { kind: 'waiting_on_you', role: 'unknown', since_s: 180 },
+      verdict: { state: 'done', evidence: { files_changed: 2, commits: 1 }, basis: 'turn_ended', reason: null },
+      needs_you: { score: 31, reason: 'finished_unreviewed' },
+    };
+    expect(phaseOf(row('a'), finished, NOW)).toBe('done');
+    const st = toState(row('a'), finished, ctx);
+    expect([st.phase, st.sentence, st.etaEpoch]).toEqual(['done', 'Finished, with two files changed', null]);
+    // the card counts "ran" to the moment the turn finished: the wait's start
+    expect(st.sinceEpoch).toBe(Math.floor((Date.parse(row('a').updated_at!) / 1000 - 180) / 60) * 60);
+    expect(relevanceOf(st, finished)).toBe(RELEVANCE_DONE);
+    // on the Lock Screen its card ends as finished; it never alerts
+    const base = { activitiesEnabled: true, nowMs: NOW };
+    const tracked = apply(planSync({ ...base, sessions: [row('a')], liveStates: { a: working() }, tracked: new Map() }));
+    const plan = planSync({ ...base, sessions: [row('a')], liveStates: { a: finished }, tracked });
+    expect(kinds(plan.actions)).toEqual(['end:a']);
+    const e = plan.actions[0] as Extract<SyncAction, { kind: 'end' }>;
+    expect(e.state?.phase).toBe('done');
+    expect(e.opts.dismissAfterSeconds).toBe(DISMISS_AFTER_SECONDS);
+    // and the next pass, still live and still done, says nothing more
+    expect(planSync({ ...base, sessions: [row('a')], liveStates: { a: finished }, tracked: plan.tracked }).actions).toEqual([]);
+    // the agent waiting on its own background job is still working, as before
+    expect(phaseOf(row('a'), { ...finished, verdict: { ...finished.verdict!, basis: BACKGROUND_BASIS } }, NOW)).toBe('working');
   });
 
   test('an agent waiting on its own background job is working, not needs you (live-self-1)', () => {
@@ -534,6 +564,20 @@ describe('planSync: start, update, end, alert, and never both', () => {
     expect(off.actions).toEqual([]);
   });
 
+  test('every card wears its own session\'s crew creature, never the builder\'s, never Bit', () => {
+    const ids = ['a', 'b', 'c', 'd'];
+    const rows = ids.map((id, i) => row(id, { started_at: new Date(NOW - (40 - i * 5) * MIN).toISOString() }));
+    const plan = planSync({ ...base, sessions: rows, liveStates: Object.fromEntries(ids.map((id) => [id, working()])), tracked: new Map() });
+    const worn = plan.actions.map((a) => (a as Extract<SyncAction, { kind: 'start' }>).state.creature);
+    expect(worn).not.toContain('bit');
+    expect(new Set(worn).size).toBe(4);
+    const crew = crewCreatures(rows);
+    for (const a of plan.actions) expect((a as Extract<SyncAction, { kind: 'start' }>).state.creature).toBe(crew.get(a.sessionId)!);
+    // a creature the caller remembers (`crewFor`) is the one the card wears
+    const kept = planSync({ ...base, sessions: [row('a')], liveStates: { a: working() }, crew: new Map([['a', 'octopus']]), tracked: new Map() });
+    expect((kept.actions[0] as Extract<SyncAction, { kind: 'start' }>).state.creature).toBe('octopus');
+  });
+
   test('"N more running" counts only the sessions with no card of their own', () => {
     const plan = planSync({ ...base, sessions: [row('a'), row('b')], liveStates: { a: working(), b: waiting() }, tracked: new Map() });
     for (const a of plan.actions) expect((a as Extract<SyncAction, { kind: 'start' }>).state.runningCount).toBe(0);
@@ -673,6 +717,43 @@ describe('the widget snapshot', () => {
     const noWeek = buildWidgetSnapshot({ sessions: [], today: { attendedSeconds: null, week: [1, 2] }, nowMs: NOW });
     expect(noWeek.today).toEqual({ attendedSeconds: null, week: [] });
     expect(buildWidgetSnapshot({ sessions: [], nowMs: NOW }).today).toBeNull();
+  });
+
+  test('every row wears its own crew creature, never the builder\'s and never Bit', () => {
+    const rows = [...d.sessions, extra];
+    const crew = crewCreatures(rows);
+    for (const r of snap.sessions) {
+      expect(r.creature).toBe(crew.get(r.id)!);
+      expect(r.creature).not.toBe('bit');
+    }
+    // four sessions running at once: four different creatures, so four different hues
+    expect(new Set(snap.sessions.map((r) => r.creature)).size).toBe(snap.sessions.length);
+    expect(new Set(snap.sessions.map((r) => creatureHue(r.creature).name)).size).toBe(snap.sessions.length);
+    // the caller's memory wins (`crew.crewFor`), so a row wears the colour its tile wears
+    const kept = new Map(snap.sessions.map((r) => [r.id, 'owl']));
+    const again = buildWidgetSnapshot({ sessions: d.sessions, liveStates: d.liveStates, crew: kept, nowMs: NOW });
+    expect(again.sessions.every((r) => r.creature === 'owl')).toBe(true);
+  });
+
+  test('a turn the engine called done is listed as finished, in mission control\'s order, and never counted as running', () => {
+    const finished: LiveStateWire = {
+      activity: { kind: 'waiting_on_you', role: 'unknown', since_s: 180 },
+      verdict: { state: 'done', evidence: { files_changed: 12, commits: 1 }, basis: 'turn_ended', reason: null },
+      needs_you: { score: 31, reason: 'finished_unreviewed' },
+    };
+    const w = buildWidgetSnapshot({
+      sessions: [row('run'), row('fin')],
+      liveStates: { run: working(), fin: finished },
+      creature: 'bit',
+      nowMs: NOW,
+    });
+    expect(w.sessions.map((r) => [r.id, r.phase])).toEqual([['fin', 'done'], ['run', 'working']]);
+    expect(w.runningCount).toBe(1);
+    const fin = w.sessions[0]!;
+    expect(fin.sentence).toBe('Finished, with twelve files changed');
+    // "ran 47m" counts to when the turn finished
+    expect(fin.sinceEpoch).toBe(Math.floor((Date.parse(row('fin').updated_at!) / 1000 - 180) / 60) * 60);
+    expect(fin.creature).not.toBe('bit');
   });
 
   test('its keys are exactly the Swift WidgetSnapshot the widget decodes', () => {
@@ -1100,6 +1181,60 @@ describe('Show details on Lock Screen, off', () => {
     // details on: the same move alerts, as before
     const on = planSync({ ...base, details: true, sessions: [row('a'), row('b')], liveStates: { a: waiting(240), b: working() }, tracked: apply(planSync({ ...base, details: true, sessions: [row('a'), row('b')], liveStates: { a: working(), b: working() }, tracked: new Map() })) });
     expect(on.actions.some((a) => a.kind === 'update' && a.opts.alertTitle === 'builder needs you')).toBe(true);
+  });
+});
+
+describe('the native palette is the tokens, generated', () => {
+  const palette = readFileSync(join(ROOT, 'targets/widget/_shared/Palette.swift'), 'utf8');
+  const srgb = (hex: string) => `srgb(0x${hex.slice(1, 3)}, 0x${hex.slice(3, 5)}, 0x${hex.slice(5, 7)})`;
+
+  test('Palette.swift is emitted by gen_tokens.py, never written by hand', () => {
+    expect(palette.startsWith('// GENERATED by scripts/gen_tokens.py from design/tokens.json')).toBe(true);
+    // the only constructor is the sRGB one: the bare Color(red:green:blue:) is Display P3
+    const code = palette.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+    expect(code).not.toMatch(/Color\(red:/);
+    expect(palette).toContain('Color(.sRGB, red: r / 255, green: g / 255, blue: b / 255, opacity: 1)');
+  });
+
+  test('every hue, dark and light, and every creature\'s hue, as the app resolves them', () => {
+    for (const name of HUE_NAMES) {
+      const t = designTokens.spectrum.hues[name];
+      for (const tone of [t.dark, t.partner, t.light, t.lightText, t.lightPartner]) expect(palette).toContain(srgb(tone));
+      expect(palette).toContain(`case .${name}:`);
+      // the light widget's word is the 4.5:1 text tone, its mark the 3:1 tone
+      expect(hue(name, 'light').text).toBe(t.lightText);
+      expect(hue(name, 'light').ink).toBe(t.light);
+    }
+    for (const [creature, name] of Object.entries(designTokens.spectrum.creature)) {
+      if (creature === 'bit') continue;
+      expect(palette).toContain(`case "${creature}": return hue(.${name}, dark: dark)`);
+    }
+    expect(palette).toContain(`static let crewRing: [String] = [${CREW_RING.map((c) => `"${c}"`).join(', ')}]`);
+  });
+
+  test('the surfaces draw sessions in their hue, never the brand\'s amber', () => {
+    for (const f of ['LiveActivityViews.swift', 'HomeWidgetViews.swift', 'LiveMarks.swift']) {
+      const src = readFileSync(join(ROOT, 'targets/widget/_shared', f), 'utf8');
+      expect({ f, amber: src.includes('BuilderPalette.amber') }).toEqual({ f, amber: false });
+    }
+    const island = readFileSync(join(ROOT, 'targets/widget/BuilderLiveActivity.swift'), 'utf8');
+    expect(island).toContain('.keylineTint(d.hue.ink)');
+  });
+
+  test('the widget says Builda in the gallery', () => {
+    const widget = readFileSync(join(ROOT, 'targets/widget/BuilderHomeWidget.swift'), 'utf8');
+    expect(widget).toContain('.configurationDisplayName("Builda")');
+    expect(readFileSync(join(ROOT, 'targets/widget/expo-target.config.js'), 'utf8')).toContain("displayName: 'Builda'");
+  });
+
+  test('the harness marks are the owner\'s SVGs, generated for SwiftUI', () => {
+    const marks = readFileSync(join(ROOT, 'targets/widget/_shared/HarnessMarks.swift'), 'utf8');
+    expect(marks.startsWith('// GENERATED by scripts/gen_harness_logos.py')).toBe(true);
+    for (const id of ['claude_code', 'codex', 'cursor_ide', 'cursor_agent', 'gemini_cli', 'cline', 'opencode']) {
+      expect(marks).toContain(`case "${id}": return`);
+    }
+    // Aider has no mark: its name carries it
+    expect(marks).not.toContain('"aider"');
   });
 });
 

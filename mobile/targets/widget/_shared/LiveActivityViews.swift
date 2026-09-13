@@ -7,29 +7,41 @@ import WidgetKit
 //
 // HIG numbers these are built to: Lock Screen 371 x 84 to 160pt with a 14pt margin (this one
 // lands near 110pt), compact slots 52.33 x 36.67, minimal 36.67 to 45 x 36.67, expanded 371 x
-// 84 to 160. Text is medium weight or heavier. Amber is spent on the creature, progress while
-// the run is on track, and "needs you"; green and red appear only as the lines a finished
+// 84 to 160. Text is medium weight or heavier. Each session is drawn in its own crew creature's
+// hue (DESIGN-V2 2.2; `LiveDisplay.hue`, from the generated Palette.swift): the creature, the
+// ring and the capsule while the run is on track, "needs you" and its raised hand, the finished
+// check. No session is Bit, so none is amber. Green and red appear only as the lines a finished
 // session added and removed. Nothing is a duration computed at render (see `LiveDisplay`).
+//
+// Contrast, on the Lock Screen's #141210 (the island is black, higher still): every ink clears
+// 4.5:1, the lowest being iris at 5.5:1, so the hue is also a word here ("needs you" at 15pt
+// semibold). The numbers are in Palette.swift beside each hue, measured by gen_tokens.py.
 
-/// The tints one card draws its marks in: amber while on track, `textDim` otherwise; when the
-/// data is stale, `textFaint` everywhere (opacity on amber turned it olive brown); on the
-/// Always-On display, never amber (the solid creature would be the brightest thing on it).
+/// The tints one card draws its marks in: the session's hue while on track, `textDim` otherwise;
+/// when the data is stale, `textFaint` everywhere (a hue at partial opacity turns brown); on the
+/// Always-On display the creature and ring go `textDim` (a solid coloured creature would be the
+/// brightest thing on it). `accent` is the hue as a word or a state mark (needs you, finished).
 @available(iOS 16.1, *)
 struct MarkTints {
   let creature: Color
   let ring: Color
+  let accent: Color
 
   init(_ d: LiveDisplay, stale: Bool, dimmed: Bool) {
+    let hue = d.hue.ink
     if stale {
       creature = BuilderPalette.textFaint
       ring = BuilderPalette.textFaint
+      accent = BuilderPalette.textDim
     } else if dimmed {
       creature = BuilderPalette.textDim
       ring = BuilderPalette.textDim
+      accent = hue
     } else {
-      creature = BuilderPalette.amber
-      let amberRing = d.onTrack || (d.phase == .done && d.ring == .arc(1))
-      ring = amberRing ? BuilderPalette.amber : BuilderPalette.textDim
+      creature = hue
+      let full = d.onTrack || (d.phase == .done && d.ring == .arc(1))
+      ring = full ? hue : BuilderPalette.textDim
+      accent = hue
     }
   }
 }
@@ -69,20 +81,36 @@ struct LockScreenLiveView: View {
 
   private var header: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
-      // The harness when it fits whole, never "Claude Co...".
+      // The harness with its mark when it fits whole, never "Claude Co..."; then the mark alone
+      // (read out as the name); then the repo alone.
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           repo
+          harnessMark.padding(.leading, 2)
           Text(d.harness)
             .font(LiveType.font(13, .medium))
             .foregroundStyle(BuilderPalette.textDim)
             .lineLimit(1)
             .fixedSize()
+            .padding(.leading, -2)
+        }
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          repo
+          harnessMark.accessibilityLabel(d.harness)
         }
         repo
       }
       Spacer(minLength: 0)
       trailing.layoutPriority(1)
+    }
+  }
+
+  /// 14pt, sitting 2pt under the text's baseline, so its middle lines up with the lowercase of
+  /// the 13pt name beside it.
+  @ViewBuilder private var harnessMark: some View {
+    if HarnessMark.has(d.agent) {
+      HarnessMark(agent: d.agent, size: 14, tint: isStale ? BuilderPalette.textFaint : BuilderPalette.textDim, flat: isStale)
+        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
     }
   }
 
@@ -101,7 +129,7 @@ struct LockScreenLiveView: View {
     } else {
       switch d.phase {
       case .needsYou:
-        NeedsYouMark(size: 15)
+        NeedsYouMark(size: 15, color: MarkTints(d, stale: false, dimmed: dimmed).accent)
       case .done:
         Text(d.ranFor.map { "\(LiveCopy.ran) \($0)" } ?? LiveCopy.finished)
           .font(LiveType.font(15, .semibold))
@@ -186,7 +214,7 @@ struct CaptionLine: View {
 }
 
 /// "+420 -88 · 3 commits · 12 files changed": green added, red removed (the only colours
-/// besides amber), each part only when MORE THAN NONE. The first build drew "+0 -0 · 0
+/// besides the session's hue), each part only when MORE THAN NONE. The first build drew "+0 -0 · 0
 /// commits" in green and red for a session that wrote nothing (it tested nil, and 0 is not
 /// nil). Nothing landed, and counted as nothing, is one quiet line; unknown counts are none.
 @available(iOS 17.0, *)
@@ -236,11 +264,12 @@ struct FinishedLine: View {
   }
 }
 
-/// hand.raised.fill and the words, amber. Never teal: amber is the one "look here" colour.
+/// hand.raised.fill and the words, in the session's hue: the one "look here" on its card. Its
+/// shape and the words say it, so a colour blind reader and a tinted widget lose nothing.
 @available(iOS 17.0, *)
 struct NeedsYouMark: View {
   var size: CGFloat
-  var color: Color = BuilderPalette.amber
+  var color: Color
 
   var body: some View {
     HStack(spacing: 4) {
@@ -265,38 +294,40 @@ struct Dot: View {
 
 // MARK: - Dynamic Island
 
-/// Compact leading: the creature, bare and snug to the camera. Its frame's empty columns are
-/// trimmed, or a narrow creature (Bit leaves three a side) would carry padding the HIG rules out.
+/// Compact leading: the creature in its hue, bare and snug to the camera. Its frame's empty
+/// columns are trimmed, or a narrow creature (Bit leaves three a side) would carry padding the
+/// HIG rules out.
 @available(iOS 17.0, *)
 struct IslandCompactLeading: View {
   let d: LiveDisplay
   let isStale: Bool
   var body: some View {
     CreatureMark(creature: d.creature, points: 32,
-                 tint: isStale ? BuilderPalette.textFaint : BuilderPalette.amber, trim: .horizontal)
+                 tint: MarkTints(d, stale: isStale, dimmed: false).creature, trim: .horizontal)
   }
 }
 
-/// Compact trailing: the elapsed time as a system timer, in `text`, not amber: amber here is
-/// "needs you" alone, so the move into it is a change of colour and shape, not only shape.
-/// 14pt, the size at which "7:59:59" (54.1pt) fits the slot: a run passes an hour with no
-/// redraw while the app is in the background, so the box is sized for hours from the start.
-/// Needs you is the raised hand, drawn to hold its own beside the 32pt creature.
+/// Compact trailing: the elapsed time as a system timer, in `text`, not the hue: the hue here is
+/// the creature beside it, so the move into needs you is a change of shape (the raised hand, in
+/// the hue) and not a colour appearing. 14pt, the size at which "7:59:59" (54.1pt) fits the
+/// slot: a run passes an hour with no redraw while the app is in the background, so the box is
+/// sized for hours from the start. The hand is drawn to hold its own beside the 32pt creature.
 @available(iOS 17.0, *)
 struct IslandCompactTrailing: View {
   let d: LiveDisplay
   let isStale: Bool
   var body: some View {
+    let accent = MarkTints(d, stale: isStale, dimmed: false).accent
     switch d.phase {
     case .needsYou:
       Image(systemName: "hand.raised.fill")
         .font(LiveType.font(18, .bold))
-        .foregroundStyle(BuilderPalette.amber)
+        .foregroundStyle(accent)
         .accessibilityLabel(LiveCopy.needsYou)
     case .done:
       Image(systemName: "checkmark")
         .font(LiveType.font(15, .bold))
-        .foregroundStyle(BuilderPalette.amber)
+        .foregroundStyle(accent)
         .accessibilityLabel(LiveCopy.finished)
     case .working, .stalled:
       ElapsedTimer(start: d.startDate, size: 14,
@@ -319,7 +350,7 @@ struct IslandMinimal: View {
       if d.phase == .needsYou {
         Image(systemName: "hand.raised.fill")
           .font(LiveType.font(12, .bold))
-          .foregroundStyle(BuilderPalette.amber)
+          .foregroundStyle(tints.accent)
           .accessibilityLabel(LiveCopy.needsYou)
       } else {
         CreatureMark(creature: d.creature, points: 16, tint: tints.creature)
@@ -343,7 +374,7 @@ struct IslandExpandedLeading: View {
   var body: some View {
     HStack(spacing: 6) {
       CreatureMark(creature: d.creature, points: 16,
-                   tint: isStale ? BuilderPalette.textFaint : BuilderPalette.amber, trim: .leading)
+                   tint: MarkTints(d, stale: isStale, dimmed: false).creature, trim: .leading)
       Text(d.repo)
         .font(LiveType.font(15, .semibold, mono: true))
         .foregroundStyle(BuilderPalette.text)
@@ -367,7 +398,7 @@ struct IslandExpandedTrailing: View {
       } else {
         switch d.phase {
         case .needsYou:
-          NeedsYouMark(size: 15)
+          NeedsYouMark(size: 15, color: d.hue.ink)
         case .done:
           Text(d.ranFor.map { "\(LiveCopy.ran) \($0)" } ?? LiveCopy.finished)
             .font(LiveType.font(15, .semibold))

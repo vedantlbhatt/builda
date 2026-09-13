@@ -30,9 +30,11 @@ push rather than doubling one. The rules, each tested:
   * NEVER BOTH: a session with an activity is told it needs you by the activity's alert; the
     ordinary needs you banner (`notify.KIND_NEEDS_YOU`) is only for a session with none,
     once per entry (`session_live.alerted_phase`), and one entry is one alert across both.
-  * Final: `event: "end"` with the finished card (`toState` of the final row), dismissed at
-    once while another session still runs and after DISMISS_AFTER_SECONDS otherwise, then
-    the token row is forgotten.
+  * Final, or a turn the engine called done (finished, not looked at yet): `event: "end"`
+    with the finished card (`toState` of the row), dismissed at once while another session
+    still runs and after DISMISS_AFTER_SECONDS otherwise, then the token row is forgotten.
+    The phone's planner ends a card on the same phase (`surface.planSync`), so a card the
+    server moves and one the phone moves finish the same way.
   * Push to start tokens are stored and never sent in this pass: a start needs an alert, and
     a card for every running session is the noise mission control exists to remove.
 """
@@ -227,15 +229,22 @@ def _quiet_seconds(row: Mapping, now: float) -> int | None:
 
 def phase_of(row: Mapping, live: Mapping | None, now: float) -> str:
     """`surface.phaseOf`: working, needsYou, done or stalled. The engine decides when it
-    spoke; without it a final row is done and a quiet live row is stalled."""
+    spoke; without it a final row is done and a quiet live row is stalled.
+
+    Done comes BEFORE the wait. The engine only calls a turn done while the activity is the
+    wait that followed it (`waiting_on_you`), so checking the wait first read every finished
+    turn as needs you: an alert and the raised hand for a session that had finished and was
+    only waiting to be looked at, while mission control's tile said finished (the owner,
+    2026-09-13: FINISHED, not needs you). One rule on both halves, pinned by the fixture's
+    `done_after_commit` case."""
     if row.get("state") == "final":
         return "done"
     verdict = _get(live, "verdict", "state")
     kind = _get(live, "activity", "kind")
+    if verdict == "done" and not waits_on_background(live):
+        return "done"
     if (verdict == "waiting" or kind == "waiting_on_you") and not waits_on_background(live):
         return "needsYou"
-    if verdict == "done":
-        return "done"
     if kind == "idle":
         return "stalled"
     if live is not None:
@@ -343,9 +352,10 @@ def eta_epoch_of(row: Mapping, live: Mapping | None, now: float) -> int | None:
 
 def since_epoch_of(row: Mapping, live: Mapping | None, phase: str, now: float) -> int | None:
     """`surface.sinceEpochOf`: when the condition the card names began (needs you, no new
-    output, the same command failing for a minute or more), down to the minute, or None."""
+    output, the same command failing for a minute or more, a turn the engine called done
+    finishing), down to the minute, or None."""
     base = anchor_of(row, live, now)
-    if phase in ("needsYou", "stalled"):
+    if phase in ("needsYou", "stalled", "done"):
         since = _get(live, "activity", "since_s")
         if _num(since):
             return _minute_floor(base - max(0, since))
@@ -572,7 +582,8 @@ def _plan(db, user_id: str, ids: list[str], now: float) -> list[LivePush]:
     from . import notify
 
     # Every activity token of a changed session, and of any session that is final now: an
-    # end is owed to a card whose session finished, whichever upload finished it.
+    # end is owed to a card whose session finished, whichever upload finished it. (A turn the
+    # engine calls done is always a change of that session's own live row, so it is in `ids`.)
     tokens = db.execute(
         text(
             """
@@ -629,15 +640,25 @@ def _plan(db, user_id: str, ids: list[str], now: float) -> list[LivePush]:
             "lines_removed_agent": r.lines_removed_agent,
             "commit_count": r.commit_count,
         }
-        if r.state == "final":
+        live = None if r.state == "final" else r.live_body
+        if r.state == "final" or (live is not None and phase_of(row, live, now) == "done"):
+            # Finished: the row went final, or the engine called the turn done while it is
+            # still live. Either way the card ends as finished, as the phone's planner ends it.
             if toks:
-                pushes += _ends(r, row, stats, toks, user_id, now, others_running=bool(running))
+                pushes += _ends(
+                    r, row, stats, live, toks, user_id, now, others_running=bool(running)
+                )
                 db.execute(
                     text("DELETE FROM live_activity_tokens WHERE id = ANY(CAST(:t AS uuid[]))"),
                     {"t": [str(t.id) for t in toks]},
                 )
+            if r.state != "final" and r.alerted_phase is not None:
+                # Out of needs you: a later entry into it is news again.
+                db.execute(
+                    text("UPDATE session_live SET alerted_phase = NULL WHERE session_id = :s"),
+                    {"s": sid},
+                )
             continue
-        live = r.live_body
         if live is None:
             # Running, and no producer computed a state (the Mac app): nothing to say.
             continue
@@ -712,15 +733,18 @@ def _plan(db, user_id: str, ids: list[str], now: float) -> list[LivePush]:
     return pushes
 
 
-def _ends(r, row, stats, toks, user_id: str, now: float, *, others_running: bool) -> list[LivePush]:
-    """The `end` for every card of a session that finished: its final row's card, taken down
-    at once while another session runs (so it never sits on top of a running one) and after
-    DISMISS_AFTER_SECONDS otherwise, exactly as `surface.endOptions` decides it."""
+def _ends(
+    r, row, stats, live, toks, user_id: str, now: float, *, others_running: bool
+) -> list[LivePush]:
+    """The `end` for every card of a session that finished: its row's finished card (a final
+    row's, or a live row's whose turn the engine called done, with that state's sentence),
+    taken down at once while another session runs (so it never sits on top of a running one)
+    and after DISMISS_AFTER_SECONDS otherwise, exactly as `surface.endOptions` decides it."""
     at = js_round(now)
     dismissal = at if others_running else at + DISMISS_AFTER_SECONDS
     out = []
     for t in toks:
-        state = content_state(row, stats, None, creature=t.creature, running_count=0, now=now)
+        state = content_state(row, stats, live, creature=t.creature, running_count=0, now=now)
         out.append(
             LivePush(
                 kind=KIND_ACTIVITY,

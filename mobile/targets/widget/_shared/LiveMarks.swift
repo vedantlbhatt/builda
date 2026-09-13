@@ -2,8 +2,8 @@ import SwiftUI
 import WidgetKit
 
 // The drawn marks every live surface shares: the progress ring, the verdict glyphs, the
-// creature, and the island's progress capsule. Pure SwiftUI (plus two WidgetKit modifiers that
-// are no-ops outside a widget), so the main app can ImageRenderer them for review.
+// creature, the harness mark, and the island's progress capsule. Pure SwiftUI (plus two WidgetKit
+// modifiers that are no-ops outside a widget), so the main app can ImageRenderer them for review.
 
 enum LiveType {
   /// SF Pro at a fixed size. Live surfaces use medium weight or heavier (HIG), so there is no
@@ -17,9 +17,9 @@ enum LiveType {
 
 /// Apple Fitness geometry: an arc on a hairline-colour track, round caps, starting at 12
 /// o'clock and running clockwise, with the creature inside, so identity and progress are one
-/// mark. The arc is amber only while the run is on track (the caller passes `textDim` for
-/// circling, lost, stalled and past the typical run, so a full amber ring never means both
-/// "finished" and "running long"). `.dotted` is "no honest number yet": fine dots in
+/// mark. The arc is the session's hue only while the run is on track (the caller passes
+/// `textDim` for circling, lost, stalled and past the typical run, so a full coloured ring never
+/// means both "finished" and "running long"). `.dotted` is "no honest number yet": fine dots in
 /// `textFaint` round the track, never a guessed arc; fat dots read as a loading spinner at
 /// this size (critique, 2026-09-13), so these are 1.5pt, about 4pt apart. `.track` is the
 /// empty ring: waiting on you, or finished with nothing landed.
@@ -29,7 +29,7 @@ struct LiveRing<Center: View>: View {
   var size: CGFloat
   var stroke: CGFloat
   var track: Color = BuilderPalette.border
-  var tint: Color = BuilderPalette.amber
+  var tint: Color = BuilderPalette.textDim
   var dots: Color = BuilderPalette.textFaint
   @ViewBuilder var center: () -> Center
 
@@ -181,7 +181,8 @@ enum CreatureAssets {
 struct CreatureMark: View {
   var creature: String
   var points: Int = 32
-  var tint: Color = BuilderPalette.amber
+  /// The creature's own hue: `BuilderPalette.creatureHue(creature).ink` on dark.
+  var tint: Color
   var trim: Edge.Set = []
 
   var body: some View {
@@ -201,17 +202,65 @@ struct CreatureMark: View {
   }
 }
 
+// MARK: - Harness
+
+/// The tool's real mark, the owner's SVG drawn as SwiftUI paths (`HarnessMarks.swift`, generated
+/// by scripts/gen_harness_logos.py): Claude, Codex and Gemini in their own colours, which read on
+/// the dark card and the light widget alike; Cursor, Cline and opencode in `tint`, the colour of
+/// the name beside them. A harness with no mark (Aider, an id this build does not know) draws
+/// nothing, and the name carries it. Never the only signal: the name is always there or read out.
+/// `flat` is for a card or a widget that is no longer updating, where everything else has gone
+/// faint and a brand colour would be the loudest thing on it: a colour mark loses its colour and
+/// steps back (grey, not a hue at partial opacity, so nothing turns brown), and a monochrome mark
+/// already takes the faint `tint` it is handed. Every layer in one tint would erase Codex's glyph,
+/// which sits on a white tile.
+@available(iOS 16.1, *)
+struct HarnessMark: View {
+  var agent: String
+  var size: CGFloat
+  var tint: Color
+  var flat: Bool = false
+
+  static func has(_ agent: String) -> Bool { HarnessMarks.stem(for: agent) != nil }
+
+  var body: some View {
+    let layers = HarnessMarks.layers(for: agent)
+    let colour = flat && HarnessMarks.stem(for: agent).map { !HarnessMarks.monochrome.contains($0) } == true
+    ZStack {
+      ForEach(Array(layers.enumerated()), id: \.offset) { _, layer in
+        paint(layer)
+      }
+    }
+    .frame(width: size, height: size)
+    .saturation(colour ? 0 : 1)
+    .opacity(colour ? 0.45 : 1)
+    .accessibilityHidden(true)
+  }
+
+  @ViewBuilder private func paint(_ layer: HarnessMarkLayer) -> some View {
+    let style = FillStyle(eoFill: layer.evenOdd)
+    switch layer.fill {
+    case .tint:
+      layer.shape.fill(tint, style: style).widgetAccentable()
+    case .solid(let color):
+      layer.shape.fill(color, style: style)
+    case .linear(let stops, let start, let end):
+      layer.shape.fill(LinearGradient(stops: stops, startPoint: start, endPoint: end), style: style)
+    }
+  }
+}
+
 // MARK: - Progress capsule (expanded island)
 
 /// A 4pt capsule track with the fill: elapsed over typical. Drawn only when there is an honest
 /// number (the island's caption says "no ETA yet" in words, which a row of dots only repeated),
-/// in amber while on track and `textDim` otherwise, like the ring.
+/// in the session's hue while on track and `textDim` otherwise, like the ring.
 @available(iOS 17.0, *)
 struct ProgressCapsule: View {
   var progress: Double
   var height: CGFloat = 4
   var track: Color = BuilderPalette.border
-  var tint: Color = BuilderPalette.amber
+  var tint: Color = BuilderPalette.textDim
 
   var body: some View {
     ZStack(alignment: .leading) {

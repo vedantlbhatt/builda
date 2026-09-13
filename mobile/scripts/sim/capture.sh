@@ -16,10 +16,12 @@
 #   UDID=<udid>       simulator to drive (default: the first booted one)
 #   BUNDLE=...        default com.vedantlbhatt.Builder
 #   AXE=<path>        default /Users/vedantbhatt/.builder-overnight/tools/axe (AXe 1.8.0, not on PATH)
-#   STEPS="..."       subset, in order, of: prep smoke working island lock needsyou stale done
-#                     handoff stalled states banners previews widget self replay app end
+#   STEPS="..."       subset, in order, of: prep smoke working island lock crew needsyou stale done
+#                     unreviewed handoff stalled states banners previews widget widgetdark self
+#                     replay app end
 #                     (default: all but smoke, handoff, widget, self, replay and app)
-#   CREATURE=owl      draw this creature instead of the builder's own
+#   DETACHED_X=292    the detached minimal circle's centre x in points, for its expanded shot
+#   CREATURE=owl      every session wears this creature (default: each its own crew creature)
 #   SESSION_ID=<id>   a real session id for the push payloads, so a tapped banner opens something
 #   ISLAND_X, ISLAND_Y  island centre in points (default 201,32: iPhone 16 Pro and 17 Pro, 402pt wide)
 #   TRANSCRIPT=<jsonl>  for `self`: a running Claude Code transcript; the step runs the live engine
@@ -47,7 +49,7 @@ RUN=${1:-live-$(date +%Y%m%d-%H%M%S)}
 OUT=${OUT:-$REPO/shots/$RUN}
 BUNDLE=${BUNDLE:-com.vedantlbhatt.Builder}
 AXE=${AXE:-/Users/vedantbhatt/.builder-overnight/tools/axe}
-STEPS=${STEPS:-prep working island lock needsyou stale done stalled states banners previews end}
+STEPS=${STEPS:-prep working island lock crew needsyou stale done unreviewed stalled states banners previews end}
 IX=${ISLAND_X:-201}
 IY=${ISLAND_Y:-32}
 Q=${CREATURE:+&creature=$CREATURE}
@@ -69,7 +71,7 @@ nap() { python3 -c "import time; time.sleep($1)"; }
 shot() { xcrun simctl io "$UDID" screenshot "$OUT/$1.png" >/dev/null 2>&1; print "  shot $1"; }
 axe() { "$AXE" "$@" --udid "$UDID" >/dev/null 2>&1 || true; }
 
-# Open a builder:// link with the app in front. iOS sometimes asks "Open in Builder?" first.
+# Open a builder:// link with the app in front. iOS sometimes asks "Open in Builda?" first.
 # Every step leaves the phone unlocked: an openurl on a locked phone fails
 # (LSApplicationWorkspaceErrorDomain 115) and iOS may still deliver it later, on top of the next
 # link, where two syncs race. Links longer than about 2,000 characters never reach the route
@@ -90,7 +92,7 @@ link() {
 # Anything else in front: the island shows the activity (compact, and minimal for a second one).
 background() { xcrun simctl launch "$UDID" com.apple.Preferences >/dev/null; nap 1.5; }
 
-expand() { axe touch -x "$IX" -y "$IY" --down --up --delay 1.0; nap 1.2; }
+expand() { axe touch -x "${1:-$IX}" -y "$IY" --down --up --delay 1.0; nap 1.2; }
 
 # Collapse an expanded island (or leave an app) to the Home Screen.
 home() { axe button home; nap 1.5; }
@@ -104,7 +106,7 @@ page1() { axe button home; nap 1.2; axe button home; nap 1.5; }
 # display with the activity on it: `lock NAME` photographs that as NAME-aod. One home press
 # then wakes the ordinary Lock Screen (a second one unlocks; the first version of this script
 # pressed once and photographed Always-On as "the Lock Screen"). The first time an activity
-# reaches the Lock Screen iOS asks "Allow Live Activities from Builder?", and later "continue
+# reaches the Lock Screen iOS asks "Allow Live Activities from Builda?", and later "continue
 # to allow"; tap both away so they are not in the picture.
 lock() {
   axe button lock
@@ -153,16 +155,19 @@ step_smoke() {
   link "builder://debug/live?state=end" 2
 }
 
+# Three sessions at once, each in its own crew creature's hue: three cards on the Lock Screen,
+# the compact island and the minimal one beside it in two different hues.
 step_working() {
-  link "builder://debug/live?state=working&n=2&widget=1$Q"
+  link "builder://debug/live?state=working&n=${WORKING_N:-3}&widget=1$Q"
   shot app-debug-working
 }
 
+# The session most in need wins the island: of the three, the one circling on a failing command.
 step_island() {
   background
-  shot island-compact-and-minimal-working
+  shot island-compact-circling
   expand
-  shot island-expanded-working
+  shot island-expanded-circling
   home
 }
 
@@ -172,11 +177,27 @@ step_lock() {
   unlock
 }
 
+# Several sessions on the Lock Screen at once, each in its own crew creature's hue: the stack is
+# collapsed until tapped (then SpringBoard says "Show less"), so one tap on it opens it out.
+step_crew() {
+  link "builder://debug/live?state=working&n=${CREW_N:-3}$Q"
+  lock
+  axe tap -x 200 -y 690; nap 2
+  shot lock-crew
+  unlock
+}
+
+# Two sessions, one waiting on you. iOS picks the presentation: both as minimal views (one
+# attached to the camera, one detached), or the waiting one compact (SEEN ON THE SIMULATOR,
+# 2026-09-13, one of each on two runs). A long press on the right of the island expands the
+# waiting session either way. NEVER a second long press on the centre: once it landed as a tap,
+# opened a session page outside the debug route, and the app's real poll took the fixture cards
+# down under the rest of the run (round 2 of shots/native-v2).
 step_needsyou() {
   link "builder://debug/live?state=needsYou&n=2$Q"
   background
-  shot island-compact-needs-you
-  expand
+  shot island-needs-you
+  expand "${DETACHED_X:-292}"
   shot island-expanded-needs-you
   home
   lock lock-needs-you
@@ -197,15 +218,31 @@ step_stale() {
 
 # One session: with n=2 the ended card sits UNDER the running one in the Lock Screen stack and
 # the picture shows only the other session working (first run).
+#
+# No island shot: an ended activity leaves the island at once (the first capture of this step
+# photographed an empty island), and stays on the Lock Screen for DISMISS_AFTER_SECONDS.
 step_done() {
   link "builder://debug/live?state=end" 2
   link "builder://debug/live?state=done&n=1$Q" 4
-  background
-  shot island-compact-done
-  home
   lock
   shot lock-done
   unlock
+}
+
+# Finished, not looked at yet: a running card whose turn the engine then calls done while the
+# session is still live. It ends as a finished card (never "needs you", the owner's rule), and
+# the widget lists it as finished. The same id twice (live_payload.py working-eta, then finished),
+# so the planner sees the one session move.
+step_unreviewed() {
+  link "builder://debug/live?state=end" 2
+  link "$(python3 "$HERE/live_payload.py" state working-eta)" 5
+  link "$(python3 "$HERE/live_payload.py" state finished --record "$OUT/lock-finished-unreviewed.json")" 5
+  shot app-debug-finished-unreviewed
+  lock
+  shot lock-finished-unreviewed
+  unlock
+  page1; nap 1
+  shot home-widget-finished-unreviewed
 }
 
 # A finished card, then new work: the planner takes the finished card down the moment anything
@@ -322,7 +359,7 @@ step_previews() {
   fi
 }
 
-# Add the Builder widgets by driving SpringBoard, WIDGETS="medium small" (the default) in that
+# Add the Builda widgets by driving SpringBoard, WIDGETS="medium small" (the default) in that
 # order, one pass each. The labels come from `axe describe-ui` on iOS 18.2. Verified end to end
 # on the iPhone 16 Pro / 18.2 simulator, 2026-09-13, first try for both sizes. The long press
 # is on empty wallpaper (y 690) because after the first widget the icon rows move down, and a
@@ -334,8 +371,8 @@ add_widget() {
   axe tap --label "Edit"; nap 1.2
   axe tap --label "Add Widget"; nap 2.5
   axe tap -x 200 -y 176; nap 1                                      # search field
-  "$AXE" type "Builder" --udid "$UDID" >/dev/null 2>&1 || true; nap 2
-  axe tap -x 120 -y 256; nap 2                                      # the Builder result
+  "$AXE" type "Builda" --udid "$UDID" >/dev/null 2>&1 || true; nap 2
+  axe tap -x 120 -y 256; nap 2                                      # the Builda result
   if [[ $1 == medium ]]; then
     axe swipe --start-x 330 --start-y 520 --end-x 60 --end-y 520; nap 1.2
   fi
@@ -366,6 +403,18 @@ step_widget() {
   link "builder://debug/live?state=end" 2
   page1; nap 1
   shot home-widget-medium
+}
+
+# The widgets in the dark appearance too: each row's creature in its hue's dark ink on #141210
+# (the light Home Screen shows the 3:1 light tones and the 4.5:1 light text). Back to light after.
+step_widgetdark() {
+  link "builder://debug/live?state=end" 2
+  link "builder://debug/live?state=needsYou&n=4&widget=1$Q" 3
+  link "builder://debug/live?state=end" 2
+  xcrun simctl ui "$UDID" appearance dark; nap 2
+  page1; nap 1.5
+  shot home-widgets-dark
+  xcrun simctl ui "$UDID" appearance light; nap 2
 }
 
 # The app's own screens for the live row: Now, the session it opens, and mission control. The

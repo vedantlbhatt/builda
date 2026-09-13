@@ -35,6 +35,7 @@ gen:
 	@python3 scripts/gen_contract.py
 	@python3 scripts/gen_strip.py
 	@python3 scripts/gen_tokens.py
+	@python3 scripts/gen_harness_logos.py
 	@python3 scripts/gen_analysis.py
 	@python3 scripts/gen_narrative.py
 	@python3 scripts/gen_shipped.py
@@ -69,6 +70,8 @@ check-gen: gen
 		server/builder/live_spec.py server/builder/quotes_spec.py analysis \
 		Packages/BuilderKit/Sources/BuilderAnalysis/Resources/analysis_schema.json \
 		server/builder/static/upload-fields.json PRIVACY.md spec/fixtures \
+		mobile/targets/widget/_shared/Palette.swift mobile/targets/widget/_shared/HarnessMarks.swift \
+		mobile/src/pixel/harnessLogos.ts \
 		|| (echo ""; echo "FAIL: generated files are stale or hand-edited. Run 'make gen' and commit."; exit 1)
 	@echo "generated files match their specs"
 

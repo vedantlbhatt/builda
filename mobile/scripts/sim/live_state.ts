@@ -9,11 +9,13 @@
  * counts what the planner counts); a finished row's is `toState`'s, the card it ends with.
  * `spoken` is the sentence an alert or a notification would carry, duration and all.
  *
- * The creature is the payload's, else `crab` (the app reads the builder's own from its cache,
- * which bun cannot see). Row defaults match `fillRow` in app/debug/live.tsx.
+ * Each session wears the payload's creature when it names one (the debug route's `creature=`),
+ * else its crew creature over these rows (`crew.ts`), as the debug route does. Row defaults match
+ * `fillRow` in app/debug/live.tsx.
  */
 
 import type { SessionDetail } from '../../src/data/api';
+import { crewCreatures } from '../../src/live/crew';
 import { renderLiveSentence } from '../../src/live/sentence';
 import { payloadBytes, phaseOf, planSync, progressOf, sentenceOf, toAttrs, toState, type LiveStateWire } from '../../src/live/surface';
 
@@ -24,7 +26,7 @@ const input = JSON.parse(await Bun.stdin.text()) as {
   creature?: string;
 };
 const nowMs = Date.now();
-const creature = input.creature ?? 'crab';
+const forced = input.creature ?? null;
 
 function fillRow(p: RowIn): SessionDetail {
   const now = new Date(nowMs).toISOString();
@@ -52,18 +54,21 @@ function fillRow(p: RowIn): SessionDetail {
 
 const rows = input.sessions.map((x) => ({ s: fillRow(x.session), live: x.live }));
 const liveStates = Object.fromEntries(rows.map(({ s, live }) => [s.id, live]));
+const crew: ReadonlyMap<string, string> = forced
+  ? new Map(rows.map(({ s }) => [s.id, forced]))
+  : crewCreatures(rows.map(({ s }) => s));
 const plan = planSync({
   sessions: rows.map(({ s }) => s),
   liveStates,
   tracked: new Map(),
   activitiesEnabled: true,
-  creature,
+  crew,
   nowMs,
 });
 const out = rows.map(({ s, live }) => {
   const phase = phaseOf(s, live, nowMs);
   const start = plan.actions.find((a) => a.kind === 'start' && a.sessionId === s.id);
-  const state = start && start.kind === 'start' ? start.state : toState(s, live, { nowMs, creature, runningCount: 0 });
+  const state = start && start.kind === 'start' ? start.state : toState(s, live, { nowMs, creature: crew.get(s.id), runningCount: 0 });
   const attrs = toAttrs(s);
   return {
     attrs,
@@ -74,4 +79,4 @@ const out = rows.map(({ s, live }) => {
     sentence_ts: live ? renderLiveSentence(live) : null,
   };
 });
-console.log(JSON.stringify({ computed_at_ms: nowMs, creature, rows: out }));
+console.log(JSON.stringify({ computed_at_ms: nowMs, creature: forced, rows: out }));

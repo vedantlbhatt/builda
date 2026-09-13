@@ -35,7 +35,8 @@ import {
   type Harness,
   type HarnessMark,
 } from '../src/pixel/harness';
-import { colors } from '../src/theme';
+import { harnessInk, harnessTileInks, tileInks } from '../src/pixel/palette';
+import { colors, harnessHue, type HueName } from '../src/theme';
 
 /** The 12x12 live area, inclusive, on both axes. */
 const LIVE = [2, 13] as const;
@@ -321,24 +322,95 @@ describe('sizes', () => {
   });
 });
 
+// OWNER OVERRIDE, 2026-09-13 09:22 (brief.md): "why are all of them the same color? Looks
+// horrible." This block used to hold every glyph to ONE neutral ink and the selected tile to
+// amber (DESIGN-DIRECTION 5). The one accent rule is lifted for identity: each mark now wears its
+// harness hue where the harness is the object (DESIGN-V2 2.4), and a selected tile fills with
+// THAT hue, not amber. What still holds, and is still asserted: one role, one ink per glyph,
+// never the vendor's colour, and every ink readable on the surface it is drawn on.
 describe('ink', () => {
+  const HUES: Record<HarnessMark['id'], HueName> = {
+    claude_code: 'heather',
+    codex: 'tide',
+    cursor: 'brass',
+    gemini_cli: 'coral',
+    cline: 'iris',
+    opencode: 'ember',
+    aider: 'cobalt',
+  };
+
+  test('each mark wears the hue the spectrum gives it, seven different hues, none of them amber', () => {
+    for (const m of HARNESS_MARKS) {
+      expect(harnessHue(m.id)?.name, m.id).toBe(HUES[m.id]);
+      for (const h of m.harnesses) expect(harnessHue(h)?.name, h).toBe(HUES[m.id]);
+    }
+    expect(new Set(Object.values(HUES)).size).toBe(HARNESS_MARKS.length);
+    expect(Object.values(HUES)).not.toContain('amber');
+  });
+
+  test("Claude Code is not orange: its hue sits away from Anthropic's terracotta", () => {
+    // The owner's first icon complaint was "an orange and black thing". Heather is a lilac, and
+    // no harness hue is the ember that sits 0.072 OKLab from Claude's #D97757.
+    expect(harnessHue('claude_code')?.name).toBe('heather');
+    for (const m of HARNESS_MARKS) if (m.id !== 'opencode') expect(harnessHue(m.id)?.name).not.toBe('ember');
+  });
+
   for (const scheme of ['dark', 'light'] as const) {
     const c = colors(scheme);
-    test(`${scheme}: each state is one token, and the selected state is ink on amber`, () => {
+    test(`${scheme}: the neutral states are still one token each`, () => {
       expect(glyphColor('idle', c)).toBe(c.text);
       expect(glyphColor('dim', c)).toBe(c.textDim);
       expect(glyphColor('missing', c)).toBe(c.textFaint);
       expect(glyphColor('selected', c)).toBe(c.onAccent);
       expect(c.onAccent).toBe('#1C1917');
+      for (const ink of ['idle', 'dim', 'missing', 'selected'] as const) {
+        expect(harnessInk('codex', ink, scheme)).toBe(glyphColor(ink, c));
+      }
     });
 
-    test(`${scheme}: a glyph clears the 3:1 graphics floor on its own surface`, () => {
+    test(`${scheme}: \`hue\` is the mark tone of the harness's hue, and a harness this build does not know gets text`, () => {
+      for (const m of HARNESS_MARKS) expect(harnessInk(m.id, 'hue', scheme)).toBe(harnessHue(m.id, scheme)!.ink);
+      expect(harnessInk('cursor_agent', 'hue', scheme)).toBe(harnessHue('cursor', scheme)!.ink);
+      expect(harnessInk('windsurf', 'hue', scheme)).toBe(c.text);
+    });
+
+    test(`${scheme}: a glyph clears the 3:1 graphics floor on every surface it is drawn on`, () => {
       expect(contrast(glyphColor('idle', c), c.raised)).toBeGreaterThanOrEqual(3);
       expect(contrast(glyphColor('idle', c), c.bg)).toBeGreaterThanOrEqual(3);
       expect(contrast(glyphColor('dim', c), c.card)).toBeGreaterThanOrEqual(3);
-      expect(contrast(glyphColor('selected', c), c.accent)).toBeGreaterThanOrEqual(3);
+      for (const m of HARNESS_MARKS) {
+        // In a row (bg or card) the mark tone; on a picker tile (raised) the tile's own mark ink.
+        expect(contrast(harnessInk(m.id, 'hue', scheme), c.bg), `${m.id} on bg`).toBeGreaterThanOrEqual(3);
+        expect(contrast(harnessInk(m.id, 'hue', scheme), c.card), `${m.id} on card`).toBeGreaterThanOrEqual(3);
+        const idle = harnessTileInks(m.id, 'idle', scheme);
+        expect(contrast(idle.mark, idle.fill), `${m.id} idle tile`).toBeGreaterThanOrEqual(3);
+        const on = harnessTileInks(m.id, 'selected', scheme);
+        expect(contrast(on.mark, on.fill), `${m.id} selected tile`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    test(`${scheme}: a picker tile is raised with its hue on the mark, or a solid fill of that hue with dark ink`, () => {
+      for (const m of HARNESS_MARKS) {
+        const h = harnessHue(m.id, scheme)!;
+        expect(harnessTileInks(m.id, 'idle', scheme)).toEqual({ fill: c.raised, mark: h.text, name: c.text, status: c.textDim });
+        expect(harnessTileInks(m.id, 'selected', scheme)).toEqual({ fill: h.fill, mark: '#1C1917', name: '#1C1917', status: '#1C1917' });
+        expect(harnessTileInks(m.id, 'missing', scheme)).toEqual({ fill: c.raised, mark: c.textFaint, name: c.textDim, status: c.textDim });
+        // Not the tinted chip: the selected tile's text is never its own fill's hue, and the
+        // fill is never amber, the action colour.
+        expect(harnessTileInks(m.id, 'selected', scheme).name).not.toBe(h.fill);
+        expect(harnessTileInks(m.id, 'selected', scheme).fill).not.toBe(c.accent);
+      }
     });
   }
+
+  test('something with no hue of its own never borrows amber: its selected tile is a neutral solid', () => {
+    for (const scheme of ['dark', 'light'] as const) {
+      const c = colors(scheme);
+      expect(tileInks(undefined, 'selected', scheme)).toEqual({ fill: c.text, mark: c.bg, name: c.bg, status: c.bg });
+      expect(contrast(c.bg, c.text)).toBeGreaterThanOrEqual(4.5);
+      expect(tileInks(undefined, 'idle', scheme).mark).toBe(c.text);
+    }
+  });
 });
 
 // ─── the picker ──────────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { Scheme } from '../theme';
+import { useScheme } from '../ui/scheme';
 import { ANIMAL_FRAMES, ANIMAL_LABELS, type Animal } from './animals';
 import { GRID, type Frame } from './frames';
 import {
@@ -16,7 +17,7 @@ import {
   stepLayers,
   type Layers,
 } from './motion';
-import { animalPalette, type AnimalPalette, type InkTone } from './palette';
+import { HUE_SNAP_MS, animalPalette, type AnimalPalette, type InkTone } from './palette';
 import { FrameSvg, useReducedMotion } from './PixelSprite';
 
 export { ANIMALS, ANIMAL_LABELS, animalChoices, animalForArchetype, resolveAnimal, type Animal } from './animals';
@@ -26,17 +27,26 @@ interface AnimalProps {
   animal: Animal;
   /** Requested box size in points. Rendered at the largest whole-pixel scale that fits. */
   size?: number;
+  /** Default: the kit's `SchemeProvider`, which is dark unless a surface says otherwise. */
   scheme?: Scheme;
   paused?: boolean;
   /** 0.5–2, as `PixelSprite`: shortens every beat. */
   tempo?: number;
-  /** Which ink (`palette.ts`): `selected` on an amber tile, `faint` for a carousel neighbour. */
+  /**
+   * Which ink (`palette.ts`), always this animal's own hue or a neutral: `rest` its ink, `idle`
+   * on an unselected picker tile, `selected` (`#1C1917`) on a tile filled with its hue
+   * (`creatureTileInks`), `faint` for a creature that is not there. A carousel neighbour keeps
+   * `rest`: size and a turn push it back, never a dimmer ink (DESIGN-V2 1.3).
+   */
   tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }
 
 /**
- * One of the eight animals, alive.
+ * One of the eight animals, alive, in its own hue (`tokens.spectrum.creature`: cat orchid, dog
+ * cobalt, fox ember, owl heather, bee brass, whale tide, octopus iris, crab coral). The owner's
+ * 2026-09-13 override lifted the one ink the family shared; what did not change is that a
+ * creature is ONE ink per frame, one role, the family's shape and weight. Only the ink differs.
  *
  * The prop shape is `PixelSprite`'s on purpose — a screen swapping the mascot for an
  * animal should change the tag and the one prop that names the creature, nothing else.
@@ -47,7 +57,9 @@ interface AnimalProps {
  * `paused` is OR-ed with the OS reduce-motion setting exactly as the mascot does: a
  * caller can stop an animal, and can never start one against that setting.
  */
-export function PixelAnimal({ animal, size = 64, scheme = 'dark', paused = false, tempo, tone = 'rest', style }: AnimalProps) {
+export function PixelAnimal({ animal, size = 64, scheme: schemeProp, paused = false, tempo, tone = 'rest', style }: AnimalProps) {
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
   const reduced = useReducedMotion();
   if (paused || reduced) {
     return <AnimalFrameView animal={animal} frame={ANIMAL_FRAMES[animal][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
@@ -59,7 +71,7 @@ export function PixelAnimal({ animal, size = 64, scheme = 'dark', paused = false
 export function PixelAnimalIcon({
   animal,
   size = 24,
-  scheme = 'dark',
+  scheme: schemeProp,
   tone = 'rest',
   style,
 }: {
@@ -69,6 +81,8 @@ export function PixelAnimalIcon({
   tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
   return <AnimalFrameView animal={animal} frame={ANIMAL_FRAMES[animal][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
 }
 
@@ -145,13 +159,15 @@ function LiveAnimal({
       timers.add(id);
     };
 
-    // 1. Entrance: the one transform an animal has, and it ends at exactly scale 1.
+    // 1. Entrance: the one transform an animal has, and it ends at exactly scale 1. The creature
+    //    arrives by scale; its opacity snaps in (`HUE_SNAP_MS`), because a hue at partial
+    //    opacity over the warm ground is brown for as long as the fade lasts (DESIGN-V2 1.3).
     setLayers(initLayers(frames[0]!, Date.now()));
     settleOpacity.setValue(0);
     settleScale.setValue(MOTION.settle.fromScale);
     run(
       Animated.parallel([
-        timing(settleOpacity, 1, MOTION.settle.ms, 'out'),
+        timing(settleOpacity, 1, Math.min(MOTION.settle.ms, HUE_SNAP_MS), 'out'),
         timing(settleScale, 1, MOTION.settle.ms, 'out'),
       ])
     );

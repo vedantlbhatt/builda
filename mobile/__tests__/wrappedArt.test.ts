@@ -5,12 +5,20 @@
 import { describe, expect, test } from 'bun:test';
 
 import { REPORT_ENUMS, type ReportWrappedCard, type WrappedCard } from '../src/generated/report';
-import { graphLevel } from '../src/theme';
+import { tokens } from '../src/generated/tokens';
+import { archetypeHue, cardHue, colors, graphLevel, hue, HUE_NAMES } from '../src/theme';
+import { bayer8, quantize } from '../src/ui/dithering';
 import {
   FADED_INK,
   NO_SOURCES,
   activityGrid,
   artFor,
+  artHue,
+  artTones,
+  deckArchetype,
+  toneLayers,
+  toneLevel,
+  toneMask,
   attendedBars,
   commitRow,
   cumulativeLines,
@@ -236,5 +244,113 @@ describe('the data into shapes', () => {
         }
       expect(solid).toBe(Math.round(share * blocks));
     }
+  });
+});
+
+// OWNER OVERRIDE, 2026-09-13 09:22 (brief.md): "why are all of them the same color? Looks
+// horrible." v1 drew all fifteen headers in one amber over paper. Each card now wears its own
+// hue (`tokens.spectrum.card` through `cardHue`) in DESIGN-V2 1.4's three levels: paper, the
+// hue's partner, the hue's ink.
+describe('every card in its own hue', () => {
+  const ARCHETYPES = Object.keys(tokens.spectrum.archetype);
+
+  test('the spec carries the card hue cardHue gives it, for the deck the sample describes', () => {
+    const archetype = card('builder_type').value_id!;
+    const src = { ...SAMPLE_SOURCES, archetype };
+    for (const id of REPORT_ENUMS.wrapped_card) {
+      expect({ id, hue: artFor(card(id), src).hue }).toEqual({ id, hue: cardHue(id, archetype).name });
+    }
+    // The sample builder is a quality guardian: card one is the crab's coral.
+    expect(artFor(card('builder_type'), NO_SOURCES).hue).toBe('coral');
+  });
+
+  test('fifteen cards are not one colour: at least seven hues in every deck', () => {
+    for (const archetype of ARCHETYPES) {
+      const src = { ...NO_SOURCES, archetype };
+      const hues = new Set(
+        REPORT_ENUMS.wrapped_card.map((id) => artHue(id === 'builder_type' ? ({ ...card(id), value_id: archetype } as ReportWrappedCard) : card(id), src)),
+      );
+      expect({ archetype, n: hues.size >= 7 }).toEqual({ archetype, n: true });
+    }
+  });
+
+  test('card one reads its own answer; a refused builder type is the generalist, amber', () => {
+    const one = card('builder_type');
+    expect(deckArchetype(one, NO_SOURCES)).toBe(one.value_id!);
+    expect(artHue(one, NO_SOURCES)).toBe(archetypeHue(one.value_id).name);
+    const refused = { ...one, reason: 'no_archetype_metric', value_id: null } as unknown as ReportWrappedCard;
+    expect(artHue(refused, { ...NO_SOURCES, archetype: 'skeptic' })).toBe('amber');
+  });
+
+  test('cards two and three step to coral when card one already wears their hue', () => {
+    // A velocity machine's card one is the bee's brass, which is card two's own hue; a
+    // skeptic's is the whale's tide, card three's.
+    expect(artHue(card('shipped'), { ...NO_SOURCES, archetype: 'velocity_machine' })).toBe('coral');
+    expect(artHue(card('shipped'), { ...NO_SOURCES, archetype: 'skeptic' })).toBe('brass');
+    expect(artHue(card('work_style'), { ...NO_SOURCES, archetype: 'skeptic' })).toBe('coral');
+    expect(artHue(card('work_style'), NO_SOURCES)).toBe('tide');
+    expect(artHue(card('builder_type'), NO_SOURCES)).not.toBe(artHue(card('shipped'), NO_SOURCES));
+  });
+
+  test('the tones are the hue\'s ink and partner, the mark tones on light', () => {
+    for (const name of HUE_NAMES) {
+      expect(artTones(name, 'dark')).toEqual({ ink: tokens.spectrum.hues[name].dark, partner: tokens.spectrum.hues[name].partner });
+      expect(artTones(name, 'light')).toEqual({ ink: tokens.spectrum.hues[name].light, partner: tokens.spectrum.hues[name].lightPartner });
+      // The partner is a step below the ink on the card, never the ink at a lower opacity.
+      expect(artTones(name, 'dark').partner).not.toBe(hue(name).ink);
+      expect(colors('dark').card).not.toBe(artTones(name, 'dark').partner);
+    }
+  });
+});
+
+describe('the three levels', () => {
+  test('the recipe: nothing is paper, half is solid partner, full is solid ink', () => {
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const b = bayer8(x, y);
+        expect(toneLevel(0, b)).toBe(0);
+        expect(toneLevel(0.5, b)).toBe(1);
+        expect(toneLevel(1, b)).toBe(2);
+      }
+    }
+  });
+
+  test('coverage climbs paper to partner to ink: a quarter is half partner, three quarters half ink', () => {
+    const count = (v: number) => {
+      const n = [0, 0, 0];
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) n[toneLevel(v, bayer8(x, y))]! += 1;
+      return n;
+    };
+    expect(count(0.25)).toEqual([32, 32, 0]);
+    expect(count(0.75)).toEqual([0, 32, 32]);
+  });
+
+  test('the two one level layers, ink over partner, are the recipe exactly: every grey against every threshold', () => {
+    // The shader reads the field through 8 bit grey, so walk every level it can see.
+    const w = 8 * 256;
+    const data = new Float32Array(w * 8);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < w; x++) data[y * w + x] = 1 - Math.floor(x / 8) / 255;
+    const field = { width: w, height: 8, data };
+    const layers = toneLayers(field);
+    const want = toneMask(field);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const b = bayer8(x, y);
+        const ink = quantize(layers.ink.data[i]!) > b;
+        const partner = quantize(layers.partner.data[i]!) > b;
+        const got = ink ? 2 : partner ? 1 : 0;
+        expect(got).toBe(want[i]!);
+      }
+    }
+  });
+
+  test('a refused card draws only its partner: thinned to FADED_INK, the field never reaches the ink level', () => {
+    const spec = artFor(card('builder_type'), NO_SOURCES);
+    const mask = toneMask(fieldOf(spec, COLS, ROWS, { faded: true }));
+    expect(mask.some((v) => v === 1)).toBe(true);
+    expect(mask.some((v) => v === 2)).toBe(false);
+    const full = toneMask(fieldOf(spec, COLS, ROWS));
+    expect(full.some((v) => v === 2)).toBe(true);
   });
 });

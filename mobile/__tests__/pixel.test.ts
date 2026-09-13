@@ -26,6 +26,7 @@ import {
 import { closeEyes } from '../src/pixel/motion';
 import { glyphInk, spritePalette } from '../src/pixel/palette';
 import { SPRITES, SPRITE_STATES, framesFor } from '../src/pixel/sprites';
+import { tokens } from '../src/generated/tokens';
 import { colors } from '../src/theme';
 
 const BODY_TOLERANCE = 4;
@@ -215,10 +216,14 @@ describe('palette', () => {
     }
   });
 
-  test('amber on dark, ink on light: Bit is never amber on the light background', () => {
-    // Amber on #FBF9F5 is 1.7:1 (DESIGN-DIRECTION 3.1), so the light scheme draws in ink.
+  test('amber on dark, amber mark tone on light: Bit is never the 1.7:1 amber on the light background', () => {
+    // OWNER OVERRIDE, 2026-09-13 (brief.md): the one accent rule is lifted for identity, and Bit
+    // is the amber creature of the spectrum. On dark that is the accent itself; on #FBF9F5 the
+    // accent is 1.7:1 (DESIGN-DIRECTION 3.1), so light draws Bit in amber's 3:1 mark tone
+    // (`tokens.spectrum.hues.amber.light`) where it used to draw him in `text`.
     expect(spritePalette('dark').b).toBe(colors('dark').accent);
-    expect(spritePalette('light').b).toBe(colors('light').text);
+    expect(spritePalette('light').b).toBe(tokens.spectrum.hues.amber.light);
+    expect(spritePalette('light').b).not.toBe(colors('light').accent);
     expect(spritePalette('dark', 'selected').b).toBe(String(colors('dark').onAccent));
     expect(spritePalette('dark', 'faint').b).toBe(colors('dark').textFaint);
     expect(spritePalette('dark').b).toBe(glyphInk('dark'));

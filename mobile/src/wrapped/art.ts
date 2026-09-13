@@ -1,7 +1,16 @@
 /**
- * The dithered header of each Wrapped card: WHAT it draws. Pure, so `bun test` holds it;
- * `CardArt.tsx` hands the field to the kit's `Dither`, which draws it in amber through the
- * one Bayer shader.
+ * The dithered header of each Wrapped card: WHAT it draws, and in which hue. Pure, so
+ * `bun test` holds it; `CardArt.tsx` hands the field to the kit's `Dither`, which draws it
+ * through the one Bayer shader in the card's two tones.
+ *
+ * THE COLOUR (the owner's 2026-09-13 override: "why are all of them the same color? Looks
+ * horrible"). v1 dithered every header in one amber, and fifteen amber cards was exactly the
+ * sameness the owner saw. Each card now wears its own hue (`tokens.spectrum.card`, run by
+ * `theme.cardHue`: card one the archetype's creature hue, cards two and three stepping to coral
+ * when card one already wears theirs), and its header is the THREE LEVEL recipe of DESIGN-V2
+ * 1.4: paper, the hue's partner, the hue's ink, dithered on the scalar so the hue never
+ * shifts toward brown. `artFor` stamps the hue on the spec (`ArtSpec.hue`), so the card view
+ * needs no second lookup; `artTones` resolves it for a scheme.
  *
  * The idea that keeps fifteen cards from reading as fifteen stock illustrations: where the
  * phone holds the data behind a card, the header IS that data, dithered. Where it does not,
@@ -37,9 +46,10 @@
 import type { PlainRole, ReportWrappedCard, WrappedCard } from '../generated/report';
 import { decodeStrip, unpackByte } from '../strip/decode';
 import { StripClass } from '../generated/strip';
-import { graphLevel } from '../theme';
+import { cardHue, graphLevel, hue as hueOf, type HueName, type Scheme } from '../theme';
 import { mulberry32 } from '../ui/decrypt';
-import { fieldFromFunction, fieldFromGrid, fieldFromSeries, type Field } from '../ui/dithering';
+import { level3 } from '../ui/bits/components/fills';
+import { bayer8, fieldFromFunction, fieldFromGrid, fieldFromSeries, quantize, type Field } from '../ui/dithering';
 
 // ─── specs ──────────────────────────────────────────────────────────────────────────────
 
@@ -67,7 +77,8 @@ export interface Lane {
   peak: boolean;
 }
 
-export type ArtSpec =
+/** What a header draws: the shape of its data, or its seeded motif. */
+export type ArtShape =
   | { kind: 'grid'; grid: number[][]; basis: ArtBasis }
   | { kind: 'row'; values: number[]; basis: ArtBasis }
   | { kind: 'series'; series: number[]; shape: 'band' | 'area'; basis: ArtBasis }
@@ -75,6 +86,13 @@ export type ArtSpec =
   | { kind: 'lanes'; lanes: Lane[][]; basis: ArtBasis }
   | { kind: 'bands'; shares: number[]; basis: ArtBasis }
   | { kind: 'motif'; motif: Motif; seed: number; amount: number; basis: ArtBasis };
+
+/**
+ * A header: its shape, and the card's hue (`cardHue`), which `artFor` always sets. Optional so a
+ * spec written by hand (a gallery, a test) still type checks; `CardArt` reads a missing hue as
+ * amber, the brand.
+ */
+export type ArtSpec = ArtShape & { hue?: HueName };
 
 /** A session, as much of it as the art reads. */
 export interface ArtSession {
@@ -97,6 +115,14 @@ export interface ArtSources {
   sessions: readonly ArtSession[] | null;
   /** The longest session's strip, base64 of 1024 columns. */
   longestStrip: string | null;
+  /**
+   * The deck's builder type: card one's `value_id`, an archetype id. Cards two and three read it
+   * to step off card one's hue when card one already wears theirs (`cardHue`, `spectrum.cardAlt`),
+   * so no card meets its own hue across or down the grid. Absent, card one still reads its own
+   * answer and every other card wears its own hue: only a velocity machine's or a skeptic's deck
+   * can then show two neighbours in one hue, which is why the deck should set it.
+   */
+  archetype?: string | null;
 }
 
 export const NO_SOURCES: ArtSources = { graph: null, commitDays: null, windowEnd: null, sessions: null, longestStrip: null };
@@ -281,7 +307,7 @@ export function motifFn(motif: Motif, seed: number, aspect: number, amount = 0):
   }
 }
 
-function motif(m: Motif, seed: number, amount = 0): ArtSpec {
+function motif(m: Motif, seed: number, amount = 0): ArtShape {
   return { kind: 'motif', motif: m, seed, amount, basis: 'procedural' };
 }
 
@@ -491,11 +517,41 @@ export function weeksFor(aspect: number): number {
 }
 
 /**
+ * The archetype card one wears, as `cardHue` wants it: card one's own answer when it has one
+ * (a refused builder type is the generalist, amber), and the deck's (`ArtSources.archetype`) for
+ * every other card.
+ */
+export function deckArchetype(card: ReportWrappedCard, src: ArtSources): string | null {
+  if (card.id === 'builder_type') return card.reason == null ? (card.value_id ?? null) : null;
+  return src.archetype ?? null;
+}
+
+/** A card's hue name: `tokens.spectrum.card` through `cardHue`, card one and `cardAlt` included. */
+export function artHue(card: ReportWrappedCard, src: ArtSources): HueName {
+  return cardHue(card.id, deckArchetype(card, src)).name;
+}
+
+/**
+ * The header's two tones for a scheme (DESIGN-V2 1.4): the hue's ink for the highlights, its
+ * partner for the midtones, paper (the card, through a transparent canvas) for the rest. On
+ * light, the 3:1 mark tone and the light partner. A refused card keeps its hue: `FADED_INK`
+ * thins its field to the partner level, so it reads as absent and still as itself.
+ */
+export function artTones(name: HueName, scheme: Scheme): { ink: string; partner: string } {
+  const h = hueOf(name, scheme);
+  return { ink: h.ink, partner: h.partner };
+}
+
+/**
  * The header for one card. `aspect` is the header box's width over its height, which the
  * activity grid needs to keep its days square. A refused card gets its seeded field: it
  * has no answer to draw, and `CardArt` thins it (`FADED_INK`) so it reads as absent.
  */
 export function artFor(card: ReportWrappedCard, src: ArtSources, aspect = 1.6): ArtSpec {
+  return { ...shapeFor(card, src, aspect), hue: artHue(card, src) };
+}
+
+function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): ArtShape {
   const fallback = motif(MOTIFS[card.id] ?? 'drift', seedOf(card.value_id ? `${card.id}:${card.value_id}` : card.id));
   if (card.reason != null) return fallback;
   switch (card.id) {
@@ -572,7 +628,7 @@ export function fieldOf(spec: ArtSpec, cols: number, rows: number, options: { fa
   return field;
 }
 
-function rawField(spec: ArtSpec, cols: number, rows: number): Field {
+function rawField(spec: ArtShape, cols: number, rows: number): Field {
   switch (spec.kind) {
     case 'grid':
       return fieldFromGrid(spec.grid, cols, rows, { gap: GAP });
@@ -641,3 +697,54 @@ function rawField(spec: ArtSpec, cols: number, rows: number): Field {
 
 /** Band densities, largest share first. UNMEASURED JUDGEMENT CALL: a step the dither shows. */
 export const BAND_INK = [1, 0.62, 0.42, 0.3, 0.22, 0.16, 0.12, 0.09, 0.07] as const;
+
+// ─── the three levels, as the kit draws them ────────────────────────────────────────────
+
+/** A cell of the three level recipe: 0 paper, 1 the partner tone, 2 the ink. */
+export type ToneLevel = 0 | 1 | 2;
+
+/**
+ * DESIGN-V2 1.4's recipe for one cell, at an ink amount `v` (0..1) and the cell's Bayer
+ * threshold `b`: the lower half of the range dithers partner over paper, the upper half ink
+ * over partner. `v` 0 stays paper, `v` 1 is solid ink, `v` 0.5 is solid partner. It is the
+ * ported components' rule (`level3`), not a second copy of it, so a Wrapped header and a
+ * spotlight or a ProfileCard field can never disagree about which cell is which tone.
+ */
+export function toneLevel(v: number, b: number): ToneLevel {
+  return level3(clamp01(v), b);
+}
+
+/** The recipe over a field, one level per cell, after the 8 bit grey the shader reads. */
+export function toneMask(field: Field): Uint8Array {
+  const out = new Uint8Array(field.width * field.height);
+  for (let y = 0; y < field.height; y++) {
+    for (let x = 0; x < field.width; x++) {
+      const i = y * field.width + x;
+      out[i] = toneLevel(quantize(field.data[i] ?? 0), bayer8(x, y));
+    }
+  }
+  return out;
+}
+
+/**
+ * The recipe as two ONE level layers the kit's `Dither` can draw today: `partner`, inked
+ * wherever `min(1, 2v)` passes the threshold, and `ink`, wherever `max(0, 2v - 1)` does. The
+ * ink layer drawn over the partner layer, both on transparent paper, IS the three level
+ * recipe cell for cell (the test walks every grey level against every Bayer threshold), so a
+ * card can wear its two tones before the kit's shader grows a `partner` uniform, and draws
+ * the same when it does.
+ */
+export function toneLayers(field: Field): { partner: Field; ink: Field } {
+  const n = field.width * field.height;
+  const partner = new Float32Array(n);
+  const ink = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = quantize(field.data[i] ?? 0);
+    partner[i] = Math.min(1, v * 2);
+    ink[i] = Math.max(0, v * 2 - 1);
+  }
+  return {
+    partner: { width: field.width, height: field.height, data: partner },
+    ink: { width: field.width, height: field.height, data: ink },
+  };
+}

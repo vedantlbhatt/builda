@@ -1,5 +1,6 @@
 /**
- * The pixel family: Bit and the eight creatures, one ink, one grid, one weight.
+ * The pixel family: Bit and the eight creatures, one ink per frame (each creature its own, from
+ * the spectrum, since the owner's 2026-09-13 override), one grid, one weight.
  *
  * The failure mode of a sprite pack is not a crash either. It is a creature that still
  * renders, still animates, and no longer belongs: a second tone creeping back into one frame,
@@ -31,9 +32,10 @@ import {
 import { EMPTY, EYES, GRID, ascii, eyesOpen, holes, isValidFrame, validateFrame, type Frame } from '../src/pixel/frames';
 import { ANIMAL_MOTION, MOTION, animalTimeline, clampTempo, closeEyes, timelineFor } from '../src/pixel/motion';
 import { glyphColor } from '../src/pixel/harness';
-import { GLYPH_INK, animalPalette, glyphInk, spritePalette } from '../src/pixel/palette';
+import { GLYPH_INK, HUE_SNAP_MS, animalPalette, creatureInk, creatureTileInks, glyphInk, spritePalette } from '../src/pixel/palette';
 import { SPRITES } from '../src/pixel/sprites';
-import { colors, type Scheme } from '../src/theme';
+import { tokens } from '../src/generated/tokens';
+import { colors, creatureHue, type Scheme } from '../src/theme';
 
 // ─── measuring a frame ───────────────────────────────────────────────────────────────
 
@@ -507,55 +509,123 @@ describe('one family: Bit and the eight, held to the same rules', () => {
   });
 });
 
-describe('one ink', () => {
+// OWNER OVERRIDE, 2026-09-13 09:22 (brief.md): "why are all of them the same color? Looks
+// horrible." This block used to assert ONE ink for the whole family (amber on dark, text on
+// light). The one accent rule is lifted for identity, so it now asserts one ink PER creature,
+// each from `tokens.spectrum`, all nine distinct (DESIGN-V2-COLOUR-MOTION.md 1.5 and 2.1). What
+// still holds, and is still asserted: one ink per frame, and every tone readable where it is drawn.
+describe('one ink per creature', () => {
   const schemes: Scheme[] = ['dark', 'light'];
+  const tones = ['rest', 'idle', 'selected', 'faint'] as const;
 
-  test('every creature and Bit share one ink, per scheme and per tone', () => {
+  test('each creature draws in exactly one ink per scheme and tone', () => {
     for (const scheme of schemes) {
-      for (const tone of ['rest', 'idle', 'selected', 'faint'] as const) {
-        const ink = glyphInk(scheme, tone);
-        expect(ink).toMatch(/^#[0-9A-F]{6}$/i);
-        for (const animal of ANIMALS) expect(animalPalette(animal, scheme, tone)).toEqual({ b: ink });
+      for (const tone of tones) {
+        for (const animal of ANIMALS) {
+          const p = animalPalette(animal, scheme, tone);
+          expect(Object.keys(p)).toEqual(['b']);
+          expect(p.b).toMatch(/^#[0-9A-F]{6}$/i);
+        }
         const bit = spritePalette(scheme, tone);
-        expect(new Set(Object.values(bit))).toEqual(new Set([ink]));
+        expect(new Set(Object.values(bit)).size).toBe(1);
+        expect(bit.b).toBe(glyphInk(scheme, tone));
       }
     }
   });
 
-  test('the ink is a token: amber on dark, ink on light and on the amber tile, faint when dimmed', () => {
-    const dark = colors('dark');
-    const light = colors('light');
-    expect(glyphInk('dark')).toBe(dark.accent);
-    expect(glyphInk('light')).toBe(light.text);
-    expect(glyphInk('dark', 'selected')).toBe(String(dark.onAccent));
-    expect(glyphInk('light', 'selected')).toBe(String(light.onAccent));
-    expect(glyphInk('dark', 'faint')).toBe(dark.textFaint);
-    expect(glyphInk('light', 'faint')).toBe(light.textFaint);
-    expect(GLYPH_INK.dark.rest).toBe('accent');
+  test('at rest every creature wears its spectrum hue, and the nine are nine different inks', () => {
+    for (const scheme of schemes) {
+      const inks = [glyphInk(scheme), ...ANIMALS.map((a) => animalPalette(a, scheme).b)];
+      expect(new Set(inks).size).toBe(9);
+      expect(glyphInk(scheme)).toBe(creatureHue('bit', scheme).ink);
+      for (const animal of ANIMALS) {
+        expect(animalPalette(animal, scheme).b).toBe(tokens.spectrum.hues[tokens.spectrum.creature[animal]][scheme === 'dark' ? 'dark' : 'light']);
+      }
+    }
+    // Bit is the brand, so Bit is the accent amber on dark; no animal is.
+    expect(glyphInk('dark')).toBe(colors('dark').accent);
+    for (const animal of ANIMALS) expect(animalPalette(animal, 'dark').b).not.toBe(colors('dark').accent);
   });
 
-  test('on an unselected picker tile a creature is drawn as a harness glyph is: in text', () => {
-    // The two pickers are one picker: amber means "selected" in both, and an idle tile shows
-    // its drawing in `text` whether it is a tool or a creature (harness.ts `glyphColor`).
+  test('the neutral tones are tokens: onAccent on a filled tile, textFaint when not there', () => {
     for (const scheme of schemes) {
       const c = colors(scheme);
-      expect(glyphInk(scheme, 'idle')).toBe(glyphColor('idle', c));
+      for (const animal of ANIMALS) {
+        expect(animalPalette(animal, scheme, 'selected').b).toBe(String(c.onAccent));
+        expect(animalPalette(animal, scheme, 'faint').b).toBe(c.textFaint);
+      }
+      expect(glyphInk(scheme, 'selected')).toBe(String(c.onAccent));
+      expect(glyphInk(scheme, 'faint')).toBe(c.textFaint);
+    }
+    expect(GLYPH_INK.dark.rest).toBe('hue');
+    expect(GLYPH_INK.light.idle).toBe('hueText');
+    expect(GLYPH_INK.light.selected).toBe('onAccent');
+  });
+
+  test('on an unselected picker tile a creature keeps its own hue; selected and missing match the harness picker', () => {
+    // DESIGN-V2 2.1: "idle tile (its ink on raised)"; selected fills the tile with the hue and
+    // draws the creature in onAccent, as the harness picker does (`tileInks`, one rule for both).
+    // On dark the idle ink IS the rest ink. On light it is the same hue's text tone: MEASURED,
+    // the 3:1 mark tone is 2.86 to 2.94:1 on the light `raised` (#F3EFE7), under the floor a
+    // mark needs, and the text tone is 4.18 to 4.30:1 there.
+    for (const scheme of schemes) {
+      const c = colors(scheme);
+      for (const creature of ['bit', ...ANIMALS] as const) {
+        const h = creatureHue(creature, scheme);
+        expect(creatureInk(creature, scheme, 'idle')).toBe(h.text);
+        expect(creatureTileInks(creature, 'idle', scheme).mark).toBe(creatureInk(creature, scheme, 'idle'));
+        expect(creatureTileInks(creature, 'selected', scheme)).toEqual({ fill: h.fill, mark: h.onFill, name: h.onFill, status: h.onFill });
+        expect(creatureTileInks(creature, 'selected', scheme).mark).toBe(creatureInk(creature, scheme, 'selected'));
+        expect(creatureTileInks(creature, 'missing', scheme).mark).toBe(creatureInk(creature, scheme, 'faint'));
+        expect(contrast(creatureInk(creature, scheme, 'idle'), c.raised), `${creature} idle on ${scheme} raised`).toBeGreaterThanOrEqual(3);
+      }
+      for (const animal of ANIMALS) {
+        if (scheme === 'dark') expect(animalPalette(animal, scheme, 'idle')).toEqual(animalPalette(animal, scheme, 'rest'));
+        else expect(animalPalette(animal, scheme, 'idle')).not.toEqual(animalPalette(animal, scheme, 'rest'));
+      }
       expect(glyphInk(scheme, 'selected')).toBe(glyphColor('selected', c));
       expect(glyphInk(scheme, 'faint')).toBe(glyphColor('missing', c));
     }
-    expect(glyphInk('dark', 'idle')).not.toBe(glyphInk('dark', 'rest'));
+  });
+
+  test('a selected tile is a solid fill of the creature\'s own hue with dark ink, never amber for an animal', () => {
+    // The v1 picker filled every selected tile with amber. Under the override the fill is the
+    // item's hue; amber is Bit's and the action's alone.
+    for (const scheme of schemes) {
+      for (const animal of ANIMALS) {
+        const t = creatureTileInks(animal, 'selected', scheme);
+        expect(t.fill).toBe(creatureHue(animal).fill);
+        expect(t.fill).not.toBe(colors('dark').accent);
+        expect(contrast(t.name, t.fill), `${animal} name on its fill`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(creatureTileInks('bit', 'selected', scheme).fill).toBe(colors('dark').accent);
+    }
+  });
+
+  test("a creature's colour snaps in: its opacity arrives in under 120 ms while the scale settles", () => {
+    // DESIGN-V2 1.3: a hue at partial opacity over the warm ground is brown for as long as it is
+    // partial, so colour enters by position and scale with its opacity snapping in.
+    expect(HUE_SNAP_MS).toBeLessThan(120);
+    expect(HUE_SNAP_MS).toBeLessThan(MOTION.settle.ms);
   });
 
   test('every tone reads on the surface it is drawn on', () => {
-    // MEASURED: amber on the dark bg 10.4:1; light ink on the light bg 16.6:1; onAccent on
-    // the amber tile 9.7:1; textFaint on the dark bg 3.2:1, which is decoration only, and is
-    // only ever a carousel neighbour beside the creature at full ink.
-    expect(contrast(glyphInk('dark'), colors('dark').bg)).toBeGreaterThan(10);
-    expect(contrast(glyphInk('light'), colors('light').bg)).toBeGreaterThan(10);
-    expect(contrast(glyphInk('dark', 'selected'), colors('dark').accent)).toBeGreaterThan(9);
-    expect(contrast(glyphInk('dark', 'faint'), colors('dark').bg)).toBeGreaterThan(3);
-    // Amber on the light background is why the light scheme draws in ink.
-    expect(contrast(colors('light').accent, colors('light').bg)).toBeLessThan(2);
+    // MEASURED: the lowest dark ink is iris, 5.5:1 on bg and 4.6:1 on the raised picker tile;
+    // the lowest light mark tone is 3.1:1 on the light bg; onAccent on the lowest fill (iris)
+    // is 5.2:1; textFaint on the dark bg 3.2:1, which is decoration only.
+    const dark = colors('dark');
+    const light = colors('light');
+    for (const creature of ['bit', ...ANIMALS] as const) {
+      const d = creatureHue(creature, 'dark');
+      expect(contrast(d.ink, dark.bg)).toBeGreaterThan(5);
+      expect(contrast(d.ink, dark.raised)).toBeGreaterThan(4.5);
+      expect(contrast(creatureHue(creature, 'light').ink, light.bg)).toBeGreaterThanOrEqual(3);
+      expect(contrast(String(dark.onAccent), d.fill)).toBeGreaterThan(5);
+    }
+    expect(contrast(glyphInk('dark', 'faint'), dark.bg)).toBeGreaterThan(3);
+    // Amber on the light background is 1.7:1, which is why light draws Bit in amber's mark tone.
+    expect(contrast(light.accent, light.bg)).toBeLessThan(2);
+    expect(glyphInk('light')).not.toBe(light.accent);
   });
 });
 

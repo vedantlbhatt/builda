@@ -11,6 +11,7 @@ import {
 import Svg, { Rect } from 'react-native-svg';
 
 import type { Scheme } from '../theme';
+import { useScheme } from '../ui/scheme';
 import { EMPTY, GRID, runsFor, type Frame } from './frames';
 import {
   CUT,
@@ -32,7 +33,7 @@ import {
   type Layers,
   type Overlay,
 } from './motion';
-import { spritePalette, type InkTone, type SpritePalette } from './palette';
+import { HUE_SNAP_MS, spritePalette, type InkTone, type SpritePalette } from './palette';
 import { SPRITES, type SpriteState } from './sprites';
 
 export { spritePalette } from './palette';
@@ -49,11 +50,15 @@ interface SpriteProps {
    * because a caller asked for 4 fps). Speed is `tempo`.
    */
   fps?: number;
+  /** Default: the kit's `SchemeProvider`, which is dark unless a surface says otherwise. */
   scheme?: Scheme;
   paused?: boolean;
   /** 0.5–2: shortens every beat. A live card can hand in recent activity. */
   tempo?: number;
-  /** Which ink (`palette.ts`): `selected` on an amber tile, `faint` for a dimmed neighbour. */
+  /**
+   * Which ink (`palette.ts`): `rest` amber, `idle` on an unselected picker tile, `selected`
+   * (`#1C1917`) on a tile filled with amber, `faint` for a Bit who is not there.
+   */
   tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }
@@ -84,21 +89,17 @@ export function useReducedMotion(): boolean {
 }
 
 /**
- * Bit, alive.
+ * Bit, alive, in amber: the brand's creature in the brand's colour (the spectrum gives each
+ * animal its own hue and Bit the accent; `palette.ts`). Amber on dark, amber's 3:1 mark tone
+ * on light, one ink for every role.
  *
  * Reduced motion (or `paused`) renders the state's first frame, still — `paused` is OR-ed
  * with the OS setting, so a caller can stop a sprite but can never force one to move
  * against it. Otherwise `LiveSprite` runs the motion in `motion.ts`.
  */
-export function PixelSprite({
-  state,
-  size = 64,
-  scheme = 'dark',
-  paused = false,
-  tempo,
-  tone = 'rest',
-  style,
-}: SpriteProps) {
+export function PixelSprite({ state, size = 64, scheme: schemeProp, paused = false, tempo, tone = 'rest', style }: SpriteProps) {
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
   const reduced = useReducedMotion();
   if (paused || reduced) {
     return <FrameView frame={SPRITES[state][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
@@ -110,7 +111,7 @@ export function PixelSprite({
 export function PixelIcon({
   state,
   size = 24,
-  scheme = 'dark',
+  scheme: schemeProp,
   tone = 'rest',
   style,
 }: {
@@ -120,6 +121,8 @@ export function PixelIcon({
   tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
   return <FrameView frame={SPRITES[state][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
 }
 
@@ -254,8 +257,9 @@ function LiveSprite({
       setLayers((l) => stepLayers(l, f, fade, Date.now()));
     };
 
-    // 1. Entrance: opacity 0 → 1 with scale fromScale → 1. 220 ms ease-out, or the 600 ms
-    //    ease-out-back rise for a celebration.
+    // 1. Entrance: scale fromScale → 1, 220 ms ease-out or the 600 ms ease-out-back rise for a
+    //    celebration, with the opacity snapping in (`HUE_SNAP_MS`): amber at partial opacity
+    //    over the warm ground is brown for as long as the fade lasts (DESIGN-V2 1.3).
     const settle = settleFor(state);
     setLayers(initLayers(base[0]!, Date.now()));
     settleOpacity.setValue(0);
@@ -263,7 +267,7 @@ function LiveSprite({
     bodyY.setValue(0);
     run(
       Animated.parallel([
-        timing(settleOpacity, 1, settle.ms, 'out'),
+        timing(settleOpacity, 1, Math.min(settle.ms, HUE_SNAP_MS), 'out'),
         timing(settleScale, 1, settle.ms, settle.easing),
       ])
     );

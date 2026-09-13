@@ -1,4 +1,5 @@
 import base64
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -14,6 +15,8 @@ from ..builder_profile import (
     builder_quotes,
     builder_report,
     corpus_metrics,
+    held_report,
+    project_names,
     put_builder_narrative,
     put_builder_report,
 )
@@ -438,13 +441,19 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
     Null unless the account has Quote my prompts on and its machine sent them with
     `capture report --quotes`; this route is the only reader, and it only ever reads the
     viewer's own.
+
+    And `project_names` (report v3, docs/projects.md): the report names a project by its
+    repository KEY alone, and this is the PUBLIC name of each key that has one, read from
+    the `repos` row every session reads its `repo_name` from. A private repository has no
+    entry, never a placeholder, and the phone labels it. The report's projects in a
+    repository the account excluded are taken out before it is served (`held_report`).
     """
     uid = str(device.user_id)
     with db_session(viewer_id=uid) as db:
         builder, analysed = builder_profile(db, uid, window_days)
         corpus = corpus_metrics(db, uid, window_days)
         narrative = builder_narrative(db, uid)
-        report = builder_report(db, uid)
+        report, names = held_report(db, uid, builder_report(db, uid))
         quotes = builder_quotes(db, uid)
     return {
         "builder_profile": builder,
@@ -455,6 +464,82 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
         "narrative": narrative,
         "report": report,
         "quotes": quotes,
+        "project_names": names,
+    }
+
+
+#: A project key in a path: the repository hash the report and the sessions carry, whole
+#: (64 hex) or as the 12 character prefix `GET /v1/profile` lists projects by.
+PROJECT_KEY = r"^[0-9a-f]{12,64}$"
+#: Sessions a project page lists, newest first. The phone's session list pages by 50.
+PROJECT_SESSIONS = 50
+
+
+@router.get("/projects/{key}")
+def project(key: str, device: CurrentDevice = Depends(current_device)):
+    """One project's slice: its block from the stored report, its public name if it has
+    one, the comparisons that name it, and its own sessions from the server's rows (which
+    the report does not carry), so the phone's project page is one request.
+
+    `key` is the repository's hash or the 12 character prefix `GET /v1/profile` lists. It
+    resolves among the repositories this viewer has a session in and the keys in their own
+    report, never anybody else's: a prefix that matches two is a 409 rather than a guess,
+    and a key the account excluded is a 404, as if it had never been uploaded.
+    """
+    uid = str(device.user_id)
+    if not re.fullmatch(PROJECT_KEY, key):
+        raise HTTPException(422, "a project key is 12 to 64 lowercase hex characters")
+    with db_session(viewer_id=uid) as db:
+        report, _names = held_report(db, uid, builder_report(db, uid))
+        block = (report or {}).get("projects") or {}
+        in_report = {p["key"]: p for p in block.get("projects") or []}
+        rows = db.execute(
+            text(
+                """
+                SELECT r.repo_hash FROM repos r
+                WHERE left(r.repo_hash, :n) = :k
+                  AND NOT session_repo_excluded(CAST(:u AS uuid), r.id)
+                  AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = :u AND s.repo_id = r.id)
+                """
+            ),
+            {"u": uid, "k": key, "n": len(key)},
+        ).all()
+        found = {r.repo_hash for r in rows} | {k for k in in_report if k.startswith(key)}
+        if not found:
+            raise HTTPException(404, "not found")
+        if len(found) > 1:
+            raise HTTPException(
+                409, "that prefix names more than one project; send more of the key"
+            )
+        (full,) = found
+        sessions = db.execute(
+            text(
+                """
+                SELECT s.*, r.public_name, p.id AS post_id
+                FROM sessions s
+                JOIN repos r ON r.id = s.repo_id
+                LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
+                WHERE s.user_id = :u AND r.repo_hash = :h AND s.state = 'final' AND s.visible
+                ORDER BY s.started_at DESC LIMIT :limit
+                """
+            ),
+            {"u": uid, "h": full, "limit": PROJECT_SESSIONS},
+        ).all()
+        comparisons = [
+            c for c in block.get("comparisons") or [] if full in (c.get("high"), c.get("low"))
+        ]
+        names = project_names(
+            db, uid, {full} | {c[k] for c in comparisons for k in ("high", "low") if c.get(k)}
+        )
+    return {
+        "key": full,
+        "name": names.get(full),
+        "window_days": block.get("window_days"),
+        "generated_at": (report or {}).get("generated_at") if in_report.get(full) else None,
+        "project": in_report.get(full),
+        "comparisons": comparisons,
+        "project_names": names,
+        "sessions": [_row_to_session(r) for r in sessions],
     }
 
 

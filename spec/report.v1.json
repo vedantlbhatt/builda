@@ -42,9 +42,19 @@
     "Four enums copy a Python table, and a test pins each copy both ways: wrapped_card is",
     "wrapped.CARD_IDS, priced_model is pricing.PRICES, vocab_term is vocab.CATALOG and",
     "stack_item is vocab.STACK. A new row there is an edit here plus `make gen`, never a",
-    "migration: the report is stored as JSONB."
+    "migration: the report is stored as JSONB.",
+    "",
+    "VERSION 3 appends one nullable block after stack: projects (docs/projects.md). The",
+    "report's own blocks, asked of one repository at a time, each project under its KEY,",
+    "the repository's salted hash every session upload already carries as repo_hash. No",
+    "name travels: the server adds a public repository's name beside the key when it",
+    "serves the block. Like the version 2 blocks, no field inside it is a string: enums,",
+    "numbers, clocks and keys, and every reason an enum code the phone words.",
+    "",
+    "Two more enums copy a table, each pinned both ways by a test: language is every name",
+    "analysis/languages.py can give a language, and harness is the upload contract's own."
   ],
-  "version": 2,
+  "version": 3,
   "max_lengths": {
     "label": 80,
     "reason": 200
@@ -434,6 +444,116 @@
       "command",
       "path",
       "tool"
+    ],
+    "project_stage": [
+      "starting",
+      "active",
+      "winding_down",
+      "dormant"
+    ],
+    "project_stage_rule": [
+      "quiet_two_weeks",
+      "quiet_a_week",
+      "cadence_halved",
+      "new_this_fortnight",
+      "steady"
+    ],
+    "momentum_refusal": [
+      "below_session_floor",
+      "nothing_before"
+    ],
+    "clock_refusal": [
+      "below_active_floor"
+    ],
+    "quality_refusal": [
+      "below_run_floor",
+      "no_recovery"
+    ],
+    "language_refusal": [
+      "below_line_floor"
+    ],
+    "cost_refusal": [
+      "no_price",
+      "unpriced_sessions",
+      "commits_not_from_git",
+      "below_commit_floor"
+    ],
+    "comparison_metric": [
+      "steer_rate",
+      "autonomy_score",
+      "test_runs_per_hour",
+      "tool_calls_per_prompt",
+      "prompts_per_session",
+      "code_velocity",
+      "usd_per_active_hour",
+      "first_try_rate",
+      "ships_rate",
+      "night_share"
+    ],
+    "comparison_refusal": [
+      "fewer_than_two_projects",
+      "within_noise",
+      "floors_only"
+    ],
+    "language": [
+      "Python",
+      "Swift",
+      "TypeScript",
+      "JavaScript",
+      "Ruby",
+      "Go",
+      "Rust",
+      "Java",
+      "Kotlin",
+      "Objective-C",
+      "C header",
+      "C",
+      "C++",
+      "C#",
+      "PHP",
+      "Scala",
+      "Elixir",
+      "Erlang",
+      "Haskell",
+      "Lua",
+      "Dart",
+      "R",
+      "Julia",
+      "Zig",
+      "Shell",
+      "PowerShell",
+      "SQL",
+      "HTML",
+      "CSS",
+      "Vue",
+      "Svelte",
+      "JSON",
+      "YAML",
+      "TOML",
+      "INI",
+      "XML",
+      "Markdown",
+      "reStructuredText",
+      "Text",
+      "Protobuf",
+      "GraphQL",
+      "Terraform",
+      "Dockerfile",
+      "Gradle",
+      "Notebook",
+      "Make",
+      "CMake",
+      "other"
+    ],
+    "harness": [
+      "claude_code",
+      "cursor_ide",
+      "cursor_agent",
+      "codex",
+      "gemini_cli",
+      "cline",
+      "opencode",
+      "aider"
     ]
   },
   "objects": {
@@ -1506,6 +1626,662 @@
         "nullable": true,
         "doc": "why there is no stack. Null when answered."
       }
+    ],
+    "ReportProjectMomentum": [
+      {
+        "name": "days",
+        "type": "int",
+        "doc": "the length of each of the two stretches compared, in days: the last seven against the seven before, on the clock the report was made on."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings that started in the last stretch."
+      },
+      {
+        "name": "sessions_before",
+        "type": "int",
+        "doc": "sittings that started in the stretch before it."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "seconds with you there in the last stretch."
+      },
+      {
+        "name": "attended_seconds_before",
+        "type": "int",
+        "doc": "seconds with you there in the stretch before."
+      },
+      {
+        "name": "direction",
+        "type": "enum",
+        "values": "trend_direction",
+        "nullable": true,
+        "doc": "up, down or steady by analysis/trends.py compare, its session floor and its noise floor: steady is a real answer. Null on a refusal."
+      },
+      {
+        "name": "move",
+        "type": "number",
+        "nullable": true,
+        "doc": "the signed relative change, (now - before) / before. 0.4 is up 40 percent. Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "momentum_refusal",
+        "nullable": true,
+        "doc": "why there is no direction: a stretch under the session floor, or nothing with you there before. Null when answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the session floor a below_session_floor refusal names, for each stretch."
+      }
+    ],
+    "ReportProjectHistory": [
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "EVERY counted sitting this machine holds in the repository, however old. Not the window."
+      },
+      {
+        "name": "first_at",
+        "type": "datetime",
+        "doc": "the first of them."
+      },
+      {
+        "name": "last_at",
+        "type": "datetime",
+        "doc": "the end of the last of them."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days with a sitting, cut at 04:00 local."
+      },
+      {
+        "name": "spans_days",
+        "type": "int",
+        "doc": "the calendar distance from the first day to the last. Not the same as active_days."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "active time across all of them, both clocks."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "the part of it with you there."
+      },
+      {
+        "name": "autonomous_seconds",
+        "type": "int",
+        "doc": "the part the agent ran with nobody present."
+      },
+      {
+        "name": "longest_streak_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "the longest run of consecutive days with a sitting you were at. An unattended run never extends a streak. Null when no sitting had you there."
+      },
+      {
+        "name": "current_streak_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "the run still going, ending today or yesterday (today is not over). 0 when it has ended. Null when no sitting had you there."
+      },
+      {
+        "name": "days_since_last",
+        "type": "int",
+        "doc": "days from the last sitting to today, both cut at 04:00 local. 0 is today."
+      },
+      {
+        "name": "age_days",
+        "type": "int",
+        "doc": "days from the first sitting to today. 0 is today."
+      },
+      {
+        "name": "days_built_recent",
+        "type": "int",
+        "doc": "days with a sitting in the last fourteen, today included: what the cadence rule reads."
+      },
+      {
+        "name": "days_built_before",
+        "type": "int",
+        "doc": "days with a sitting in the fourteen before those."
+      },
+      {
+        "name": "stage",
+        "type": "enum",
+        "values": "project_stage",
+        "doc": "where the project is in its life, by the first rule that fires (analysis/projects.py _stage). The thresholds are judgement calls and say so in docs/projects.md."
+      },
+      {
+        "name": "stage_rule",
+        "type": "enum",
+        "values": "project_stage_rule",
+        "doc": "which rule decided the stage, so the phone can say whether winding down is the silence or the cadence."
+      },
+      {
+        "name": "momentum",
+        "type": "object",
+        "item": "ReportProjectMomentum",
+        "doc": "the last week against the week before, attended time."
+      }
+    ],
+    "ReportProjectClock": [
+      {
+        "name": "peak_hour",
+        "type": "int",
+        "nullable": true,
+        "doc": "0-23: the local hour with the most active time, spread across each sitting by where its span falls (analysis/profile.py). Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "clock_refusal",
+        "nullable": true,
+        "doc": "why there is no peak hour. Null when answered."
+      },
+      {
+        "name": "active_minutes",
+        "type": "int",
+        "doc": "whole minutes of active time the hour was read over."
+      },
+      {
+        "name": "needed_minutes",
+        "type": "int",
+        "nullable": true,
+        "doc": "the active minutes a below_active_floor refusal names."
+      }
+    ],
+    "ReportProjectQuality": [
+      {
+        "name": "runs",
+        "type": "int",
+        "doc": "test runs seen in the window, counted from shell commands. A floor: the digest cuts a long command."
+      },
+      {
+        "name": "passed",
+        "type": "int",
+        "nullable": true,
+        "doc": "runs with no error after them. Null below the run floor."
+      },
+      {
+        "name": "failed",
+        "type": "int",
+        "nullable": true,
+        "doc": "runs an error followed. Null below the run floor."
+      },
+      {
+        "name": "first_try_rate",
+        "type": "double",
+        "nullable": true,
+        "doc": "the share of test runs that were already green. Null below the run floor."
+      },
+      {
+        "name": "time_to_green",
+        "type": "object",
+        "item": "ReportGreen",
+        "nullable": true,
+        "doc": "the recovery numbers, or null when nothing failed and then passed inside one sitting."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "quality_refusal",
+        "nullable": true,
+        "doc": "why the rate or the time to green is null. Null when both answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the run floor a below_run_floor refusal names."
+      }
+    ],
+    "ReportProjectLanguage": [
+      {
+        "name": "language",
+        "type": "enum",
+        "values": "language",
+        "doc": "the language, by the name analysis/languages.py gives an extension. other is an extension nobody mapped, counted rather than guessed at."
+      },
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "lines the agent added in it, generated files excluded."
+      },
+      {
+        "name": "files",
+        "type": "int",
+        "doc": "distinct files. A count, never a name."
+      },
+      {
+        "name": "share",
+        "type": "double",
+        "doc": "its share of the attributable lines."
+      }
+    ],
+    "ReportProjectLanguages": [
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "attributable lines in the window, generated files already excluded."
+      },
+      {
+        "name": "generated_lines_excluded",
+        "type": "int",
+        "doc": "lines nobody wrote (lockfiles, vendored and generated files), reported rather than hidden."
+      },
+      {
+        "name": "languages",
+        "type": "list",
+        "item": "ReportProjectLanguage",
+        "max_items": 9,
+        "nullable": true,
+        "doc": "most lines first, the tail summed into other. Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "language_refusal",
+        "nullable": true,
+        "doc": "why the split is null. Null when answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the line floor a below_line_floor refusal names."
+      }
+    ],
+    "ReportProjectDay": [
+      {
+        "name": "day",
+        "type": "datetime",
+        "doc": "the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day."
+      },
+      {
+        "name": "assisted",
+        "type": "int",
+        "doc": "commits that landed while a sitting in THIS repository was running, or in the 30 minutes before one."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "doc": "the rest of that day's commits in this repository."
+      }
+    ],
+    "ReportProjectCommits": [
+      {
+        "name": "assisted",
+        "type": "int",
+        "doc": "commits in the window with a sitting of this project in the room. A commit that landed while only another project's sitting ran is alone here."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "doc": "commits in the window you made on your own, as far as this machine saw."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days with a commit."
+      },
+      {
+        "name": "longest_streak",
+        "type": "int",
+        "doc": "the longest run of consecutive days with a commit."
+      },
+      {
+        "name": "current_streak",
+        "type": "int",
+        "doc": "the run ending today or yesterday."
+      },
+      {
+        "name": "days",
+        "type": "list",
+        "item": "ReportProjectDay",
+        "max_items": 400,
+        "doc": "one entry per day with a commit, oldest first. Days with none are absent rather than zero rows."
+      }
+    ],
+    "ReportProjectCostPerCommit": [
+      {
+        "name": "usd",
+        "type": "number",
+        "nullable": true,
+        "doc": "dollars at API list prices over the commits the same sittings landed. NOT A BILL. Null on a refusal."
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "doc": "commits the priced sittings claimed, each once across sittings (git log over each sitting's window)."
+      },
+      {
+        "name": "unpriced_sessions",
+        "type": "int",
+        "doc": "sittings with token counts the price table could not price."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "cost_refusal",
+        "nullable": true,
+        "doc": "why there is no cost a commit. Null when answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the commit floor a below_commit_floor refusal names."
+      }
+    ],
+    "ReportProjectHarness": [
+      {
+        "name": "harness",
+        "type": "enum",
+        "values": "harness",
+        "doc": "the tool that wrote these sittings, as the upload contract names it."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings it wrote."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time."
+      }
+    ],
+    "ReportProjectWindow": [
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings of this project that started inside the report window."
+      },
+      {
+        "name": "first_at",
+        "type": "datetime",
+        "doc": "the first of them."
+      },
+      {
+        "name": "last_at",
+        "type": "datetime",
+        "doc": "the end of the last of them."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days with one of them, cut at 04:00 local."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time, both clocks."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "the part of it with you there."
+      },
+      {
+        "name": "autonomous_seconds",
+        "type": "int",
+        "doc": "the part the agent ran with nobody present."
+      },
+      {
+        "name": "share_of_attended",
+        "type": "double",
+        "nullable": true,
+        "doc": "this project's share of the attended seconds of every counted sitting in the window, projects and unresolved alike. Null when that total is 0."
+      },
+      {
+        "name": "clock",
+        "type": "object",
+        "item": "ReportProjectClock",
+        "doc": "when in the day this project gets built."
+      },
+      {
+        "name": "cards",
+        "type": "list",
+        "item": "ReportWrappedCard",
+        "max_items": 12,
+        "doc": "the Wrapped cards asked of this project's sittings, in wrapped.CARD_IDS order: every card but the three that read the words of prompts. The same shape and codes as the report's own deck."
+      },
+      {
+        "name": "scores",
+        "type": "list",
+        "item": "ReportArchetypeScore",
+        "max_items": 6,
+        "doc": "every archetype rule scored on this project, in analysis/profile.py ARCHETYPE_RULES order: the six rates with their thresholds."
+      },
+      {
+        "name": "quality",
+        "type": "object",
+        "item": "ReportProjectQuality",
+        "doc": "how often the tests are already green, and how long it takes to get back to green."
+      },
+      {
+        "name": "languages",
+        "type": "object",
+        "item": "ReportProjectLanguages",
+        "doc": "what this project is written in, by lines the agent added."
+      },
+      {
+        "name": "commits",
+        "type": "object",
+        "item": "ReportProjectCommits",
+        "nullable": true,
+        "doc": "this repository's commits in the window, split by whether one of its sittings was running. Null when no commit was read."
+      },
+      {
+        "name": "money",
+        "type": "object",
+        "item": "ReportMoney",
+        "doc": "what this project's sittings would cost at API list prices, with tokens, lines and the model split: the report's own money block over them."
+      },
+      {
+        "name": "usd_per_commit",
+        "type": "object",
+        "item": "ReportProjectCostPerCommit",
+        "doc": "the dollars over the commits those same sittings landed."
+      },
+      {
+        "name": "burn",
+        "type": "object",
+        "item": "ReportBurn",
+        "doc": "the tokens this project spent in stretches that changed nothing, and why: the report's own burn block over its sittings."
+      },
+      {
+        "name": "stack",
+        "type": "object",
+        "item": "ReportStack",
+        "doc": "what this project is made of: the report's own stack block over its sittings and its own manifests."
+      },
+      {
+        "name": "agents",
+        "type": "object",
+        "item": "ReportAgents",
+        "nullable": true,
+        "doc": "the helper agents its sittings dispatched. Null when none did."
+      },
+      {
+        "name": "harnesses",
+        "type": "list",
+        "item": "ReportProjectHarness",
+        "max_items": 8,
+        "doc": "the tools that wrote its sittings, most active time first."
+      }
+    ],
+    "ReportProject": [
+      {
+        "name": "key",
+        "type": "sha256hex",
+        "doc": "the repository's salted hash, the repo_hash every session upload carries. The only name a private repository has off the machine; the server adds a public one's name beside it."
+      },
+      {
+        "name": "rank",
+        "type": "int",
+        "doc": "its place in this list: most attended time in the window first, then the projects with no sitting in it, most recent first."
+      },
+      {
+        "name": "history",
+        "type": "object",
+        "item": "ReportProjectHistory",
+        "doc": "every sitting this machine holds in the repository, however old."
+      },
+      {
+        "name": "window",
+        "type": "object",
+        "item": "ReportProjectWindow",
+        "nullable": true,
+        "doc": "the report window only. Null when the project had no sitting in it."
+      }
+    ],
+    "ReportProjectsUnresolved": [
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "counted sittings in the window whose repository did not resolve (a home directory, a folder with no git), so they belong to no project."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "their attended time, which is in the denominator of every share_of_attended."
+      },
+      {
+        "name": "history_sessions",
+        "type": "int",
+        "doc": "every such sitting the machine holds, however old."
+      }
+    ],
+    "ReportProjectComparison": [
+      {
+        "name": "metric",
+        "type": "enum",
+        "values": "comparison_metric",
+        "doc": "what is compared (analysis/projects.py COMPARISONS). The phone writes the sentence from this."
+      },
+      {
+        "name": "high",
+        "type": "sha256hex",
+        "nullable": true,
+        "doc": "the project with the highest value, by key. Null when refused below the floor."
+      },
+      {
+        "name": "low",
+        "type": "sha256hex",
+        "nullable": true,
+        "doc": "the project with the lowest value, by key. Null when refused below the floor."
+      },
+      {
+        "name": "high_value",
+        "type": "number",
+        "nullable": true,
+        "doc": "its value, in the unit of the block it came from (a rate, a share, dollars an hour)."
+      },
+      {
+        "name": "low_value",
+        "type": "number",
+        "nullable": true,
+        "doc": "the low project's value."
+      },
+      {
+        "name": "high_sessions",
+        "type": "int",
+        "nullable": true,
+        "doc": "sittings in the window the high value rests on."
+      },
+      {
+        "name": "low_sessions",
+        "type": "int",
+        "nullable": true,
+        "doc": "sittings in the window the low value rests on."
+      },
+      {
+        "name": "ratio",
+        "type": "number",
+        "nullable": true,
+        "doc": "high over low, for a rate. Null for a share, for two floors, below the floor, and when the low value is a measured 0."
+      },
+      {
+        "name": "gap",
+        "type": "number",
+        "nullable": true,
+        "doc": "high less low. Null for two floors and below the floor."
+      },
+      {
+        "name": "projects",
+        "type": "int",
+        "doc": "projects with enough sittings in the window and the metric answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the sittings in the window each project needs, when refused below the floor."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "comparison_refusal",
+        "nullable": true,
+        "doc": "why there is no difference to state: under two projects clear the floor, the gap is under the bar, or both values are floors that fall short by different amounts. within_noise and floors_only still carry both values. Null when answered."
+      }
+    ],
+    "ReportProjects": [
+      {
+        "name": "window_days",
+        "type": "int",
+        "doc": "the report window every project window reads, repeated so this block is readable on its own."
+      },
+      {
+        "name": "history_sessions",
+        "type": "int",
+        "doc": "every counted sitting on this machine, however old: what the history halves rest on."
+      },
+      {
+        "name": "history_first_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "the earliest of them: how far back history reaches. Null with no sitting."
+      },
+      {
+        "name": "projects_total",
+        "type": "int",
+        "doc": "repositories this machine holds sittings for. More than the list when the list is capped."
+      },
+      {
+        "name": "projects",
+        "type": "list",
+        "item": "ReportProject",
+        "max_items": 20,
+        "doc": "one per repository, most attended time in the window first."
+      },
+      {
+        "name": "unresolved",
+        "type": "object",
+        "item": "ReportProjectsUnresolved",
+        "doc": "the sittings that belong to no project."
+      },
+      {
+        "name": "comparisons",
+        "type": "list",
+        "item": "ReportProjectComparison",
+        "max_items": 10,
+        "doc": "one per metric in analysis/projects.py COMPARISONS, answered or refused, in that order."
+      }
     ]
   },
   "fields": [
@@ -1614,6 +2390,13 @@
       "item": "ReportStack",
       "nullable": true,
       "doc": "what the project is made of. Null when the machine that sent this report does not compute it."
+    },
+    {
+      "name": "projects",
+      "type": "object",
+      "item": "ReportProjects",
+      "nullable": true,
+      "doc": "the report's blocks asked of each repository: time, how you build it, what shipped, what it cost, what it is made of, where it is in its life, and how the projects compare. Null when the machine that sent this report does not compute it."
     }
   ]
 }

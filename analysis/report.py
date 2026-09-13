@@ -63,12 +63,17 @@ DEFAULT_WINDOW_DAYS = 30
 
 #: The spec version. `spec/report.v1.json` is the only other place this number appears,
 #: and `scripts/gen_report.py` copies it into both generated halves. Version 2 added the
-#: five nullable blocks in `V2_BLOCKS`; a version 1 document still validates.
-REPORT_VERSION = 2
+#: five nullable blocks in `V2_BLOCKS`, version 3 the one in `V3_BLOCKS`; a version 1 or 2
+#: document still validates.
+REPORT_VERSION = 3
 
 #: The blocks version 2 appended, in spec order. Each is None until this machine computes
 #: it: a null block says "not computed here", never "nothing happened", and never a zero.
 V2_BLOCKS: tuple[str, ...] = ("wrapped", "money", "burn", "vocab", "stack")
+
+#: The block version 3 appended after them (docs/projects.md): the report's own blocks
+#: asked of each repository, `analysis/projects.py`. Null until this machine computes it.
+V3_BLOCKS: tuple[str, ...] = ("projects",)
 
 #: Caps from the spec, restated where the document is BUILT rather than only where it is
 #: validated. A corpus with two years of commits would otherwise produce a document the
@@ -114,6 +119,7 @@ def build(
         # Not computed here yet, and None says exactly that: a block of zeroes would say
         # nothing happened (docs/overnight-integration.md 1.2).
         **dict.fromkeys(V2_BLOCKS),
+        **dict.fromkeys(V3_BLOCKS),
     }
 
 
@@ -151,10 +157,13 @@ def from_corpus(corpus, window_days: int = DEFAULT_WINDOW_DAYS, *, quotes: bool 
     agent from before it. FOUND IN REVIEW (2026-09-13): the profile was built over every
     fact the machine held, and the committed report's coverage ran Aug 11 to Sep 13 under
     "the last 30 days". The trends alone read the whole cut, because they compare this
-    window with the one before it.
+    window with the one before it; and the projects, whose `history` halves are every
+    sitting a repository holds and whose `window` halves are this same window
+    (`projects.block`, docs/projects.md), each labelled with which it is.
     """
     from . import corpus as cp_mod
     from . import profile as pf_mod
+    from . import projects as pj_mod
     from . import report_blocks as rb_mod
     from . import vocab as vc_mod
     from . import wrapped as wr_mod
@@ -187,6 +196,7 @@ def from_corpus(corpus, window_days: int = DEFAULT_WINDOW_DAYS, *, quotes: bool 
     doc["stack"] = rb_mod.stack_block(
         vc_mod.wire(vc_mod.stack(c.sessions, dependencies=c.dependencies))
     )
+    doc["projects"] = pj_mod.block(everything, window_days)
     return doc, (wr_mod.quotes_upload(cards, generated_at=c.now) if quotes else None)
 
 
@@ -366,6 +376,7 @@ __all__ = [
     "MAX_TRENDS",
     "REPORT_VERSION",
     "V2_BLOCKS",
+    "V3_BLOCKS",
     "build",
     "from_corpus",
     "recent_trends",

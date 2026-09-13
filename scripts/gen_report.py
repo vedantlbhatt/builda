@@ -107,9 +107,11 @@ The server does NOT compute this document and cannot: its blocks rest on subagen
 transcripts, shell command text, prompt text and git history, none of which leave the
 machine (privacy/upload-contract.json). It validates and stores.
 
-Inside the five version 2 blocks (wrapped, money, burn, vocab, stack) there is no string
-field at all. Every value the door accepts there is an enum from the tables below, a
-number or a clock, so a sentence, a quote or a path in one of them is a 422.
+Inside the five version 2 blocks (wrapped, money, burn, vocab, stack) and the version 3
+projects block there is no string field at all. Every value the door accepts there is an
+enum from the tables below, a number, a clock or a repository key, so a sentence, a quote,
+a path or a repository NAME in one of them is a 422: a key is `Sha256Hex`, 64 lowercase
+hex characters, and no name has that shape.
 """
 
 from __future__ import annotations
@@ -120,6 +122,9 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 REPORT_VERSION = {s["version"]}
+
+#: A repository key: the salted hash every session upload carries as `repo_hash`.
+Sha256Hex = Annotated[str, Field(pattern=r"{ga.SHA256_PATTERN}")]
 
 #: Character caps by size class; the spec's `max` on a string field names one of these.
 REPORT_MAX_LENGTHS: dict[str, int] = {{

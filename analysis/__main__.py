@@ -203,6 +203,23 @@ def main() -> int:
         help="only what `vocab.wire` keeps, the form that may leave this machine",
     )
     vc.add_argument("--titles", type=int, default=10, help="how many recent titles (default 10)")
+    pj = sub.add_parser(
+        "projects",
+        help="each repository on its own: time, how you build it, what shipped, what it cost, where it is in its life",
+    )
+    pj.add_argument("path", nargs="?", default="~/.claude/projects")
+    pj.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help=f"the window each project's window half reads (default {rp_default()}, the report's)",
+    )
+    pj.add_argument("--json", action="store_true", help="the whole LOCAL result: names, checkouts and sentences included")
+    pj.add_argument(
+        "--wire",
+        action="store_true",
+        help="only the report's projects block, the form that may leave this machine",
+    )
     pr = sub.add_parser("probe", help="read-only shape report over a file or directory")
     pr.add_argument(
         "path",
@@ -266,6 +283,9 @@ def main() -> int:
 
     if a.cmd == "vocab":
         return _vocab(a)
+
+    if a.cmd == "projects":
+        return _projects(a)
 
     if a.cmd == "probe":
         from . import probe as pb
@@ -1020,6 +1040,232 @@ def _print_vocab(res: dict) -> None:
     if g["locked_count"] is not None:
         print()
         print(f"  {g['locked_count']} more to find.")
+    print()
+
+
+def _projects(a) -> int:
+    """Each repository on its own (`analysis/projects.py`, docs/projects.md): the report's
+    blocks asked of one project at a time, over the one corpus cut. Names are printed here
+    and never leave the machine; `--wire` prints exactly what the report uploads."""
+    from . import corpus as cp_mod
+    from . import projects as pj_mod
+    from . import report as rp_mod
+
+    days = a.days or rp_mod.DEFAULT_WINDOW_DAYS
+    c = cp_mod.cut_root(pathlib.Path(a.path).expanduser())
+    res = pj_mod.build(c, days)
+    if a.wire:
+        print(json.dumps(pj_mod.wire(res), indent=1, ensure_ascii=False))
+        return 0
+    if a.json:
+        print(json.dumps(_projects_local(res), indent=1, ensure_ascii=False, default=str))
+        return 0
+    _print_projects(res)
+    return 0
+
+
+def _project_labels(res: dict) -> dict[str, str]:
+    """Each project's name ON THIS MACHINE, for the printer and nothing else: the origin's
+    last segment (`RepoIdentity.display_name`), or the key's first 12 characters when the
+    repository has no name at all. Two projects with one name get their key beside it."""
+    names = {p.key: (p.name or p.key[:12]) for p in res["projects"]}
+    seen = collections.Counter(names.values())
+    return {k: (f"{v} ({k[:8]})" if seen[v] > 1 else v) for k, v in names.items()}
+
+
+def _projects_local(res: dict) -> dict:
+    """The LOCAL result as JSON: the wire block, and beside it what stays here (names,
+    checkouts, the cards and the comparisons in words)."""
+    from . import projects as pj_mod
+
+    labels = _project_labels(res)
+    return {
+        "wire": res["wire"],
+        "local": [
+            {
+                "key": p.key,
+                "name": p.name,
+                "checkouts": p.checkouts,
+                "cards": [
+                    {k: c[k] for k in ("id", "question", "display", "sentence", "reason")} for c in p.cards
+                ],
+            }
+            for p in res["projects"]
+        ],
+        "comparisons": [
+            {"metric": c["metric"], "sentence": pj_mod.comparison_sentence(c, labels)}
+            for c in res["wire"]["comparisons"]
+        ],
+    }
+
+
+def _h(seconds: float) -> str:
+    """Hours, one decimal at most (`profile._n`)."""
+    from . import profile as pf_mod
+
+    return f"{pf_mod._n(seconds / 3600)} h"
+
+
+def _print_projects(res: dict) -> None:
+    """The projects as a person reads them: what the numbers rest on, then each project
+    (its stage, its week, its whole history, then the window's blocks), then how the
+    projects compare. A refused number prints its reason, never a zero."""
+    from . import burn as bn_mod
+    from . import pricing
+    from . import profile as pf_mod
+    from . import projects as pj_mod
+    from . import vocab as vc_mod
+
+    w = res["wire"]
+    labels = _project_labels(res)
+    local = {p.key: p for p in res["projects"]}
+    stack_names = {s.id: s.name for s in vc_mod.STACK}
+    print()
+    first = _local_date(w["history_first_at"])
+    print(
+        f"  PROJECTS   {_plural(w['projects_total'], 'repository', 'repositories')}, "
+        f"{_plural(w['history_sessions'], 'sitting')} on this machine" + (f" since {first}" if first else "")
+    )
+    print(f"    window        each project's window half is the last {w['window_days']} days")
+    un = w["unresolved"]
+    print(
+        f"    no repository {_plural(un['sessions'], 'sitting')} in the window, "
+        f"{un['history_sessions']:,} in all, belong to no project"
+    )
+    if w["projects_total"] > len(w["projects"]):
+        print(f"    shown         the {len(w['projects'])} with most of your time")
+
+    for p in w["projects"]:
+        h, win, key = p["history"], p["window"], p["key"]
+        lp = local[key]
+        print()
+        where = ", ".join(pathlib.Path(r).name for r in lp.checkouts)
+        tail = f"   in {where}" if where and where != labels[key] else ""
+        print(f"  {p['rank']:>2}  {labels[key]}   {key[:12]}{tail}")
+        print(
+            f"      {pj_mod.STAGE_DISPLAY[h['stage']]}. {pj_mod.stage_sentence(h)} "
+            f"{pj_mod.last_session_sentence(h)}"
+        )
+        m = h["momentum"]
+        print(
+            f"      this week    {pj_mod.momentum_sentence(m)}  "
+            f"({_h(m['attended_seconds'])} with you there, {_h(m['attended_seconds_before'])} the week before)"
+        )
+        streak = (
+            f", longest streak {_plural(h['longest_streak_days'], 'day')}, now {h['current_streak_days']}"
+            if h["longest_streak_days"] is not None
+            else ", no day you were at it"
+        )
+        print(
+            f"      all history  {_plural(h['sessions'], 'sitting')} over {_plural(h['active_days'], 'day')}, "
+            f"{_local_date(h['first_at'])} to {_local_date(h['last_at'])}, {_h(h['active_seconds'])} active, "
+            f"{_h(h['attended_seconds'])} with you there{streak}"
+        )
+        if win is None:
+            print(f"      the last {w['window_days']} days: no sitting")
+            continue
+        print(f"      THE LAST {w['window_days']} DAYS")
+        share = (
+            f" ({bn_mod._share_words(win['share_of_attended'])} of your time with you there)"
+            if win["share_of_attended"] is not None
+            else ""
+        )
+        clock = win["clock"]
+        hour = (
+            f", most built at {pf_mod._hour(clock['peak_hour'])}"
+            if clock["peak_hour"] is not None
+            else f", no peak hour yet: {pj_mod.clock_refusal(clock)}"
+        )
+        print(
+            f"        time       {_plural(win['sessions'], 'sitting')} on {_plural(win['active_days'], 'day')}, "
+            f"{_h(win['active_seconds'])} active, {_h(win['attended_seconds'])} with you there{share}{hour}"
+        )
+        for card in lp.cards:
+            if card["reason"] is None:
+                display = card["display"] if card["display"].endswith((".", "?", "!")) else f"{card['display']}."
+                print(f"        {card['question']}  {display} {card['sentence']}")
+            else:
+                print(f"        {card['question']}  not yet: {card['reason']}")
+        q = win["quality"]
+        if q["first_try_rate"] is None:
+            print(f"        tests      {pj_mod.quality_refusal(q)}")
+        else:
+            green = q["time_to_green"]
+            back = (
+                f", back to green in {_hm(green['median_seconds'])} at the median over {_plural(green['n'], 'recovery', 'recoveries')}"
+                if green
+                else f". {pj_mod.quality_refusal(q)}"
+            )
+            print(
+                f"        tests      {q['runs']:,} runs, {bn_mod._share_words(q['first_try_rate'])} already green{back}"
+            )
+        lg = win["languages"]
+        if lg["languages"] is None:
+            print(f"        languages  {pj_mod.languages_refusal(lg)}")
+        else:
+            print(
+                "        languages  "
+                + ", ".join(f"{r['language']} {bn_mod._share_words(r['share'])}" for r in lg["languages"][:5])
+                + f", over {lg['lines']:,} lines"
+            )
+        cm = win["commits"]
+        if cm is None:
+            print("        commits    no commit was read for this project in the window")
+        else:
+            print(
+                f"        commits    {cm['assisted'] + cm['alone']:,} on {_plural(cm['active_days'], 'day')}: "
+                f"{cm['assisted']:,} with one of its sittings running, {cm['alone']:,} on your own"
+            )
+        money = win["money"]
+        if money["usd"] is None:
+            print(f"        money      refused: {money['reason']}")
+        else:
+            per = win["usd_per_commit"]
+            each = (
+                f", {pj_mod.dollars(per['usd'])} a commit over {per['commits']:,}"
+                if per["usd"] is not None
+                else f". No cost a commit: {pj_mod.cost_refusal(per)}"
+            )
+            models = ", ".join(f"{pricing.family(r['model'])} {pj_mod.dollars(r['usd'])}" for r in money["by_model"][:3])
+            hourly = (
+                f", {pj_mod.dollars(money['usd_per_active_hour'])} an active hour"
+                if money["usd_per_active_hour"] is not None
+                else ""
+            )
+            print(f"        money      about {pj_mod.dollars(money['usd'])} at API list prices{hourly}{each}")
+            if models:
+                print(f"        models     {models}")
+        if money["lines_added"] is not None:
+            print(f"        lines      +{money['lines_added']:,} -{money['lines_removed']:,}")
+        burn = win["burn"]
+        if burn["share"] is not None:
+            causes = ", ".join(f"{c['cause'].replace('_', ' ')} {bn_mod._share_words(c['share'])}" for c in (burn["causes"] or [])[:3])
+            print(
+                f"        burn       {bn_mod._share_words(burn['share'])} of tokens went into stretches that changed nothing"
+                + (f" ({causes})" if causes else "")
+            )
+        items = win["stack"]["items"]
+        if items:
+            print("        stack      " + ", ".join(stack_names.get(i["id"], i["id"]) for i in items[:12]))
+        ag = win["agents"]
+        if ag is not None:
+            print(f"        agents     {ag['agents']:,} helper agents, up to {ag['max_concurrent']} at once")
+        tools = ", ".join(f"{t['harness'].replace('_', ' ')} {_plural(t['sessions'], 'sitting')}" for t in win["harnesses"])
+        if tools:
+            print(f"        tools      {tools}")
+
+    print()
+    print("  HOW THE PROJECTS COMPARE")
+    for c in w["comparisons"]:
+        said = pj_mod.comparison_sentence(c, labels)
+        if c["reason"] is None:
+            print(
+                f"    {said}   ({pj_mod.value_words(c['metric'], c['high_value'])} against "
+                f"{pj_mod.value_words(c['metric'], c['low_value'])}, over {c['high_sessions']:,} and "
+                f"{c['low_sessions']:,} sittings)"
+            )
+        else:
+            print(f"    not yet   {pj_mod.COMPARISONS[c['metric']]['label']}: {said}")
     print()
 
 

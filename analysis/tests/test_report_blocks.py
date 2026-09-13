@@ -379,7 +379,7 @@ class TheWholeReport(unittest.TestCase):
 
     def test_every_block_is_filled_and_every_level_has_the_specs_keys(self):
         self.assertEqual(set(self.doc), {f["name"] for f in SPEC["fields"]})
-        for block in rp.V2_BLOCKS:
+        for block in (*rp.V2_BLOCKS, *rp.V3_BLOCKS):
             self.assertIsNotNone(self.doc[block], block)
         tops = {f["name"]: f["item"] for f in SPEC["fields"] if f["type"] == "object"}
 
@@ -397,7 +397,7 @@ class TheWholeReport(unittest.TestCase):
                     for item in value:
                         walk(item, f["item"])
 
-        for block in rp.V2_BLOCKS:
+        for block in (*rp.V2_BLOCKS, *rp.V3_BLOCKS):
             walk(self.doc[block], tops[block])
 
     def test_every_string_in_the_report_is_an_enum_value_or_a_clock(self):
@@ -414,7 +414,7 @@ class TheWholeReport(unittest.TestCase):
                     yield from strings(v, f"{path}[]")
 
         seen = 0
-        for block in rp.V2_BLOCKS:
+        for block in (*rp.V2_BLOCKS, *rp.V3_BLOCKS):
             for path, s in strings(self.doc[block], block):
                 seen += 1
                 if s in values:

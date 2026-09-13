@@ -642,6 +642,149 @@ export const ROLE_NOUN = {
   "unknown": ["a file", "{n} files", "the project"],
 } as const;
 
+/** `projects.PROJECT_CARDS`: the Wrapped cards a project carries, in deck order. */
+export const PROJECT_CARDS = ["builder_type", "shipped", "work_style", "longest_session", "agents_at_once", "streak", "change_course", "prompt_length", "deep_sessions", "time_put_in", "prompts_per_session", "kind_of_work"] as const;
+
+/** `projects.STAGE_DISPLAY`: a project's stage in two words. */
+export const PROJECT_STAGE_DISPLAY = {
+  "starting": "Starting",
+  "active": "Active",
+  "winding_down": "Winding down",
+  "dormant": "Dormant",
+} as const;
+
+/** `projects.STAGE_SENTENCES`: by `stage_rule` (`{n}` the days the rule read, `{prior}`, `{cadence_days}`). */
+export const PROJECT_STAGE_SENTENCES = {
+  "quiet_two_weeks": "No session here for {n:day}.",
+  "quiet_a_week": "No session here for {n:day}.",
+  "cadence_halved": "Sessions on {n:day} of the last {cadence_days}, against {prior} the {cadence_days} before.",
+  "new_this_fortnight": {
+    "zero": "The first session here was today.",
+    "one": "The first session here was yesterday.",
+    "other": "The first session here was {n:day} ago.",
+  },
+  "steady": {
+    "one": "A session on 1 of the last {cadence_days} days.",
+    "other": "Sessions on {n} of the last {cadence_days} days.",
+  },
+} as const;
+
+/** `projects.LAST_SESSION`: by `days_since_last`. */
+export const PROJECT_LAST_SESSION = {
+  "zero": "Last session today.",
+  "one": "Last session yesterday.",
+  "other": "Last session {n:day} ago.",
+} as const;
+
+/** `projects.MOMENTUM_SENTENCES`: by `direction`, or by `reason` on a refusal (`{move}` a share said by `shareWords`). */
+export const PROJECT_MOMENTUM = {
+  "up": "Up {move} on the week before.",
+  "down": "Down {move} on the week before.",
+  "steady": "About the same as the week before.",
+  "below_session_floor": "Needs {needed:session} in each of the last two weeks to say which way it is going.",
+  "nothing_before": "Nothing with you there the week before, so there is nothing to compare with.",
+} as const;
+
+/** `projects.COMPARISONS`: each metric's title, how its values are said, how it is compared and its sentences (`{high}`, `{low}` the projects, `{times}` by `timesWords`). */
+export const PROJECT_COMPARISONS = {
+  "steer_rate": {
+    "says": "share",
+    "kind": "ratio",
+    "label": "How often you take the wheel back",
+    "times": "You take the wheel back {times} as often in {high} as in {low}.",
+    "none": "You take the wheel back in {high}, and not once in {low}.",
+  },
+  "autonomy_score": {
+    "says": "share",
+    "kind": "share",
+    "label": "Time the agent runs without you",
+    "share": "{high} runs without you more: {high_share} of its time, against {low_share} in {low}.",
+  },
+  "test_runs_per_hour": {
+    "says": "number",
+    "kind": "ratio",
+    "floor": "yes",
+    "label": "How often you run the tests",
+  },
+  "tool_calls_per_prompt": {
+    "says": "number",
+    "kind": "ratio",
+    "label": "Tool calls for each prompt",
+    "times": "Each prompt sets off {times} as many tool calls in {high} as in {low}.",
+    "none": "Prompts in {high} set off tool calls, and prompts in {low} set off none.",
+  },
+  "prompts_per_session": {
+    "says": "number",
+    "kind": "ratio",
+    "label": "Prompts a session",
+    "times": "You send {times} as many prompts a session in {high} as in {low}.",
+    "none": "You send prompts in {high}, and sessions in {low} had none.",
+  },
+  "code_velocity": {
+    "says": "number",
+    "kind": "ratio",
+    "floor": "yes",
+    "label": "Lines an hour",
+  },
+  "usd_per_active_hour": {
+    "says": "usd",
+    "kind": "ratio",
+    "label": "Cost an hour at API list prices",
+    "times": "An hour of {high} costs {times} what an hour of {low} does, at API list prices.",
+  },
+  "first_try_rate": {
+    "says": "share",
+    "kind": "share",
+    "label": "Tests already green",
+    "share": "Tests are already green more often in {high}: {high_share} of runs, against {low_share} in {low}.",
+  },
+  "ships_rate": {
+    "says": "share",
+    "kind": "share",
+    "label": "Sessions that end with a commit",
+    "share": "Sessions in {high} end with a commit more often: {high_share}, against {low_share} in {low}.",
+  },
+  "night_share": {
+    "says": "share",
+    "kind": "share",
+    "label": "Work between 10pm and 4am",
+    "share": "More of {high} happens between 10pm and 4am: {high_share} of its time, against {low_share} in {low}.",
+  },
+} as const;
+
+/** `projects.COMPARISON_REFUSALS`: by a comparison's `reason`. */
+export const PROJECT_COMPARISON_REFUSALS = {
+  "fewer_than_two_projects": {
+    "zero": "No project has {needed:session} in this window with this number yet.",
+    "one": "Only one project has {needed:session} in this window with this number, so there is nothing to compare it with.",
+    "other": "No two projects have {needed:session} in this window with this number yet.",
+  },
+  "within_noise": "{high} and {low} are close on this: {high_value} against {low_value}.",
+  "floors_only": "Both are floors, at least {high_value} in {high} and at least {low_value} in {low}, and two floors that fall short by different amounts cannot be compared.",
+} as const;
+
+/** `projects.PROJECT_REFUSALS`: why a project's number is null, by code (`{n}` and `{needed}` from the block). */
+export const PROJECT_REFUSALS = {
+  "below_run_floor": "{n:test run} in this window, {needed} needed.",
+  "no_recovery": "Nothing failed and then passed inside one session.",
+  "below_line_floor": "{n:attributable line} in this window, {needed} needed.",
+  "below_active_floor": "{n:minute} of active time here, {needed} needed.",
+  "no_price": "No dollar figure for this project in this window.",
+  "unpriced_sessions": "{n:session} used a model with no published price, so a cost a commit would be too low.",
+  "commits_not_from_git": "The commits were not counted from git log.",
+  "below_commit_floor": "{n:commit} landed in these sessions, {needed} needed.",
+} as const;
+
+/** `projects.PROJECT_CONSTANTS`: numbers a project screen names that no block carries. */
+export const PROJECT_CONSTANTS = {
+  "min_group": 5,
+  "cadence_days": 14,
+  "momentum_days": 7,
+  "dormant_after_days": 14,
+  "winding_after_days": 7,
+  "max_projects": 20,
+} as const;
+
 /** Every table above, as one object (`COPY.REFUSALS`, `COPY.TERMS`, ...). */
 export const COPY = {
   QUESTIONS,
@@ -680,4 +823,13 @@ export const COPY = {
   DECISION_SENTENCES,
   ROLES,
   ROLE_NOUN,
+  PROJECT_CARDS,
+  PROJECT_STAGE_DISPLAY,
+  PROJECT_STAGE_SENTENCES,
+  PROJECT_LAST_SESSION,
+  PROJECT_MOMENTUM,
+  PROJECT_COMPARISONS,
+  PROJECT_COMPARISON_REFUSALS,
+  PROJECT_REFUSALS,
+  PROJECT_CONSTANTS,
 } as const;

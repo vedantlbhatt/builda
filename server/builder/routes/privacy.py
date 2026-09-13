@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from sqlalchemy import text
 
-from .. import live_store, quotes
+from .. import builder_profile, live_store, quotes
 from ..auth import CurrentDevice, current_device, current_phone, current_uploader
 from ..contract import ANONYMOUS_FIELDS, CONTRACT_VERSION, PUBLIC_FIELDS
 from ..db import db_session
@@ -215,6 +215,10 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
             # 2026-09-13): they outlived the sweep, stored and shown on the Wrapped cards.
             # A quote names its session, and those sessions are gone now.
             quotes.drop_unheld(db, str(device.user_id))
+            # And its project in the stored report (report v3, docs/projects.md): a block
+            # of numbers under the repository's key is something about it on the server.
+            # The read filters it too; this is the sweep, so nothing stays behind a filter.
+            builder_profile.forget_project(db, str(device.user_id), body.repo_hash)
         elif body.visibility == "anonymous":
             # Dropping to anonymous must strip the name and the title everywhere it was
             # already stored, not just stop sending them from now on.

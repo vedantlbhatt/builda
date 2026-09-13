@@ -38,7 +38,10 @@ WHAT IS IN A CUT, in the order it is made:
 
 A cut is EVERY final sitting the machine holds. A report asks about a window, and
 `window` narrows a cut to it (the report's `from_corpus` calls it): the facts, the events,
-the sittings, the commits, the agents and the manifests, all to the same bound.
+the sittings, the commits, the agents and the manifests, all to the same bound. A project
+is the other question a cut is asked (docs/projects.md), and `repository` narrows a cut to
+the sittings of one repository the same way, so a project's blocks are the report's own
+blocks over a smaller cut, never a second copy of any of them.
 
 `lean=True` skips what only the corpus cards read (burn, commit attribution, the graph, the
 subjects, the fan out and the manifests) for a caller that reads the clocks and the
@@ -94,6 +97,15 @@ class Corpus:
     #: `dependencies` per repository, so `window` keeps only the repositories a sitting in
     #: the window ran in. LOCAL. None on a cut built by hand.
     dependencies_by_root: dict[str, tuple[str, ...]] | None = None
+    #: `commits` per repository root, so `repository` can give a project the commits of its
+    #: own checkout: the flat list cannot say which repository a commit landed in. LOCAL
+    #: (subjects). None on a cut built by hand, and then a project reads no commit.
+    commits_by_root: dict[str, tuple[tuple[float, str], ...]] | None = None
+    #: Which kept sitting dispatched each agent in `fanout.spans`, by client session id
+    #: (`agent_owners`, the rule `fanout_of` counts by), so `repository` keeps a project's
+    #: own agents and never a neighbour's that ran at the same moment. None on a cut built
+    #: by hand, and then a project has no agents block.
+    agent_sittings: dict[ag_mod.AgentSpan, str] | None = None
 
 
 def transcripts(root: pathlib.Path):
@@ -227,31 +239,62 @@ def fanout_over(spans: Sequence) -> ag_mod.Fanout | None:
     return ag_mod.fanout(list(spans), wall)
 
 
+def agent_owners(root_transcripts, kept) -> list[tuple[ag_mod.AgentSpan, str]]:
+    """(agent, the client session id of the kept sitting that dispatched it) for every
+    subagent a kept sitting dispatched. THE membership rule: an agent belongs to the kept
+    sitting that read its root transcript and inside whose window it started, the first
+    such sitting in `kept` order (a pool's sittings tile it, so two cannot both hold one
+    start). A transcript no kept sitting came from is never opened.
+
+    `fanout_of` counts these; `repository` keeps a project's own by the owner, so an
+    agent running beside two sittings in two repositories is one project's, never both
+    (docs/projects.md)."""
+    windows: dict[str, list[tuple[float, float, str]]] = {}
+    for s in kept:
+        for path in {r["path"] for r in s.records}:
+            windows.setdefault(path, []).append((s.started_at, s.ended_at, s.client_session_id))
+    out: list[tuple[ag_mod.AgentSpan, str]] = []
+    for t in root_transcripts:
+        held = windows.get(str(t.path))
+        if not held:
+            continue
+        for sp in ag_mod.spans(t.path):
+            owner = next((sid for a, b, sid in held if a <= sp.started_at <= b), None)
+            if owner is not None:
+                out.append((sp, owner))
+    return out
+
+
 def fanout_of(root_transcripts, kept=None) -> ag_mod.Fanout | None:
     """Every subagent the root transcripts dispatched, as one `Fanout`. Never a token.
 
     With `kept` (the cut's counted final sittings), only the agents a kept sitting
-    dispatched: a transcript no kept sitting came from is not even opened, and an agent is
-    counted when it started inside a kept sitting that read its transcript. FOUND IN
-    REVIEW (2026-09-13): `cut` passed every root transcript, so an excluded repository's
-    agents, and the free text type names its own `.claude/agents` gave them, reached the
-    uploaded report ("an excluded repo produces ZERO uploads"). The same leak carried a
-    live sitting's agents and a sitting too small to count.
+    dispatched (`agent_owners`): a transcript no kept sitting came from is not even opened,
+    and an agent is counted when it started inside a kept sitting that read its
+    transcript. FOUND IN REVIEW (2026-09-13): `cut` passed every root transcript, so an
+    excluded repository's agents, and the free text type names its own `.claude/agents`
+    gave them, reached the uploaded report ("an excluded repo produces ZERO uploads"). The
+    same leak carried a live sitting's agents and a sitting too small to count.
     """
     if kept is None:
         return fanout_over([s for t in root_transcripts for s in ag_mod.spans(t.path)])
-    windows: dict[str, list[tuple[float, float]]] = {}
-    for s in kept:
-        for path in {r["path"] for r in s.records}:
-            windows.setdefault(path, []).append((s.started_at, s.ended_at))
-    spans = [
-        sp
-        for t in root_transcripts
-        if str(t.path) in windows
-        for sp in ag_mod.spans(t.path)
-        if any(a <= sp.started_at <= b for a, b in windows[str(t.path)])
-    ]
-    return fanout_over(spans)
+    return fanout_over([sp for sp, _ in agent_owners(root_transcripts, kept)])
+
+
+def repo_key(session) -> str | None:
+    """The project a kept sitting belongs to: its repository's hash
+    (`capture.repo.RepoIdentity.hash`), the full 64 hex HMAC every session upload already
+    carries as `repo_hash`, and the only name a private repository has off this machine.
+    None when the repository did not resolve (a home directory sitting) or the cut was
+    built by hand without sittings. THE one definition of a project's key."""
+    repo = getattr(session, "repo", None)
+    return None if repo is None else repo.hash
+
+
+def harness_of(session) -> str | None:
+    """The tool that wrote a kept sitting, as the upload contract's `harness` enum names it
+    (`capture.sessions.Session.harness`, read off the pool key). None on a hand built cut."""
+    return getattr(session, "harness", None)
 
 
 def _offset_minutes(ts: float, tz: dt.tzinfo) -> int:
@@ -388,16 +431,21 @@ def cut(
 
     from . import shipped as sh_mod
 
-    # One read of every commit in the window, which the graph and the subjects both view.
+    # One read of every commit in the window, which the graph and the subjects both view,
+    # kept per repository too so a project reads its own (`repository`).
     commit_roots, since = commit_window(facts)
-    log = [(ts, s) for r in commit_roots for ts, s in commit_log(r, since, now)] if since is not None else []
+    log_by_root = {r: tuple(commit_log(r, since, now)) for r in commit_roots} if since is not None else {}
+    log = [(ts, s) for r in commit_roots for ts, s in log_by_root.get(r, ())]
     by_root = {r: tuple(sh_mod.stack_evidence(r)) for r in commit_roots}
+    # One read of the sidecars: the fan out and who dispatched each agent are two views of
+    # `agent_owners`, so the corpus's agents and the projects' agents are one set.
+    owned = agent_owners(root_transcripts, kept)
     return Corpus(
         facts=facts,
         sessions=sessions,
         kept=kept,
         roots=roots,
-        fanout=fanout_of(root_transcripts, kept),
+        fanout=fanout_over([sp for sp, _ in owned]),
         contributions=split_commits([ts for ts, _ in log], facts, now),
         commit_subjects=[s for _, s in log if s.strip()],
         dependencies=[d for r in commit_roots for d in by_root[r]],
@@ -405,6 +453,8 @@ def cut(
         tz=tz,
         commits=tuple(log),
         dependencies_by_root=by_root,
+        commits_by_root=log_by_root,
+        agent_sittings=dict(owned),
     )
 
 
@@ -464,6 +514,79 @@ def window(c: Corpus, days: int) -> Corpus:
         commit_subjects=subjects,
         dependencies=dependencies,
         commits=None if c.commits is None else tuple((ts, s) for ts, s in c.commits if ts >= edge),
+        commits_by_root=(
+            None
+            if c.commits_by_root is None
+            else {r: tuple((ts, s) for ts, s in log if ts >= edge) for r, log in c.commits_by_root.items()}
+        ),
+    )
+
+
+def repository(c: Corpus, key: str) -> Corpus:
+    """The cut narrowed to the sittings of ONE repository (`repo_key`), and everything read
+    beside them narrowed to that repository: the other question a cut is asked, as `window`
+    is the first (docs/projects.md). A project's blocks are then the report's own blocks
+    over this cut, so no project number is a second copy of a corpus one.
+
+    What narrows, and to what:
+      * facts, sessions, kept and roots (parallel), by the sitting's repository hash;
+      * commits, to the project's own checkouts (`commits_by_root`), each commit once. A
+        repository cloned into two directories the transcripts ran in holds the same
+        commits twice, and they are one project: deduplicated on (time, subject), the only
+        identity `commit_log` keeps (no SHA leaves git here). MEASURED on the overnight
+        corpus and on `~/.claude/projects` (2026-09-13): every repository resolved to one
+        checkout, so the rule has never had to decide anything real;
+      * the commit graph, split by THIS project's sittings only: a commit in RideGT that
+        landed while a builder sitting ran was not assisted by anything in RideGT. So a
+        project's assisted count can be lower than the corpus graph's for the same commits,
+        never higher;
+      * the agents, to the ones a project sitting dispatched (`agent_sittings`);
+      * the manifests, to the project's own checkouts.
+    `window` applied after this narrows by time as it narrows any cut, and its commit split
+    then reads the project's sittings from before the edge, so a sitting straddling the
+    edge still makes its commits assisted.
+    """
+    keep = [i for i, s in enumerate(c.kept) if repo_key(s) == key] if len(c.kept) == len(c.facts) else []
+    facts = [c.facts[i] for i in keep]
+
+    def narrowed(xs: list) -> list:
+        return [xs[i] for i in keep] if len(xs) == len(c.facts) else []
+
+    roots = narrowed(c.roots)
+    checkouts = sorted({r for r in roots if r})
+
+    commits, contributions, subjects, by_root = None, None, [], None
+    if c.commits_by_root is not None:
+        by_root = {r: c.commits_by_root.get(r, ()) for r in checkouts}
+        once = dict.fromkeys((ts, s) for r in checkouts for ts, s in by_root[r])
+        commits = tuple(sorted(once, key=lambda x: -x[0]))
+        contributions = split_commits([ts for ts, _ in commits], facts, c.now)
+        subjects = [s for _, s in commits if s.strip()]
+
+    fo = None
+    if c.fanout is not None and c.agent_sittings is not None:
+        mine = {f.session_id for f in facts}
+        fo = fanout_over([sp for sp in c.fanout.spans if c.agent_sittings.get(sp) in mine])
+
+    deps_by_root = None
+    dependencies: list[str] = []
+    if c.dependencies_by_root is not None:
+        deps_by_root = {r: c.dependencies_by_root[r] for r in checkouts if r in c.dependencies_by_root}
+        dependencies = [d for r in checkouts for d in deps_by_root.get(r, ())]
+
+    return dataclasses.replace(
+        c,
+        facts=facts,
+        sessions=narrowed(c.sessions),
+        kept=narrowed(c.kept),
+        roots=roots,
+        fanout=fo,
+        contributions=contributions,
+        commit_subjects=subjects,
+        dependencies=dependencies,
+        commits=commits,
+        dependencies_by_root=deps_by_root,
+        commits_by_root=by_root,
     )
 
 
@@ -484,6 +607,7 @@ def cut_root(root: pathlib.Path, *, tz: dt.tzinfo | None = None, now: float | No
 
 __all__ = [
     "Corpus",
+    "agent_owners",
     "commit_log",
     "commit_messages",
     "commit_subjects",
@@ -495,6 +619,9 @@ __all__ = [
     "excluded",
     "fanout_of",
     "fanout_over",
+    "harness_of",
+    "repo_key",
+    "repository",
     "split_commits",
     "transcripts",
     "window",

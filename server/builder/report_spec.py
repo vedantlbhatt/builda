@@ -11,9 +11,11 @@ The server does NOT compute this document and cannot: its blocks rest on subagen
 transcripts, shell command text, prompt text and git history, none of which leave the
 machine (privacy/upload-contract.json). It validates and stores.
 
-Inside the five version 2 blocks (wrapped, money, burn, vocab, stack) there is no string
-field at all. Every value the door accepts there is an enum from the tables below, a
-number or a clock, so a sentence, a quote or a path in one of them is a 422.
+Inside the five version 2 blocks (wrapped, money, burn, vocab, stack) and the version 3
+projects block there is no string field at all. Every value the door accepts there is an
+enum from the tables below, a number, a clock or a repository key, so a sentence, a quote,
+a path or a repository NAME in one of them is a 422: a key is `Sha256Hex`, 64 lowercase
+hex characters, and no name has that shape.
 """
 
 from __future__ import annotations
@@ -23,7 +25,10 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
+
+#: A repository key: the salted hash every session upload carries as `repo_hash`.
+Sha256Hex = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 #: Character caps by size class; the spec's `max` on a string field names one of these.
 REPORT_MAX_LENGTHS: dict[str, int] = {
@@ -60,6 +65,17 @@ ANALYSIS_ENUM_VALUES: dict[str, list[str]] = {
     "stack_refusal": ["no_evidence"],
     "stack_category": ["language", "framework", "database", "infra", "testing", "tooling", "service"],
     "stack_evidence": ["manifest", "language", "command", "path", "tool"],
+    "project_stage": ["starting", "active", "winding_down", "dormant"],
+    "project_stage_rule": ["quiet_two_weeks", "quiet_a_week", "cadence_halved", "new_this_fortnight", "steady"],
+    "momentum_refusal": ["below_session_floor", "nothing_before"],
+    "clock_refusal": ["below_active_floor"],
+    "quality_refusal": ["below_run_floor", "no_recovery"],
+    "language_refusal": ["below_line_floor"],
+    "cost_refusal": ["no_price", "unpriced_sessions", "commits_not_from_git", "below_commit_floor"],
+    "comparison_metric": ["steer_rate", "autonomy_score", "test_runs_per_hour", "tool_calls_per_prompt", "prompts_per_session", "code_velocity", "usd_per_active_hour", "first_try_rate", "ships_rate", "night_share"],
+    "comparison_refusal": ["fewer_than_two_projects", "within_noise", "floors_only"],
+    "language": ["Python", "Swift", "TypeScript", "JavaScript", "Ruby", "Go", "Rust", "Java", "Kotlin", "Objective-C", "C header", "C", "C++", "C#", "PHP", "Scala", "Elixir", "Erlang", "Haskell", "Lua", "Dart", "R", "Julia", "Zig", "Shell", "PowerShell", "SQL", "HTML", "CSS", "Vue", "Svelte", "JSON", "YAML", "TOML", "INI", "XML", "Markdown", "reStructuredText", "Text", "Protobuf", "GraphQL", "Terraform", "Dockerfile", "Gradle", "Notebook", "Make", "CMake", "other"],
+    "harness": ["claude_code", "cursor_ide", "cursor_agent", "codex", "gemini_cli", "cline", "opencode", "aider"],
 }
 
 #: Which fields of which model carry which enum, read by the validators below.
@@ -90,6 +106,21 @@ ENUM_FIELDS: dict[str, dict[str, str]] = {
     "ReportVocab": {"reason": "vocab_refusal"},
     "ReportStackItem": {"id": "stack_item", "category": "stack_category", "evidence": "stack_evidence"},
     "ReportStack": {"reason": "stack_refusal"},
+    "ReportProjectMomentum": {"direction": "trend_direction", "reason": "momentum_refusal"},
+    "ReportProjectHistory": {"stage": "project_stage", "stage_rule": "project_stage_rule"},
+    "ReportProjectClock": {"reason": "clock_refusal"},
+    "ReportProjectQuality": {"reason": "quality_refusal"},
+    "ReportProjectLanguage": {"language": "language"},
+    "ReportProjectLanguages": {"reason": "language_refusal"},
+    "ReportProjectDay": {},
+    "ReportProjectCommits": {},
+    "ReportProjectCostPerCommit": {"reason": "cost_refusal"},
+    "ReportProjectHarness": {"harness": "harness"},
+    "ReportProjectWindow": {},
+    "ReportProject": {},
+    "ReportProjectsUnresolved": {},
+    "ReportProjectComparison": {"metric": "comparison_metric", "reason": "comparison_refusal"},
+    "ReportProjects": {},
     "BuilderReport": {},
 }
 
@@ -550,6 +581,281 @@ class ReportStack(BaseModel):
         return v
 
 
+class ReportProjectMomentum(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    days: int
+    sessions: int
+    sessions_before: int
+    attended_seconds: int
+    attended_seconds_before: int
+    direction: str | None = None
+    move: float | None = None
+    reason: str | None = None
+    needed: int | None = None
+
+    @field_validator("direction", "reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sessions: int
+    first_at: datetime
+    last_at: datetime
+    active_days: int
+    spans_days: int
+    active_seconds: int
+    attended_seconds: int
+    autonomous_seconds: int
+    longest_streak_days: int | None = None
+    current_streak_days: int | None = None
+    days_since_last: int
+    age_days: int
+    days_built_recent: int
+    days_built_before: int
+    stage: str
+    stage_rule: str
+    momentum: ReportProjectMomentum
+
+    @field_validator("stage", "stage_rule")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectClock(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    peak_hour: int | None = Field(default=None, ge=0, le=23)
+    reason: str | None = None
+    active_minutes: int
+    needed_minutes: int | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectQuality(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runs: int
+    passed: int | None = None
+    failed: int | None = None
+    first_try_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    time_to_green: ReportGreen | None = None
+    reason: str | None = None
+    needed: int | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectLanguage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: str
+    lines: int
+    files: int
+    share: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("language")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectLanguages(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lines: int
+    generated_lines_excluded: int
+    languages: list[ReportProjectLanguage] | None = Field(default=None, max_length=9)
+    reason: str | None = None
+    needed: int | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectDay(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    day: datetime
+    assisted: int
+    alone: int
+
+
+class ReportProjectCommits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assisted: int
+    alone: int
+    active_days: int
+    longest_streak: int
+    current_streak: int
+    days: list[ReportProjectDay] = Field(max_length=400)
+
+
+class ReportProjectCostPerCommit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    usd: float | None = None
+    commits: int
+    unpriced_sessions: int
+    reason: str | None = None
+    needed: int | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectHarness(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    harness: str
+    sessions: int
+    active_seconds: int
+
+    @field_validator("harness")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjectWindow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sessions: int
+    first_at: datetime
+    last_at: datetime
+    active_days: int
+    active_seconds: int
+    attended_seconds: int
+    autonomous_seconds: int
+    share_of_attended: float | None = Field(default=None, ge=0.0, le=1.0)
+    clock: ReportProjectClock
+    cards: list[ReportWrappedCard] = Field(max_length=12)
+    scores: list[ReportArchetypeScore] = Field(max_length=6)
+    quality: ReportProjectQuality
+    languages: ReportProjectLanguages
+    commits: ReportProjectCommits | None = None
+    money: ReportMoney
+    usd_per_commit: ReportProjectCostPerCommit
+    burn: ReportBurn
+    stack: ReportStack
+    agents: ReportAgents | None = None
+    harnesses: list[ReportProjectHarness] = Field(max_length=8)
+
+
+class ReportProject(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: Sha256Hex
+    rank: int
+    history: ReportProjectHistory
+    window: ReportProjectWindow | None = None
+
+
+class ReportProjectsUnresolved(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sessions: int
+    active_seconds: int
+    attended_seconds: int
+    history_sessions: int
+
+
+class ReportProjectComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str
+    high: Sha256Hex | None = None
+    low: Sha256Hex | None = None
+    high_value: float | None = None
+    low_value: float | None = None
+    high_sessions: int | None = None
+    low_sessions: int | None = None
+    ratio: float | None = None
+    gap: float | None = None
+    projects: int
+    needed: int | None = None
+    reason: str | None = None
+
+    @field_validator("metric", "reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportProjects(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    window_days: int
+    history_sessions: int
+    history_first_at: datetime | None = None
+    projects_total: int
+    projects: list[ReportProject] = Field(max_length=20)
+    unresolved: ReportProjectsUnresolved
+    comparisons: list[ReportProjectComparison] = Field(max_length=10)
+
+
 class BuilderReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -569,3 +875,4 @@ class BuilderReport(BaseModel):
     burn: ReportBurn | None = None
     vocab: ReportVocab | None = None
     stack: ReportStack | None = None
+    projects: ReportProjects | None = None

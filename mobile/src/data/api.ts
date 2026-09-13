@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
 import type { BuilderNarrative } from '../generated/narrative';
-import type { BuilderReport } from '../generated/report';
+import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
 import type { ShippedPost } from '../generated/shipped';
 import type { FeedbackNoteWire, SessionBurn, SessionTitleIds } from '../generated/contract';
 import type { Archetype, Dimension, SessionAnalysis } from '../generated/analysis';
@@ -440,6 +440,37 @@ export interface BuilderProfileResponse {
    * Never put one in a post, a share, a push or an activity.
    */
   quotes?: QuotesUpload | null;
+  /**
+   * Report v3 (docs/projects.md): `report.projects` names every project by its repository
+   * KEY alone, and this is the PUBLIC name of each key that has one, from the same `repos`
+   * row a session reads its `repo_name` from. A private repository is never in it; the phone
+   * labels those (`src/projects/model.ts projectLabel`), and an owner's own label for one
+   * stays on the phone. Undefined from a server older than the block.
+   */
+  project_names?: Record<string, string>;
+}
+
+/**
+ * `GET /v1/projects/{key}`: one project's page in one request. `key` is the repository hash
+ * or the 12 character prefix `Profile.projects[].key` carries.
+ */
+export interface ProjectSlice {
+  /** The full 64 hex key. */
+  key: string;
+  /** The public name, or null for a private repository (never sent for one). */
+  name: string | null;
+  /** The report's window, or null when the stored report has no projects block. */
+  window_days: number | null;
+  /** When the report holding `project` was measured; null when it holds none. */
+  generated_at: string | null;
+  /** This project's block from the stored report, or null when the report does not hold it. */
+  project: ReportProject | null;
+  /** The report's comparisons that name this project. */
+  comparisons: ReportProjectComparison[];
+  /** Public names for this key and every key those comparisons name. */
+  project_names: Record<string, string>;
+  /** Its final, visible sessions from the server's rows, newest first, at most 50. */
+  sessions: SessionDetail[];
 }
 
 // ------------------------------------------------------------------ privacy
@@ -901,6 +932,15 @@ export class Api {
    */
   builderProfile(windowDays = 90): Promise<BuilderProfileResponse> {
     return this.request('GET', `/v1/profile/builder?window_days=${encodeURIComponent(windowDays)}`);
+  }
+
+  /**
+   * One project's page: its report block, its public name if it has one, the comparisons
+   * that name it and its own sessions (docs/projects.md). `key` is 12 to 64 lowercase hex; a
+   * prefix that names two projects is a 409, an unknown or excluded one a 404.
+   */
+  project(key: string): Promise<ProjectSlice> {
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}`);
   }
 
   sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean } = {}): Promise<{

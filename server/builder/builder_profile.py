@@ -556,6 +556,124 @@ def builder_report(db, user_id: str) -> dict | None:
     return row.body if row else None
 
 
+def without_projects(report: dict, keys: set[str]) -> dict:
+    """`report` with the projects keyed by `keys` taken out of its `projects` block, and
+    every comparison that names one of them. Pure, so the three places that must apply it
+    (the store, the read, the exclusion sweep) apply one rule.
+
+    What else moves with them, so the block still adds up: `projects_total` and
+    `history_sessions` lose the dropped projects' own counts, and the rest are ranked again
+    from 1. What cannot move: each remaining `share_of_attended` was divided by the attended
+    time of every sitting the machine read, an excluded repository's included, so after a
+    drop the shares add up to less than 1. RECORDED, not recomputable here: the server holds
+    none of the transcripts. The machine side's exclusion (`BUILDER_CAPTURE_EXCLUDE`) never
+    reads the repository at all.
+    """
+    block = report.get("projects")
+    if not block or not keys:
+        return report
+    gone = [p for p in block["projects"] if p["key"] in keys]
+    if not gone and not any(
+        c.get("high") in keys or c.get("low") in keys for c in block["comparisons"]
+    ):
+        return report
+    kept = [
+        {**p, "rank": rank}
+        for rank, p in enumerate((p for p in block["projects"] if p["key"] not in keys), 1)
+    ]
+    block = {
+        **block,
+        "projects": kept,
+        "projects_total": max(0, block["projects_total"] - len(gone)),
+        "history_sessions": max(
+            0, block["history_sessions"] - sum(p["history"]["sessions"] for p in gone)
+        ),
+        "comparisons": [
+            c
+            for c in block["comparisons"]
+            if c.get("high") not in keys and c.get("low") not in keys
+        ],
+    }
+    return {**report, "projects": block}
+
+
+def _report_keys(report: dict | None) -> set[str]:
+    block = (report or {}).get("projects") or {}
+    keys = {p["key"] for p in block.get("projects") or []}
+    keys |= {c[k] for c in block.get("comparisons") or [] for k in ("high", "low") if c.get(k)}
+    return keys
+
+
+def excluded_keys(db, user_id: str, keys: set[str]) -> set[str]:
+    """Which of these repository keys the account has excluded, through the one function
+    the RLS policies and the upload door ask (`session_repo_excluded`, SECURITY DEFINER, so
+    it reads `repo_visibility` whoever the viewer is). A key with no `repos` row cannot have
+    been excluded (the visibility row references it)."""
+    if not keys:
+        return set()
+    rows = db.execute(
+        text(
+            "SELECT r.repo_hash FROM repos r WHERE r.repo_hash = ANY(:k) "
+            "AND session_repo_excluded(CAST(:u AS uuid), r.id)"
+        ),
+        {"u": user_id, "k": sorted(keys)},
+    ).all()
+    return {r.repo_hash for r in rows}
+
+
+def project_names(db, user_id: str, keys: set[str]) -> dict[str, str]:
+    """The PUBLIC name of each repository key that has one, exactly as a session gets its
+    `repo_name`: `repos.public_name`, which only an upload in public mode ever sets and
+    visibility `anonymous` clears, and only for a repository the viewer has a session in, so
+    a key typed into a report can never fetch a name its sender does not already see. A
+    private repository has no name here, ever: the phone labels it."""
+    if not keys:
+        return {}
+    rows = db.execute(
+        text(
+            """
+            SELECT r.repo_hash, r.public_name FROM repos r
+            WHERE r.repo_hash = ANY(:k) AND r.public_name IS NOT NULL
+              AND NOT session_repo_excluded(CAST(:u AS uuid), r.id)
+              AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = :u AND s.repo_id = r.id)
+            """
+        ),
+        {"u": user_id, "k": sorted(keys)},
+    ).all()
+    return {r.repo_hash: r.public_name for r in rows}
+
+
+def held_report(db, user_id: str, report: dict | None) -> tuple[dict | None, dict[str, str]]:
+    """The stored report as the phone may see it, and the public names of its projects:
+    every project the account has excluded taken out (`without_projects`), the second lock
+    behind the store and the sweep, because a repository can be excluded on the phone after
+    the machine that never heard of it uploaded its report."""
+    if report is None:
+        return None, {}
+    keys = _report_keys(report)
+    held = without_projects(report, excluded_keys(db, user_id, keys))
+    return held, project_names(db, user_id, _report_keys(held))
+
+
+def forget_project(db, user_id: str, repo_hash: str) -> None:
+    """Take one repository out of the stored report, for `POST /v1/repos/visibility` with
+    `excluded`: "an excluded repository has NOTHING on the server, not a row that is
+    currently filtered". The report is one JSONB row per user, so this rewrites it in place."""
+    report = builder_report(db, user_id)
+    if report is None:
+        return
+    cleaned = without_projects(report, {repo_hash})
+    if cleaned is report:
+        return
+    db.execute(
+        text(
+            "UPDATE builder_report SET body = CAST(:b AS jsonb), updated_at = now() "
+            "WHERE user_id = :u"
+        ),
+        {"u": user_id, "b": json.dumps(cleaned)},
+    )
+
+
 def put_builder_report(db, user_id: str, doc: dict) -> None:
     """Replace this person's report with `doc`, which the caller has already validated.
 
@@ -563,7 +681,11 @@ def put_builder_report(db, user_id: str, doc: dict) -> None:
     and the previous one describes a corpus that no longer exists. `window_days` is lifted
     out of the body beside `report_version` for the reason the version is: a reader
     deciding whether to recompute needs both without parsing the document.
+
+    A project in a repository this account excluded is dropped before anything is stored
+    (`without_projects`): the machine that sent it may not know the phone excluded it.
     """
+    doc = without_projects(doc, excluded_keys(db, user_id, _report_keys(doc)))
     db.execute(
         text(
             """

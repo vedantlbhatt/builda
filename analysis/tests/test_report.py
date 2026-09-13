@@ -100,13 +100,15 @@ class Shape(unittest.TestCase):
         self.assertEqual(rp.REPORT_VERSION, SPEC["version"])
 
     def test_the_v2_blocks_are_appended_nullable_objects_so_a_v1_document_still_validates(self):
-        """A report an older capture sent has none of the five, and it must still be
-        stored: every one is nullable, and they come after every v1 field."""
+        """A report an older capture sent has none of the five, or none of the six, and it
+        must still be stored: every one is nullable, the version 2 blocks come after every
+        v1 field, and the version 3 block after them."""
         fields = SPEC["fields"]
         names = [f["name"] for f in fields]
-        self.assertEqual(tuple(names[-len(rp.V2_BLOCKS) :]), rp.V2_BLOCKS)
-        self.assertEqual(names[-len(rp.V2_BLOCKS) - 1], "languages")
-        for f in fields[-len(rp.V2_BLOCKS) :]:
+        appended = (*rp.V2_BLOCKS, *rp.V3_BLOCKS)
+        self.assertEqual(tuple(names[-len(appended) :]), appended)
+        self.assertEqual(names[-len(appended) - 1], "languages")
+        for f in fields[-len(appended) :]:
             self.assertEqual(f["type"], "object", f["name"])
             self.assertTrue(f.get("nullable"), f"{f['name']} must be nullable")
 
@@ -116,7 +118,7 @@ class Shape(unittest.TestCase):
         nothing, which is a claim nobody measured."""
         fo = ag.fanout([span(0, 100), span(50, 150, "b")], 200)
         for doc in (rp.build(), rp.build(trends=[trend()], fanout=fo)):
-            for block in rp.V2_BLOCKS:
+            for block in (*rp.V2_BLOCKS, *rp.V3_BLOCKS):
                 self.assertIn(block, doc)
                 self.assertIsNone(doc[block], block)
 
@@ -302,6 +304,14 @@ class WhatMayTravel(unittest.TestCase):
             "started_at",  # when the longest session started; already on the wire per session
             "first_seen",  # when a glossary term or a stack item was first met
             "prices_read_on",  # the day the price table was read, from pricing.PRICES_READ_ON
+            # Version 3, the projects block (docs/projects.md). Four more ENUMS from fixed
+            # tables and one more CLOCK; a project itself travels as a `sha256hex` key, a
+            # type this test does not count because no word can pass its pattern:
+            "stage",  # projects.STAGES
+            "stage_rule",  # projects.STAGE_RULES
+            "language",  # a name languages.EXTENSIONS or BY_NAME gives an extension
+            "harness",  # the upload contract's own harness enum
+            "history_first_at",  # the earliest sitting on the machine, a clock
         }
         strings = {
             f["name"]
@@ -312,16 +322,18 @@ class WhatMayTravel(unittest.TestCase):
         self.assertEqual(strings - allowed, set())
 
     def test_the_v2_blocks_carry_only_enums_numbers_and_clocks(self):
-        """Inside wrapped, money, burn, vocab and stack there is no string field at all.
+        """Inside wrapped, money, burn, vocab, stack and projects there is no string field
+        at all.
 
         The v1 blocks carry a few bounded strings a module wrote (a refusal in words, a
-        trend label). Version 2 carries none: the phone renders every question, answer,
-        sentence and refusal from ids and numbers (docs/overnight-engine.md rule 5), so a
-        `string` here could only be a sentence, a quote or a path on its way off the
-        machine, and the door would store it. Every `reason` is an enum code.
+        trend label). Versions 2 and 3 carry none: the phone renders every question,
+        answer, sentence and refusal from ids and numbers (docs/overnight-engine.md rule
+        5), so a `string` here could only be a sentence, a quote, a path or a repository
+        name on its way off the machine, and the door would store it. Every `reason` is an
+        enum code, and a project is its `sha256hex` key.
         """
         seen: set[str] = set()
-        todo = [f["item"] for f in SPEC["fields"] if f["name"] in rp.V2_BLOCKS]
+        todo = [f["item"] for f in SPEC["fields"] if f["name"] in (*rp.V2_BLOCKS, *rp.V3_BLOCKS)]
         while todo:
             name = todo.pop()
             if name in seen:
@@ -341,7 +353,12 @@ class WhatMayTravel(unittest.TestCase):
         self.assertIn("ReportWrappedExtras", seen)
         self.assertIn("ReportArchetypeScore", seen)
         self.assertIn("ReportStackItem", seen)
-        self.assertEqual(len(seen), 15)
+        # The projects block, and the three version 1 objects it reuses (agents, their
+        # types, the time to green), none of which carries a string either.
+        self.assertIn("ReportProjectDay", seen)
+        self.assertIn("ReportProjectComparison", seen)
+        self.assertLessEqual({"ReportAgents", "ReportAgentType", "ReportGreen"}, seen)
+        self.assertEqual(len(seen), 33)
 
 
 class Caps(unittest.TestCase):

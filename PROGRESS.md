@@ -51,9 +51,13 @@ section.
 - Landed 19:10: the Projects tab and project pages (bf7407d): the week axis in the projects
   block, rivers, the rank race, comparisons, the session swarm, nicknames on the phone only,
   `repo_key` on your own session rows. Captures in `shots/projects/`.
-- Waiting on its review, then committing: the Money Sankey (`src/money/`), the stack tools
-  chapter over the report's sessions, `burn._human` parity, Wrapped card 2's margin,
-  `dev-auth?quiet=1`. Captures in `shots/money/`. Then the artifact republish.
+- Landed 19:55: the Money Sankey (c51e84a), reviewed before commit: rounded as one flow so
+  every column and tap sentence sums to the shown total ($2,263 + $242 + $11 = $2,516), the
+  grey stream leaves mid token stream, leftover reasons read `unresolved` and `projects_total`,
+  no redraws after the sweep, copy without jargon. Plus the stack tools chapter, `burn._human`
+  parity, Wrapped card 2's margin, `dev-auth?quiet=1`. Captures `shots/money/*-v2.png`.
+  Artifact version 6 carries Projects and Money.
+- Running: a read only review of the Projects commit (bf7407d), privacy of `repo_key` first.
 - Visualizations the owner liked the sound of (16:40): project rivers, the rank race and the
   session swarm are built (bf7407d); the Money Sankey is built and in review fixes. Still on
   the list, not started: day ridgelines, tool chords, commit constellation, session

@@ -112,6 +112,19 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   baked in at build time) and signed in with its own minted device
   (`~/.builder-overnight/simulator.json`), never `device.json`'s pair. The rebuild's
   `expo run:ios` opened its dev client link on the OTHER booted simulator (<simulator 2>) too.
+- the owner's iPhone (18:05): Expo Go cannot run this app (SDK 53 against the store's newer
+  Go, plus the widget and `builder-live`), so it runs a Debug device build that loads JS from
+  this worktree's Metro over Wi-Fi. `overnight_stack.sh lan` serves the phone a second API on
+  the Mac's Wi-Fi address; the build bakes that address (`BUILDER_API_URL`) and takes the team
+  on the xcodebuild command line only (`DEVELOPMENT_TEAM=...`, never in a tracked file);
+  `-allowProvisioningUpdates` registered both bundle ids and the App Group. Then
+  `overnight_stack.sh iphone <id>` signs it in with a device of its own.
+- FOUND on the phone, open: dev-auth lands a signed in app on onboarding, and onboarding's
+  Sign in with Apple posts WITHOUT the bearer it already holds, so the server's linking rule
+  never runs and a second, empty user is created (the phone showed no sessions). Relinked by
+  hand in `builder_overnight` (identity, devices, capture key, push token moved; the empty user
+  deleted). Fix to decide: onboarding skips sign in when tokens exist, or sends them to link.
+  Sign in with Apple itself works against the local API.
 
 ## The final artifact (plan)
 

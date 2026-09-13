@@ -23,8 +23,10 @@ struct SessionStateRecord: Record {
   @Field var phase: String = "working"
   @Field var sentence: String = ""
   @Field var progress: Double = -1
-  @Field var filesTouched: Int = -1
+  @Field var filesChanged: Int = -1
   @Field var etaEpoch: Double? = nil
+  @Field var sinceEpoch: Double? = nil
+  @Field var endedEpoch: Double? = nil
   @Field var trajectory: String = "none"
   @Field var creature: String = "bit"
   @Field var linesAdded: Int? = nil
@@ -148,6 +150,9 @@ public class BuilderLiveModule: Module {
       }
     }
 
+    /// Also for a card that has ALREADY ended and sits on the Lock Screen as finished: an end
+    /// with no state and `dismissAfterSeconds` 0 takes it down (surface.ts does this the moment
+    /// another session runs, so a finished card never stacks on top of a running one).
     AsyncFunction("end") { (id: String, finalState: SessionStateRecord?, opts: ContentOptionsRecord?) async throws in
       guard #available(iOS 16.2, *) else { throw LiveActivitiesUnavailableException() }
       guard let activity = Activity<BuilderSessionAttributes>.activities.first(where: { $0.id == id }) else {
@@ -201,8 +206,9 @@ public class BuilderLiveModule: Module {
   private static func content(_ s: SessionStateRecord, _ opts: ContentOptionsRecord?) -> ActivityContent<BuilderSessionAttributes.ContentState> {
     ActivityContent(
       state: BuilderSessionAttributes.ContentState(
-        phase: s.phase, sentence: s.sentence, progress: s.progress, filesTouched: s.filesTouched,
-        etaEpoch: s.etaEpoch, trajectory: s.trajectory, creature: s.creature,
+        phase: s.phase, sentence: s.sentence, progress: s.progress, filesChanged: s.filesChanged,
+        etaEpoch: s.etaEpoch, sinceEpoch: s.sinceEpoch, endedEpoch: s.endedEpoch,
+        trajectory: s.trajectory, creature: s.creature,
         linesAdded: s.linesAdded, linesRemoved: s.linesRemoved, commits: s.commits,
         runningCount: s.runningCount, updatedEpoch: s.updatedEpoch),
       staleDate: opts?.staleInSeconds.map { Date().addingTimeInterval($0) },

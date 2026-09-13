@@ -35,17 +35,24 @@ export type SessionState = {
   sentence: string;
   /** Elapsed over typical: 0..1 fills the ring, above 1 is running long, -1 is no honest number. */
   progress: number;
-  /** -1 when nothing counted them. */
-  filesTouched: number;
+  /** Files the agent changed (the engine's map, edits only, never reads). -1 when nothing counted them. */
+  filesChanged: number;
   /** Unix seconds a typical run like this one ends, or null to refuse an ETA. */
   etaEpoch: number | null;
+  /**
+   * Unix seconds the condition the surface names began (waiting on you, no output, failing
+   * the same command), so it can say "since 9:37", which stays true. Null otherwise.
+   */
+  sinceEpoch: number | null;
+  /** Unix seconds a finished session ended; null while it runs or when the end is not known. */
+  endedEpoch: number | null;
   trajectory: Trajectory;
   creature: CreatureId;
   /** Null is unknown, never zero. */
   linesAdded: number | null;
   linesRemoved: number | null;
   commits: number | null;
-  /** Other sessions running beside this one. */
+  /** Other sessions running with no card of their own (past the cap): "2 more running". */
   runningCount: number;
   updatedEpoch: number;
 };
@@ -60,7 +67,10 @@ export type ContentOptions = {
   /** update() only: lights the screen and expands the island. Only on the move into needs you. */
   alertTitle?: string;
   alertBody?: string;
-  /** end() only: seconds the finished card stays on the Lock Screen (0 removes it now). */
+  /**
+   * end() only: seconds the finished card stays on the Lock Screen (0 removes it now). An end
+   * on an activity that has already ended changes its dismissal: 0 takes a finished card down.
+   */
   dismissAfterSeconds?: number;
 };
 

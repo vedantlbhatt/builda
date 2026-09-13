@@ -76,6 +76,7 @@ struct BuilderHomeWidget: Widget {
 } timeline: {
   SnapshotEntry(date: LiveFixtures.now, snapshot: LiveFixtures.widgetWorking)
   SnapshotEntry(date: LiveFixtures.now, snapshot: LiveFixtures.widgetFour)
+  SnapshotEntry(date: LiveFixtures.now, snapshot: LiveFixtures.widgetCircling)
   SnapshotEntry(date: LiveFixtures.now.addingTimeInterval(20 * 60), snapshot: LiveFixtures.widgetWorking)
 }
 

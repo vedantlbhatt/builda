@@ -7,6 +7,13 @@ import Foundation
 /// Copy rules (brief, DESIGN-DIRECTION 9): no dashes anywhere (a minus before a number is
 /// U+2212 MINUS SIGN, which is a sign, not punctuation), captions lower case, numbers tabular,
 /// and a refused number is a sentence ("no ETA yet"), never a 0 or "--".
+///
+/// Time rule: a Live Activity is redrawn only when an update arrives, and none arrives while
+/// the app is in the background. So nothing on it is a duration computed at render ("12m",
+/// "about 9m left", "for four minutes" all froze on the Lock Screen, 2026-09-13): the elapsed
+/// time is a system timer counting from `startDate`, and every other time is a clock time
+/// ("waiting since 9:37", "done around 9:50"), which stays true. The widget redraws on its own
+/// timeline (one entry a minute), so it may use the minute strings computed at `now`.
 @available(iOS 16.1, *)
 struct LiveDisplay {
   enum Phase: String {
@@ -17,27 +24,63 @@ struct LiveDisplay {
     case converging, circling, lost
   }
 
+  /// What the ring (and the island's capsule) draws. `arc` is elapsed over typical, `dotted` is
+  /// "no honest number yet", `track` is the empty ring: a session waiting on you, or one that
+  /// finished with nothing landed.
+  enum Ring: Equatable {
+    case arc(Double)
+    case dotted
+    case track
+  }
+
+  /// One piece of a caption, most important first; a caption drops pieces from the end when
+  /// the width runs out, never a word in the middle.
+  enum Part: Hashable {
+    case words(String)
+    /// "waiting since" and a clock time.
+    case clock(String, Date)
+    case verdict(Verdict)
+    /// "circling since" and a clock time.
+    case verdictSince(Verdict, Date)
+  }
+
   let sessionId: String
   let phase: Phase
   /// nil when the engine has no verdict yet: the caption drops it rather than guess one.
   let verdict: Verdict?
   let repo: String
   let harness: String
+  /// "Claude", "Codex", "Gemini": where a row has no room for the brand name in full.
+  let harnessShort: String
   let creature: String
   let sentence: String
-  /// Minutes since the session started, as "22m" or "1h 05m".
+  /// When the session started. The elapsed time on the Lock Screen and in the island is a
+  /// system timer from here, so it moves with no update.
+  let startDate: Date
+  /// Minutes since the start at `now`: "22m", "1h 05m". For the widget, which redraws each minute.
   let elapsed: String
-  /// The same for the 52pt compact island slot: "22m", "1h 05m", past ten hours "10h".
-  let elapsedCompact: String
-  /// For the ring: 0...1, or nil for "no honest number yet" (a dotted track).
-  let ring: Double?
+  /// When the condition the sentence names began (needs you, no output, a failing command).
+  let since: Date?
+  /// Minutes since `since` at `now`, for the widget: "4m".
+  let sinceElapsed: String?
+  /// How long a finished session ran ("47m"); nil while it runs or when its end is not known.
+  let ranFor: String?
+  /// When the data behind this card was taken: "Not updating since 9:41".
+  let updated: Date
+  let ring: Ring
   let overTypical: Bool
-  /// nil when nothing counted the files: the ring's centre stays empty rather than say 0.
-  let files: Int?
-  /// "about 18m left", "running longer than usual", or "no ETA yet".
-  let eta: String
-  /// "2 more running", or nil when this is the only one.
-  let moreRunning: String?
+  /// Working, inside its typical run, with no verdict against it. Amber progress (the arc, the
+  /// capsule) and an ETA are drawn for this state only, so amber always means "on track".
+  let onTrack: Bool
+  /// Files the agent changed, when counted and more than none: the caption's "9 files changed".
+  let filesChanged: Int?
+  /// When a typical run like this ends, while on track; nil when refused or already past it.
+  let etaDate: Date?
+  let etaRefused: Bool
+  /// Sessions running beside this one that nothing else on the surface shows.
+  let others: Int
+  /// "2 more running", or nil when there are none.
+  var moreRunning: String? { others > 0 ? "\(others) more running" : nil }
   let linesAdded: Int?
   let linesRemoved: Int?
   let commits: Int?
@@ -46,43 +89,52 @@ struct LiveDisplay {
     let t = max(now.timeIntervalSince1970, s.updatedEpoch)
     self.init(
       sessionId: a.sessionId, repo: a.repo, agent: a.agent, startedEpoch: a.startedEpoch,
-      phase: s.phase, sentence: s.sentence, progress: s.progress, filesTouched: s.filesTouched,
-      etaEpoch: s.etaEpoch, trajectory: s.trajectory, creature: s.creature,
+      phase: s.phase, sentence: s.sentence, progress: s.progress, filesChanged: s.filesChanged,
+      etaEpoch: s.etaEpoch, sinceEpoch: s.sinceEpoch, endedEpoch: s.endedEpoch,
+      trajectory: s.trajectory, creature: s.creature,
       linesAdded: s.linesAdded, linesRemoved: s.linesRemoved, commits: s.commits,
-      runningCount: s.runningCount, now: t)
+      runningCount: s.runningCount, updatedEpoch: s.updatedEpoch, now: t)
   }
 
   init(sessionId: String, repo: String, agent: String, startedEpoch: Double,
-       phase: String, sentence: String, progress: Double, filesTouched: Int,
-       etaEpoch: Double?, trajectory: String, creature: String,
+       phase: String, sentence: String, progress: Double, filesChanged: Int,
+       etaEpoch: Double?, sinceEpoch: Double?, endedEpoch: Double?,
+       trajectory: String, creature: String,
        linesAdded: Int?, linesRemoved: Int?, commits: Int?,
-       runningCount: Int, now: Double) {
+       runningCount: Int, updatedEpoch: Double, now: Double) {
     self.sessionId = sessionId
-    self.phase = Phase(rawValue: phase) ?? .working
-    self.verdict = Verdict(rawValue: trajectory)
+    let phase = Phase(rawValue: phase) ?? .working
+    self.phase = phase
+    // A stalled session has no verdict worth showing: "converging" beside "No new output" is
+    // a claim the silence does not support.
+    let verdict = phase == .stalled ? nil : Verdict(rawValue: trajectory)
+    self.verdict = verdict
     self.repo = repo.isEmpty ? "private repo" : repo
     self.harness = LiveCopy.harnessName(agent)
+    self.harnessShort = LiveCopy.harnessShort(agent)
     self.creature = creature
     self.sentence = sentence
-    let seconds = max(0, now - startedEpoch)
-    self.elapsed = LiveCopy.duration(seconds)
-    self.elapsedCompact = LiveCopy.durationCompact(seconds)
+    self.startDate = Date(timeIntervalSince1970: startedEpoch)
+    self.elapsed = LiveCopy.duration(max(0, now - startedEpoch))
+    self.since = sinceEpoch.map { Date(timeIntervalSince1970: $0) }
+    self.sinceElapsed = sinceEpoch.map { LiveCopy.duration(max(0, now - $0)) }
+    self.ranFor = phase == .done ? endedEpoch.map { LiveCopy.duration(max(0, $0 - startedEpoch)) } : nil
+    self.updated = Date(timeIntervalSince1970: updatedEpoch)
     // Past the typical run: the ring stays full and the caption says so, never a second lap.
-    self.overTypical = progress >= 1 || (etaEpoch.map { $0 <= now } ?? false)
-    if self.phase == .done {
-      self.ring = 1
-    } else if progress < 0 {
-      self.ring = nil
-    } else {
-      self.ring = self.overTypical ? 1 : min(progress, 1)
+    let over = progress >= 1 || (etaEpoch.map { $0 <= now } ?? false)
+    self.overTypical = over
+    let onTrack = phase == .working && (verdict == nil || verdict == .converging) && !over
+    self.onTrack = onTrack
+    let landed = (linesAdded ?? 0) + (linesRemoved ?? 0) > 0 || (commits ?? 0) > 0
+    switch phase {
+    case .done: self.ring = landed ? .arc(1) : .track
+    case .needsYou: self.ring = .track
+    case .working, .stalled: self.ring = progress < 0 ? .dotted : .arc(over ? 1 : min(progress, 1))
     }
-    self.files = filesTouched >= 0 ? filesTouched : nil
-    if let eta = etaEpoch {
-      self.eta = self.overTypical ? LiveCopy.overTypical : "about \(LiveCopy.duration(max(60, eta - now), roundUp: true)) left"
-    } else {
-      self.eta = LiveCopy.noEta
-    }
-    self.moreRunning = runningCount > 0 ? "\(runningCount) more running" : nil
+    self.filesChanged = filesChanged > 0 ? filesChanged : nil
+    self.etaRefused = etaEpoch == nil
+    self.etaDate = onTrack ? etaEpoch.map { Date(timeIntervalSince1970: $0) } : nil
+    self.others = max(0, runningCount)
     self.linesAdded = linesAdded
     self.linesRemoved = linesRemoved
     self.commits = commits
@@ -100,10 +152,57 @@ struct LiveDisplay {
 
   var url: URL? { URL(string: "builder://session/\(sessionId)") }
 
-  /// "+420", "−88", "3 commits": what a finished session made, each part only when counted.
-  var added: String? { linesAdded.map { "+" + LiveCopy.count($0) } }
-  var removed: String? { linesRemoved.map { LiveCopy.minus + LiveCopy.count($0) } }
-  var commitsText: String? { commits.map { $0 == 1 ? "1 commit" : "\(LiveCopy.count($0)) commits" } }
+  /// The caption under the sentence, most important piece first (`CaptionLine` sheds from the
+  /// end). A finished card has its own line (`FinishedLine`), and a stale one says only that.
+  var captionParts: [Part] {
+    var parts: [Part] = []
+    switch phase {
+    case .done:
+      return []
+    case .needsYou:
+      if let since { parts.append(.clock(LiveCopy.waitingSince, since)) }
+    case .stalled:
+      if let since { parts.append(.clock(LiveCopy.lastOutput, since)) } else { parts.append(.words(LiveCopy.noNewOutput)) }
+      if let f = filesChanged { parts.append(.words(LiveCopy.filesChanged(f))) }
+    case .working:
+      if onTrack {
+        if let eta = etaDate {
+          parts.append(.clock(LiveCopy.doneAround, eta))
+        } else if etaRefused {
+          parts.append(.words(LiveCopy.noEta))
+        }
+        if let v = verdict { parts.append(.verdict(v)) }
+      } else if let v = verdict, v != .converging {
+        // Circling or lost: the verdict leads and no ETA is offered; a run going nowhere has
+        // no "left" to count down.
+        parts.append(since.map { .verdictSince(v, $0) } ?? .verdict(v))
+      } else {
+        parts.append(.words(LiveCopy.overTypical))
+        if let v = verdict { parts.append(.verdict(v)) }
+      }
+      if let f = filesChanged { parts.append(.words(LiveCopy.filesChanged(f))) }
+    }
+    if let m = moreRunning { parts.append(.words(m)) }
+    return parts
+  }
+
+  /// Lines, commits and files a finished session left, each only when more than none.
+  var landedParts: (added: String?, removed: String?, commits: String?, files: String?) {
+    let a = linesAdded ?? 0, r = linesRemoved ?? 0, c = commits ?? 0
+    return (
+      a > 0 ? "+" + LiveCopy.count(a) : nil,
+      r > 0 ? LiveCopy.minus + LiveCopy.count(r) : nil,
+      c > 0 ? (c == 1 ? "1 commit" : "\(LiveCopy.count(c)) commits") : nil,
+      filesChanged.map { LiveCopy.filesChanged($0) }
+    )
+  }
+
+  /// Nothing landed, and that was counted (lines and commits both measured at zero, no file
+  /// changed): the one case where a finished card may say so. Unknown counts say nothing.
+  var countedNothing: Bool {
+    linesAdded != nil && commits != nil && (linesAdded ?? 0) + (linesRemoved ?? 0) == 0
+      && (commits ?? 0) == 0 && filesChanged == nil
+  }
 }
 
 enum LiveCopy {
@@ -111,15 +210,23 @@ enum LiveCopy {
   static let finished = "finished"
   static let working = "working"
   static let noNewOutput = "no new output"
-  static let notUpdating = "Not updating"
+  static let notUpdatingSince = "Not updating since"
   static let noEta = "no ETA yet"
   static let overTypical = "running longer than usual"
+  static let waitingSince = "waiting since"
+  static let lastOutput = "last output"
+  static let doneAround = "done around"
+  static let since = "since"
+  static let ran = "ran"
+  static let nothingLanded = "nothing written, nothing committed"
   static let nothingRunning = "Nothing running."
-  static let goDoSomethingElse = "Go do something else. We'll tap you when that changes."
+  static let showsUpHere = "Your agents show up here while they run."
   static let today = "today"
   /// U+2212 MINUS SIGN: the sign on "−88", so no punctuation dash ever reaches a surface.
   static let minus = "\u{2212}"
   static let separator = "\u{00B7}"
+
+  static func filesChanged(_ n: Int) -> String { n == 1 ? "1 file changed" : "\(count(n)) files changed" }
 
   /// The server's harness ids, in their brand casing (mirrors `HARNESS_LABEL` in
   /// src/card/RecapCard.tsx). An id this build does not know is shown as sent, not hidden.
@@ -137,6 +244,17 @@ enum LiveCopy {
     }
   }
 
+  /// The same names cut to the word that tells them apart, for a widget row: two RideGT rows,
+  /// one under Claude Code and one under Codex, must never read the same.
+  static func harnessShort(_ id: String) -> String {
+    switch id {
+    case "claude_code", "claude": return "Claude"
+    case "gemini_cli", "gemini": return "Gemini"
+    case "cursor_agent": return "cursor-agent"
+    default: return harnessName(id)
+    }
+  }
+
   /// "0m", "22m", "1h 05m" (the server's `_hm`, so a banner and a Lock Screen agree).
   static func duration(_ seconds: Double, roundUp: Bool = false) -> String {
     let total = roundUp ? Int((seconds / 60).rounded(.up)) : Int(seconds / 60)
@@ -144,9 +262,12 @@ enum LiveCopy {
     return h > 0 ? "\(h)h \(m < 10 ? "0" : "")\(m)m" : "\(m)m"
   }
 
-  static func durationCompact(_ seconds: Double) -> String {
-    let h = Int(seconds / 3600)
-    return h >= 10 ? "\(h)h" : duration(seconds)
+  /// "12:00", "1:02:34": what `Text(timerInterval:)` counting up reads after `seconds`.
+  static func timerText(_ seconds: Double) -> String {
+    let s = Int(seconds), h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+    let mm = h > 0 && m < 10 ? "0\(m)" : "\(m)"
+    let ss = sec < 10 ? "0\(sec)" : "\(sec)"
+    return h > 0 ? "\(h):\(mm):\(ss)" : "\(mm):\(ss)"
   }
 
   /// 420, 1,204 as 1.2k, 38k, 1.4M: product formatting with no locale surprise.

@@ -22,8 +22,11 @@ struct WidgetSnapshot: Codable, Hashable {
     /// Unix seconds.
     var startedEpoch: Double
     var progress: Double
-    var filesTouched: Int
+    /// Files changed (edits, never reads); negative when not counted.
+    var filesChanged: Int
     var etaEpoch: Double?
+    /// When the condition began: waiting on you, no new output, a failing command.
+    var sinceEpoch: Double?
   }
 
   struct Today: Codable, Hashable {
@@ -58,13 +61,16 @@ struct WidgetSnapshot: Codable, Hashable {
 
 @available(iOS 16.1, *)
 extension WidgetSnapshot {
-  func display(_ s: Session, now: Date) -> LiveDisplay {
+  /// `more`: the sessions running beside this one that the widget does not show otherwise.
+  func display(_ s: Session, now: Date, more: Int = 0) -> LiveDisplay {
     LiveDisplay(
       sessionId: s.id, repo: s.repo, agent: s.agent, startedEpoch: s.startedEpoch,
-      phase: s.phase, sentence: s.sentence, progress: s.progress, filesTouched: s.filesTouched,
-      etaEpoch: s.etaEpoch, trajectory: s.trajectory, creature: creature,
+      phase: s.phase, sentence: s.sentence, progress: s.progress, filesChanged: s.filesChanged,
+      etaEpoch: s.etaEpoch, sinceEpoch: s.sinceEpoch, endedEpoch: nil,
+      trajectory: s.trajectory, creature: creature,
       linesAdded: nil, linesRemoved: nil, commits: nil,
-      runningCount: max(0, runningCount - 1), now: max(now.timeIntervalSince1970, updatedEpoch))
+      runningCount: max(0, more), updatedEpoch: updatedEpoch,
+      now: max(now.timeIntervalSince1970, updatedEpoch))
   }
 
   func isStale(at now: Date) -> Bool { now.timeIntervalSince1970 >= staleEpoch }
@@ -90,22 +96,22 @@ struct HomeWidgetView: View {
     let stale = snapshot?.isStale(at: now) ?? false
     Group {
       if let snap = snapshot, let top = sessions.first {
-        let d = snap.display(top, now: now)
         switch size {
         case .small:
-          SmallRunning(d: d, running: snap.runningCount, stale: stale, pal: pal)
+          // Everything running beside the top session is "N more" on the small widget.
+          SmallRunning(d: snap.display(top, now: now, more: snap.runningCount - 1), stale: stale, pal: pal, accented: accented)
         case .medium:
-          // A hairline between the columns: without it the running count ("5 running") and
-          // the first row's repo read as one line of text.
+          // A hairline between the columns; the others are rows, so the left says no "N more".
+          let others = Array(sessions.dropFirst().prefix(3))
           HStack(alignment: .top, spacing: 12) {
-            SmallRunning(d: d, running: snap.runningCount, stale: stale, pal: pal)
-              .frame(width: 150)
+            SmallRunning(d: snap.display(top, now: now), stale: stale, pal: pal, accented: accented)
+              .frame(width: 150, alignment: .leading)
             Rectangle().fill(pal.border).frame(width: 1)
-            let others = Array(sessions.dropFirst().prefix(3))
             if others.isEmpty {
               TodayColumn(today: snap.today, pal: pal, accented: accented)
             } else {
-              SessionRows(rows: others.map { snap.display($0, now: now) }, stale: stale, pal: pal)
+              SessionRows(rows: others.map { snap.display($0, now: now) },
+                          hidden: max(0, snap.runningCount - 1 - others.count), stale: stale, pal: pal)
             }
           }
         }
@@ -116,12 +122,12 @@ struct HomeWidgetView: View {
         case .medium:
           HStack(alignment: .top, spacing: 16) {
             SmallIdle(today: snapshot?.today, pal: pal, accented: accented, saysNothingRunning: false)
-              .frame(width: 150)
+              .frame(width: 150, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
               Text(LiveCopy.nothingRunning)
                 .font(LiveType.font(15, .semibold))
                 .foregroundStyle(pal.text)
-              Text(LiveCopy.goDoSomethingElse)
+              Text(LiveCopy.showsUpHere)
                 .font(LiveType.font(13, .medium))
                 .foregroundStyle(pal.textDim)
                 .lineLimit(3)
@@ -136,51 +142,55 @@ struct HomeWidgetView: View {
   }
 }
 
-/// Creature 32 top left, running count top right, the elapsed time big, the sentence on two
-/// lines, and one state word. The small widget, and the left of the medium one.
+/// The repo top left with the creature small beside it on the right (the Home Screen already
+/// labels the widget "Builder", so the mark only has to be recognisable), the big number, the
+/// sentence on up to three lines, and the state. The small widget, and the left of the medium.
+///
+/// The big number is the one that matters for the state: how long it has waited on you when it
+/// needs you, otherwise how long it has run. Each is drawn at the timeline entry's `now`, which
+/// advances every minute.
 @available(iOS 17.0, *)
 private struct SmallRunning: View {
   let d: LiveDisplay
-  let running: Int
   let stale: Bool
   let pal: BuilderPalette.Scheme
+  let accented: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack(alignment: .top) {
-        CreatureMark(creature: d.creature, points: 32, tint: pal.accent, trim: .leading)
-        Spacer(minLength: 4)
-        Text("\(running) running")
-          .font(LiveType.font(13, .semibold))
-          .foregroundStyle(pal.textDim)
+      HStack(alignment: .center, spacing: 6) {
+        Text(d.repo)
+          .font(LiveType.font(13, .semibold, mono: true))
+          .foregroundStyle(pal.text)
           .lineLimit(1)
+          .truncationMode(.middle)
+        Spacer(minLength: 4)
+        CreatureMark(creature: d.creature, points: 16, tint: stale ? pal.textFaint : pal.accent)
       }
-      Spacer(minLength: 0)
-      Text(d.elapsed)
-        .font(LiveType.font(34, .heavy))
-        .tracking(-0.6)
+      Spacer(minLength: 2)
+      Text(d.phase == .needsYou ? (d.sinceElapsed ?? d.elapsed) : d.elapsed)
+        .font(LiveType.font(28, .heavy))
+        .tracking(-0.5)
         .monospacedDigit()
-        .foregroundStyle(pal.text)
+        .foregroundStyle(stale ? pal.textDim : pal.text)
         .lineLimit(1)
         .minimumScaleFactor(0.7)
-        .opacity(stale ? 0.45 : 1)
       Text(d.sentence)
         .font(LiveType.font(13, .semibold))
-        .foregroundStyle(pal.text)
-        .lineLimit(2)
+        .foregroundStyle(stale ? pal.textDim : pal.text)
+        .lineLimit(3)
+        .minimumScaleFactor(0.9)
         .fixedSize(horizontal: false, vertical: true)
-        .opacity(stale ? 0.45 : 1)
-      StateWord(d: d, stale: stale, pal: pal, size: 12)
+      StateLine(d: d, stale: stale, pal: pal, size: 12)
         .padding(.top, 3)
     }
   }
 }
 
-/// The state as a word. Needs you is amber on dark and `text` after an amber dot on light
-/// (amber text is 1.7:1 on the light ground). A verdict is its drawn glyph and word in
-/// `textDim`. The word always carries the meaning, so tinted and clear widgets lose nothing.
+/// The state word, then how many more are running when this is the only place that says so.
+/// Stale says only that, shrinking to fit rather than pushing the column wider than the widget.
 @available(iOS 17.0, *)
-private struct StateWord: View {
+private struct StateLine: View {
   let d: LiveDisplay
   let stale: Bool
   let pal: BuilderPalette.Scheme
@@ -188,22 +198,48 @@ private struct StateWord: View {
 
   var body: some View {
     if stale {
-      Text(LiveCopy.notUpdating)
-        .font(LiveType.font(size, .semibold))
-        .foregroundStyle(pal.textDim)
-    } else if d.phase == .needsYou {
-      if pal.amberIsText {
-        NeedsYouMark(size: size, color: pal.accent)
-      } else {
-        HStack(spacing: 5) {
-          Circle().fill(pal.accent).frame(width: 6, height: 6).widgetAccentable()
-          Text(LiveCopy.needsYou)
-            .font(LiveType.font(size, .semibold))
-            .foregroundStyle(pal.text)
+      NotUpdatingLine(since: d.updated, size: size, color: pal.text)
+        .minimumScaleFactor(0.7)
+    } else {
+      let more = d.others == 0 ? nil : "\(d.others) more"
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 4) {
+          StateWord(d: d, pal: pal, size: size).fixedSize()
+          if let more {
+            Dot(color: pal.textDim).font(LiveType.font(size, .medium))
+            Text(more).font(LiveType.font(size, .semibold)).foregroundStyle(pal.textDim).fixedSize()
+          }
         }
+        StateWord(d: d, pal: pal, size: size).fixedSize()
+      }
+    }
+  }
+}
+
+/// The state as a word. Needs you is a 6pt amber dot and the words, amber on dark and `text`
+/// on light (amber text is 1.7:1 on the light ground); the Lock Screen's raised hand is too wide
+/// for a widget's column beside "4 more". A verdict is its drawn glyph and word in `textDim`.
+/// The word always carries the meaning, so tinted and clear widgets lose nothing.
+@available(iOS 17.0, *)
+private struct StateWord: View {
+  let d: LiveDisplay
+  let pal: BuilderPalette.Scheme
+  var size: CGFloat
+
+  var body: some View {
+    if d.phase == .needsYou {
+      HStack(spacing: 5) {
+        Circle().fill(pal.accent).frame(width: 6, height: 6).widgetAccentable()
+        Text(LiveCopy.needsYou)
+          .font(LiveType.font(size, .semibold))
+          .foregroundStyle(pal.amberIsText ? pal.accent : pal.text)
       }
     } else if d.phase == .working, let v = d.verdict {
       VerdictLabel(verdict: v, size: size, color: pal.textDim)
+    } else if d.phase == .stalled, let quiet = d.sinceElapsed {
+      Text("\(LiveCopy.noNewOutput) for \(quiet)")
+        .font(LiveType.font(size, .semibold))
+        .foregroundStyle(pal.textDim)
     } else {
       Text(d.stateWord)
         .font(LiveType.font(size, .semibold))
@@ -213,10 +249,12 @@ private struct StateWord: View {
 }
 
 /// Up to three more sessions, one row each with a hairline between: the repo in mono and the
-/// elapsed time, then the state and the harness. Each row opens its session.
+/// elapsed time, then the state and which harness, cut to the word that tells two rows apart
+/// ("Claude", "Codex"). Each row opens its session. Then "+N more" for any not listed.
 @available(iOS 17.0, *)
 private struct SessionRows: View {
   let rows: [LiveDisplay]
+  let hidden: Int
   let stale: Bool
   let pal: BuilderPalette.Scheme
 
@@ -229,6 +267,12 @@ private struct SessionRows: View {
         row(d)
       }
       Spacer(minLength: 0)
+      if hidden > 0 && !stale {
+        Text("+\(hidden) more running")
+          .font(LiveType.font(12, .semibold))
+          .foregroundStyle(pal.textDim)
+          .padding(.top, 4)
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -240,6 +284,7 @@ private struct SessionRows: View {
           .font(LiveType.font(13, .medium, mono: true))
           .foregroundStyle(pal.text)
           .lineLimit(1)
+          .truncationMode(.middle)
         Spacer(minLength: 4)
         Text(d.elapsed)
           .font(LiveType.font(13, .semibold))
@@ -247,23 +292,44 @@ private struct SessionRows: View {
           .foregroundStyle(pal.textDim)
           .layoutPriority(1)
       }
-      // The state always; the harness only when it fits whole, never "Claud...".
+      // The state always; the harness when it fits whole.
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 4) {
-          StateWord(d: d, stale: stale, pal: pal, size: 12).fixedSize()
+          RowState(d: d, stale: stale, pal: pal).fixedSize()
           Dot(color: pal.textDim).font(LiveType.font(12, .medium))
-          Text(d.harness)
+          Text(d.harnessShort)
             .font(LiveType.font(12, .medium))
             .foregroundStyle(pal.textDim)
             .fixedSize()
         }
-        StateWord(d: d, stale: stale, pal: pal, size: 12).fixedSize()
+        RowState(d: d, stale: stale, pal: pal).fixedSize()
       }
     }
     if let url = d.url {
       Link(destination: url) { content }
     } else {
       content
+    }
+  }
+}
+
+/// A row's state: the word only. The verdict glyph cost the first build's rows the harness
+/// ("converging" under RideGT beside "circling · Codex" under RideGT), and the harness is what
+/// tells two rows of one repo apart. Needs you is still marked with the amber dot.
+@available(iOS 17.0, *)
+private struct RowState: View {
+  let d: LiveDisplay
+  let stale: Bool
+  let pal: BuilderPalette.Scheme
+
+  var body: some View {
+    if !stale && d.phase == .needsYou {
+      HStack(spacing: 4) {
+        Circle().fill(pal.accent).frame(width: 6, height: 6).widgetAccentable()
+        Text(LiveCopy.needsYou).font(LiveType.font(12, .semibold)).foregroundStyle(pal.amberIsText ? pal.accent : pal.text)
+      }
+    } else {
+      Text(d.stateWord).font(LiveType.font(12, .medium)).foregroundStyle(pal.textDim)
     }
   }
 }

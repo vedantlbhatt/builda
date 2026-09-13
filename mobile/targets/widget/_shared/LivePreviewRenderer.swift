@@ -42,13 +42,17 @@ public final class BuilderPreviewRenderer: NSObject {
     let lock: [(String, BuilderSessionAttributes, BuilderSessionAttributes.ContentState, Bool)] = [
       ("lock-working", F.rideGT, F.working, false),
       ("lock-working-no-eta", F.builder, F.workingNoEta, false),
+      ("lock-background", F.builder, F.background, false),
       ("lock-needs-you", F.builder, F.needsYou, false),
       ("lock-circling", F.rideGT, F.circling, false),
       ("lock-over-typical", F.rideGT, F.overTypical, false),
       ("lock-lost", F.rideGT, F.lost, false),
       ("lock-stalled", F.rideGT, F.stalled, false),
       ("lock-done", F.builder, F.done, false),
+      ("lock-done-nothing", F.builder, F.doneNothing, false),
+      ("lock-nothing-yet", F.privateRepo, F.nothingYet, false),
       ("lock-stale", F.rideGT, F.working, true),
+      ("lock-long", F.longRun, F.workingNoEta, false),
     ]
     for (name, a, s, stale) in lock {
       out.append((name, AnyView(LockFrame { LockScreenLiveView(d: F.display(a, s), isStale: stale) })))
@@ -60,23 +64,28 @@ public final class BuilderPreviewRenderer: NSObject {
     out.append(("lock-working-owl", AnyView(LockFrame { LockScreenLiveView(d: F.display(F.rideGT, owl), isStale: false) })))
     var bit = F.needsYou
     bit.creature = "bit"
-    out.append(("island-compact-bit", AnyView(CompactFrame(d: F.display(F.builder, bit)))))
+    out.append(("island-compact-bit", AnyView(CompactFrame(d: F.display(F.builder, bit), isStale: false))))
+    out.append(("island-minimal-bit", AnyView(MinimalFrame(d: F.display(F.builder, { var s = F.working; s.creature = "bit"; return s }()), isStale: false))))
 
-    let island: [(String, BuilderSessionAttributes, BuilderSessionAttributes.ContentState)] = [
-      ("working", F.rideGT, F.working),
-      ("needs-you", F.builder, F.needsYou),
-      ("no-eta", F.builder, F.workingNoEta),
-      ("done", F.builder, F.done),
+    let island: [(String, BuilderSessionAttributes, BuilderSessionAttributes.ContentState, Bool)] = [
+      ("working", F.rideGT, F.working, false),
+      ("needs-you", F.builder, F.needsYou, false),
+      ("no-eta", F.builder, F.workingNoEta, false),
+      ("circling", F.rideGT, F.circling, false),
+      ("private", F.privateRepo, F.nothingYet, false),
+      ("stale", F.rideGT, F.working, true),
+      ("long", F.longRun, F.workingNoEta, false),
+      ("done", F.builder, F.done, false),
     ]
-    for (name, a, s) in island {
+    for (name, a, s, stale) in island {
       let d = F.display(a, s)
-      out.append(("island-compact-\(name)", AnyView(CompactFrame(d: d))))
-      out.append(("island-minimal-\(name)", AnyView(MinimalFrame(d: d))))
-      out.append(("island-expanded-\(name)", AnyView(ExpandedFrame(d: d))))
+      out.append(("island-compact-\(name)", AnyView(CompactFrame(d: d, isStale: stale))))
+      out.append(("island-minimal-\(name)", AnyView(MinimalFrame(d: d, isStale: stale))))
+      out.append(("island-expanded-\(name)", AnyView(ExpandedFrame(d: d, isStale: stale))))
     }
 
     let widgets: [(String, WidgetSnapshot)] = [
-      ("four", F.widgetFour), ("one", F.widgetWorking), ("idle", F.widgetIdle),
+      ("four", F.widgetFour), ("circling", F.widgetCircling), ("one", F.widgetWorking), ("idle", F.widgetIdle),
     ]
     for (name, snap) in widgets {
       for scheme in [ColorScheme.dark, .light] {
@@ -85,6 +94,10 @@ public final class BuilderPreviewRenderer: NSObject {
         out.append(("widget-medium-\(name)-\(tag)", AnyView(WidgetFrame(size: .medium, snapshot: snap, scheme: scheme))))
       }
     }
+    // Twenty minutes on with nothing written since: past the snapshot's stale date.
+    let later = F.now.addingTimeInterval(20 * 60)
+    out.append(("widget-small-four-stale", AnyView(WidgetFrame(size: .small, snapshot: F.widgetFour, scheme: .dark, now: later))))
+    out.append(("widget-medium-four-stale", AnyView(WidgetFrame(size: .medium, snapshot: F.widgetFour, scheme: .dark, now: later))))
     return out
   }
 }
@@ -101,57 +114,66 @@ private struct LockFrame<Content: View>: View {
       .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
       .padding(12)
       .environment(\.colorScheme, .dark)
+      .environment(\.liveFrozenNow, LiveFixtures.now)
   }
 }
 
 @available(iOS 17.0, *)
 private struct CompactFrame: View {
   let d: LiveDisplay
+  let isStale: Bool
   var body: some View {
     HStack(spacing: 0) {
-      IslandCompactLeading(d: d)
+      IslandCompactLeading(d: d, isStale: isStale)
       Spacer(minLength: 0)
-      IslandCompactTrailing(d: d)
+      IslandCompactTrailing(d: d, isStale: isStale)
     }
     .padding(.horizontal, 9)
     .frame(width: 230, height: 36.67)
     .background(Capsule().fill(Color.black))
     .padding(12)
     .environment(\.colorScheme, .dark)
+    .environment(\.liveFrozenNow, LiveFixtures.now)
   }
 }
 
 @available(iOS 17.0, *)
 private struct MinimalFrame: View {
   let d: LiveDisplay
+  let isStale: Bool
   var body: some View {
-    IslandMinimal(d: d)
+    IslandMinimal(d: d, isStale: isStale)
       .frame(width: 36.67, height: 36.67)
       .background(Circle().fill(Color.black))
       .padding(12)
       .environment(\.colorScheme, .dark)
+      .environment(\.liveFrozenNow, LiveFixtures.now)
   }
 }
 
+/// The leading region is about 100pt wide on the device beside the camera (measured on the
+/// 16 Pro, 2026-09-13); the first mock gave it 150, so the previews never showed "privat...".
 @available(iOS 17.0, *)
 private struct ExpandedFrame: View {
   let d: LiveDisplay
+  let isStale: Bool
   var body: some View {
     VStack(spacing: 8) {
       HStack(alignment: .top, spacing: 0) {
-        IslandExpandedLeading(d: d).frame(width: 150, height: 36)
+        IslandExpandedLeading(d: d, isStale: isStale).frame(width: 118, height: 36, alignment: .topLeading)
         Spacer(minLength: 0)
-        IslandExpandedTrailing(d: d).frame(width: 120, height: 36)
+        IslandExpandedTrailing(d: d, isStale: isStale).frame(width: 100, height: 36)
       }
-      IslandExpandedBottom(d: d, isStale: false)
+      IslandExpandedBottom(d: d, isStale: isStale)
     }
     .padding(.horizontal, 18)
     .padding(.top, 14)
-    .padding(.bottom, 18)
+    .padding(.bottom, 10)
     .frame(width: 371)
     .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Color.black))
     .padding(12)
     .environment(\.colorScheme, .dark)
+    .environment(\.liveFrozenNow, LiveFixtures.now)
   }
 }
 
@@ -160,9 +182,10 @@ private struct WidgetFrame: View {
   let size: HomeWidgetView.Size
   let snapshot: WidgetSnapshot
   let scheme: ColorScheme
+  var now: Date = LiveFixtures.now
   var body: some View {
     let pal = BuilderPalette.scheme(scheme)
-    HomeWidgetView(size: size, snapshot: snapshot, now: LiveFixtures.now)
+    HomeWidgetView(size: size, snapshot: snapshot, now: now)
       .padding(16)
       .frame(width: size == .small ? 158 : 338, height: 158)
       .background(pal.bg)

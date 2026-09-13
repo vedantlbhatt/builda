@@ -15,35 +15,43 @@ enum LiveType {
 
 // MARK: - Ring
 
-/// Apple Fitness geometry: an amber arc on a hairline-colour track, round caps, starting at
-/// 12 o'clock and running clockwise. `progress` nil is "no honest number yet": whole dots
-/// round an unfilled track, never a guessed arc and never a spinner. Past the typical run
-/// the caller passes 1 and says "running longer than usual" in words.
+/// Apple Fitness geometry: an arc on a hairline-colour track, round caps, starting at 12
+/// o'clock and running clockwise, with the creature inside, so identity and progress are one
+/// mark. The arc is amber only while the run is on track (the caller passes `textDim` for
+/// circling, lost, stalled and past the typical run, so a full amber ring never means both
+/// "finished" and "running long"). `.dotted` is "no honest number yet": fine dots in
+/// `textFaint` round the track, never a guessed arc; fat dots read as a loading spinner at
+/// this size (critique, 2026-09-13), so these are 1.5pt, about 4pt apart. `.track` is the
+/// empty ring: waiting on you, or finished with nothing landed.
 @available(iOS 17.0, *)
 struct LiveRing<Center: View>: View {
-  var progress: Double?
+  var ring: LiveDisplay.Ring
   var size: CGFloat
   var stroke: CGFloat
   var track: Color = BuilderPalette.border
   var tint: Color = BuilderPalette.amber
+  var dots: Color = BuilderPalette.textFaint
   @ViewBuilder var center: () -> Center
 
   var body: some View {
     ZStack {
-      if let p = progress {
+      switch ring {
+      case .arc(let p):
         Circle().inset(by: stroke / 2).stroke(track, lineWidth: stroke)
         Circle().inset(by: stroke / 2)
           .trim(from: 0, to: max(0.0001, min(p, 1)))
           .stroke(tint, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
           .rotationEffect(.degrees(-90))
           .widgetAccentable()
-      } else {
-        // src/ui/shape.ts `dottedTrack`: dots about 2.2 strokes apart, at least 8.
+      case .track:
+        Circle().inset(by: stroke / 2).stroke(track, lineWidth: stroke)
+      case .dotted:
+        let w: CGFloat = 1.5
         let circumference = Double.pi * Double(size - stroke)
-        let count = max(8, (circumference / Double(stroke * 2.2)).rounded())
+        let count = max(12, (circumference / 4.5).rounded())
         let interval = CGFloat(circumference / count)
         Circle().inset(by: stroke / 2)
-          .stroke(track, style: StrokeStyle(lineWidth: stroke, lineCap: .round, dash: [0.001, interval - 0.001]))
+          .stroke(dots, style: StrokeStyle(lineWidth: w, lineCap: .round, dash: [0.001, interval - 0.001]))
           .rotationEffect(.degrees(-90))
       }
       center()
@@ -62,9 +70,11 @@ func liveRingStroke(_ size: CGFloat) -> CGFloat { max(2, (size * 5 / 44).rounded
 /// converging, three lines meeting at a point; circling, a loop with one arrowhead, left open
 /// before the head; lost, a dashed circle open at the top. `textDim`, never a colour.
 ///
-/// The stroke is 2pt from 16pt up and 1.5pt below. At the 12pt a caption uses, 2pt closed the
+/// The stroke is 2pt from 16pt up and 1.5pt below. At the 12pt a caption used, 2pt closed the
 /// gaps between converging's three lines and it rendered as a solid arrowhead (read: "send"),
-/// so the smaller glyph takes the lighter stroke.
+/// so the smaller glyph takes the lighter stroke, and captions draw it at 14pt. Lost's dashes
+/// only from 16pt up: below that a dashed circle reads as a loading spinner, and the gap
+/// across its top still tells it from circling's arrowhead.
 @available(iOS 16.1, *)
 struct VerdictShape: Shape {
   var verdict: LiveDisplay.Verdict
@@ -105,7 +115,7 @@ struct VerdictGlyph: View {
     VerdictShape(verdict: verdict)
       .stroke(color, style: StrokeStyle(
         lineWidth: w, lineCap: .round, lineJoin: .round,
-        dash: verdict == .lost ? [w * 0.9, w * 1.6] : []))
+        dash: verdict == .lost && size >= 16 ? [w * 0.9, w * 1.6] : []))
       .frame(width: size, height: size)
       .accessibilityHidden(true)
   }
@@ -118,11 +128,18 @@ struct VerdictLabel: View {
   var verdict: LiveDisplay.Verdict
   var size: CGFloat = 13
   var color: Color = BuilderPalette.textDim
+  /// Words after the verdict, in the same run of text: "since " and a clock time.
+  var since: Date? = nil
 
   var body: some View {
     HStack(spacing: 4) {
-      VerdictGlyph(verdict: verdict, size: size - 1, color: color)
-      Text(verdict.rawValue).font(LiveType.font(size, .medium)).foregroundStyle(color)
+      VerdictGlyph(verdict: verdict, size: size + 1, color: color)
+      if let since {
+        (Text(verdict.rawValue + " " + LiveCopy.since + " ") + Text(since, style: .time))
+          .font(LiveType.font(size, .medium)).foregroundStyle(color)
+      } else {
+        Text(verdict.rawValue).font(LiveType.font(size, .medium)).foregroundStyle(color)
+      }
     }
     .accessibilityElement(children: .combine)
   }
@@ -186,26 +203,22 @@ struct CreatureMark: View {
 
 // MARK: - Progress capsule (expanded island)
 
-/// A 4pt capsule track with the amber fill, or a row of dots when there is no honest number.
+/// A 4pt capsule track with the fill: elapsed over typical. Drawn only when there is an honest
+/// number (the island's caption says "no ETA yet" in words, which a row of dots only repeated),
+/// in amber while on track and `textDim` otherwise, like the ring.
 @available(iOS 17.0, *)
 struct ProgressCapsule: View {
-  var progress: Double?
+  var progress: Double
   var height: CGFloat = 4
   var track: Color = BuilderPalette.border
   var tint: Color = BuilderPalette.amber
 
   var body: some View {
-    if let p = progress {
-      ZStack(alignment: .leading) {
-        Capsule().fill(track)
-        CapsuleFill(fraction: max(0, min(p, 1))).fill(tint).widgetAccentable()
-      }
-      .frame(height: height)
-    } else {
-      DottedLine()
-        .stroke(track, style: StrokeStyle(lineWidth: height, lineCap: .round, dash: [0.001, height * 2.2]))
-        .frame(height: height)
+    ZStack(alignment: .leading) {
+      Capsule().fill(track)
+      CapsuleFill(fraction: max(0, min(progress, 1))).fill(tint).widgetAccentable()
     }
+    .frame(height: height)
   }
 }
 
@@ -217,11 +230,57 @@ private struct CapsuleFill: Shape {
   }
 }
 
-private struct DottedLine: Shape {
-  func path(in rect: CGRect) -> Path {
-    var p = Path()
-    p.move(to: CGPoint(x: rect.minX + rect.height / 2, y: rect.midY))
-    p.addLine(to: CGPoint(x: rect.maxX - rect.height / 2, y: rect.midY))
-    return p
+// MARK: - Elapsed
+
+/// The session's elapsed time as a SYSTEM timer ("12:34", "1:02:34"), counting up from the
+/// start with no update. The first build drew "12m" from a string computed at render, which
+/// froze on the Lock Screen for as long as the app was in the background (the smoke activity
+/// still said 47m six minutes on, 2026-09-13). The lab's "10:--" was the Always-On display
+/// dropping seconds, which it does to every timer by design.
+///
+/// A timer text sizes itself for the widest value it could show, so it gets a fixed trailing
+/// box sized for "0:00:00" at its font, rather than taking whatever width it is offered.
+/// MEASURED (SF Pro semibold, monospaced digits): "2:57:07" is 57.4pt at 15, 54.1 at 14, 63.9
+/// at 17. The first boxes were 3.8 sizes wide (57pt at 15) and cut a three hour run to
+/// "2:57:..." on the Lock Screen and in the island (replay of live-self-1, 2026-09-13).
+@available(iOS 16.1, *)
+struct ElapsedTimer: View {
+  let start: Date
+  var size: CGFloat
+  var weight: Font.Weight = .semibold
+  var color: Color = BuilderPalette.text
+  /// Wide enough for "0:00:00" at `size` unless a slot says otherwise.
+  var width: CGFloat? = nil
+
+  @Environment(\.liveFrozenNow) private var frozen
+
+  var body: some View {
+    Group {
+      if let frozen {
+        // The debug renderer's fixed clock: what the timer reads at that moment.
+        Text(LiveCopy.timerText(max(0, frozen.timeIntervalSince(start))))
+      } else {
+        Text(timerInterval: start...Date.distantFuture, countsDown: false)
+      }
+    }
+    .font(LiveType.font(size, weight))
+    .monospacedDigit()
+    .foregroundStyle(color)
+    .multilineTextAlignment(.trailing)
+    .lineLimit(1)
+    .frame(width: width ?? (size * 4.1).rounded(.up), alignment: .trailing)
+  }
+}
+
+private struct LiveFrozenNowKey: EnvironmentKey {
+  static let defaultValue: Date? = nil
+}
+
+extension EnvironmentValues {
+  /// Set only by the debug ImageRenderer pass (`LivePreviewRenderer`): system timers draw what
+  /// they would read at this moment, so the renders are reproducible. nil everywhere else.
+  var liveFrozenNow: Date? {
+    get { self[LiveFrozenNowKey.self] }
+    set { self[LiveFrozenNowKey.self] = newValue }
   }
 }

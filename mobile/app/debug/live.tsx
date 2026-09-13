@@ -2,10 +2,11 @@ import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text } from 'react-native';
 
+import type { SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
 import { activityFor, endAllLiveActivities, liveActivitiesAvailable, renderLivePreviews, syncLiveActivities, type SyncResult } from '../../src/live/activity';
 import { debugSessions, DEBUG_TODAY, parseDebugLive, type DebugLiveRequest } from '../../src/live/fixtures';
-import { buildWidgetSnapshot } from '../../src/live/surface';
+import { buildWidgetSnapshot, payloadBytes, phaseOf, toAttrs, toState, type LiveStateWire } from '../../src/live/surface';
 import { writeWidgetSnapshot } from '../../src/live/widget';
 import { resolveAnimal } from '../../src/pixel/animals';
 import { colors, space } from '../../src/theme';
@@ -14,6 +15,7 @@ import { ANIMAL_KEY } from '../icon';
 /**
  * `builder://debug/live?state=working|needsYou|done|stalled|end&n=1..4[&widget=1][&render=1]
  *  [&creature=owl][&stale=10]`
+ * `builder://debug/live?payload=<urlencoded JSON>`
  *
  * Drives the Live Activity, the Dynamic Island and the Home Screen widget with no tap, for
  * `scripts/sim/capture.sh` and for looking at them on a device. It goes through the real path,
@@ -27,6 +29,19 @@ import { ANIMAL_KEY } from '../icon';
  *   widget=1   also writes the widget snapshot (alone: only the snapshot)
  *   render=1   renders every state to Documents/live-previews with ImageRenderer
  *   stale=10   the content goes stale after 10 s, to photograph "Not updating"
+ *
+ * `payload` replaces the fixtures with rows you give it: the SAME planner and `toState`, fed a
+ * session row and the engine's `live_state` exactly as the server would hand them to the phone
+ * (`analysis/live.py` `wire()`). `scripts/sim/live_payload.py self` builds one from a real
+ * running transcript, and `live_payload.py state <name>` the Lock Screen states the fixtures lack.
+ *
+ *   { "sessions": [ { "session": { "id": "...", ...SessionDetail }, "live": { ...live_state } } ],
+ *     "finished"?: [ { "id": "...", ...SessionDetail } ],   rows that just went final
+ *     "fresh"?: true,      end every Builder activity first, so this one STARTS
+ *     "creature"?: "owl",  "stale"?: 10,  "widget"?: true }
+ *
+ * A session row needs only `id`; the rest defaults to a live claude_code row with no stats.
+ * Sending the same ids again UPDATES their activities (and alerts on a move into needs you).
  *
  * DEV ONLY. A release build renders nothing here and redirects, touching no activity. (The root
  * layout does not list this route, because another change owns that file; listing it in the
@@ -43,12 +58,16 @@ function DebugLive() {
   const params = useLocalSearchParams();
   // A second link while this screen is up replaces the params in place; key on content.
   const key = JSON.stringify(params);
-  const req = useMemo(() => parseDebugLive(params as Record<string, string | string[] | undefined>), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const req = useMemo((): Request => {
+    const p = params as Record<string, string | string[] | undefined>;
+    const raw = Array.isArray(p.payload) ? p.payload[0] : p.payload;
+    return raw !== undefined ? parsePayload(raw) : { kind: 'fixtures', req: parseDebugLive(p) };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [lines, setLines] = useState<string[]>(['working']);
 
   useEffect(() => {
     let cancelled = false;
-    run(req)
+    (req.kind === 'payload' ? runPayload(req.payload) : req.kind === 'problem' ? Promise.resolve([req.problem]) : run(req.req))
       .then((out) => !cancelled && setLines(out))
       .catch((e: unknown) => !cancelled && setLines([`failed: ${e instanceof Error ? e.message : String(e)}`]));
     return () => {
@@ -106,6 +125,127 @@ async function run(req: DebugLiveRequest): Promise<string[]> {
     } catch (e) {
       out.push(`render failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ payload=<JSON>
+
+type RowIn = Partial<SessionDetail> & { id: string };
+
+interface DebugPayload {
+  sessions: { session: RowIn; live: LiveStateWire | null }[];
+  finished: RowIn[];
+  fresh: boolean;
+  creature: string | null;
+  staleInSeconds: number | null;
+  widget: boolean;
+}
+
+type Request =
+  | { kind: 'fixtures'; req: DebugLiveRequest }
+  | { kind: 'payload'; payload: DebugPayload }
+  | { kind: 'problem'; problem: string };
+
+const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const isRow = (x: unknown): x is RowIn => isObj(x) && typeof x.id === 'string' && x.id.length > 0;
+
+function parsePayload(raw: string): Request {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(raw);
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    return { kind: 'problem', problem: `payload is not JSON (${why}); ${raw.length} chars arrived, ending "${raw.slice(-40)}"` };
+  }
+  if (!isObj(doc)) return { kind: 'problem', problem: 'payload must be a JSON object' };
+  const list = Array.isArray(doc.sessions) ? doc.sessions : [];
+  if (list.length < 1 || list.length > 4) return { kind: 'problem', problem: 'payload.sessions must hold 1 to 4 { session, live } rows' };
+  const sessions: DebugPayload['sessions'] = [];
+  for (const x of list) {
+    if (!isObj(x) || !isRow(x.session)) return { kind: 'problem', problem: 'every payload row needs session.id' };
+    sessions.push({ session: x.session, live: isObj(x.live) ? (x.live as LiveStateWire) : null });
+  }
+  const finished = Array.isArray(doc.finished) ? doc.finished.filter(isRow) : [];
+  const stale = Number(doc.stale);
+  return {
+    kind: 'payload',
+    payload: {
+      sessions,
+      finished,
+      fresh: doc.fresh === true,
+      creature: typeof doc.creature === 'string' && /^[a-z-]{2,20}$/.test(doc.creature) ? doc.creature : null,
+      staleInSeconds: Number.isInteger(stale) && stale >= 1 && stale <= 3600 ? stale : null,
+      widget: doc.widget === true,
+    },
+  };
+}
+
+/** "09:37" for a Unix-seconds moment, as the surfaces draw it, or null. */
+function clock(epoch: number | null): string | null {
+  if (epoch === null) return null;
+  const d = new Date(epoch * 1000);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** A full live row from what the payload gave; nothing it left out is invented beyond "unknown". */
+function fillRow(p: RowIn, nowMs: number, state: 'live' | 'final'): SessionDetail {
+  const now = new Date(nowMs).toISOString();
+  return {
+    client_session_id: p.id,
+    harness: 'claude_code',
+    repo_name: null,
+    started_at: now,
+    ended_at: now,
+    updated_at: now,
+    active_seconds: 0,
+    idle_seconds: 0,
+    local_date: now.slice(0, 10),
+    title: null,
+    title_source: null,
+    notable: false,
+    unattended: false,
+    timeline_fidelity: 'full',
+    is_shared: false,
+    stats: null,
+    ...p,
+    state,
+  };
+}
+
+async function runPayload(p: DebugPayload): Promise<string[]> {
+  const out: string[] = [];
+  const nowMs = Date.now();
+  const creature = p.creature ?? resolveAnimal(await cache.getKv(ANIMAL_KEY).catch(() => null));
+  out.push(liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build');
+  if (p.fresh) {
+    await endAllLiveActivities();
+    out.push('ended every Builder Live Activity first');
+  }
+  const sessions = p.sessions.map((x) => fillRow(x.session, nowMs, x.session.state === 'final' ? 'final' : 'live'));
+  const liveStates = Object.fromEntries(p.sessions.map((x) => [x.session.id, x.live]));
+  const finished = p.finished.map((f) => fillRow(f, nowMs, 'final'));
+  const r = await syncLiveActivities(sessions, liveStates, {
+    creature,
+    today: DEBUG_TODAY,
+    nowMs,
+    finished,
+    staleInSeconds: p.staleInSeconds ?? undefined,
+    writeWidget: p.widget,
+  });
+  out.push(describe('payload', r));
+  // What each surface was handed: the same toState the planner just ran, shown for the record.
+  const running = sessions.filter((s) => phaseOf(s, liveStates[s.id], nowMs) !== 'done').length;
+  for (const s of sessions) {
+    const live = liveStates[s.id];
+    const done = phaseOf(s, live, nowMs) === 'done';
+    const st = toState(s, live, { nowMs, creature, runningCount: Math.max(0, running - (done ? 0 : 1)) });
+    const attrs = toAttrs(s);
+    out.push(`${attrs.repo} · ${attrs.agent} · ${s.id.slice(0, 12)}`);
+    out.push(`${st.phase} · ${st.trajectory} · "${st.sentence}"`);
+    out.push(
+      `progress ${st.progress} · ${st.filesChanged} files changed · eta ${clock(st.etaEpoch) ?? 'refused'} · since ${clock(st.sinceEpoch) ?? 'none'} · ended ${clock(st.endedEpoch) ?? 'no'} · +${st.linesAdded ?? '?'} −${st.linesRemoved ?? '?'} · ${st.commits ?? '?'} commits · ${st.runningCount} more · ${payloadBytes(attrs, st)} bytes`
+    );
   }
   return out;
 }

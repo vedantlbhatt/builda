@@ -6,7 +6,7 @@ import WidgetKit
 /// `_shared/LiveActivityViews.swift`; this file only puts them in ActivityKit's slots.
 ///
 /// The system ignores `withAnimation` here and caps animation at two seconds, so the only
-/// motion is `.contentTransition`: the file count rolls, the sentence cross-fades.
+/// motion is `.contentTransition` (the sentence cross-fades) and the system's own timers.
 struct BuilderLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: BuilderSessionAttributes.self) { context in
@@ -19,22 +19,26 @@ struct BuilderLiveActivity: Widget {
         .widgetURL(d.url)
     } dynamicIsland: { context in
       let d = LiveDisplay(attributes: context.attributes, state: context.state, now: .now)
+      let stale = context.isStale
       return DynamicIsland {
-        DynamicIslandExpandedRegion(.leading) {
-          IslandExpandedLeading(d: d)
+        // The repo takes the width before the time does, and drops under the camera when even
+        // then it cannot fit, rather than being cut to "privat...".
+        DynamicIslandExpandedRegion(.leading, priority: 1) {
+          IslandExpandedLeading(d: d, isStale: stale)
+            .dynamicIsland(verticalPlacement: .belowIfTooWide)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          IslandExpandedTrailing(d: d)
+          IslandExpandedTrailing(d: d, isStale: stale)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          IslandExpandedBottom(d: d, isStale: context.isStale)
+          IslandExpandedBottom(d: d, isStale: stale)
         }
       } compactLeading: {
-        IslandCompactLeading(d: d)
+        IslandCompactLeading(d: d, isStale: stale)
       } compactTrailing: {
-        IslandCompactTrailing(d: d)
+        IslandCompactTrailing(d: d, isStale: stale)
       } minimal: {
-        IslandMinimal(d: d)
+        IslandMinimal(d: d, isStale: stale)
       }
       .keylineTint(BuilderPalette.amber)
       .widgetURL(d.url)
@@ -58,8 +62,10 @@ struct BuilderLiveActivity: Widget {
   BuilderLiveActivity()
 } contentStates: {
   LiveFixtures.workingNoEta
+  LiveFixtures.background
   LiveFixtures.needsYou
   LiveFixtures.done
+  LiveFixtures.doneNothing
 }
 
 #Preview("Island: compact", as: .dynamicIsland(.compact), using: LiveFixtures.rideGT) {

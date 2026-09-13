@@ -12,7 +12,7 @@ import type { SessionDetail } from '../src/data/api';
 import type { SessionBurn, SessionBurnSpike } from '../src/generated/contract';
 import { CONTRACT_ENUMS } from '../src/generated/contract';
 import { SPIKE_MULTIPLE } from '../src/map/frames';
-import { burnBand, burnChart, burnLedger, CAUSE_HUE, CAUSE_LABEL, fillKey, fillOf, meters } from '../src/session/burnChart';
+import { burnBand, burnChart, burnLedger, CAUSE_HUE, CAUSE_LABEL, fillKey, fillOf, meters, stretchNote } from '../src/session/burnChart';
 import { burnView } from '../src/session/burnView';
 import { sampleOutcome } from '../src/session/samples';
 import { REPO } from './pythonRef';
@@ -107,8 +107,24 @@ describe('the chart', () => {
     expect(fillKey(['dotted', 'hollow'])).toBe('A dotted bar wrote nothing, and an outlined one ran something its transcript cannot show.');
   });
 
-  test('the legend is every cause drawn, in the order it first appears', () => {
-    expect(chart.legend.map((l) => l.cause)).toEqual(['context_replay', 'subagent_fanout', 'error_loop', 'investigated', 'file_churn', 'repeated_call']);
+  test('the legend is every cause a bar wears, in the order it first appears, and nothing a bar does not', () => {
+    expect(chart.legend.map((l) => l.cause)).toEqual([...new Set(chart.bars.map((b) => b.cause).filter((c) => c !== null))]);
+    // The fixture's three stretches are all mostly the conversation re-reading itself: one key.
+    expect(chart.legend.map((l) => l.cause)).toEqual(['context_replay']);
+  });
+
+  test('what a stretch is, said so it is true of the session: no prompt is one stretch, the whole of it', () => {
+    // FOUND IN THE FINAL CAPTURE: "1 stretch, each from one prompt of yours to the next" on 0 prompts.
+    expect(stretchNote(1, 0)).toBe('the whole session, with no prompt of yours to cut it');
+    expect(stretchNote(1, 1)).toBe('from your one prompt to the end');
+    expect(stretchNote(52, 52)).toBe('each from one prompt of yours to the next');
+    // Work before the first prompt is a stretch of its own (burn.segments, segment 0).
+    expect(stretchNote(53, 52)).toBe('each from one prompt of yours to the next, and the work before the first');
+    // Counts that do not line up the way burn cuts: the rule, or nothing, never a claim about a count.
+    expect(stretchNote(3, 0)).toBeNull();
+    expect(stretchNote(1, null)).toBeNull();
+    expect(stretchNote(1, 4)).toBeNull();
+    expect(stretchNote(9, null)).toBe('each from one prompt of yours to the next');
   });
 
   test('no chart when there is no costly stretch to draw', () => {
@@ -165,6 +181,9 @@ describe('the band and the ledger', () => {
     ]);
     expect(l.map((x) => x.num?.value ?? null)).toEqual([3, 85, 8, 52]);
     expect(l[3]!.note).toBe('each from one prompt of yours to the next');
+    // With the session's own prompt count: 52 prompts, 52 stretches; a count that does not fit says nothing.
+    expect(burnLedger(burnView(FINAL), 52)[3]!.note).toBe('each from one prompt of yours to the next');
+    expect(burnLedger(burnView(FINAL), 0)[3]!.note).toBeNull();
     const tiny: SessionBurn = { ...FINAL.burn!, barren_share: 0.001 };
     const under = burnLedger(burnView({ ...FINAL, burn: tiny })).find((x) => x.label === 'where nothing was written')!;
     expect(under.shown).toBe('under 1%');

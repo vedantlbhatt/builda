@@ -115,6 +115,10 @@ describe('profile.py and feedback.py, said the same way', () => {
     expect(human(999_499)).toBe('999k');
     expect(human(999_500)).toBe('1.0M');
     expect(human(12_900_311)).toBe('12.9M');
+    // The millions are grouped like every other number (the phone's one departure from _human).
+    expect(human(3_766_512_000)).toBe('3,766.5M');
+    expect(human(999_949_999)).toBe('999.9M');
+    expect(human(999_950_000)).toBe('1,000.0M');
     expect(shareWords(0.004)).toBe('under 1%');
     expect(shareWords(0)).toBe('0%');
     expect(shareWords(0.996)).toBe('over 99%');
@@ -190,7 +194,11 @@ print(json.dumps({
     expect(VALUES.map((v) => pyRound(v, 2))).toEqual(py.round2 as number[]);
     expect(VALUES.map((v) => pyFixed(v, 1))).toEqual(py.fixed1 as string[]);
     expect(VALUES.filter((v) => v <= 1).map(shareWords)).toEqual(py.share as string[]);
-    expect(VALUES.map((v) => human(Math.trunc(v)))).toEqual(py.human as string[]);
+    // Python's _human writes no `,` in the millions; the phone groups them (`human`'s comment),
+    // so from 1,000M the pin is Python's digits with the phone's grouping, and below it the bytes.
+    expect(VALUES.map((v) => human(Math.trunc(v)))).toEqual(
+      (py.human as string[]).map((s) => s.replace(/^(\d+)(\.\dM)$/, (_m, int: string, rest: string) => `${Number(int).toLocaleString('en-US')}${rest}`)),
+    );
     expect(SECONDS.map(mins)).toEqual(py.mins as string[]);
     expect(SECONDS.map(floorMins)).toEqual(py.floor as string[]);
   });

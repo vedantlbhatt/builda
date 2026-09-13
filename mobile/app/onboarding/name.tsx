@@ -1,6 +1,7 @@
 import { useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, TextInput, useWindowDimensions, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
 import { KeyboardController } from 'react-native-keyboard-controller';
 
 import * as cache from '../../src/data/cache';
@@ -32,6 +33,19 @@ const REFOCUS_MS = 350;
 const NAME_BOX = Math.round(NAME_SIZES[0] * 1.12);
 /** The label comes into focus as the cover clears off it. */
 const LABEL_AT_MS = 160;
+/**
+ * The clear control beside the name: a 44pt target with the glyph in the band's ink. The name is
+ * fitted to the width LEFT of it (`fieldWidth`), so the name, its caret and the control always
+ * fit side by side.
+ *
+ * FOUND IN THE FINAL CAPTURE (2026-09-13): the "V" of "Vedant" lost its left arm. The name was
+ * sized to the whole column, but the system clear button (drawn about 88pt wide at this font size)
+ * took the right of the field while editing, so the text no longer fitted and the field scrolled
+ * it left to keep the caret in view, cutting the first letter at the gutter. Our own control has
+ * a known width, and the fit leaves room for it.
+ */
+const CLEAR_BOX = 44;
+const CLEAR_GLYPH = 28;
 
 /**
  * Step 1: your name. The band in the builder's colour runs from the top of the screen, the
@@ -46,8 +60,13 @@ const LABEL_AT_MS = 160;
  * enabled at 1 to 24 characters. Nothing is validated until the person submits; Return commits
  * with a Light haptic, and a refusal is a sentence on the band.
  *
- * Uncontrolled: typing re-renders the screen only when the name crosses a size step, the button
- * flips between usable and not, or the message clears after a refused submit.
+ * Controlled: the field shows `text` and nothing else. It was uncontrolled, and on the new
+ * architecture a TextInput rebuilds its native text from its props whenever its text attributes
+ * change, which for an uncontrolled field is `defaultValue`. The name changes size as it grows and
+ * shrinks, so clearing it (the empty field is set at the largest step) put the prefilled name
+ * back while the step believed it was empty: Continue greyed out over "Vedant", and typing after
+ * it made "VedantVedant" (FOUND IN THE FINAL CAPTURE, 2026-09-13). One source of truth, the
+ * state, and the clear button, a paste and every size step all agree with it.
  *
  * The name is prefilled from what they typed here before, the account's display name, or the
  * name Sign in with Apple handed over, with the caret at its end and the clear button beside it.
@@ -69,6 +88,8 @@ export default function NameStep() {
   const inset = useBandInset();
   const { width } = useWindowDimensions();
   const inner = width - 2 * GUTTER;
+  // The name's own width: the column less the clear control beside it.
+  const fieldWidth = inner - CLEAR_BOX;
   const input = useRef<TextInput>(null);
   const touched = useRef(false);
   const leaving = useRef(false);
@@ -80,11 +101,13 @@ export default function NameStep() {
   const firstValue = draft.primed ? prefillName({ local: draft.name, server: facts.serverName, apple: draft.apple }) : null;
   const value = useRef(firstValue ?? '');
   const sources = useRef<{ local: string | null; apple: string | null } | null>(draft.primed ? { local: draft.name, apple: draft.apple } : null);
+  /** What the field opened with; null until it is known (the field is not drawn before then). */
   const [initial, setInitial] = useState<string | null>(firstValue);
-  const [fieldKey, setFieldKey] = useState(0);
+  /** What the field shows, always. */
+  const [text, setText] = useState(firstValue ?? '');
   const [usable, setUsable] = useState(nameUsable(firstValue ?? ''));
   const [message, setMessage] = useState<string | null>(null);
-  const [size, setSize] = useState(() => nameSize(firstValue ?? '', inner, fitSize));
+  const [size, setSize] = useState(() => nameSize(firstValue ?? '', fieldWidth, fitSize));
 
   useEffect(() => {
     if (initial !== null) return;
@@ -95,8 +118,9 @@ export default function NameStep() {
       sources.current = { local: l, apple };
       const first = prefillName({ local: l, server: facts.serverName, apple });
       value.current = first;
+      setText(first);
       setUsable(nameUsable(first));
-      setSize(nameSize(first, inner, fitSize));
+      setSize(nameSize(first, fieldWidth, fitSize));
       setInitial(first);
     })();
     return () => {
@@ -112,11 +136,10 @@ export default function NameStep() {
     const late = prefillName({ ...sources.current, server: facts.serverName });
     if (!late) return;
     value.current = late;
+    setText(late);
     setUsable(nameUsable(late));
-    setSize(nameSize(late, inner, fitSize));
-    setInitial(late);
-    setFieldKey((k) => k + 1);
-  }, [facts.serverName, initial, inner]);
+    setSize(nameSize(late, fieldWidth, fitSize));
+  }, [facts.serverName, initial, fieldWidth]);
 
   // Arriving from hello: the colour is still over the screen. Now that this step has mounted
   // under it, let the cells clear, and start the keyboard up with them. Then give this route the
@@ -143,21 +166,28 @@ export default function NameStep() {
       arrivedUnderCover.current = false;
       const t = setTimeout(() => input.current?.focus(), wait);
       return () => clearTimeout(t);
-    }, [initial, fieldKey, reduced]),
+    }, [initial, reduced]),
   );
 
   const onChangeText = useCallback(
     (t: string) => {
       value.current = t;
+      setText(t);
       touched.current = true;
       const ok = nameUsable(t);
       setUsable((was) => (was === ok ? was : ok));
-      const s = nameSize(t, inner, fitSize);
+      const s = nameSize(t, fieldWidth, fitSize);
       setSize((was) => (was === s ? was : s));
       setMessage((m) => (m === null ? m : null));
     },
-    [inner],
+    [fieldWidth],
   );
+
+  // Empties the field and keeps the keyboard up for the new name.
+  const clear = useCallback(() => {
+    onChangeText('');
+    input.current?.focus();
+  }, [onChangeText]);
 
   const commit = useCallback(
     async (fromReturn: boolean) => {
@@ -191,16 +221,15 @@ export default function NameStep() {
   const band = (
     <StepBand hue={accent} inset={inset} print={printBand}>
       <BlurText text={NAME.label} role="headline" weight={700} color={ON_HUE} delay={LABEL_AT_MS} />
-      <View style={{ height: NAME_BOX, justifyContent: 'center' }}>
+      <View style={{ height: NAME_BOX, flexDirection: 'row', alignItems: 'center' }}>
         {initial !== null && (
           <TextInput
-            key={fieldKey}
             ref={input}
-            defaultValue={initial}
+            value={text}
             onChangeText={onChangeText}
             onSubmitEditing={() => void commit(true)}
             submitBehavior="submit"
-            clearButtonMode="while-editing"
+            clearButtonMode="never"
             autoCorrect={false}
             autoCapitalize="words"
             autoComplete="name"
@@ -215,9 +244,20 @@ export default function NameStep() {
             placeholderTextColor={accent.partner}
             accessibilityLabel={NAME.label}
             maxFontSizeMultiplier={HEADLINE_SCALE}
-            style={[displayInput(size), { color: ON_HUE, paddingVertical: 0, paddingHorizontal: 0, height: NAME_BOX }]}
+            style={[displayInput(size), { flex: 1, color: ON_HUE, paddingVertical: 0, paddingHorizontal: 0, height: NAME_BOX }]}
           />
         )}
+        {initial !== null && text.length > 0 ? (
+          <Pressable
+            onPress={clear}
+            accessibilityRole="button"
+            accessibilityLabel={NAME.clear}
+            hitSlop={8}
+            style={({ pressed }) => ({ width: CLEAR_BOX, height: CLEAR_BOX, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+          >
+            <SymbolView name="xmark.circle.fill" tintColor={ON_HUE} size={CLEAR_GLYPH} weight="semibold" />
+          </Pressable>
+        ) : null}
       </View>
       <View style={{ minHeight: 36 }} accessibilityLiveRegion="polite">
         {message ? (

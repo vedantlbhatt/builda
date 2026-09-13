@@ -11,7 +11,7 @@
  *    `surface.sentenceOf` over the engine's own renderer (`sentence.ts`), and the time a wait
  *    began is `surface.sinceEpochOf`;
  *  - an ETA refusal is `copy/live.etaRefusal`, the engine's words from its code;
- *  - a clock time is `you/numbers.clockOf`.
+ *  - a clock time is `copy/time.timeOfDay`.
  * What is new here is only what a tile adds: aging the engine's numbers by the seconds since
  * `computed_at` (for display, docs/overnight-integration.md 3.5), the 15 second hold on the
  * order, the ten minutes a finished tile stays, and the tile's copy. The tile's phase is the
@@ -27,7 +27,8 @@ import { commas } from '../copy/numbers';
 import { spoken } from '../copy/plain';
 import { HARNESS_NAMES, isHarness } from '../pixel/harness';
 import { layout } from '../theme';
-import { clockOf, dayOf } from '../you/numbers';
+import { timeOfDay } from '../copy/time';
+import { dayOf } from '../you/numbers';
 import type { LiveStateWire } from './sentence';
 import {
   missionOrder as surfaceMissionOrder,
@@ -346,15 +347,15 @@ export function trackOf(eta: LiveEta | null | undefined, ageSeconds: number, ver
 }
 
 /**
- * "9:37" on the Builda day it is now, else the day ("Sep 12"): a stale row left live over
+ * "9:37am" on the Builda day it is now, else the day ("Sep 12"): a stale row left live over
  * a night must not read as this morning. The same rule as the stale note (`you/load.staleLine`).
  */
 export function clockOrDay(ms: number, nowMs: number): string {
   const day = dayOf(new Date(ms).toISOString(), nowMs);
-  return day !== null && day === dayOf(new Date(nowMs).toISOString(), nowMs) ? clockOf(ms) : (day ?? clockOf(ms));
+  return day !== null && day === dayOf(new Date(nowMs).toISOString(), nowMs) ? timeOfDay(ms) : (day ?? timeOfDay(ms));
 }
 
-/** "since 9:37": a clock time stays true while nobody refreshes, a duration would not. */
+/** "since 9:37am": a clock time stays true while nobody refreshes, a duration would not. */
 function sinceLabel(epochS: number | null, nowMs: number): string | null {
   return epochS === null ? null : `since ${clockOrDay(epochS * 1000, nowMs)}`;
 }
@@ -833,14 +834,14 @@ export function lastFinished(finals: readonly SessionDetail[]): SessionDetail | 
   return best;
 }
 
-/** The meta line under the last finished session: "today at 21:37 · ran 47m". */
+/** The meta line under the last finished session: "today at 9:37pm · ran 47m". */
 export function finishedMeta(s: SessionDetail, dayLabel: (iso: string) => string): string {
   const ended = parseMs(s.ended_at);
   const started = parseMs(s.started_at);
   const parts: string[] = [];
   if (ended !== null) {
     const day = dayLabel(s.ended_at);
-    parts.push(day === 'today' || day === 'yesterday' ? `${day} at ${clockOf(ended)}` : day);
+    parts.push(day === 'today' || day === 'yesterday' ? `${day} at ${timeOfDay(ended)}` : day);
   }
   if (ended !== null && started !== null) parts.push(`ran ${elapsedLabel((ended - started) / 1000)}`);
   return parts.join(' · ');
@@ -848,7 +849,7 @@ export function finishedMeta(s: SessionDetail, dayLabel: (iso: string) => string
 
 /**
  * The empty state's one line about the session that finished last: "builder finished today at
- * 21:37 · ran 47m". A private repository says so in full.
+ * 9:37pm · ran 47m". A private repository says so in full.
  */
 export function lastFinishedLine(s: SessionDetail, dayLabel: (iso: string) => string): string {
   const meta = finishedMeta(s, dayLabel);

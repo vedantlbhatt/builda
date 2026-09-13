@@ -312,6 +312,9 @@ class WhatMayTravel(unittest.TestCase):
             "language",  # a name languages.EXTENSIONS or BY_NAME gives an extension
             "harness",  # the upload contract's own harness enum
             "history_first_at",  # the earliest sitting on the machine, a clock
+            # The projects block's week axis and each project's weeks on it: one more CLOCK,
+            # a Monday as the local day at midnight UTC, the spelling a commit day has.
+            "week",
         }
         strings = {
             f["name"]
@@ -358,7 +361,9 @@ class WhatMayTravel(unittest.TestCase):
         self.assertIn("ReportProjectDay", seen)
         self.assertIn("ReportProjectComparison", seen)
         self.assertLessEqual({"ReportAgents", "ReportAgentType", "ReportGreen"}, seen)
-        self.assertEqual(len(seen), 33)
+        # And the two week objects the rivers and the rank race are drawn from.
+        self.assertLessEqual({"ReportProjectsWeek", "ReportProjectWeek"}, seen)
+        self.assertEqual(len(seen), 35)
 
 
 class Caps(unittest.TestCase):

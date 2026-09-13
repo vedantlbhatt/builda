@@ -21,8 +21,11 @@
  *                discrete sizes, a bright release beat); flip over when a refresh changes their
  *                heat or the replay first touches them (the braille flipwave).
  *   the knot     the files it keeps rewriting, in the session's hue, breathing a seventh larger
- *                every PULSE_MS, closed into a loop, with square rings going out from it on
- *                MagicRings' cycle. Reduce Motion: outlined and still.
+ *                every PULSE_MS, closed into a loop, with rings going out from it on MagicRings'
+ *                cycle, under the cells and never past the page's gutter (`paint.ringBox`).
+ *                Reduce Motion: outlined and still.
+ *   the labels   each role label's box cut back to the ground over the path, the loop and the
+ *                rings, so no line runs through its word (`paint.knockouts`).
  *   the end      when a replay lands: PixelBlast's ripple crosses the map from the burst, lit
  *                through the Bayer matrix, and each burst file throws ClickSpark's pixel sparks.
  *   the finger   a tap picks the nearest cell (a thumb is wider than a cell): corner ticks,
@@ -73,12 +76,14 @@ import {
   FLIP_WAVE_MS,
   flipAt,
   glowOf,
+  knockouts,
   PATH_FILES,
   pathWidth,
   RING_CYCLE_S,
   RING_REACH,
   RING_STROKE,
   ringAt,
+  ringBox,
   RIPPLE,
   rippleAt,
   rippleLit,
@@ -196,6 +201,8 @@ export function MapCanvas({
     () => (labels ? placeLabels(layout, geo, rects, measureLabel, LABEL_HEIGHT) : []),
     [labels, layout, geo, rects],
   );
+  // The ground cut back under each label, so no line runs through its word (`paint.knockouts`).
+  const knock = useMemo(() => knockouts(placed), [placed]);
 
   // ---------------------------------------------------------------- the bloom
   const delays = useMemo(() => bloomDelays(bloomWaves(layout), BLOOM_AT), [layout]);
@@ -474,6 +481,39 @@ export function MapCanvas({
         line.setStrokeCap(StrokeCap.Butt);
         line.setStrokeJoin(StrokeJoin.Miter);
 
+        // ------------------------------------------------ the knot's rings (MagicRings)
+        // Under the cells, like the path, and bounded to the canvas (`paint.ringBox`): boxes round
+        // the knot's own box, growing out on MagicRings' cycle and thinning as they go.
+        if (knotLit && pulsing) {
+          let l = Number.POSITIVE_INFINITY;
+          let tp = Number.POSITIVE_INFINITY;
+          let r = Number.NEGATIVE_INFINITY;
+          let b = Number.NEGATIVE_INFINITY;
+          for (const c of knotList) {
+            l = Math.min(l, px(c));
+            tp = Math.min(tp, py(c));
+            r = Math.max(r, px(c) + size);
+            b = Math.max(b, py(c) + size);
+          }
+          line.setColor(col[inks.accent]!);
+          for (let ri = 0; ri < 3; ri++) {
+            const ring = ringAt(rs, ri);
+            const sw = RING_STROKE * ring[1];
+            if (sw < 0.3) continue;
+            const box = ringBox(l, tp, r, b, pitch * 0.35, RING_REACH * pitch, ring[0], W, H);
+            line.setStrokeWidth(sw);
+            canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(box[0], box[1], box[2], box[3]), pitch * 0.35, pitch * 0.35), line);
+          }
+        }
+
+        // ------------------------------------------------ the labels' knockouts
+        // The ground under each role label, once the labels are coming in: every line above
+        // stops short of the word (`paint.knockouts`).
+        if (knock.length > 0 && t >= landed) {
+          fill.setColor(col[inks.bg]!);
+          for (let q = 0; q + 3 < knock.length; q += 4) canvas.drawRect(Skia.XYWHRect(knock[q]!, knock[q + 1]!, knock[q + 2]!, knock[q + 3]!), fill);
+        }
+
         // ------------------------------------------------ the glow, under the cells
         const blurs: (SkMaskFilter | null)[] = [null, null, null];
         const blurFor = (step: number) => {
@@ -574,37 +614,12 @@ export function MapCanvas({
           }
         }
 
-        // ------------------------------------------------ the knot's rings (MagicRings)
-        if (knotLit) {
-          let l = Number.POSITIVE_INFINITY;
-          let tp = Number.POSITIVE_INFINITY;
-          let r = Number.NEGATIVE_INFINITY;
-          let b = Number.NEGATIVE_INFINITY;
-          for (const c of knotList) {
-            l = Math.min(l, px(c));
-            tp = Math.min(tp, py(c));
-            r = Math.max(r, px(c) + size);
-            b = Math.max(b, py(c) + size);
-          }
-          if (pulsing) {
-            const cx = (l + r) / 2;
-            const cy = (tp + b) / 2;
-            const base = Math.max(r - l, b - tp) / 2 + pitch * 0.35;
-            line.setColor(col[inks.accent]!);
-            for (let ri = 0; ri < 3; ri++) {
-              const ring = ringAt(rs, ri);
-              const sw = RING_STROKE * ring[1];
-              if (sw < 0.3) continue;
-              const hh = base + ring[0] * RING_REACH * pitch;
-              line.setStrokeWidth(sw);
-              canvas.drawRRect(Skia.RRectXY(Skia.XYWHRect(cx - hh, cy - hh, hh * 2, hh * 2), pitch * 0.35, pitch * 0.35), line);
-            }
-          } else {
-            // Still: each knot file outlined in the session's hue.
-            line.setColor(col[inks.accent]!);
-            line.setStrokeWidth(1.5);
-            for (const c of knotList) canvas.drawRect(Skia.XYWHRect(px(c) - 2.25, py(c) - 2.25, size + 4.5, size + 4.5), line);
-          }
+        // ------------------------------------------------ the knot, still (Reduce Motion)
+        if (knotLit && !pulsing) {
+          // Each knot file outlined in the session's hue.
+          line.setColor(col[inks.accent]!);
+          line.setStrokeWidth(1.5);
+          for (const c of knotList) canvas.drawRect(Skia.XYWHRect(px(c) - 2.25, py(c) - 2.25, size + 4.5, size + 4.5), line);
         }
 
         // ------------------------------------------------ the file it is on
@@ -681,6 +696,7 @@ export function MapCanvas({
     pulsing,
     delays,
     landed,
+    knock,
     inks,
     flipFrom,
     flipDelay,

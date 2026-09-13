@@ -17,7 +17,7 @@ import type { NumSpec } from '../format';
 import { isRefused, type AgentsModel, type AgentWorkModel } from '../model';
 import { ease, phase } from '../motion';
 import { Num } from '../Num';
-import { DIMENSION_HUE, GROUND, ON_HUE, SPECTRUM, type HueName } from '../palette';
+import { GROUND, ON_HUE, SPECTRUM, type HueName } from '../palette';
 import { CountMarks, PixelField, type PixelCell } from '../Pixels';
 import { Block, Section, useClock } from '../reveal';
 
@@ -112,19 +112,9 @@ export function AgentWorkSection({ work, width }: { work: AgentWorkModel; width:
       <Block style={styles.block}>
         <Kicker>the five dimensions</Kicker>
         {isRefused(work.dimensions) ? (
-          <>
-            <Refusal>{work.dimensions.refusal}</Refusal>
-            <View style={styles.dimKey}>
-              {(Object.keys(DIMENSION_HUE) as (keyof typeof DIMENSION_HUE)[]).map((d) => (
-                <View key={d} style={styles.dimKeyItem}>
-                  <Swatch color={SPECTRUM[DIMENSION_HUE[d]].ink} hollow />
-                  <Text allowFontScaling={false} style={type.meta}>
-                    {d.replace(/_/g, ' ')}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </>
+          // The refusal alone: a key is for a drawing, and a refused chapter draws nothing (FOUND IN
+          // THE FINAL CAPTURE, 2026-09-13: five hues under a sentence, describing no chart).
+          <Refusal>{work.dimensions.refusal}</Refusal>
         ) : (
           <>
             <View style={{ gap: 14 }}>
@@ -361,8 +351,6 @@ const styles = StyleSheet.create({
   markerLine: { width: 2, backgroundColor: WORK.ink, marginLeft: -1 },
   tickLabel: { position: 'absolute', top: 2, fontSize: 11, fontWeight: '600', color: GROUND.faint, fontVariant: ['tabular-nums'] },
   dimHead: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
-  dimKey: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 14 },
-  dimKeyItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pattern: { marginTop: 12, gap: 2 },
   legend: { marginTop: 14, gap: 8 },
   legendLine: { flexDirection: 'row', alignItems: 'center', gap: 10 },

@@ -55,6 +55,14 @@ export const CREATURE_NAME = { max: 60, min: 36 } as const;
 /** The big count on a band (the tools found, the sessions arrived): `BandFigure`'s range. */
 export const BAND_FIGURE = { max: 120, min: 56 } as const;
 
+/**
+ * The tools step's count at most 96pt, inside that range, so its band, the seven tiles and the
+ * 24pt under them fit above Continue on a 6.3 inch phone with nothing to scroll. FOUND IN THE
+ * FINAL CAPTURE (2026-09-13): at 120pt the Aider tile stood cut off by the actions, 32pt of the
+ * column below the fold, and nothing said there was more.
+ */
+export const TOOLS_FIGURE_MAX = 96;
+
 /** A tool tile's name (13/600) and its count (15/800, tabular). */
 export const TILE_NAME: TextStyle = { fontSize: 13, fontWeight: '600', lineHeight: 17 };
 export const TILE_COUNT: TextStyle = { fontSize: 15, fontWeight: '800', lineHeight: 19, letterSpacing: -0.2 };

@@ -11,11 +11,10 @@
  * pack's default. The same order `resolveAnimal` gives the analysis page and the You tab, so the
  * accent and the creature printed on the hero can never disagree.
  */
-import type { BuilderProfileResponse } from '../data/api';
 import { creatureHue as chapterCreatureHue } from '../insights/palette';
 import { resolveAnimal, type Animal } from '../pixel/animals';
 import { creatureHue, type HueName } from '../theme';
-import { archetypeView } from '../you/archetype';
+import { builderArchetype } from '../you/archetype';
 
 /**
  * The accent, in both shapes the app reads a hue in: the kit's (`theme.Hue`: ink, text, partner,
@@ -38,15 +37,9 @@ export interface Accent {
   light: string;
 }
 
-/** The archetype the saved builder profile names, or null when it names none or does not parse. */
+/** The archetype the saved builder profile names (`builderArchetype`), or null when it names none or does not parse. */
 export function savedArchetype(builderJson: string | null | undefined): string | null {
-  if (!builderJson) return null;
-  try {
-    const b = JSON.parse(builderJson) as Partial<BuilderProfileResponse>;
-    return archetypeView(b.corpus ?? null, b.report ?? null)?.id ?? null;
-  } catch {
-    return null;
-  }
+  return builderArchetype(builderJson)?.id ?? null;
 }
 
 /** The creature whose hue is the accent: the pick, else the archetype's, else the default. */

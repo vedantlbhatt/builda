@@ -80,14 +80,22 @@ function BarBody({ session, now, creature, animate }: { session: SessionDetail; 
         {m.kind === 'finished' ? 'finished' : m.corner.text}
       </T>
     ) : (
-      <LiveNum
-        value={m.elapsedMin * 60}
-        final={elapsedLabel(m.elapsedMin * 60)}
-        figure={{ kind: 'elapsed' }}
-        textStyle={inked(20, '800', text, 22)}
-        delay={320}
-        accessibilityLabel={`${elapsedLabel(m.elapsedMin * 60)} so far`}
-      />
+      // Labelled: this is the clock since the session started, and the hero right under the bar
+      // counts ACTIVE time. FOUND IN THE FINAL CAPTURE (2026-09-13): "47m" here beside "42m
+      // active so far" with nothing to say they are two clocks.
+      <View style={styles.corner}>
+        <LiveNum
+          value={m.elapsedMin * 60}
+          final={elapsedLabel(m.elapsedMin * 60)}
+          figure={{ kind: 'elapsed' }}
+          textStyle={inked(20, '800', text, 22)}
+          delay={320}
+          accessibilityLabel={`${elapsedLabel(m.elapsedMin * 60)} elapsed`}
+        />
+        <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={inked(11, '700', dim, 13)}>
+          elapsed
+        </T>
+      </View>
     );
   // Under the sentence: the ETA or "since 9:37" when there is an honest one; for a turn the
   // engine called done while the row is live, that nobody has looked at it yet.
@@ -152,4 +160,5 @@ const styles = StyleSheet.create({
   words: { flex: 1, gap: 3 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   repo: { flex: 1, fontFamily: MONO_FAMILY },
+  corner: { alignItems: 'flex-end' },
 });

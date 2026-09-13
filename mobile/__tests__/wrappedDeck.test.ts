@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { REPORT_ENUMS } from '../src/generated/report';
 import {
+  BACK_CONTENT_OPACITY,
   CARD_ORDER,
   CARD_UNITS,
   COMMIT_DISTANCE,
@@ -29,6 +30,7 @@ import {
   gridTilt,
   incomingContentOpacity,
   incomingPose,
+  outgoingContentOpacity,
   outgoingPose,
   progressAtDistance,
   progressVelocity,
@@ -202,9 +204,32 @@ describe('poses: the Appllama tables, in points', () => {
     }
   });
 
-  test('the incoming content brightens from the back cards\' 0.55 to full', () => {
-    expect(incomingContentOpacity(0)).toBe(0.55);
+  test('the cards behind the front show their band and none of their words (shots 52 and 54)', () => {
+    expect(BACK_CONTENT_OPACITY).toBe(0);
+  });
+
+  test('the incoming content brightens from hidden to full, on the original\'s curve', () => {
+    expect(incomingContentOpacity(0)).toBe(0);
+    expect(incomingContentOpacity(0.273)).toBe(0);
     expect(incomingContentOpacity(1)).toBe(1);
+    // The original table's shape: 0.7 at the z swap was (0.7 - 0.55) / 0.45 of the way.
+    expect(incomingContentOpacity(0.455)).toBeCloseTo((0.7 - 0.55) / 0.45, 6);
+    let last = 0;
+    for (let p = 0; p <= 1.0001; p += 0.01) {
+      const o = incomingContentOpacity(Math.min(1, p));
+      expect(o).toBeGreaterThanOrEqual(last - 1e-9);
+      last = o;
+    }
+  });
+
+  test('a card thrown forward keeps its words until it passes behind, then lets them go before it is home', () => {
+    for (const s of SLOT_IDS) {
+      const swap = Z_SWAP_PROGRESS[s];
+      expect(outgoingContentOpacity(0, swap)).toBe(1);
+      expect(outgoingContentOpacity(swap - 0.001, swap)).toBe(1);
+      expect(outgoingContentOpacity(swap + (1 - swap) / 2, swap)).toBeCloseTo(0, 9);
+      expect(outgoingContentOpacity(1, swap)).toBe(0);
+    }
   });
 });
 

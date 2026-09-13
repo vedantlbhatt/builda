@@ -1,13 +1,22 @@
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, type ReactNode } from 'react';
-import { ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
+import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import Animated, { Easing, ReduceMotion, useAnimatedReaction, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  ReduceMotion,
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useReanimatedTransitionProgress } from 'react-native-screens/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RevealPage, Section } from '../insights/reveal';
 import { colors, space } from '../theme';
+import { useAccent } from '../theme/accent';
 import { chromeAt } from './chromeProgress';
 import { CHROME_HEIGHT, chromeIndex, GUTTER, PROGRESS, type FlowStep } from './flow';
 import { useStepPage } from './stepPage';
@@ -42,7 +51,11 @@ export function useBandInset(): number {
  *     keyboard, so the column above shrinks and scrolls, and nothing is drawn on anything else.
  *
  * `scroll`: the band and the column scroll together when they can overflow (a small phone,
- * Dynamic Type). The actions stay outside the scroll view, so Continue never scrolls away.
+ * Dynamic Type). The actions stay outside the scroll view, so Continue never scrolls away, and
+ * the column ends `space.lg` above them. Once the page has moved, a shelf in the band's hue
+ * stands under the status bar and the chrome, so the band's words go under it and are never
+ * printed over the chevron and the bars (FOUND IN THE FINAL CAPTURE, 2026-09-13: scrolled, "what
+ * you build with" ran through both). At rest it is not there: the band itself is that colour.
  *
  * `step`: which step this is, for the chrome above the stack. The frame reports its own native
  * transition (react-native-screens' progress, on the UI thread) as the flow's position, so the
@@ -69,8 +82,14 @@ export function StepFrame({
   contentStyle?: StyleProp<ViewStyle>;
 }) {
   const insets = useSafeAreaInsets();
+  const accent = useAccent();
   const page = useStepPage(ready);
   const column: ViewStyle = { paddingHorizontal: GUTTER, paddingBottom: space.lg, gap: space.sm };
+  const scrolled = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrolled.value = e.contentOffset.y;
+  });
+  const shelfStyle = useAnimatedStyle(() => ({ opacity: scrolled.value > 0.5 ? 1 : 0 }));
   // Open, the keyboard already covers the home indicator: give back the inset and keep 12pt.
   const lift = insets.bottom + space.sm - space.tile;
   const hasColumn = children !== undefined && children !== null && children !== false;
@@ -90,7 +109,9 @@ export function StepFrame({
   ) : null;
 
   const body = scroll ? (
-    <ScrollView
+    <Animated.ScrollView
+      onScroll={onScroll}
+      scrollEventThrottle={16}
       style={{ flex: 1 }}
       contentContainerStyle={{ flexGrow: 1 }}
       keyboardShouldPersistTaps="handled"
@@ -104,7 +125,7 @@ export function StepFrame({
         {band}
         {hasColumn ? <View style={[column, contentStyle]}>{children}</View> : null}
       </Section>
-    </ScrollView>
+    </Animated.ScrollView>
   ) : (
     <Section style={{ flex: 1 }}>
       {band}
@@ -116,6 +137,12 @@ export function StepFrame({
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <ChromeTracker index={chromeIndex(step)} />
       <RevealPage page={page}>{body}</RevealPage>
+      {scroll ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + CHROME_HEIGHT, backgroundColor: accent.ink }, shelfStyle]}
+        />
+      ) : null}
       {footer && keyboard && !scroll ? <KeyboardRide lift={lift}>{footer}</KeyboardRide> : footer}
       {keyboard && scroll ? <KeyboardSpacer lift={lift} /> : null}
     </View>
@@ -130,8 +157,14 @@ const PAGE_EASE = Easing.inOut(Easing.cubic);
  * progress); the other page of each pair is ignored, so exactly one writer moves the chrome.
  * An arrival with no transition to report (under hello's pixel cover, a deep link) walks the
  * chrome there over the bar's own 267ms instead.
+ *
+ * Every step renders one: `StepFrame` does it for the steps it frames, and the finale, which
+ * draws its own stage, renders it itself. FOUND IN THE FINAL CAPTURE (2026-09-13): the finale had
+ * none, so the chrome stayed at notify's place, the chevron and the five bars drawn on the finale
+ * with "this is you" printed over them, where the flow says neither exists (`showsBack`,
+ * `chromeBars`).
  */
-function ChromeTracker({ index }: { index: number }) {
+export function ChromeTracker({ index }: { index: number }) {
   const { progress, closing, goingForward } = useReanimatedTransitionProgress();
   useAnimatedReaction(
     () => [progress.value, closing.value, goingForward.value] as const,

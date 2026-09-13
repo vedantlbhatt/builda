@@ -24,7 +24,7 @@ export type NumFormat =
   | { kind: 'floorMins' }
   /** A clock hour, 0 to 23: "12am", "11am", "3pm". */
   | { kind: 'hour' }
-  /** `copy.human`: a token count, "999", "38k", "4170.5M". */
+  /** `copy.human`: a token count, "999", "38k", "4,170.5M". */
   | { kind: 'tokens' };
 
 /** An animated number: where it counts to, the string it rests on, and how its frames read. */
@@ -101,7 +101,7 @@ export function formatWith(fmt: NumFormat, value: number): string {
     }
     case 'tokens': {
       const t = Math.round(Math.max(0, v));
-      if (t >= 1000000 || Math.round(t / 1000) >= 1000) return fixed(t / 1000000, 1, false) + 'M';
+      if (t >= 1000000 || Math.round(t / 1000) >= 1000) return fixed(t / 1000000, 1, true) + 'M';
       if (t >= 1000) return String(Math.round(t / 1000)) + 'k';
       return String(t);
     }
@@ -145,6 +145,32 @@ export function numSpec(value: number, final: string, fmt?: NumFormat): NumSpec 
   if (!m || !shape) return { value, final, fmt: { kind: 'fixed', decimals: 0, grouping: true, prefix: '', suffix: '' } };
   const written = Number(`${m[2]!.replace(/,/g, '')}${m[3] ? `.${m[3]}` : ''}`);
   return { value: Number.isFinite(written) ? written : value, final, fmt: shape };
+}
+
+/**
+ * Whether a count starting at `delay` and running `duration` has landed at block clock `clock`.
+ * A worklet: the counter reads it on the UI thread, and the same rule on the JS thread decides
+ * what React renders (`restingText`), so the two can never disagree about whether it is done.
+ */
+export function countLanded(clock: number, delay: number, duration: number): boolean {
+  'worklet';
+  if (duration <= 0) return clock >= delay;
+  return clock >= delay + duration;
+}
+
+/**
+ * What React renders for a count, the string a commit puts back on screen: the resting string
+ * once its block's clock is past the count's end, else its first frame.
+ *
+ * FOUND IN INTEGRATION (2026-09-13, the stack page after a hot reload): a number that MOUNTS
+ * after its block has already played, or whose data arrives late (a slow network), showed "0"
+ * forever. React only ever rendered the first frame, "0", and the counter's frames are written
+ * on the UI thread only when the clock moves: a clock already at rest never moves again, so
+ * nothing ever wrote the number. React now renders what the clock says (`Num`), and a count that
+ * missed its block's play simply shows its value.
+ */
+export function restingText(spec: NumSpec, landed: boolean): string {
+  return landed ? spec.final : formatWith(spec.fmt, 0);
 }
 
 /**

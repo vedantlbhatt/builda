@@ -14,10 +14,14 @@ import { describe, expect, test } from 'bun:test';
 import type { BuilderProfileResponse, Profile } from '../src/data/api';
 import { clock, commas, floorMins, human, n, pct } from '../src/copy/numbers';
 import { dollars } from '../src/copy/money';
+import { hourOfDay } from '../src/copy/time';
 import { hasDash } from '../src/copy/plain';
 import { duration } from '../src/theme';
 import fixture from '../src/insights/fixtures/report-2026-09-13.json';
-import { fitSize, fixedFormatOf, formatWith, numSpec } from '../src/insights/format';
+import { countLanded, fitSize, fixedFormatOf, formatWith, numSpec, restingText } from '../src/insights/format';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { SECTION_CLOCK_MS } from '../src/insights/motion';
 import {
   analysisModel,
   everyNum,
@@ -123,8 +127,34 @@ describe('a count up writes every frame the way its resting string is written', 
     }
   });
 
-  test('clock hours', () => {
+  test('a count that mounts after its block played shows its value, never the 0 it starts from', () => {
+    // FOUND IN INTEGRATION: after a hot reload, or data arriving after the section played, the
+    // block's clock was already at rest, nothing on the UI thread wrote the number again, and
+    // React had only ever rendered "0".
+    const s = numSpec(52, '52');
+    expect(countLanded(0, 120, 950)).toBe(false);
+    expect(countLanded(1069, 120, 950)).toBe(false);
+    expect(countLanded(1070, 120, 950)).toBe(true);
+    expect(countLanded(SECTION_CLOCK_MS, 120, 950)).toBe(true);
+    expect(countLanded(0, 0, 0)).toBe(true);
+    expect(restingText(s, countLanded(SECTION_CLOCK_MS, 120, 950))).toBe('52');
+    expect(restingText(s, false)).toBe('0');
+    expect(restingText(numSpec(2564.02, '$2,564'), true)).toBe('$2,564');
+    // Every delay a page uses lands inside the block's clock, so a played block rests every count.
+    for (const delay of [0, 40, 120, 320, 1200]) expect(countLanded(SECTION_CLOCK_MS, delay, 950)).toBe(true);
+  });
+
+  test('Num renders what the clock says, and follows it on the UI thread', () => {
+    const src = readFileSync(join(import.meta.dir, '..', 'src', 'insights', 'Num.tsx'), 'utf8');
+    expect(src).toContain('const startsAt = restingText(spec, landed);');
+    expect(src).toContain('defaultValue={startsAt}');
+    expect(src).toMatch(/useAnimatedReaction\(\s*\(\) => countLanded\(clock\.value, delay, duration\)/);
+    expect(src).toMatch(/useLayoutEffect\(\(\) => \{\s*if \(countLanded\(clock\.value, delay, duration\)\) setLanded\(true\);/);
+  });
+
+  test('clock hours: the frame says what copy/time.hourOfDay says', () => {
     expect([0, 1, 11, 12, 13, 23].map((h) => formatWith({ kind: 'hour' }, h))).toEqual(['12am', '1am', '11am', '12pm', '1pm', '11pm']);
+    for (let h = 0; h < 24; h++) expect(formatWith({ kind: 'hour' }, h)).toBe(hourOfDay(h));
   });
 
   test('every number on the page rests where its last frame lands', () => {
@@ -234,6 +264,8 @@ describe('what the page says', () => {
       ['sessions', '158'],
       ['lines', '50,177'],
     ]);
+    // Whose count it is, on the row: onboarding counts what reached the account, Money what it could price.
+    expect(model.hero.ledger.find((r) => r.key === 'sessions')?.label).toBe('sessions your Mac read');
   });
 
   test('with no report, every section that needs one says so, and nothing is zero', () => {
@@ -246,6 +278,7 @@ describe('what the page says', () => {
     // The hero falls back to the server's own three numbers, all from the server.
     expect(m.hero.ledger.map((r) => r.key)).toEqual(['hours', 'sessions', 'lines']);
     expect(m.hero.ledger.find((r) => r.key === 'sessions')?.num.final).toBe('171');
+    expect(m.hero.ledger.find((r) => r.key === 'sessions')?.label).toBe('sessions on your account');
     for (const s of everyNum(m)) expect(s.final).not.toBe('0');
     expect(gapsOf({ ...B, report: null })[0]?.key).toBe('report');
   });

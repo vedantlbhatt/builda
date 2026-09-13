@@ -167,6 +167,16 @@ describe('what each answer is drawn as', () => {
   });
 });
 
+// ─── the words and the art ──────────────────────────────────────────────────────────────
+
+describe('the words keep ground under them (shot 65: card 13\'s sentence sat on its mosaic)', () => {
+  test('every card, story and share, leaves more air above the art than between its own lines of words', () => {
+    for (const ty of [CARD_TYPE.story, CARD_TYPE.share]) {
+      expect(ty.artGap).toBeGreaterThan(ty.gap);
+    }
+  });
+});
+
 // ─── the board ──────────────────────────────────────────────────────────────────────────
 
 describe('a word answer on the board', () => {

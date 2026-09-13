@@ -2,6 +2,7 @@ import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text } from 'react-native';
 
+import { timeOfDay } from '../../src/copy/time';
 import type { SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
 import { activityFor, endAllLiveActivities, liveActivitiesAvailable, renderLivePreviews, syncLiveActivities, type SyncResult } from '../../src/live/activity';
@@ -196,11 +197,9 @@ function parsePayload(raw: string): Request {
   };
 }
 
-/** "09:37" for a Unix-seconds moment, as the surfaces draw it, or null. */
+/** "9:37am" for a Unix-seconds moment, as the surfaces draw it (`copy/time`), or null. */
 function clock(epoch: number | null): string | null {
-  if (epoch === null) return null;
-  const d = new Date(epoch * 1000);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return epoch === null ? null : timeOfDay(epoch * 1000);
 }
 
 /** A full live row from what the payload gave; nothing it left out is invented beyond "unknown". */

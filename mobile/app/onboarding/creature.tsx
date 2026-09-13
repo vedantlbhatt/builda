@@ -73,11 +73,11 @@ export default function CreatureStep() {
   const known = draft.primed || draft.name !== null;
   const [name, setName] = useState<string | null>(draft.name);
   const [opened, setOpened] = useState<{ animal: Animal; chosen: boolean } | null>(() =>
-    known ? { animal: openOn(draft.animal, suggestedAnimal(currentFacts().archetype)), chosen: draft.animal !== null } : null,
+    known ? { animal: openOn(draft.animal, suggestedAnimal(currentFacts().archetype?.id)), chosen: draft.animal !== null } : null,
   );
   const [animal, setAnimal] = useState<Animal | null>(opened?.animal ?? null);
 
-  const suggestion = suggestedAnimal(facts.archetype);
+  const suggestion = suggestedAnimal(facts.archetype?.id);
 
   // A deep link straight here, before hello primed anything: read the kv.
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function CreatureStep() {
     void (async () => {
       const [n, stored] = await Promise.all([getLocalName(cache), loadAnimal(cache)]);
       if (!live) return;
-      const first = openOn(stored, suggestedAnimal(currentFacts().archetype));
+      const first = openOn(stored, suggestedAnimal(currentFacts().archetype?.id));
       setName(n);
       setAnimal(first);
       setOpened({ animal: first, chosen: stored !== null });

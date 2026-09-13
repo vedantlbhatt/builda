@@ -26,7 +26,22 @@ import { barColor, SpikeChart } from './SpikeChart';
 
 const TITLE = 'Where the tokens went';
 
-export function BurnSection({ burn, view, chart, hue, width }: { burn: SessionBurn | null | undefined; view: BurnView; chart: BurnChart | null; hue: Hue; width: number }) {
+export function BurnSection({
+  burn,
+  view,
+  chart,
+  hue,
+  width,
+  prompts = null,
+}: {
+  burn: SessionBurn | null | undefined;
+  view: BurnView;
+  chart: BurnChart | null;
+  hue: Hue;
+  width: number;
+  /** The session's prompt count, so the stretches' note is true of it. */
+  prompts?: number | null;
+}) {
   const inner = width - GUTTER * 2;
 
   if (view.kind !== 'ready' || !burn) {
@@ -42,7 +57,7 @@ export function BurnSection({ burn, view, chart, hue, width }: { burn: SessionBu
   }
 
   const band = burnBand(burn);
-  const ledger = burnLedger(view);
+  const ledger = burnLedger(view, prompts);
   const key = chart ? fillKey(chart.fills) : null;
 
   return (

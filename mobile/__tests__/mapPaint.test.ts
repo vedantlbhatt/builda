@@ -14,7 +14,8 @@ import { DATA, SPECTRUM } from '../src/insights/palette';
 import { emsOf, fitFigure, headlineParts, widestLabel } from '../src/map/figure';
 import { cleanFrames } from '../src/map/frames';
 import { buildReplay, LEVEL_EDIT, LEVEL_EDIT_WARM, LEVEL_HOT, LEVEL_READ, LEVEL_READ_WARM, LEVEL_SLOT, mapLevels } from '../src/map/heat';
-import { layoutMap } from '../src/map/layout';
+import { findKnot } from '../src/map/knot';
+import { cellRects, fitGeometry, layoutMap, placeLabels } from '../src/map/layout';
 import {
   bayer8,
   BLOOM_SPAN_MS,
@@ -30,11 +31,16 @@ import {
   flipAt,
   glowOf,
   hotCount,
+  KNOCKOUT_PAD,
+  knockouts,
   PATH_FILES,
   pathWidth,
   recentPath,
   RING_CYCLE_S,
+  RING_INSET,
+  RING_REACH,
   ringAt,
+  ringBox,
   ringFade,
   RIPPLE,
   rippleAt,
@@ -46,12 +52,14 @@ import {
   trailStrength,
 } from '../src/map/paint';
 import { mapSample, MAP_SAMPLE_VARIANTS } from '../src/map/sample';
-import { elapsedLabel } from '../src/map/view';
+import { elapsedLabel, roleWord } from '../src/map/view';
 
 const MOBILE = join(import.meta.dir, '..');
 const NOW = Date.parse('2026-09-13T15:00:00Z');
 const base = { id: 'x1', client_session_id: 'x1', harness: 'claude_code', repo_name: 'gt-transit', state: 'live' } as unknown as SessionDetail;
 const sample = (v: (typeof MAP_SAMPLE_VARIANTS)[number]) => mapSample(base, v, NOW);
+/** The canvas's margin, read from MapCanvas.tsx (it imports React Native, which bun cannot load). */
+const MAP_MARGIN = Number(/export const MAP_MARGIN = (\d+);/.exec(readFileSync(join(MOBILE, 'src/map/MapCanvas.tsx'), 'utf8'))![1]);
 const ROLES: PlainRole[] = ['test', 'source', 'config', 'docs', 'migration', 'style', 'build', 'dependency', 'unknown'];
 
 describe('each kind of file wears one hue', () => {
@@ -248,6 +256,82 @@ describe('heat, glow and the path', () => {
     expect(trailAt(r, -1, 6, 240)).toEqual([]);
   });
 
+  test("the knot's rings grow round its own box and never past the gutter or off the canvas", () => {
+    const W = 402;
+    const H = 442;
+    // A knot in the middle: at rest the box padded by 5, at the end grown by the whole reach.
+    expect(ringBox(150, 150, 250, 200, 5, 30, 0, W, H)).toEqual([145, 145, 110, 60]);
+    expect(ringBox(150, 150, 250, 200, 5, 30, 1, W, H)).toEqual([115, 115, 170, 120]);
+    // A wide knot just under the band and near the left edge (the circling time lapse, 103): the
+    // top and left do not grow past the inset; the right and bottom still breathe.
+    const tight = ringBox(24, 24, 300, 110, 5, 30, 1, W, H);
+    expect(tight[0]).toBeGreaterThanOrEqual(RING_INSET);
+    expect(tight[1]).toBeGreaterThanOrEqual(RING_INSET);
+    expect(tight[0] + tight[2]).toBe(335);
+    expect(tight[1] + tight[3]).toBe(145);
+    // Never onto the cells, even where the knot sits inside the inset.
+    const edge = ringBox(21, 21, 60, 60, 5, 30, 0.5, W, H);
+    expect(edge[0]).toBeLessThanOrEqual(19);
+    expect(edge[1]).toBeLessThanOrEqual(19);
+    // Growth outside 0 to 1 is held to it.
+    expect(ringBox(150, 150, 250, 200, 5, 30, 7, W, H)).toEqual(ringBox(150, 150, 250, 200, 5, 30, 1, W, H));
+  });
+
+  test("on every sample, the rings stay inside the canvas by the gutter through their whole cycle", () => {
+    for (const v of MAP_SAMPLE_VARIANTS) {
+      const live = sample(v).live_state!;
+      const frames = cleanFrames(live.timelapse) ?? [];
+      const knot = findKnot(frames);
+      if (!knot) continue;
+      const lay = layoutMap(live.map!.files);
+      const geo = fitGeometry(lay, 402, 442, MAP_MARGIN);
+      const rects = cellRects(lay, geo);
+      const cells = knot.files.map((id) => lay.index[id]).filter((i): i is number => i !== undefined);
+      const box = boxOf(cells, rects)!;
+      for (let g = 0; g <= 1; g += 0.05) {
+        const [x, y, w, h] = ringBox(box[0], box[1], box[2], box[3], geo.pitch * 0.35, RING_REACH * geo.pitch, g, geo.width, geo.height);
+        expect(x).toBeGreaterThanOrEqual(Math.min(RING_INSET, box[0] - 2));
+        expect(y).toBeGreaterThanOrEqual(Math.min(RING_INSET, box[1] - 2));
+        expect(x + w).toBeLessThanOrEqual(Math.max(geo.width - RING_INSET, box[2] + 2));
+        expect(y + h).toBeLessThanOrEqual(Math.max(geo.height - RING_INSET, box[3] + 2));
+        // Round the knot, never on it.
+        expect(x).toBeLessThan(box[0]);
+        expect(y).toBeLessThan(box[1]);
+        expect(x + w).toBeGreaterThan(box[2]);
+        expect(y + h).toBeGreaterThan(box[3]);
+      }
+    }
+  });
+
+  test('every role label has a knockout round it in the ground, and a label keeps clear of every cell', () => {
+    expect(knockouts([{ x: 10, y: 20, width: 90, height: 15 }])).toEqual([10 - KNOCKOUT_PAD[0], 20 - KNOCKOUT_PAD[1], 90 + KNOCKOUT_PAD[0] * 2, 15 + KNOCKOUT_PAD[1] * 2]);
+    expect(knockouts([])).toEqual([]);
+    let labelled = 0;
+    for (const v of MAP_SAMPLE_VARIANTS) {
+      const live = sample(v).live_state!;
+      if (!live.map?.files.length) continue;
+      const lay = layoutMap(live.map.files);
+      const geo = fitGeometry(lay, 402, 442, MAP_MARGIN);
+      const rects = cellRects(lay, geo);
+      const placed = placeLabels(lay, geo, rects, (role) => roleWord(role).length * 6.8 + 2, 15);
+      const k = knockouts(placed);
+      expect(k.length).toBe(placed.length * 4);
+      placed.forEach((l, i) => {
+        labelled += 1;
+        const [x, y, w, h] = k.slice(i * 4, i * 4 + 4) as [number, number, number, number];
+        expect(x <= l.x && y <= l.y && x + w >= l.x + l.width && y + h >= l.y + l.height).toBe(true);
+        // The knockout never reaches over a cell above or below the word (the pad stays in the
+        // two points `placeLabels` leaves).
+        rects.x.forEach((cx, ci) => {
+          const cy = rects.y[ci]!;
+          const across = cx < l.x + l.width && l.x < cx + rects.size;
+          if (across) expect(cy + rects.size <= y || y + h <= cy).toBe(true);
+        });
+      });
+    }
+    expect(labelled).toBeGreaterThan(0);
+  });
+
   test('geometry: boxes and centres in points, the path between 1.5 and 3 points', () => {
     const rects = { x: [0, 20, 40], y: [0, 0, 20], size: 16 };
     expect(boxOf([0, 2], rects)).toEqual([0, 0, 56, 36]);
@@ -281,6 +365,43 @@ describe("the band's figure", () => {
       for (let s = 0; s <= span; s += Math.max(1, Math.floor(span / 997))) expect(emsOf(elapsedLabel(s))).toBeLessThanOrEqual(widest + 1e-9);
     }
   });
+});
+
+describe('a worklet helper is defined before the worklet that calls it', () => {
+  /**
+   * Reanimated turns a `'worklet'` function into a value, which is not hoisted: a worklet that
+   * calls one defined LATER in the same file captures `undefined` and throws "is not a function"
+   * the first time that line runs. It crashed the time lapse at the end of its replay once
+   * (`bayer8` called `bayer2`, defined under it). Every worklet in the map's modules is read for
+   * calls to another worklet in the same file, and the callee must come first.
+   */
+  const FILES = ['src/map/paint.ts', 'src/map/heat.ts', 'src/map/view.ts', 'src/map/figure.ts', 'src/map/frames.ts', 'src/map/knot.ts', 'src/map/layout.ts', 'src/insights/motion.ts', 'src/insights/format.ts'];
+  for (const file of FILES) {
+    test(file, () => {
+      const src = readFileSync(join(MOBILE, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+      const defs: { name: string; at: number; body: string }[] = [];
+      const re = /(?:export\s+)?function\s+([A-Za-z_]\w*)\s*\([^)]*\)[^{]*\{\s*'worklet'/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) {
+        // The match ends inside the body, just past the directive: one brace deep.
+        let depth = 1;
+        let i = m.index + m[0].length;
+        for (; i < src.length && depth > 0; i++) {
+          if (src[i] === '{') depth++;
+          else if (src[i] === '}') depth--;
+        }
+        defs.push({ name: m[1]!, at: m.index, body: src.slice(m.index + m[0].length, i) });
+      }
+      const at = new Map(defs.map((d) => [d.name, d.at]));
+      const late: string[] = [];
+      for (const d of defs) {
+        for (const call of d.body.matchAll(/(?<![.\w])([A-Za-z_]\w*)\(/g)) {
+          const callee = at.get(call[1]!);
+          if (callee !== undefined && call[1] !== d.name && callee > d.at) late.push(`${d.name} calls ${call[1]}`);
+        }
+      }
+      expect({ file, late }).toEqual({ file, late: [] });
+    });
+  }
 });
 
 describe('every function a worklet calls per frame is a worklet', () => {

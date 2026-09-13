@@ -272,6 +272,51 @@ export function ringAt(seconds: number, i: number): [number, number] {
   return [t / RING_CYCLE_S, ringFade(t)];
 }
 
+/**
+ * How far in from the canvas's edges the knot's rings stop, points: the page's 20pt gutter, so
+ * the bracket's widest reach lines up with the words above and below the map.
+ */
+export const RING_INSET = 20;
+/** A ring never comes nearer the knot's own cells than this, points, even where the inset is tight. */
+const RING_CLEAR = 2;
+
+/**
+ * The knot's ring at growth `g` (0 to 1 of its cycle), as `[x, y, w, h]`: the box round the
+ * knot's cells (`l t r b`) padded by `pad`, grown outward on each side by `g` of up to `reach`,
+ * and never past `inset` from the canvas's edge. Each side grows by its own share of the room it
+ * has, so a knot near an edge keeps its whole bracket on the map and its rings still breathe on
+ * the other sides; a side with no room at all stays on the knot (never on its cells).
+ *
+ * FOUND IN THE FINAL CAPTURE (2026-09-13, the circling time lapse): the rings were squares on the
+ * knot's longer side, centred on it, so a wide knot just under the band grew them past the top of
+ * the canvas, where the band cut them off, and within 5 points of the screen's left edge.
+ */
+export function ringBox(
+  l: number,
+  t: number,
+  r: number,
+  b: number,
+  pad: number,
+  reach: number,
+  g: number,
+  width: number,
+  height: number,
+  inset: number = RING_INSET,
+): [number, number, number, number] {
+  'worklet';
+  const grow = g <= 0 ? 0 : g >= 1 ? 1 : g;
+  // At rest: round the cells by `pad`, pulled in to the inset where the pad would cross it.
+  const L = Math.max(l - pad, Math.min(inset, l - RING_CLEAR));
+  const T = Math.max(t - pad, Math.min(inset, t - RING_CLEAR));
+  const R = Math.min(r + pad, Math.max(width - inset, r + RING_CLEAR));
+  const B = Math.min(b + pad, Math.max(height - inset, b + RING_CLEAR));
+  const x0 = L - Math.max(0, Math.min(reach, L - inset)) * grow;
+  const y0 = T - Math.max(0, Math.min(reach, T - inset)) * grow;
+  const x1 = R + Math.max(0, Math.min(reach, width - inset - R)) * grow;
+  const y1 = B + Math.max(0, Math.min(reach, height - inset - B)) * grow;
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+
 // ------------------------------------------------------------------ heat, glow and the trail
 
 /**
@@ -432,4 +477,26 @@ export function centreOf(cells: readonly number[], rects: CellRects): [number, n
 /** The path's stroke for a pitch: about a fifth of a cell, between 1.5 and 3 points. */
 export function pathWidth(pitch: number): number {
   return Math.max(1.5, Math.min(3, Math.round(pitch * 0.22 * 2) / 2));
+}
+
+/** A label's knockout reaches this far past its box, points: across, then up and down. */
+export const KNOCKOUT_PAD: readonly [number, number] = [3, 1];
+
+/**
+ * Where the map is cut back to the ground under its role labels, as a flat `[x, y, w, h, ...]`
+ * (a worklet copies nothing nested): each label's box, a little wider, painted in the ground's
+ * colour after the path, the knot's loop and its rings and before the glow and the cells. So a
+ * line running under "configuration" stops short of the word on both sides, the way a road map
+ * lets a town's name sit on the road, and no cell is ever covered: `placeLabels` keeps every
+ * label clear of every cell, and the cells are drawn after the knockout in any case.
+ *
+ * FOUND IN THE FINAL CAPTURE (2026-09-13): the live path and the replay's trail were drawn in
+ * the canvas and the labels as text over it with nothing between, so the line ran straight
+ * through "configuration" and "source code".
+ */
+export function knockouts(labels: readonly { x: number; y: number; width: number; height: number }[]): number[] {
+  const [px, py] = KNOCKOUT_PAD;
+  const out: number[] = [];
+  for (const l of labels) out.push(l.x - px, l.y - py, l.width + px * 2, l.height + py * 2);
+  return out;
 }

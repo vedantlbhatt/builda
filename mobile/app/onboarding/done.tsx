@@ -4,7 +4,6 @@ import { useWindowDimensions, View } from 'react-native';
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ARCHETYPE_DISPLAY } from '../../src/copy/catalog';
 import * as cache from '../../src/data/cache';
 import { fitSize } from '../../src/insights/format';
 import { ON_HUE } from '../../src/insights/palette';
@@ -17,19 +16,21 @@ import { HarnessLogo } from '../../src/pixel/HarnessLogo';
 import { PixelAnimal, PixelAnimalIcon } from '../../src/pixel/PixelAnimal';
 import { creatureCaption, creatureWord, DONE, doneCaption, THATS_ME } from '../../src/onboarding/copy';
 import { currentDraft } from '../../src/onboarding/draft';
-import { currentFacts } from '../../src/onboarding/facts';
-import { burstBox, DONE_CREATURE, FINALE, GUTTER, RISE_PT } from '../../src/onboarding/flow';
+import { currentFacts, useFacts } from '../../src/onboarding/facts';
+import { burstBox, chromeIndex, DONE_CREATURE, FINALE, GUTTER, RISE_PT } from '../../src/onboarding/flow';
 import { ACTION_HEIGHT, HueButton, LEDGE } from '../../src/onboarding/HueButton';
 import { useLanded } from '../../src/onboarding/landing';
 import { PixelBurst } from '../../src/onboarding/PixelBurst';
 import { Pop } from '../../src/onboarding/Pop';
 import { foundFor, loadAnimal, loadTools, preselect, suggestedAnimal } from '../../src/onboarding/selection';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { ChromeTracker } from '../../src/onboarding/StepFrame';
 import { useStepPage } from '../../src/onboarding/stepPage';
 import { BAND_TITLE, CREATURE_NAME, display } from '../../src/onboarding/type';
 import { setAccentCreature } from '../../src/theme/accent';
 import { colors, creatureHue, space } from '../../src/theme';
 import { ProfileCard } from '../../src/ui/bits/components/ProfileCard';
+import { archetypeWords } from '../../src/you/archetype';
 import { PROFILE } from '../../src/ui/bits/components/spec';
 import { ClickSpark } from '../../src/ui/bits/effects/ClickSpark';
 import { Magnet } from '../../src/ui/bits/effects/Magnet';
@@ -88,6 +89,7 @@ export default function DoneStep() {
   const { width, height } = useWindowDimensions();
   const reduced = useReduceMotion();
   const draft = currentDraft();
+  const facts = useFacts();
   const [picked, setPicked] = useState<Picked | null>(null);
   const [committing, setCommitting] = useState(false);
   const [stageGone, setStageGone] = useState(false);
@@ -106,7 +108,7 @@ export default function DoneStep() {
       if (!live) return;
       // Nothing stored means the tools step was never answered: say what it would have picked.
       const selected = tools ?? preselect(foundFor(currentFacts().counts));
-      const chosen = animal ?? suggestedAnimal(currentFacts().archetype) ?? DEFAULT_ANIMAL;
+      const chosen = animal ?? suggestedAnimal(currentFacts().archetype?.id) ?? DEFAULT_ANIMAL;
       setAccentCreature(chosen);
       setPicked({
         name: name ?? '',
@@ -214,8 +216,8 @@ export default function DoneStep() {
   const art = Math.round(stageH * PROFILE.artShare);
   const burstY = card ? art / 2 : stageH - DONE_CREATURE / 2 - space.md;
   const captionSize = picked ? fitSize(creatureCaption(picked.name, picked.animal).split(', ')[0] ?? '', cardW, CREATURE_NAME.max, CREATURE_NAME.min) : CREATURE_NAME.min;
-  const archetype = currentFacts().archetype;
-  const archetypeWords = archetype ? ((ARCHETYPE_DISPLAY as Readonly<Record<string, string>>)[archetype] ?? null) : null;
+  // The type every other screen names (the Mac's, else the server's, which says so).
+  const typeWords = archetypeWords(facts.archetype);
   const caption = picked ? doneCaption(picked.marks.map((m) => m.name)) : '';
 
   const first = picked ? (
@@ -249,7 +251,7 @@ export default function DoneStep() {
       creature={picked.animal}
       name={picked.name || creatureWord(picked.animal)}
       caption={picked.name ? creatureWord(picked.animal) : DONE.label}
-      archetype={archetypeWords}
+      archetype={typeWords}
       width={cardW}
       height={stageH}
       active={!committing}
@@ -260,6 +262,8 @@ export default function DoneStep() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
+      {/* The finale's place in the flow: the chevron fades and the bars go as this page arrives. */}
+      <ChromeTracker index={chromeIndex('done')} />
       <RevealPage page={page}>
         <Section style={{ flex: 1 }}>
           <StepBand hue={hue} inset={insets.top + space.md} fill>

@@ -60,7 +60,7 @@ export function ShareChapter({
         <Hairline style={styles.rule} />
         <Kicker>the card</Kicker>
         <View ref={cardRef} collapsable={false} style={styles.card}>
-          <RecapCard model={model} width={inner} />
+          <RecapCard model={model} width={inner} accent={accent} />
         </View>
         <View style={styles.acts}>
           {post.kind === 'unposted' ? (

@@ -31,6 +31,13 @@
  * (a hue at partial opacity over the warm ground is brown). No gradient, no blur. The
  * geometry is in `comet.ts`, the numbers in `spec.ts`.
  *
+ * `head` sets the solid head apart from its tail. FOUND IN THE FINAL CAPTURE (2026-09-13, shot
+ * 69b): on mission control the comet runs in the gap beside a tile of its own hue, so a 2pt line
+ * of that hue read as the tile's edge a few points off, not as something moving. A head in the
+ * ground's warm white, with the tail in the hue thinning behind it, is a comet at a glance and
+ * still one solid colour per piece: no glow, no gradient, nothing at partial opacity.
+ * `settledThickness` lets the comet be heavier than the still outline it leaves.
+ *
  * Paused (the screen is not focused, the app is in the background, or `paused`): the comet
  * holds where it is and picks up from there. Reduce Motion: the still outline from the start.
  */
@@ -57,6 +64,10 @@ export interface StarBorderProps {
   hue?: HueProp;
   /** Stroke in points. Default 1.5. */
   thickness?: number;
+  /** The still outline's stroke, once the laps are done (and under Reduce Motion). Default `thickness`. */
+  settledThickness?: number;
+  /** The solid head's colour, when it should stand apart from the tail. Default the hue's ink. */
+  head?: string;
   /** false draws the still outline and no comet. Default true. */
   active?: boolean;
   /** Changing this runs the three laps again (the tile needs you again, for something new). */
@@ -90,6 +101,8 @@ export function StarBorder({
   radius = SHAPE.container,
   hue,
   thickness = C.strokePt,
+  settledThickness,
+  head: headColor,
   active = true,
   playKey,
   laps = C.laps,
@@ -165,7 +178,8 @@ export function StarBorder({
 
   const w = box?.w ?? 0;
   const h = box?.h ?? 0;
-  const outline = useMemo(() => toSkPath(strokeOutline(w, h, radius, thickness, 1)), [w, h, radius, thickness]);
+  const still = settledThickness ?? thickness;
+  const outline = useMemo(() => toSkPath(strokeOutline(w, h, radius, still, 1)), [w, h, radius, still]);
   const track = useMemo(() => toSkPath(strokeOutline(w, h, radius, thickness, 2)), [w, h, radius, thickness]);
   const pieces = tail.length + 1;
 
@@ -185,12 +199,12 @@ export function StarBorder({
                   pieces={pieces}
                   k={k}
                   density={k === 0 ? 1 : (tail[k - 1] ?? 1)}
-                  color={color}
+                  color={k === 0 && headColor ? headColor : color}
                   thickness={thickness}
                 />
               ))
             ) : (
-              <Path path={outline} style="stroke" strokeWidth={thickness} color={color} />
+              <Path path={outline} style="stroke" strokeWidth={still} color={color} />
             )}
           </Canvas>
         </View>

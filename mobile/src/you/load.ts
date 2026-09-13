@@ -13,7 +13,8 @@
  * A signed in person is never told to sign in because the network dropped, and a saved page is
  * never thrown away because a refresh failed (the rules `app/(tabs)/you.tsx` had before).
  */
-import { clockOf, dayOf } from './numbers';
+import { timeOfDay } from '../copy/time';
+import { dayOf } from './numbers';
 
 export interface Stale {
   /** When the page on screen was saved. Null when the phone does not know (an older save). */
@@ -44,12 +45,12 @@ export function resolveLoad<T>(s: LoadInputs<T>): YouLoad<T> {
   return { kind: 'loading' };
 }
 
-/** "Builda is not reachable right now. Showing what was saved at 9:41." */
+/** "Builda is not reachable right now. Showing what was saved at 9:41am." */
 export function staleLine(stale: Stale, now: number = Date.now()): string {
   const lead = stale.message.trim().replace(/\.?$/, '.');
   if (stale.savedAt === null) return `${lead} Showing what was saved last.`;
   const sameDay = dayOf(new Date(stale.savedAt).toISOString(), now) === dayOf(new Date(now).toISOString(), now);
-  const when = sameDay ? `at ${clockOf(stale.savedAt)}` : `on ${dayOf(new Date(stale.savedAt).toISOString(), now)}`;
+  const when = sameDay ? `at ${timeOfDay(stale.savedAt)}` : `on ${dayOf(new Date(stale.savedAt).toISOString(), now)}`;
   return `${lead} Showing what was saved ${when}.`;
 }
 

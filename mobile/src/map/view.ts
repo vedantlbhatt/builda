@@ -22,12 +22,13 @@
  * without its unit.
  */
 
-import { capital, commas, count, mins } from '../copy/numbers';
+import { capital, commas, count, floorMins, mins } from '../copy/numbers';
 import { ROLE_NOUN, spoken } from '../copy/plain';
 import type { SessionDetail } from '../data/api';
 import type { LiveFile, LiveFrame, LiveState, PlainRole } from '../generated/live';
 import type { LiveStateWire } from '../live/sentence';
-import { clockOf, dayOf } from '../you/numbers';
+import { timeOfDay } from '../copy/time';
+import { dayOf } from '../you/numbers';
 import { cleanFrames, MAX_FRAMES, spanOf } from './frames';
 import type { Burst, Knot } from './knot';
 
@@ -104,14 +105,14 @@ export interface RefusalCopy {
   action: RefusalAction;
 }
 
-/** "at 14:02" on the same Builda day, else "on Aug 29". Null for a time that does not parse. */
+/** "at 2:02pm" on the same Builda day, else "on Aug 29". Null for a time that does not parse. */
 export function whenOf(iso: string | null | undefined, now: number): string | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
   const day = dayOf(iso, now);
   const today = dayOf(new Date(now).toISOString(), now);
-  return day !== null && day === today ? `at ${clockOf(t)}` : day ? `on ${day}` : null;
+  return day !== null && day === today ? `at ${timeOfDay(t)}` : day ? `on ${day}` : null;
 }
 
 /** The refusal, as Bit's title, one line, and the one action that fills or leaves the page. */
@@ -323,7 +324,7 @@ export function hotRows(
         .filter(Boolean)
         .join(', ');
       const t = at(f);
-      const value = Number.isFinite(t) ? clockOf(t * 1000) : null;
+      const value = Number.isFinite(t) ? timeOfDay(t * 1000) : null;
       return { id: f.id, title: name ?? capital(roleOne(f.role)), meta: name ? `${roleOne(f.role)}, ${meta}` : meta, value };
     });
   return { label: changed.length ? 'most changed' : 'most read', rows };
@@ -434,7 +435,7 @@ export interface LedgerRow {
   count: number;
   /** What the figure counts, and on what: "changes to store.ts", "reads of a doc". */
   what: string;
-  /** The quiet line under it: the other count and when, "read 3 times, last touched at 14:02". */
+  /** The quiet line under it: the other count and when, "read 3 times, last touched at 2:02pm". */
   note: string | null;
 }
 
@@ -465,7 +466,11 @@ export function hotLedger(files: readonly LiveFile[], names: Record<string, stri
 /** "1h 04m of work so far, replayed in fifteen seconds." */
 export function timelapseTitle(frames: readonly LiveFrame[]): string {
   const span = spanOf(frames);
-  const said = mins(span);
+  // FLOORED, as the replay's own clock is (`elapsedLabel`): the figure above this sentence counts
+  // up to the same span and lands on it, so the two must say the same whole minutes. FOUND IN THE
+  // FINAL CAPTURE (2026-09-13): `mins` rounded, so a span 30 seconds into a minute put "1h 04m of
+  // work" under a clock that stopped at "1h 03m".
+  const said = floorMins(span);
   return said === 'under a minute'
     ? 'Under a minute of work so far, replayed in fifteen seconds.'
     : `${capital(said)} of work so far, replayed in fifteen seconds.`;

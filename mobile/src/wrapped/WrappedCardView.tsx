@@ -193,7 +193,7 @@ function CardBody({
   return (
     <View style={[styles.band, { width, height, backgroundColor: hue.ink }]}>
       <Animated.View style={[styles.fill, contentStyle]}>
-        <View onLayout={onWords} style={{ paddingHorizontal: ty.pad, paddingTop: ty.pad - 2, gap: ty.gap }}>
+        <View onLayout={onWords} style={{ paddingHorizontal: ty.pad, paddingTop: ty.pad - 2, paddingBottom: ty.artGap, gap: ty.gap }}>
           <View style={[styles.indexRow, { height: PEEK }]}>
             <Text allowFontScaling={false} style={[styles.index, { fontSize: ty.index }]}>
               {String(number).padStart(2, '0')}

@@ -30,6 +30,13 @@
  *   playback frame identical to a video render; under a spring they read as hitches.
  * - The glass layer, the blur ramps and the shadows are dropped (the brief bans glass; the
  *   design allows one float shadow, and a 4 card stack on the canvas does not need it).
+ * - The cards behind the front one show their band and NOTHING ON IT (`BACK_CONTENT_OPACITY`
+ *   0, not the original's 0.55). FOUND IN THE FINAL CAPTURE (2026-09-13, shots 52 and 54): the
+ *   fan turns a back card up to 10.56 degrees, so its corner stands out past the front card's
+ *   edge, and there its dimmed index ("0" of "05") was printed at the screen's left edge, a
+ *   word from another card. The band is the depth cue; the words wait until the card comes
+ *   forward, on the original's own curve (`incomingContentOpacity`, rescaled to start at 0),
+ *   and a card going behind lets its words go as it tucks in (`outgoingContentOpacity`).
  * - Distances in the tables are in the original's 1240 unit scene, where a card is 704
  *   units wide (CSS `width: 56.774194cqw` of 1240). They are kept as written and divided
  *   by `CARD_UNITS` at the one place a pose is made, so the tables stay diffable against
@@ -445,10 +452,14 @@ export function incomingPose(slot: SlotIndex, progress: number, width: number): 
   return { x: rest.x * w, y: rest.y * w, scale: mix(1, rest.scale, w), rotation: rest.rotation * w };
 }
 
-/** Content of the cards behind the front one is dimmed to this, the original's depth cue. */
-export const BACK_CONTENT_OPACITY = 0.55;
+/** Content of the cards behind the front one: hidden (the file comment says why). */
+export const BACK_CONTENT_OPACITY = 0;
 
-// The incoming card's content brightens from the back cards' dim as it comes forward.
+/** The original's back card dim, which its incoming table below starts from. */
+const ORIGINAL_BACK_CONTENT_OPACITY = 0.55;
+
+// The incoming card's content brightens as it comes forward: the original's table, as written
+// (from its 0.55 dim), rescaled where it is read so it starts from this stack's hidden words.
 const INCOMING_CONTENT_OPACITY: readonly Weight[] = [
   { t: 0, value: 0.55 },
   { t: 0.273, value: 0.55 },
@@ -462,7 +473,19 @@ const INCOMING_CONTENT_OPACITY: readonly Weight[] = [
 
 export function incomingContentOpacity(progress: number): number {
   'worklet';
-  return sampleWeight(INCOMING_CONTENT_OPACITY, progress);
+  const o = sampleWeight(INCOMING_CONTENT_OPACITY, progress);
+  return clamp01((o - ORIGINAL_BACK_CONTENT_OPACITY) / (1 - ORIGINAL_BACK_CONTENT_OPACITY));
+}
+
+/**
+ * The outgoing card's content at `progress`, thrown forward: whole until it passes behind the
+ * stack at `swap`, then gone by half way home, before it tucks into the fan where a word at its
+ * turned edge would peek past the new front card.
+ */
+export function outgoingContentOpacity(progress: number, swap: number): number {
+  'worklet';
+  if (progress < swap) return 1;
+  return clamp01(1 - (progress - swap) / Math.max(0.0001, (1 - swap) / 2));
 }
 
 // ─── the finger ─────────────────────────────────────────────────────────────────────────

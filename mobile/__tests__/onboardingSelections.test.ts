@@ -10,8 +10,10 @@ import { ANIMALS, CORPUS_ARCHETYPE_ANIMALS, ARCHETYPE_ANIMALS } from '../src/pix
 import { HARNESS_MARKS, sessionsFor, statusLine, type Harness } from '../src/pixel/harness';
 import { ANIMAL_KEY, APPLE_NAME_KEY, LOCAL_NAME_KEY, NAME_PENDING_KEY, TOOLS_KEY } from '../src/onboarding/keys';
 import { prefillName } from '../src/onboarding/names';
+import fixture from '../src/insights/fixtures/report-2026-09-13.json';
+import type { BuilderProfileResponse } from '../src/data/api';
+import { archetypeWords, builderArchetype } from '../src/you/archetype';
 import {
-  archetypeFrom,
   foundFor,
   harnessCounts,
   initialTools,
@@ -186,13 +188,25 @@ describe('the creature', () => {
     expect(suggestedAnimal('an_archetype_from_next_year')).toBeNull();
   });
 
-  test('the archetype: the corpus rules first, then the analyses, from JSON or an object', () => {
-    const builder = { corpus: { archetype: { name: 'velocity_machine' } }, builder_profile: { archetype: { modal: 'architect' } } };
-    expect(archetypeFrom(builder)).toBe('velocity_machine');
-    expect(archetypeFrom(JSON.stringify(builder))).toBe('velocity_machine');
-    expect(archetypeFrom({ corpus: { archetype: { name: null } }, builder_profile: { archetype: { modal: 'architect' } } })).toBe('architect');
-    expect(archetypeFrom(null, { builder_profile: { archetype: { modal: 'night_owl' } } })).toBe('night_owl');
-    expect(archetypeFrom('not json', null)).toBeNull();
-    expect(archetypeFrom(undefined, undefined)).toBeNull();
+  test("the archetype is the one every page names: the Mac's report, the server's only without one, and it says so", () => {
+    // The committed report: the server scores velocity machine (it counts no test runs), the
+    // Mac quality guardian. Onboarding's card said the first while every other screen said the second.
+    const b = fixture.builder as unknown as BuilderProfileResponse;
+    expect(b.corpus?.archetype.name).toBe('velocity_machine');
+    for (const given of [b, JSON.stringify(b)]) {
+      const v = builderArchetype(given)!;
+      expect(v.id).toBe('quality_guardian');
+      expect(v.source).toBe('mac');
+      expect(archetypeWords(v)).toBe('Quality guardian');
+    }
+    // No report yet: the server's scoring, labelled as the server's.
+    const server = builderArchetype({ corpus: b.corpus, report: null })!;
+    expect(server.id).toBe('velocity_machine');
+    expect(archetypeWords(server)).toBe('Velocity machine, scored on the server');
+    // The per session analyses' modal is a different question and is never read as the type.
+    expect(builderArchetype({ corpus: null, report: null, builder_profile: b.builder_profile } as Partial<BuilderProfileResponse>)).toBeNull();
+    expect(builderArchetype('not json')).toBeNull();
+    expect(builderArchetype(undefined)).toBeNull();
+    expect(archetypeWords(null)).toBeNull();
   });
 });

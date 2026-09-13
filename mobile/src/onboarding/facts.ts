@@ -3,7 +3,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { BUILDER_PROFILE_KEY } from './keys';
-import { archetypeFrom, harnessCounts, type HarnessCounts } from './selection';
+import { builderArchetype, type ArchetypeView } from '../you/archetype';
+import { harnessCounts, type HarnessCounts } from './selection';
 
 /**
  * What the app already knows about the person going through onboarding, loaded once when the
@@ -25,8 +26,11 @@ export interface Facts {
   total: number | null;
   /** More sessions exist than were counted: every count is a lower bound. */
   partial: boolean;
-  /** The corpus rules' archetype, else the analyses' modal one. */
-  archetype: string | null;
+  /**
+   * The archetype, as every page names it (`builderArchetype`: the Mac's report, else the
+   * server's scoring, which says so). Null when there is none yet.
+   */
+  archetype: ArchetypeView | null;
 }
 
 const EMPTY: Facts = { signedIn: null, serverName: null, counts: null, total: null, partial: false, archetype: null };
@@ -89,16 +93,13 @@ export function loadFacts(force = false): Promise<Facts> {
       const was = await previous;
       if ((await api.isSignedIn().catch(() => false)) === was.signedIn) return was;
     }
-    const [signedIn, builderJson, profile] = await Promise.all([
-      api.isSignedIn().catch(() => false),
-      cache.getKv(BUILDER_PROFILE_KEY).catch(() => null),
-      cache.getProfile().catch(() => null),
-    ]);
+    const [signedIn, builderJson] = await Promise.all([api.isSignedIn().catch(() => false), cache.getKv(BUILDER_PROFILE_KEY).catch(() => null)]);
     // A different account (or none) than the last load: nothing it said still holds.
     if (facts.signedIn !== null && facts.signedIn !== signedIn) {
       set({ serverName: null, counts: null, total: null, partial: false, archetype: null });
     }
-    set({ signedIn, archetype: facts.archetype ?? archetypeFrom(builderJson, profile) });
+    // What the You tab saved paints first; the account's own answer below replaces it.
+    set({ signedIn, archetype: facts.archetype ?? builderArchetype(builderJson) });
     if (!signedIn) {
       loadedAt = Date.now();
       return facts;
@@ -111,12 +112,11 @@ export function loadFacts(force = false): Promise<Facts> {
       countSessions()
         .then((r) => set(r))
         .catch(() => undefined),
-      facts.archetype
-        ? Promise.resolve()
-        : api
-            .builderProfile()
-            .then((b) => set({ archetype: archetypeFrom(b) }))
-            .catch(() => undefined),
+      // Always asked, so a saved profile from before the Mac's report arrived cannot outlive it.
+      api
+        .builderProfile()
+        .then((b) => set({ archetype: builderArchetype(b) }))
+        .catch(() => undefined),
     ]);
     loadedAt = Date.now();
     return facts;
@@ -130,20 +130,16 @@ export function loadFacts(force = false): Promise<Facts> {
 }
 
 /**
- * The archetype alone, for the creature picker outside onboarding (`app/icon.tsx`): what the
- * app has cached (the You tab's builder profile, then the profile's analyses), else, signed
- * in, the same `GET /v1/profile/builder` the You tab makes. Null when there is none yet.
+ * The archetype's id alone, for the creature picker outside onboarding (`app/icon.tsx`): the
+ * builder profile the You tab saved, else, signed in, the same `GET /v1/profile/builder` the You
+ * tab makes, both read by `builderArchetype`. Null when there is none yet.
  */
 export async function loadArchetype(): Promise<string | null> {
-  const [builderJson, profile] = await Promise.all([
-    cache.getKv(BUILDER_PROFILE_KEY).catch(() => null),
-    cache.getProfile().catch(() => null),
-  ]);
-  const cached = archetypeFrom(builderJson, profile);
+  const cached = builderArchetype(await cache.getKv(BUILDER_PROFILE_KEY).catch(() => null))?.id ?? null;
   if (cached) return cached;
   if (!(await api.isSignedIn().catch(() => false))) return null;
   try {
-    return archetypeFrom(await api.builderProfile());
+    return builderArchetype(await api.builderProfile())?.id ?? null;
   } catch {
     return null;
   }

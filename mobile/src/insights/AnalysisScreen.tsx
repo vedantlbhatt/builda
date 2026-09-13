@@ -16,11 +16,13 @@ import Animated from 'react-native-reanimated';
 
 import { resolveAnimal } from '../pixel/animals';
 import { useReduceMotion } from '../ui/motion';
+import { doorHues } from '../you/chapters';
 import { useMoneyMask } from '../you/hooks';
-import { clockOf, dayOf } from '../you/numbers';
+import { timeOfDay } from '../copy/time';
+import { dayOf } from '../you/numbers';
 import { GUTTER, Refusal, type, Words } from './kit';
 import { analysisModel, REPORT_COMMAND } from './model';
-import { creatureHue, GROUND } from './palette';
+import { CREATURE_HUE, creatureHue, GROUND } from './palette';
 import { Block, RevealPage, Section, usePageReveal } from './reveal';
 import { useChapterStages, useRevealScroll } from './RevealScroll';
 import * as Agent from './sections/Agent';
@@ -64,12 +66,14 @@ export function AnalysisScreen() {
 
   const animal = resolveAnimal(chosenAnimal, model?.hero.archetypeId ?? null);
   const hue = creatureHue(animal);
+  // The ways on at the foot of the page wear the hues their doors wear on the You tab.
+  const doors = useMemo(() => doorHues(CREATURE_HUE[animal] ?? 'amber'), [animal]);
   const generated = builder?.report?.generated_at ?? null;
   const footer = useMemo(() => {
     if (!generated) return null;
     const t = Date.parse(generated);
     const day = dayOf(generated);
-    return Number.isFinite(t) && day ? `Your Mac computed this report on ${day} at ${clockOf(t)}.` : null;
+    return Number.isFinite(t) && day ? `Your Mac computed this report on ${day} at ${timeOfDay(t)}.` : null;
   }, [generated]);
 
   return (
@@ -149,7 +153,7 @@ export function AnalysisScreen() {
               {stage >= 6 ? <TrendsSection trends={model.trends} width={width} /> : null}
               {stage >= 7 ? <QualitySection quality={model.quality} width={width} /> : null}
               {stage >= 8 ? <StandsOutSection standsOut={model.standsOut} /> : null}
-              {stage >= 9 ? <WordsSection words={model.words} width={width} /> : null}
+              {stage >= 9 ? <WordsSection words={model.words} width={width} doors={doors} /> : null}
               {stage >= 10 ? <CannotSeeSection gaps={model.gaps} footer={footer} /> : null}
             </>
           ) : null}

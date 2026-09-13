@@ -80,8 +80,3 @@ export function monthLabel(key: string, now: number = Date.now()): string {
   return y === builderDay(now).y ? name : `${name} ${y}`;
 }
 
-/** "9:41", the clock a stale note names. Local, 24 hours: no am or pm to misread. */
-export function clockOf(t: number): string {
-  const d = new Date(t);
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-}

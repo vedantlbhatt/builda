@@ -7,21 +7,13 @@
  * Pure: no React Native, so `bun test` holds it.
  */
 
+import { timeOfDay } from '../copy/time';
 import { dayLabel } from '../theme';
-
-/** "1:12pm", "9:05am", "12:00pm". Lower case, no space, as the analysis page writes an hour. */
-export function clockLabel(t: number): string {
-  const d = new Date(t);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const twelve = h % 12 === 0 ? 12 : h % 12;
-  return `${twelve}:${String(m).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`;
-}
 
 export function whenLabel(iso: string, now: number = Date.now()): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return 'A session';
   const day = dayLabel(t, now);
   const cap = day ? `${day.charAt(0).toUpperCase()}${day.slice(1)}` : '';
-  return cap ? `${cap} at ${clockLabel(t)}` : clockLabel(t);
+  return cap ? `${cap} at ${timeOfDay(t)}` : timeOfDay(t);
 }

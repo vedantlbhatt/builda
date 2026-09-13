@@ -71,6 +71,7 @@ import { SPOT } from '../ui/bits/components/spec';
 import { StarBorder } from '../ui/bits/effects/StarBorder';
 import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
+import { fitWords, stateLayout, STATE_GAP, tileMeasures, VARIANT, type TileVariant, type VariantSpec } from './fit';
 import { elapsedLabel, landedCommits, landedParts, TILE_MAX_SCALE, type TileModel, type TileVerdict } from './mission';
 
 // ------------------------------------------------------------------ type
@@ -90,35 +91,7 @@ export function inked(size: number, weight: TextStyle['fontWeight'], color: stri
   };
 }
 
-export type TileVariant = 'lead' | 'wide' | 'half';
-
-interface VariantSpec {
-  pad: number;
-  logo: number;
-  repo: number;
-  sentence: number;
-  sentenceLh: number;
-  state: number;
-  glyph: number;
-  figure: number;
-  caption: number;
-  eta: number;
-  /** Whole points per cell: 16 cells of 3, 4 or 5 points. */
-  creature: number;
-  track: number;
-  gap: number;
-}
-
-/**
- * The three sizes. The lead's sentence is the largest words on the screen after the summary
- * band's number; a half tile's is 17/700, which at 146 points of measure holds the engine's
- * longest sentence ("Stuck on the same failing command for twenty minutes") in four lines.
- */
-const VARIANT: Record<TileVariant, VariantSpec> = {
-  lead: { pad: 18, logo: 20, repo: 15, sentence: 26, sentenceLh: 30, state: 17, glyph: 18, figure: 44, caption: 13, eta: 15, creature: 80, track: 6, gap: 12 },
-  wide: { pad: 16, logo: 18, repo: 14, sentence: 21, sentenceLh: 25, state: 15, glyph: 16, figure: 34, caption: 12, eta: 14, creature: 64, track: 5, gap: 10 },
-  half: { pad: 14, logo: 16, repo: 13, sentence: 17, sentenceLh: 21, state: 14, glyph: 14, figure: 30, caption: 12, eta: 13, creature: 48, track: 4, gap: 9 },
-};
+export type { TileVariant } from './fit';
 
 /** The inks a tile draws with: the dark ink on its hue, or the warm neutrals when it is stale. */
 interface Inks {
@@ -417,6 +390,13 @@ export interface MissionTileProps {
 
 /** How far the comet runs outside the tile: in the 12 pt gap, clear of the neighbour. */
 const COMET_OUT = 5;
+/**
+ * The comet on the tile that needs you. FOUND IN THE FINAL CAPTURE (2026-09-13, shot 69b): a 2pt
+ * comet in the tile's own hue, beside the tile, read as a faint second edge. It runs 3pt wide and
+ * a third of the edge long, its head in the ground's warm white and its tail in the hue, and it
+ * settles to the 2pt outline it always left.
+ */
+const COMET = { strokePt: 3, settledPt: 2, length: 0.32, head: GROUND.text } as const;
 
 function MissionTileImpl({ model: m, creature, animate, variant, width, minHeight, delay = 0, onOpen }: MissionTileProps) {
   const v = VARIANT[variant];
@@ -467,9 +447,17 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
 
   const onPress = useCallback(() => onOpen?.(m.id), [onOpen, m.id]);
   const trackH = m.track !== null ? v.track : 0;
-  const inner = width - v.pad * 2;
-  const lowerWidth = inner - v.creature - 6;
+  const { inner, lower: lowerWidth, repo: repoWidth, headGap } = tileMeasures(variant, width);
   const wordsAt = delay + PRINT_MS * 0.55;
+  // No word on a tile is broken inside itself (`fit.ts`): each line is set no larger than the
+  // size at which its widest word fits its measure, at the reader's text size as the tile caps it.
+  const { fontScale } = useWindowDimensions();
+  const scale = Math.min(TILE_MAX_SCALE, Math.max(1, fontScale));
+  const repoSize = fitWords(m.repo, repoWidth, v.repo, 'mono', scale);
+  const sentenceSize = fitWords(m.sentence, inner, v.sentence, 'sans', scale);
+  const sentenceLh = Math.round((v.sentenceLh * sentenceSize) / v.sentence);
+  const footWords = m.unreviewed ? 'not looked at yet' : m.eta;
+  const footSize = footWords ? fitWords(footWords, lowerWidth, v.eta, 'sans', scale) : v.eta;
 
   const tile = (
     <GestureDetector gesture={gesture}>
@@ -496,16 +484,17 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
             ) : null}
 
             <Arrive delay={wordsAt} style={{ gap: v.gap }}>
-              <View style={[styles.head, { gap: variant === 'half' ? 6 : 8 }]}>
+              <View style={[styles.head, { gap: headGap }]}>
                 <HarnessStamp harness={m.harness} size={v.logo} color={ink.stamp} />
-                {/* The repository in full, however long: it wraps, it never ellipsizes
-                    ("pr…epo" was the bug). "private repo" is two words and says so. */}
-                <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={[inked(v.repo, '600', ink.text), styles.repo]}>
+                {/* The repository in full, however long: it wraps between words and after a
+                    hyphen, it never ellipsizes ("pr…epo" was the bug) and it never breaks a
+                    word. "private repo" is two words and says so. */}
+                <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={[inked(repoSize, '600', ink.text), styles.repo]}>
                   {m.repo}
                 </T>
               </View>
               <Animated.View key={m.sentence} entering={reduce ? undefined : FadeIn.duration(180)}>
-                <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={inked(v.sentence, variant === 'half' ? '700' : '800', m.stale ? ink.dim : ink.text, v.sentenceLh)}>
+                <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={inked(sentenceSize, variant === 'half' ? '700' : '800', m.stale ? ink.dim : ink.text, sentenceLh)}>
                   {m.sentence}
                 </T>
               </Animated.View>
@@ -514,14 +503,14 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
             <View style={styles.spacer} />
 
             <Arrive delay={wordsAt + 60} style={{ paddingRight: v.creature + 6, gap: variant === 'half' ? 4 : 6, marginTop: v.gap }}>
-              <StateRow m={m} v={v} ink={ink} />
-              <Figures m={m} v={v} ink={ink} variant={variant} width={variant === 'half' ? lowerWidth : lowerWidth / 2 - 8} delay={delay + 320} />
+              <StateRow m={m} v={v} ink={ink} width={lowerWidth} scale={scale} />
+              <Figures m={m} v={v} ink={ink} variant={variant} width={variant === 'half' ? lowerWidth : lowerWidth / 2 - 8} scale={scale} delay={delay + 320} />
               {/* The line under the numbers says only what is honest: the ETA when the engine
                   answered, since when a wait began, when a stale row's numbers were taken, or
                   that a finished turn has not been looked at. A refused ETA says nothing here. */}
-              {m.unreviewed || (m.eta && m.eta !== 'no ETA yet') ? (
-                <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={inked(v.eta, '600', ink.dim)}>
-                  {m.unreviewed ? 'not looked at yet' : m.eta}
+              {footWords && (m.unreviewed || footWords !== 'no ETA yet') ? (
+                <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={inked(footSize, '600', ink.dim)}>
+                  {footWords}
                 </T>
               ) : null}
             </Arrive>
@@ -544,7 +533,16 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
   return (
     <Block enter={false} style={styles.grow}>
       {animate && !m.stale ? (
-        <StarBorder hue={hue} radius={0} thickness={2} playKey={m.eta ?? m.sentence} style={[styles.grow, styles.comet]}>
+        <StarBorder
+          hue={hue}
+          radius={0}
+          thickness={COMET.strokePt}
+          settledThickness={COMET.settledPt}
+          length={COMET.length}
+          head={COMET.head}
+          playKey={m.eta ?? m.sentence}
+          style={[styles.grow, styles.comet]}
+        >
           {tile}
         </StarBorder>
       ) : (
@@ -554,9 +552,12 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
   );
 }
 
-/** The drawn state and its word. The word is the information; the glyph is how a glance finds it. */
-function StateRow({ m, v, ink }: { m: TileModel; v: VariantSpec; ink: Inks }) {
-  const word = inked(v.state, '800', m.stale ? ink.dim : ink.text);
+/**
+ * The drawn state and its word. The word is the information; the glyph is how a glance finds it.
+ * The word sits beside the glyph, set smaller if it must be to stay whole, or under the glyph with
+ * the row's whole measure when beside it would be too small to read at a glance (`fit.stateLayout`).
+ */
+function StateRow({ m, v, ink, width, scale }: { m: TileModel; v: VariantSpec; ink: Inks; width: number; scale: number }) {
   let glyph: ReactNode = null;
   let text: string | null = null;
   if (m.stale) {
@@ -579,8 +580,10 @@ function StateRow({ m, v, ink }: { m: TileModel; v: VariantSpec; ink: Inks }) {
     text = 'quiet';
   }
   if (!text) return null;
+  const fit = stateLayout(text, width, v.glyph, STATE_GAP, v.state, scale);
+  const word = inked(fit.size, '800', m.stale ? ink.dim : ink.text);
   return (
-    <View style={styles.state}>
+    <View style={fit.stacked ? styles.stateStacked : styles.state}>
       {glyph}
       <T maxFontSizeMultiplier={TILE_MAX_SCALE} style={[word, styles.shrink]}>
         {text}
@@ -595,7 +598,7 @@ function StateRow({ m, v, ink }: { m: TileModel; v: VariantSpec; ink: Inks }) {
  * a sign, `copy/plain.hasDash` agrees). The half tile has room for one big number, so the second
  * is a line under it; the lead and the wide set both large, each with its word under it.
  */
-function Figures({ m, v, ink, variant, width, delay }: { m: TileModel; v: VariantSpec; ink: Inks; variant: TileVariant; width: number; delay: number }) {
+function Figures({ m, v, ink, variant, width, scale, delay }: { m: TileModel; v: VariantSpec; ink: Inks; variant: TileVariant; width: number; scale: number; delay: number }) {
   const color = m.stale ? ink.dim : ink.text;
   const caption = inked(v.caption, '700', ink.dim);
   if (m.kind === 'finished' && m.landed) {
@@ -624,7 +627,9 @@ function Figures({ m, v, ink, variant, width, delay }: { m: TileModel; v: Varian
             {variant !== 'half' ? <T style={caption}>lines</T> : null}
           </View>
         ) : null}
-        {commits ? <T style={variant === 'half' ? inked(v.eta + 1, '700', color) : caption}>{commits}</T> : null}
+        {commits ? (
+          <T style={variant === 'half' ? inked(fitWords(commits, width, v.eta + 1, 'sans', scale), '700', color) : caption}>{commits}</T>
+        ) : null}
       </View>
     );
   }
@@ -751,7 +756,8 @@ const styles = StyleSheet.create({
   repo: { flex: 1, fontFamily: MONO_FAMILY },
   stamp: { borderRadius: radius.xs, borderCurve: 'continuous', backgroundColor: ON_HUE, alignItems: 'center', justifyContent: 'center' },
   spacer: { flexGrow: 1 },
-  state: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  state: { flexDirection: 'row', alignItems: 'center', gap: STATE_GAP },
+  stateStacked: { alignItems: 'flex-start', gap: 4 },
   shrink: { flexShrink: 1 },
   figures: { gap: 2 },
   row: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },

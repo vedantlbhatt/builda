@@ -65,7 +65,7 @@ import {
 import { phaseOf, planSync } from '../src/live/surface';
 import { ANIMALS } from '../src/pixel/animals';
 import { CREW_RING } from '../src/theme';
-import { clockOf } from '../src/you/numbers';
+import { timeOfDay } from '../src/copy/time';
 
 const NOW = Date.parse('2026-09-13T09:41:00Z');
 const MIN = 60_000;
@@ -209,7 +209,7 @@ function row(id: string, over: Partial<SessionDetail> = {}, stats: Record<string
 const final = (id: string, endedAgoMin: number, stats: Record<string, unknown> = {}): SessionDetail =>
   row(id, { state: 'final', end_reason: 'idle_gap', ended_at: new Date(NOW - endedAgoMin * MIN).toISOString(), started_at: new Date(NOW - (endedAgoMin + 47) * MIN).toISOString() }, stats);
 
-const at = (iso: string) => clockOf(Date.parse(iso));
+const at = (iso: string) => timeOfDay(Date.parse(iso));
 
 // ------------------------------------------------------------------ geometry and formatting
 
@@ -997,7 +997,7 @@ describe('mission control builds from the kit', () => {
   test('the comet wraps only the tile that animates: one StarBorder, behind `animate`', () => {
     const tile = files.find((f) => f.name.endsWith('MissionTile.tsx'))!.src;
     expect((tile.match(/<StarBorder\b/g) ?? []).length).toBe(1);
-    expect(tile).toMatch(/\{animate && !m\.stale \? \(\s*<StarBorder /);
+    expect(tile).toMatch(/\{animate && !m\.stale \? \(\s*<StarBorder\b/);
   });
 
   test('nothing is cut short: no line limits and no ellipsis anywhere mission control sets words', () => {

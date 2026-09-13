@@ -12,12 +12,17 @@
  * stagger is a delay and the whole page costs one animation per block; and a transform, if a
  * caller wants one, goes on a wrapping view, because on this build a transform on an animated
  * text is dropped at mount.
+ *
+ * What React renders follows the clock too (`restingText`): the first frame while the count is
+ * ahead, the resting string once it has landed. A Num that mounts into a block that has already
+ * played, or gets its data after it played, shows its value at once instead of the "0" React
+ * rendered and nothing on the UI thread would ever rewrite (the clock at rest never moves again).
  */
-import React from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedProps } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedProps, useAnimatedReaction } from 'react-native-reanimated';
 
-import { formatWith, type NumSpec } from './format';
+import { countLanded, formatWith, restingText, type NumSpec } from './format';
 import { COUNT_MS, ease, phase } from './motion';
 import { useClock } from './reveal';
 
@@ -42,13 +47,25 @@ export function Num({ spec, textStyle, delay = 0, duration = COUNT_MS, style, ac
 
   const animatedProps = useAnimatedProps(() => {
     const p = phase(clock.value, delay, duration);
-    const text = p >= 1 ? final : formatWith(fmt, value * ease(p));
+    const text = countLanded(clock.value, delay, duration) ? final : formatWith(fmt, value * ease(p));
     return { text } as unknown as Partial<React.ComponentProps<typeof TextInput>>;
   });
 
-  // Not read off the clock during render (Reanimated warns about that); the first UI frame
-  // corrects it within a frame if the block has already played.
-  const startsAt = formatWith(fmt, 0);
+  // Whether the count has landed, for what React renders. Never read off the clock during render
+  // (Reanimated warns about that): a layout effect reads it before the first paint, and the
+  // reaction keeps it in step with the UI thread from then on, a replayed block included.
+  const [landed, setLanded] = useState(false);
+  useLayoutEffect(() => {
+    if (countLanded(clock.value, delay, duration)) setLanded(true);
+  }, [clock, delay, duration]);
+  useAnimatedReaction(
+    () => countLanded(clock.value, delay, duration),
+    (now, before) => {
+      if (now !== before) runOnJS(setLanded)(now);
+    },
+    [delay, duration],
+  );
+  const startsAt = restingText(spec, landed);
   const flat = StyleSheet.flatten(textStyle) ?? {};
 
   return (

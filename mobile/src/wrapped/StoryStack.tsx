@@ -54,6 +54,7 @@ import {
   dragPose,
   incomingContentOpacity,
   incomingPose,
+  outgoingContentOpacity,
   outgoingPose,
   progressAtDistance,
   progressVelocity,
@@ -73,7 +74,7 @@ const NEXT_LIFT = 0.15;
 export interface SlotRender {
   /** This view is the front card. */
   front: boolean;
-  /** The content layer's style: dimmed behind the front, brightening as it comes forward. */
+  /** The content layer's style: hidden behind the front, brightening as it comes forward. */
   contentStyle: StyleProp<ViewStyle>;
 }
 
@@ -411,7 +412,7 @@ function Slot({
     let o = BACK_CONTENT_OPACITY;
     if (m !== 0 && slot === s.outSlot.value) {
       const swap = Z_SWAP_PROGRESS[slot];
-      o = m === 1 ? (s.p.value < swap ? 1 : BACK_CONTENT_OPACITY) : 1 - (1 - BACK_CONTENT_OPACITY) * clamp01(s.p.value / swap);
+      o = m === 1 ? outgoingContentOpacity(s.p.value, swap) : 1 - (1 - BACK_CONTENT_OPACITY) * clamp01(s.p.value / swap);
     } else if (m !== 0 && slot === s.inSlot.value) {
       o = incomingContentOpacity(s.p.value);
     } else if (slot === s.frontSlot.value) {

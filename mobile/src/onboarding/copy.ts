@@ -32,6 +32,8 @@ export const NAME = {
   label: 'what should we call you',
   placeholder: 'Your name',
   note: 'It goes on your profile and on anything you share.',
+  /** What VoiceOver hears for the control that empties the field. */
+  clear: 'Clear the name',
 } as const;
 
 export const CREATURE = {
@@ -84,18 +86,23 @@ export const TOOLS = {
  * The line under the tools headline once the account's sessions are counted, naming the
  * tools they came from: the tile's own status line has room for a word, the sentence has room
  * for the facts. `tools` are display names in picker order; with none it says what it can.
+ *
+ * WHAT IT COUNTED, SAID: the sessions uploaded to the account (`GET /v1/sessions`), which is not
+ * the number the You tab shows (the sessions your Mac read, over its report's window). FOUND IN
+ * THE FINAL CAPTURE (2026-09-13): "78 sessions" here and "143 sessions" there, with nothing to
+ * say they were two different counts.
  */
 export function toolsFound(total: number, partial: boolean, tools: readonly string[] = []): string {
   const n = partial ? `more than ${grouped(total)}` : grouped(total);
   const sessions = total === 1 && !partial ? '1 session' : `${n} sessions`;
-  if (tools.length === 1) return `Builda found ${sessions} from ${tools[0]} on your account and picked it.`;
-  if (tools.length > 1) return `Builda found ${sessions} on your account, from ${listOf(tools)}, and picked them.`;
-  return `Builda found ${sessions} on your account and picked the tools ${total === 1 && !partial ? 'it came' : 'they came'} from.`;
+  if (tools.length === 1) return `Builda found ${sessions} from ${tools[0]} uploaded to your account and picked it.`;
+  if (tools.length > 1) return `Builda found ${sessions} uploaded to your account, from ${listOf(tools)}, and picked them.`;
+  return `Builda found ${sessions} uploaded to your account and picked the tools ${total === 1 && !partial ? 'it came' : 'they came'} from.`;
 }
 
-/** Beside the big count on the tools band: "sessions on your account". */
+/** Beside the big count on the tools band: "sessions uploaded to your account". */
 export function sessionsCaption(total: number, partial: boolean): string {
-  return total === 1 && !partial ? 'session on your account' : 'sessions on your account';
+  return total === 1 && !partial ? 'session uploaded to your account' : 'sessions uploaded to your account';
 }
 
 /** Beside a tile's own count: "session" or "sessions". */

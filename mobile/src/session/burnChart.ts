@@ -104,7 +104,12 @@ export interface BurnChart {
   threshold: number;
   /** The tallest bar, in typical stretches, never under the threshold. */
   max: number;
-  /** The causes the bars and meters wear, in the order they first appear. */
+  /**
+   * The causes the BARS wear, in the order they first appear: a key says what is drawn above it
+   * and nothing else. The meters under each stretch name their own cause in a sentence and need
+   * no key. FOUND IN THE FINAL CAPTURE (2026-09-13): six causes listed under three bars that all
+   * wore one, because every meter's cause was added too.
+   */
   legend: { cause: BurnCause; label: string }[];
   /** Which fills appear, so the key under the chart says only those. */
   fills: BarFill[];
@@ -161,7 +166,6 @@ export function burnChart(b: SessionBurn | null | undefined): BurnChart | null {
     const view = spikeView(s);
     const m = meters(s);
     if (dominant) note(dominant);
-    for (const x of m) note(x.cause);
     bars.push({ key: `s${i}`, multiple: s.multiple, top: `${said(s.multiple)}×`, under: mins(s.seconds), cause: dominant, fill, spike: true });
     rows.push({
       key: `s${i}`,
@@ -214,19 +218,38 @@ export interface BurnLedgerLine {
 const PLAIN_FIGURE = /^\d[\d,]*(?:\.\d+)?[%kM]?$/;
 
 /**
+ * What the session's stretches are, said so it is true of THIS session. Burn cuts a session at
+ * your prompts, and the work before the first prompt is a stretch of its own (`burn.segments`,
+ * segment 0), so a session with no prompt is one stretch: the whole of it. FOUND IN THE FINAL
+ * CAPTURE (2026-09-13): "1 stretch, each from one prompt of yours to the next" on an agent run
+ * with 0 prompts. `prompts` is the session's own count (`human_prompt_count`); null when it did
+ * not send one. Where the two counts do not line up the way burn cuts, only the general rule is
+ * said, and a single stretch with no count to explain it says nothing.
+ */
+export function stretchNote(stretches: number, prompts: number | null): string | null {
+  if (prompts === 0) return stretches === 1 ? 'the whole session, with no prompt of yours to cut it' : null;
+  if (stretches === 1) return prompts === 1 ? 'from your one prompt to the end' : null;
+  if (prompts !== null && stretches === prompts + 1) return 'each from one prompt of yours to the next, and the work before the first';
+  return 'each from one prompt of yours to the next';
+}
+
+/**
  * The block's numbers under the chart, as lines of print: every stat `burnView` says except the
  * two the band already carries (the tokens and the share re-reading the conversation), so no
- * number is said twice on one page.
+ * number is said twice on one page. `prompts`: the session's prompt count, for the stretches' note.
  */
-export function burnLedger(view: BurnView): BurnLedgerLine[] {
+export function burnLedger(view: BurnView, prompts: number | null = null): BurnLedgerLine[] {
   if (view.kind !== 'ready') return [];
   return view.stats
     .filter((s) => s.label !== 'tokens' && s.label !== 're-reading the conversation')
-    .map((s, i) => ({
-      key: `${i}${s.label}`,
-      label: s.label,
-      note: s.label === 'stretch' || s.label === 'stretches' ? 'each from one prompt of yours to the next' : null,
-      num: PLAIN_FIGURE.test(s.value) ? numSpec(0, s.value) : null,
-      shown: s.value,
-    }));
+    .map((s, i) => {
+      const stretches = s.label === 'stretch' || s.label === 'stretches' ? Number(s.value.replace(/,/g, '')) : null;
+      return {
+        key: `${i}${s.label}`,
+        label: s.label,
+        note: stretches !== null && Number.isFinite(stretches) ? stretchNote(stretches, prompts) : null,
+        num: PLAIN_FIGURE.test(s.value) ? numSpec(0, s.value) : null,
+        shown: s.value,
+      };
+    });
 }

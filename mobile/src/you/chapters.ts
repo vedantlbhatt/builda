@@ -115,6 +115,25 @@ export interface MoneyPage {
 const PER_COMMIT_NOTE =
   "Dollars a commit are counted over the sessions a model wrote most of: a session's commits belong to the session, not to a model.";
 
+/**
+ * Which sessions the dollar covers, beside the count the You tab and the analysis page show.
+ * Those say how many sessions the Mac READ; the price covers the ones that carried token counts
+ * it could price. FOUND IN THE FINAL CAPTURE (2026-09-13): "142 sessions" here, "143" there, and
+ * nothing to say why. Both numbers, and the difference said in the words the report gives it:
+ * a session with no token counts has nothing to price (`money.token_sessions`), and one with a
+ * model the table does not know is the page's own `unpriced` line. Nothing is inferred past that.
+ */
+export function moneyScope(b: BuilderProfileResponse, m: ReportMoney, priced: number, now: number): string {
+  if (!b.report?.money) return `The last ${count(b.window_days, 'day')} on the server: ${count(priced, 'session')} priced.`;
+  const phrase = readSpan(b.report, now).phrase;
+  const read = b.report.coverage?.sessions ?? null;
+  if (read === null || priced >= read) return `${phrase}, as your Mac priced them: ${count(priced, 'session')}.`;
+  const out = [`${phrase}, as your Mac priced them: ${n(priced)} of the ${count(read, 'session')} it read.`];
+  const tokenless = read - m.token_sessions;
+  if (tokenless > 0) out.push(`${count(tokenless, 'session')} reported no token counts, so there was nothing to price.`);
+  return out.join(' ');
+}
+
 export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): MoneyPage | null {
   const view = moneyView(b.corpus, b.report, now);
   if (!view) return null;
@@ -136,12 +155,7 @@ export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): 
         };
 
   const priced = m && view.usd !== null ? m.priced_sessions : 0;
-  const scope =
-    priced > 0
-      ? b.report?.money
-        ? `${readSpan(b.report, now).phrase}, as your Mac priced them: ${count(priced, 'session')}.`
-        : `The last ${count(b.window_days, 'day')} on the server: ${count(priced, 'session')} priced.`
-      : null;
+  const scope = priced > 0 && m ? moneyScope(b, m, priced, now) : null;
 
   const bought: MoneyLedgerRow[] = [];
   if (body?.tokens) bought.push({ key: 'tokens', num: body.tokens.total, label: body.tokens.label, tone: 'hue', dollars: false });

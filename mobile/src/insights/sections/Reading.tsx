@@ -14,10 +14,11 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Band, BandWords } from '../Band';
-import { BandFigure, figure, GUTTER, Hairline, Kicker, Refusal, type, Words } from '../kit';
+import { BandFigure, figure, GUTTER, Kicker, Refusal, type, Words } from '../kit';
 import { isRefused, type Gap, type StandsOutModel, type WordsModel } from '../model';
 import { Num } from '../Num';
-import { GROUND, ON_HUE, SPECTRUM, type Hue } from '../palette';
+import { GROUND, ON_HUE, SPECTRUM, type Hue, type HueName } from '../palette';
+import { DOOR_HUE, type DoorKey } from '../../you/chapters';
 import { PixelField, type PixelCell } from '../Pixels';
 import { Block, Section } from '../reveal';
 
@@ -103,7 +104,7 @@ function Claims({ title, claims }: { title: string; claims: { text: string; evid
 
 // ------------------------------------------------------------------ 10
 
-export function WordsSection({ words, width }: { words: WordsModel; width: number }) {
+export function WordsSection({ words, width, doors = DOOR_HUE }: { words: WordsModel; width: number; doors?: Record<DoorKey, HueName> }) {
   const inner = width - GUTTER * 2;
   const g = words.glossary;
   const s = words.stack;
@@ -170,9 +171,10 @@ export function WordsSection({ words, width }: { words: WordsModel; width: numbe
 
       <Block style={styles.block}>
         <Kicker>keep going</Kicker>
-        <GoLink title="Your Wrapped" line="The fifteen questions, one card each" href="/wrapped" color={SPECTRUM.amber.ink} big />
-        <GoLink title="Money" line="Every dollar at list prices, by model" href="/you/money" color={SPECTRUM.ember.ink} big />
-        <GoLink title="Dimensions" line="The five, read one session at a time" href="/you/dimensions" color={SPECTRUM.heather.ink} big />
+        {/* Each in its door's hue on the You tab (`doorHues`), so Wrapped is brass in both places. */}
+        <GoLink title="Your Wrapped" line="The fifteen questions, one card each" href="/wrapped" color={SPECTRUM[doors.wrapped].ink} big />
+        <GoLink title="Money" line="Every dollar at list prices, by model" href="/you/money" color={SPECTRUM[doors.money].ink} big />
+        <GoLink title="Dimensions" line="The five, read one session at a time" href="/you/dimensions" color={SPECTRUM[doors.dimensions].ink} big />
       </Block>
     </Section>
   );
@@ -240,10 +242,11 @@ export function CannotSeeSection({ gaps, footer }: { gaps: Gap[]; footer: string
   const open = gaps.filter((g) => g.group === 'open');
   const mac = gaps.filter((g) => g.group === 'mac');
   return (
-    <Section style={[styles.section, { paddingHorizontal: GUTTER }]}>
+    // No rule of its own: the ways on above already end on their hairlines, and a second one after a
+    // gap read as an empty row (FOUND IN THE FINAL CAPTURE, 2026-09-13). The heading opens it.
+    <Section style={[styles.cannotSee, { paddingHorizontal: GUTTER }]}>
       <Block>
-        <Hairline />
-        <Text accessibilityRole="header" maxFontSizeMultiplier={1.4} style={[type.heading, { marginTop: 28 }]}>
+        <Text accessibilityRole="header" maxFontSizeMultiplier={1.4} style={type.heading}>
           What this cannot see
         </Text>
         <Words style={[type.dim, { marginTop: 6 }]}>
@@ -295,6 +298,7 @@ function GapRow({ gap, index }: { gap: Gap; index: number }) {
 
 const styles = StyleSheet.create({
   section: { marginTop: 56 },
+  cannotSee: { marginTop: 40 },
   block: { paddingHorizontal: GUTTER, marginTop: 28 },
   tight: { marginTop: 14 },
   caption: { marginTop: 12 },

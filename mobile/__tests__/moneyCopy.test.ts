@@ -72,7 +72,7 @@ describe('the money view', () => {
     expect(withoutACommit({ ...MONEY, share_without_a_commit: 0.004 })).toBe('$19.80 on sessions that ended with no commit, under 1% of the spend');
     expect(modelLine(MONEY.by_model[0]!)).toBe('Opus 4.8: $1,502 over 97 sessions, $6.83 a commit');
     expect(modelLine({ ...MONEY.by_model[0]!, usd_per_commit: null })).toBe('Opus 4.8: $1,502 over 97 sessions');
-    expect(totalTokens(MONEY.tokens)).toBe('4112.2M'); // 4,112,171,116
+    expect(totalTokens(MONEY.tokens)).toBe('4,112.2M'); // 4,112,171,116
     expect(linesAdded(MONEY)).toBe('+64,680');
     expect(linesRemoved(MONEY)).toBe('-9,021');
   });

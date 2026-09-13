@@ -13,7 +13,8 @@ import { StripClass } from '../src/generated/strip';
 import { heroOf, ledgerOf, partOfDay, rowOf, untitledName, wordsOf } from '../src/session/page';
 import { sampleOutcome } from '../src/session/samples';
 import { sessionTitle, summarySentences, timeSentence } from '../src/session/summary';
-import { clockLabel, whenLabel } from '../src/session/when';
+import { timeOfDay } from '../src/copy/time';
+import { whenLabel } from '../src/session/when';
 import { HERO, layoutStrip, legendOf, MINI, TRACK_HEIGHT } from '../src/strip/layout';
 
 const BASE = {
@@ -190,9 +191,9 @@ describe('a row in the list', () => {
 
 describe('when it started', () => {
   test('the clock as the analysis page writes an hour, and the day as every list files it', () => {
-    expect(clockLabel(new Date(2026, 8, 12, 13, 5).getTime())).toBe('1:05pm');
-    expect(clockLabel(new Date(2026, 8, 12, 0, 40).getTime())).toBe('12:40am');
-    expect(clockLabel(new Date(2026, 8, 12, 12, 0).getTime())).toBe('12:00pm');
+    expect(timeOfDay(new Date(2026, 8, 12, 13, 5).getTime())).toBe('1:05pm');
+    expect(timeOfDay(new Date(2026, 8, 12, 0, 40).getTime())).toBe('12:40am');
+    expect(timeOfDay(new Date(2026, 8, 12, 12, 0).getTime())).toBe('12:00pm');
     const now = new Date(2026, 8, 13, 15, 0).getTime();
     expect(whenLabel(new Date(2026, 8, 13, 9, 40).toISOString(), now)).toBe('Today at 9:40am');
     expect(whenLabel(new Date(2026, 8, 12, 13, 12).toISOString(), now)).toBe('Yesterday at 1:12pm');

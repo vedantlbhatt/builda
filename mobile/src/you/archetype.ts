@@ -15,7 +15,7 @@
  */
 import { ARCHETYPE_DISPLAY } from '../copy/catalog';
 import { count, n, pct } from '../copy/numbers';
-import type { CorpusArchetype, CorpusProfile } from '../data/api';
+import type { BuilderProfileResponse, CorpusArchetype, CorpusProfile } from '../data/api';
 import type { Archetype, ArchetypeMetric, BuilderReport, ReportArchetypeScore, ReportWrappedCard } from '../generated/report';
 
 /** Every basis `profile` stamps on a count it knows is short ends with this (wrapped.LOWER_BOUND_SUFFIX). */
@@ -371,6 +371,47 @@ export function archetypeView(corpus: CorpusProfile | null | undefined, report: 
   if (fromMac) return fromMac;
   if (corpus) return fromCorpus(corpus);
   return null;
+}
+
+/**
+ * THE ARCHETYPE, from a builder profile however it arrives: the response itself, or the JSON the
+ * You tab saves (`profile.builder.v1`). `archetypeView` over its report and corpus, so every
+ * place outside the You pages that names or leans on the type (onboarding's "this is you" card,
+ * the creature it suggests, the creature picker, the accent) reads the one choice the You tab,
+ * the analysis page and Wrapped read.
+ *
+ * FOUND IN THE FINAL CAPTURE (2026-09-13): onboarding's card said "Velocity machine" while every
+ * other screen said "Quality guardian". It read `corpus.archetype.name` first, the server's
+ * scoring, which cannot score test runs at all (see the file comment), and fell back to the
+ * modal of the per session analyses, a third answer to the same question. Neither is read here.
+ * Null when the profile names no type or does not parse.
+ */
+export function builderArchetype(
+  builder: string | Partial<Pick<BuilderProfileResponse, 'corpus' | 'report'>> | null | undefined,
+): ArchetypeView | null {
+  let b: Partial<Pick<BuilderProfileResponse, 'corpus' | 'report'>> | null = null;
+  if (typeof builder === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(builder);
+      b = parsed && typeof parsed === 'object' ? (parsed as Partial<BuilderProfileResponse>) : null;
+    } catch {
+      b = null;
+    }
+  } else if (builder && typeof builder === 'object') {
+    b = builder;
+  }
+  if (!b) return null;
+  return archetypeView(b.corpus ?? null, b.report ?? null);
+}
+
+/**
+ * The type as a line of words beside a name ("Quality guardian"), or null when there is none to
+ * say. The server's scoring says whose it is, because it can disagree with the Mac's: "Velocity
+ * machine, scored on the server".
+ */
+export function archetypeWords(v: ArchetypeView | null | undefined): string | null {
+  if (!v || v.state === 'refused' || v.id === null) return null;
+  return v.source === 'server' ? `${v.display}, scored on the server` : v.display;
 }
 
 /** Where the answer was computed, in one line under it. */

@@ -250,9 +250,9 @@ function currentId(): number {
 describe('the words', () => {
   test('the creature’s name on its own, the counts, and what VoiceOver hears for the drifting marks', () => {
     expect(creatureWord('crab')).toBe('the crab');
-    expect(sessionsCaption(1, false)).toBe('session on your account');
-    expect(sessionsCaption(1, true)).toBe('sessions on your account');
-    expect(sessionsCaption(77, false)).toBe('sessions on your account');
+    expect(sessionsCaption(1, false)).toBe('session uploaded to your account');
+    expect(sessionsCaption(1, true)).toBe('sessions uploaded to your account');
+    expect(sessionsCaption(77, false)).toBe('sessions uploaded to your account');
     expect(sessionWord(1)).toBe('session');
     expect(sessionWord(2)).toBe('sessions');
     expect(grouped(1234567)).toBe('1,234,567');

@@ -30,6 +30,7 @@ import { corpusBurnLine, corpusBurnRefusal } from '../copy/burn';
 import { KIND_NOUN, LOOKBACK_MINUTES, PROMPT_BRIEF_WORDS, REFUSALS, ROLE_WORD, SHORT_PROMPT_WORDS } from '../copy/catalog';
 import { dollars, withoutACommit } from '../copy/money';
 import { capital, clock, commas, count, floorMins, human, n, pct, shareWords, tally } from '../copy/numbers';
+import { clocksInWords, hourOfDay } from '../copy/time';
 import { renderCard, type RenderedCard } from '../copy/wrapped';
 import { narrativeView, archetypeSentence as narrativeArchetypeLine } from '../profile/narrative';
 import { coverageHint, coverageLine, fanoutWaste, shortDuration, streakLine, trendVerdict, trendWords, withinWindow } from '../profile/report';
@@ -517,8 +518,11 @@ function heroLedger(b: BuilderProfileResponse, profile: Profile | null): LedgerR
     const time = card(report, 'time_put_in');
     const hours = time && !time.reason ? time.extras.attended_hours : null;
     if (isNum(hours)) rows.push({ key: 'hours', num: numSpec(hours, n(hours)), label: 'hours with you there' });
+    // Whose count it is, on the row itself: onboarding counts what reached the account, Money
+    // what could be priced, and this is what the Mac read (FOUND IN THE FINAL CAPTURE,
+    // 2026-09-13: 78, 142 and 143 "sessions" on three screens with nothing to tell them apart).
     const sessions = report.coverage?.sessions ?? (time && !time.reason ? time.n : null);
-    if (isNum(sessions)) rows.push({ key: 'sessions', num: numSpec(sessions, commas(sessions)), label: sessions === 1 ? 'session' : 'sessions' });
+    if (isNum(sessions)) rows.push({ key: 'sessions', num: numSpec(sessions, commas(sessions)), label: sessions === 1 ? 'session your Mac read' : 'sessions your Mac read' });
     const lines = report.money?.lines_added ?? card(report, 'shipped')?.value ?? null;
     if (isNum(lines)) rows.push({ key: 'lines', num: numSpec(lines, commas(Math.round(lines))), label: 'lines shipped' });
     return rows;
@@ -530,7 +534,7 @@ function heroLedger(b: BuilderProfileResponse, profile: Profile | null): LedgerR
     rows.push({ key: 'hours', num: numSpec(h, n(h)), label: 'hours with you there' });
   }
   const sessions = profile?.totals.sessions ?? b.corpus?.sample.sessions;
-  if (isNum(sessions)) rows.push({ key: 'sessions', num: numSpec(sessions, commas(sessions)), label: sessions === 1 ? 'session' : 'sessions' });
+  if (isNum(sessions)) rows.push({ key: 'sessions', num: numSpec(sessions, commas(sessions)), label: sessions === 1 ? 'session on your account' : 'sessions on your account' });
   const lines = b.corpus?.totals.total_lines_added;
   if (isNum(lines)) rows.push({ key: 'lines', num: numSpec(lines, commas(lines)), label: 'lines shipped' });
   return rows;
@@ -643,10 +647,6 @@ export function timeOf(b: BuilderProfileResponse, profile: Profile | null, now: 
   const nightM = metric(corpus, 'night_share');
   const peakHour = isNum(peakM?.value) ? Math.round(peakM.value as number) : null;
   const nightShare = isNum(nightM?.value) ? (nightM.value as number) : null;
-  const hourSaid = (h: number) => {
-    const t = h % 12 === 0 ? 12 : h % 12;
-    return `${t}${h < 12 ? 'am' : 'pm'}`;
-  };
   if (peakHour === null) {
     const why = corpus ? metricRefusal(corpus, 'peak_hour') : 'the server has not sent its profile';
     if (why) refusals.push(sentence(`The hour you build most is not shown: ${why}`));
@@ -701,8 +701,8 @@ export function timeOf(b: BuilderProfileResponse, profile: Profile | null, now: 
     grid,
     clock: {
       peakHour,
-      peak: peakHour !== null ? numSpec(peakHour, hourSaid(peakHour), { kind: 'hour' }) : null,
-      peakLine: peakHour !== null ? `You build most at ${hourSaid(peakHour)}.` : null,
+      peak: peakHour !== null ? numSpec(peakHour, hourOfDay(peakHour), { kind: 'hour' }) : null,
+      peakLine: peakHour !== null ? `You build most at ${hourOfDay(peakHour)}.` : null,
       nightShare,
       night: nightShare !== null ? numSpec(nightShare * 100, pct(nightShare)) : null,
       nightLine: nightShare !== null ? `${pct(nightShare)} of your active time falls between 10pm and 4am.` : null,
@@ -1063,7 +1063,7 @@ export function trendsOf(b: BuilderProfileResponse): TrendsModel {
     const pctMove = Math.round(Math.abs(t.move) * 100);
     return {
       key: t.metric,
-      label: capital(t.label),
+      label: capital(clocksInWords(t.label)),
       before: t.before,
       now: t.now,
       beforeText: trendValue(t.metric, t.before),
@@ -1077,7 +1077,7 @@ export function trendsOf(b: BuilderProfileResponse): TrendsModel {
   });
   const first = report.trends[0];
   return {
-    headline: report.trend_headline ?? null,
+    headline: report.trend_headline ? clocksInWords(report.trend_headline) : null,
     trends,
     basis: first
       ? `Two equal windows back to back: ${count(first.sessions_before, 'session')} before, ${n(first.sessions_now)} now. A move under 15% is steady, and more is not always better, so only some moves get a verdict.`

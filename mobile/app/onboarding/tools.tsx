@@ -18,7 +18,7 @@ import { foundFor, initialTools, loadTools, marksInOrder, preselect, saveTools }
 import { StepBand } from '../../src/onboarding/StepBand';
 import { StepFrame, useBandInset } from '../../src/onboarding/StepFrame';
 import { ToolTiles } from '../../src/onboarding/ToolTiles';
-import { BAND_CAPTION, BAND_FIGURE, BAND_TITLE, HEADLINE } from '../../src/onboarding/type';
+import { BAND_CAPTION, BAND_FIGURE, BAND_TITLE, HEADLINE, TOOLS_FIGURE_MAX } from '../../src/onboarding/type';
 import { useAccent } from '../../src/theme/accent';
 import { space } from '../../src/theme';
 import { LogoLoop, type LoopItem } from '../../src/ui/bits/effects/LogoLoop';
@@ -133,7 +133,7 @@ export default function ToolsStep() {
           <BandFigure
             spec={numSpec(total, grouped(total))}
             width={width - 2 * GUTTER}
-            max={BAND_FIGURE.max}
+            max={TOOLS_FIGURE_MAX}
             min={BAND_FIGURE.min}
             delay={COUNT_AT_MS}
             label={`${grouped(total)} ${sessionsCaption(total, facts.partial)}`}
@@ -164,7 +164,7 @@ export default function ToolsStep() {
         </View>
       )}
       {/* Edge to edge, so the marks drift in from one side of the screen and off the other. */}
-      <View style={{ marginHorizontal: -GUTTER, marginTop: space.lg }}>
+      <View style={{ marginHorizontal: -GUTTER, marginTop: space.md }}>
         <LogoLoop items={loop} gap={LOOP_GAP} height={LOOP_MARK} accessibilityLabel={readsList(HARNESS_MARKS.map((m) => m.name))} />
       </View>
     </StepBand>

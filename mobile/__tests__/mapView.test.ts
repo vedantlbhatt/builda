@@ -178,7 +178,7 @@ describe('refusals are sentences from the data', () => {
 
   test('a finished session says when it finished', () => {
     const r = refusalCopy('finished', 'timelapse', base, NOW);
-    expect(r.text).toMatch(/^This session finished (at \d{1,2}:\d{2}|on [A-Z][a-z]{2} \d{1,2})\./);
+    expect(r.text).toMatch(/^This session finished (at \d{1,2}:\d{2}[ap]m|on [A-Z][a-z]{2} \d{1,2})\./);
     expect(r.action).toBe('session');
   });
 
@@ -236,6 +236,24 @@ describe('every sentence on both screens', () => {
 });
 
 describe('the words for numbers', () => {
+  test("the time lapse's sentence and its clock land on the same whole minutes", () => {
+    // The figure counts up to the span and stops on `elapsedLabel(span)`; the sentence under it
+    // says the same span in words. Both floor: 3,871 s is "1h 04m" in both, where a rounded
+    // sentence said "1h 05m" over a clock that stopped at "1h 04m".
+    const framesTo = (t: number) => [
+      { t: 0, file_id: 'a', kind: 'read' },
+      { t, file_id: 'a', kind: 'edit' },
+    ] as unknown as Parameters<typeof timelapseTitle>[0];
+    for (const span of [45, 60, 89, 90, 2607, 2625, 2639, 3599, 3600, 3629, 3630, 3840, 3869, 3870, 3871, 7199, 11_130]) {
+      const title = timelapseTitle(framesTo(span));
+      const clock = elapsedLabel(span);
+      if (span < 60) expect(title.startsWith('Under a minute of work')).toBe(true);
+      else if (span < 3600) expect(title).toBe(`${Math.floor(span / 60)} minute${Math.floor(span / 60) === 1 ? '' : 's'} of work so far, replayed in fifteen seconds.`.replace(/^./, (c) => c.toUpperCase()));
+      else expect(title.startsWith(`${clock} of work so far`)).toBe(true);
+      if (span >= 60 && span < 3600) expect(clock.startsWith(`${Math.floor(span / 60)}m `)).toBe(true);
+    }
+  });
+
   test('a moment in the session', () => {
     expect([0, 59, 60, 725, 3599, 3840, -4, 12.9].map(elapsedLabel)).toEqual(['0s', '59s', '1m 00s', '12m 05s', '59m 59s', '1h 04m', '0s', '12s']);
   });
@@ -246,7 +264,7 @@ describe('the words for numbers', () => {
 
   test('when: the clock on the same Builda day, the date otherwise, nothing for a bad time', () => {
     const today = new Date(NOW - 3_600_000).toISOString();
-    expect(whenOf(today, NOW)).toMatch(/^at \d{1,2}:\d{2}$/);
+    expect(whenOf(today, NOW)).toMatch(/^at \d{1,2}:\d{2}[ap]m$/);
     expect(whenOf('2026-08-29T15:00:00Z', NOW)).toMatch(/^on Aug (28|29|30)$/);
     expect(whenOf('not a time', NOW)).toBeNull();
     expect(whenOf(null, NOW)).toBeNull();

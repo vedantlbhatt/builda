@@ -53,6 +53,7 @@ import {
   type WorkStyle,
 } from './catalog';
 import { count, fill, floorMins, inTen, mins, n, pct, pyRound } from './numbers';
+import { clockWords } from './time';
 import { ROLES } from './plain';
 
 /**
@@ -318,9 +319,7 @@ export function when(iso: string, tzOffsetMinutes?: number): string | null {
   if (Number.isNaN(ms)) return null;
   const offset = tzOffsetMinutes ?? -new Date(ms).getTimezoneOffset();
   const local = new Date(ms + offset * 60_000);
-  const h = local.getUTCHours();
-  const minute = String(local.getUTCMinutes()).padStart(2, '0');
-  return `A ${DAYS[local.getUTCDay()]}, at ${h % 12 || 12}:${minute}${h < 12 ? 'am' : 'pm'}`;
+  return `A ${DAYS[local.getUTCDay()]}, at ${clockWords(local.getUTCHours(), local.getUTCMinutes())}`;
 }
 
 function crashOut(opts: RenderOptions): Words | null | typeof LOCAL_WITHOUT_QUOTE {

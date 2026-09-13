@@ -147,7 +147,7 @@ export function SessionPage(props: SessionPageProps) {
             </Section>
           ) : null}
 
-          {stage >= 2 ? <BurnSection burn={s.burn} view={burn} chart={chart} hue={SPECTRUM[hues.burn]} width={width} /> : null}
+          {stage >= 2 ? <BurnSection burn={s.burn} view={burn} chart={chart} hue={SPECTRUM[hues.burn]} width={width} prompts={promptCount(s)} /> : null}
 
           {stage >= 3 ? (
             s.analysis ? (
@@ -183,6 +183,12 @@ export function SessionPage(props: SessionPageProps) {
       </Animated.ScrollView>
     </>
   );
+}
+
+/** The session's prompt count as it sent it, or null when it sent none. */
+function promptCount(s: SessionDetail): number | null {
+  const p = (s.stats as { human_prompt_count?: unknown } | null | undefined)?.human_prompt_count;
+  return typeof p === 'number' && Number.isFinite(p) ? p : null;
 }
 
 /** When the ledger's first figure starts counting, and the gap to the next. */
@@ -260,5 +266,7 @@ const styles = StyleSheet.create({
   hairTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: GROUND.border },
   ledgerLine: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 10 },
   ledgerLabel: { flexShrink: 1 },
-  quiet: { marginTop: 48 },
+  // A block after the ledger above, not a chapter (FOUND IN THE FINAL CAPTURE, 2026-09-13: 48 on
+  // top of the block's own 30 left an empty chapter's worth of ground before two lines).
+  quiet: { marginTop: 8 },
 });

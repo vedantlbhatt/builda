@@ -122,36 +122,8 @@ export async function saveAnimal(kv: Kv, animal: Animal): Promise<void> {
 }
 
 // ─── the archetype, for the suggestion ──────────────────────────────────────────────
-
-interface ProfileLike {
-  builder_profile?: { archetype?: { modal?: string | null } | null } | null;
-}
-
-interface BuilderLike {
-  corpus?: { archetype?: { name?: string | null } | null } | null;
-  builder_profile?: { archetype?: { modal?: string | null } | null } | null;
-}
-
-/**
- * The archetype the account already has, from what the app has cached: the corpus rules'
- * pick first (`GET /v1/profile/builder`, cached by the You tab as JSON), then the modal of the
- * per-session analyses (`GET /v1/profile`). Null when neither has one yet.
- */
-export function archetypeFrom(builder: BuilderLike | string | null | undefined, profile?: ProfileLike | null): string | null {
-  let b: BuilderLike | null = null;
-  if (typeof builder === 'string') {
-    try {
-      b = JSON.parse(builder) as BuilderLike;
-    } catch {
-      b = null;
-    }
-  } else if (builder) {
-    b = builder;
-  }
-  const candidates = [b?.corpus?.archetype?.name, b?.builder_profile?.archetype?.modal, profile?.builder_profile?.archetype?.modal];
-  for (const c of candidates) if (typeof c === 'string' && c.length > 0) return c;
-  return null;
-}
+// Which archetype the account has is `you/archetype.builderArchetype`, the one choice every page
+// reads (the Mac's report first, the server's scoring only without one). Nothing here reads it.
 
 /**
  * The creature an archetype earned, or null when there is no archetype or one this build has

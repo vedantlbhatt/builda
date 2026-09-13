@@ -136,12 +136,14 @@ describe('the money page', () => {
     expect(m.hero.read).toBe('Prices read Sep 6.');
     // The committed report was built over ALL history (its first sitting 2026-08-12 00:44 UTC,
     // 33 dates, under `window_days: 30`), so the page says the stretch it read, never the window.
-    expect(m.scope).toBe(`${FIXTURE_SPAN}, as your Mac priced them: 157 sessions.`);
+    // 157 priced of the 158 the Mac read (the count the You tab shows): the one with no token
+    // counts is said, not left for a reader to notice.
+    expect(m.scope).toBe(`${FIXTURE_SPAN}, as your Mac priced them: 157 of the 158 sessions it read. 1 session reported no token counts, so there was nothing to price.`);
   });
 
   test('what it bought and what it wrote: tokens, the hour, lines added in green and removed in red', () => {
     expect(m.bought.map((r) => [r.key, r.num.final, r.label, r.dollars])).toEqual([
-      ['tokens', '4170.5M', 'tokens, 99% cache reads', false],
+      ['tokens', '4,170.5M', 'tokens, 99% cache reads', false],
       ['hour', '$34.65', 'an active hour, at the same prices', true],
     ]);
     if (isRefused(m.lines)) throw new Error('the fixture counts lines');

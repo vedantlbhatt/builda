@@ -18,7 +18,7 @@ import { decodeMarks } from '../strip/decode';
 import { legendOf } from '../strip/layout';
 import { StripDraw } from '../strip/StripDraw';
 import { colors } from '../theme';
-import { clockLabel } from './when';
+import { timeOfDay } from '../copy/time';
 
 const strip = colors('dark').strip;
 
@@ -50,10 +50,10 @@ function Drawn({ session, width, live }: { session: SessionDetail; width: number
       <StripDraw preset="hero" cols={s.cols} marks={marks} spanMs={Math.max(1, s.t1_ms - s.t0_ms)} width={width} clock={clock} delay={ROUTE_AT} sweepMs={1000} />
       <View style={styles.ends}>
         <Text allowFontScaling={false} style={[type.mono, styles.end]}>
-          {Number.isFinite(start) ? clockLabel(start) : ''}
+          {Number.isFinite(start) ? timeOfDay(start) : ''}
         </Text>
         <Text allowFontScaling={false} style={[type.mono, styles.end]}>
-          {live ? 'now' : Number.isFinite(end) ? clockLabel(end) : ''}
+          {live ? 'now' : Number.isFinite(end) ? timeOfDay(end) : ''}
         </Text>
       </View>
       <View style={styles.legend}>

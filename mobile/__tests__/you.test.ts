@@ -271,7 +271,7 @@ describe('numbers', () => {
     expect(maskDollars('97 sessions · 9.1M output tokens · $6.83 a commit')).toBe('97 sessions · 9.1M output tokens · $••• a commit');
     expect(maskDollars('$1,873 at API list prices')).toBe(`${MASKED_DOLLARS} at API list prices`);
     expect(maskDollars('$0.43 an active hour')).toBe('$••• an active hour');
-    expect(maskDollars('4112.2M tokens, 95% cache reads')).toBe('4112.2M tokens, 95% cache reads');
+    expect(maskDollars('4,112.2M tokens, 95% cache reads')).toBe('4,112.2M tokens, 95% cache reads');
   });
 
   test('an instant belongs to the Builda day it happened on: 01:30 is the evening before', () => {
@@ -479,7 +479,7 @@ describe('money', () => {
       label: 'at API list prices, read Sep 6',
       stale: false,
     });
-    expect(v.tokens).toEqual({ value: '4112.2M', label: 'tokens, 95% cache reads' });
+    expect(v.tokens).toEqual({ value: '4,112.2M', label: 'tokens, 95% cache reads' });
     expect({ added: v.added, removed: v.removed, refusal: v.linesRefusal }).toEqual({ added: '+64,680', removed: '-9,021', refusal: null });
     expect(v.perHour).toBe('$22.10 an active hour');
     expect(v.models).toEqual([
@@ -522,7 +522,7 @@ describe('money', () => {
     const everything = [v.perHour ?? '', ...v.models.map((m) => m.meta), ...v.sentences].map(maskDollars).join('\n');
     expect(/\$\d/.test(everything)).toBe(false);
     expect(everything).toContain(MASKED_DOLLARS);
-    expect(v.tokens?.value).toBe('4112.2M');
+    expect(v.tokens?.value).toBe('4,112.2M');
     // The You tab's money door carries the digits apart from the sign, so the mask can hide them
     // without a dollar ever counting up on screen.
     const d = youTab(builder({ report: report({ money: money() }) }), null, NOW).doors.find((x) => x.key === 'money')!;
@@ -731,7 +731,7 @@ describe('the five states', () => {
   test('the stale line names what failed and when the page on screen was saved', () => {
     const at = new Date(2026, 8, 13, 9, 41).getTime();
     expect(staleLine({ savedAt: at, message: 'Builda is not reachable right now.' }, NOW)).toBe(
-      'Builda is not reachable right now. Showing what was saved at 9:41.',
+      'Builda is not reachable right now. Showing what was saved at 9:41am.',
     );
     expect(staleLine({ savedAt: new Date(2026, 7, 29, 20, 0).getTime(), message: 'Timed out' }, NOW)).toBe('Timed out. Showing what was saved on Aug 29.');
     expect(staleLine({ savedAt: null, message: 'Timed out' }, NOW)).toBe('Timed out. Showing what was saved last.');

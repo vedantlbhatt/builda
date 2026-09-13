@@ -215,6 +215,12 @@ export interface CardType {
   noteLine: number;
   refusal: number;
   refusalLine: number;
+  /**
+   * Air between the last line of words and the art under them. FOUND IN THE FINAL CAPTURE
+   * (2026-09-13, shot 65): card 13's mosaic fills its box to the top, and its sentence's second
+   * line sat on the first row of cells. The words keep this much ground under them on every card.
+   */
+  artGap: number;
   /** The art never gets less than this; the answer gives way first (`SQUEEZE`). */
   minArt: number;
   /** The creature's sizes where the art has room, largest first: whole 3 and 4 point pixels. */
@@ -244,6 +250,7 @@ export const CARD_TYPE: Record<CardVariant, CardType> = {
     noteLine: 19,
     refusal: 25,
     refusalLine: 31,
+    artGap: 18,
     minArt: 104,
     creature: [64, 48],
   },
@@ -270,6 +277,7 @@ export const CARD_TYPE: Record<CardVariant, CardType> = {
     noteLine: 16,
     refusal: 18,
     refusalLine: 23,
+    artGap: 12,
     minArt: 84,
     creature: [48],
   },

@@ -122,6 +122,25 @@ From `~/Downloads/projects/design-refs/research/paxel.md` and `SYNTHESIS.md` sec
 
 Do NOT build remote control (Part 4).
 
+## Owner override, 2026-09-13 09:22 (this wins over DESIGN-DIRECTION.md where they disagree)
+
+After seeing the first build: "Use more of the UI and react bits stuff I gave you, you haven't
+used ANYTHING yet. Also why are all of them the same color? Looks horrible. Make it look
+beautiful, clean, dynamic, animated."
+
+- The one accent rule is lifted. Keep the warm dark neutrals, but give identity real colour:
+  each creature, each Wrapped card, each session tile gets its own hue from one harmonious
+  spectrum. Amber stays the brand and the primary action.
+- react-bits (and the Appllama patterns) must be VISIBLY used across the app: animated shader
+  backgrounds, text animations, card stacks, lists, tap sparks, transitions. Ported to React
+  Native with Skia and Reanimated, David Haz's notice kept.
+- Beautiful, clean, dynamic, animated. Still no clutter: colour is spent on identity and
+  data, motion on moments that matter, and nothing jitters while you read it.
+
+Also asked: "what is $2951 in api usage? I don't actually have to pay that right?" No. It is
+what the tokens would cost at Anthropic's public API list prices. On a subscription you pay
+the plan. The money view must say so in words, never "you spent".
+
 ## Design mandate
 
 Use these, do not hand roll:

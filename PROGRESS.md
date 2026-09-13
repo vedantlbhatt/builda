@@ -42,10 +42,12 @@ section.
   words for navigation. Theme = the builder's creature hue (11:58), amber retired from chrome.
   `design-refs/HOUSE-STYLE.md`. Real tool logos via `src/pixel/HarnessLogo.tsx` (86232de).
 - Landed: v2 spectrum (c4ac68f), react-bits ports (5dbc073), creature hues (04323c8), the
-  analysis page (69ac174), chrome + theme (fdac4fa), worklet crash fix (c150d95).
-- Running as agents (the colour workflow was stopped before its bento screens): You + Money +
-  dimensions + glossary + stack; Wrapped; mission control + Now + LiveBar; sessions + the
-  session screen; onboarding with the real logos; the codebase map + time lapse.
+  analysis page (69ac174), chrome + theme (fdac4fa), worklet crash fix (c150d95), map and
+  time lapse (f7e43f0), You + Money (545f75c), mission control (d37b204), sessions
+  (e2a5466), onboarding (e75eb19), Wrapped (eec66ad). bun test 2025, tsc clean.
+- Running: the native recolour (crew creature hue per session, finished is not needs you,
+  generated Palette.swift, logos natively) + rebuild + captures; an adversarial review
+  (report only until native lands).
 - Next: one simulator capture pass of every screen, the native recolour (Live Activity,
   island, widget in the creature hue) + rebuild, the adversarial review that was stopped
   (privacy, numbers, code), the artifact.
@@ -126,3 +128,6 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   "shipped" sub line truncates ("247 com..."); Now tile says "1 running · 1 needs you" for a
   session whose sentence is "Finished, with one file changed" (finished unreviewed needs a
   clearer word than running); repo name truncates to "pr…epo" beside "needs you".
+- native pass must also: draw each session in its crew creature's hue on the Lock Screen and
+  island (src/live/activity.ts still uses the builder's own creature), and stop calling a
+  finished unreviewed session "needs you" there (mission control's tilePhase rule).

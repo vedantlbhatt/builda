@@ -179,7 +179,7 @@ export function TimelineStrip({
   return (
     <View
       style={[
-        { width, height, borderRadius: CORNER[preset], overflow: 'hidden' },
+        { width, height, borderRadius: CORNER[preset], borderCurve: 'continuous', overflow: 'hidden' },
         style,
       ]}
       accessible

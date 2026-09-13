@@ -177,3 +177,64 @@ describe('cache live sessions', () => {
     expect((await cache.listSessions(50)).map((s) => s.id)).toContain('s3');
   });
 });
+
+describe('sign-out keeps what describes the install', () => {
+  test('clear() drops the person\'s kv and sessions and keeps device.* keys', async () => {
+    await cache.setKv('device.onboarded.v1', '1');
+    await cache.setKv('profile.name.v1', 'Ada');
+    await cache.setKv('profile.animal.v1', 'fox');
+    await cache.setKv('devicex', 'not a device key');
+    await cache.putDetail(session('s-clear'));
+
+    await cache.clear();
+
+    expect(await cache.getKv('device.onboarded.v1')).toBe('1');
+    expect(await cache.getKv('profile.name.v1')).toBeNull();
+    expect(await cache.getKv('profile.animal.v1')).toBeNull();
+    expect(await cache.getKv('devicex')).toBeNull();
+    expect(await cache.getDetail('s-clear')).toBeNull();
+    expect(cache.DEVICE_KEY_PREFIX).toBe('device.');
+  });
+});
+
+describe('an install whose kv predates this cache', () => {
+  function handleFor(db: Database) {
+    return {
+      execAsync: async (sql: string) => {
+        db.exec(sql);
+      },
+      runAsync: async (sql: string, ...params: (string | number | null)[]) => {
+        db.query(sql).run(...params);
+      },
+      getAllAsync: async (sql: string, ...params: (string | number | null)[]) => db.query(sql).all(...params),
+      getFirstAsync: async (sql: string, ...params: (string | number | null)[]) => db.query(sql).get(...params) ?? null,
+    };
+  }
+
+  test('kv(key, value) from the August build becomes kv(k, v), rows carried over', async () => {
+    const db = new Database(':memory:');
+    db.exec("CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO kv VALUES ('profile.animal.v1', 'fox');");
+    await cache.migrateKv(handleFor(db) as never);
+    const cols = (db.query('PRAGMA table_info(kv)').all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toEqual(['k', 'v']);
+    expect(db.query("SELECT v FROM kv WHERE k = 'profile.animal.v1'").get()).toEqual({ v: 'fox' });
+    // And the table the old schema lived in is gone, not left beside it.
+    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'kv_legacy'").get()).toBeNull();
+  });
+
+  test('a current kv is left alone', async () => {
+    const db = new Database(':memory:');
+    db.exec("CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT); INSERT INTO kv VALUES ('a', '1');");
+    await cache.migrateKv(handleFor(db) as never);
+    expect(db.query('SELECT k, v FROM kv').all()).toEqual([{ k: 'a', v: '1' }]);
+  });
+
+  test('an unrecognisable kv is replaced, not copied', async () => {
+    const db = new Database(':memory:');
+    db.exec("CREATE TABLE kv (name TEXT, blob TEXT); INSERT INTO kv VALUES ('x', 'y');");
+    await cache.migrateKv(handleFor(db) as never);
+    expect(db.query('SELECT * FROM kv').all()).toEqual([]);
+    const cols = (db.query('PRAGMA table_info(kv)').all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toEqual(['k', 'v']);
+  });
+});

@@ -56,7 +56,7 @@ export default function UserScreen() {
   }, [busy, profile]);
 
   const header = profile ? (
-    <View style={{ backgroundColor: c.card, borderRadius: 12, padding: space.md, marginBottom: space.md }}>
+    <View style={{ backgroundColor: c.card, borderRadius: 12, borderCurve: 'continuous', padding: space.md, marginBottom: space.md }}>
       <Text style={{ color: c.text, fontSize: 22, fontWeight: '700' }}>
         {profile.display_name ?? profile.handle}
       </Text>
@@ -75,6 +75,7 @@ export default function UserScreen() {
               marginTop: space.md,
               alignSelf: 'flex-start',
               borderRadius: 999,
+              borderCurve: 'continuous',
               paddingHorizontal: space.md,
               minHeight: FOLLOW_HEIGHT,
               justifyContent: 'center',

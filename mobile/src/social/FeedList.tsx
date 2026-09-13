@@ -389,6 +389,7 @@ const chip = {
   borderWidth: 1,
   borderColor: c.border,
   borderRadius: 999,
+  borderCurve: 'continuous',
   paddingHorizontal: 8,
   paddingVertical: 3,
 } as const;
@@ -404,6 +405,7 @@ const hardPart = {
 const row = {
   backgroundColor: c.card,
   borderRadius: 12,
+  borderCurve: 'continuous',
   padding: space.md,
   marginBottom: space.sm,
 } as const;
@@ -416,6 +418,7 @@ const COUNTER_HIT_SLOP = hitSlopToReach(COUNTER_HEIGHT);
 
 const counter = {
   borderRadius: 999,
+  borderCurve: 'continuous',
   borderWidth: 1,
   borderColor: c.border,
   paddingHorizontal: space.md,
@@ -428,6 +431,7 @@ const counterOn = { backgroundColor: c.accent, borderColor: c.accent } as const;
 const banner = {
   backgroundColor: c.card,
   borderRadius: 12,
+  borderCurve: 'continuous',
   borderWidth: 1,
   borderColor: c.textDim,
   padding: space.md,

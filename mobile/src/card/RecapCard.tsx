@@ -179,7 +179,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
         <Text style={{ fontSize: 30 * s, fontWeight: '600', color: c.text }}>
           {model.repoName ?? 'private repo'}
         </Text>
-        <Text style={{ fontSize: 26 * s, color: c.textDim, marginLeft: 16 * s }}>
+        <Text style={{ fontSize: 26 * s, color: c.textDim, marginLeft: 16 * s, fontVariant: ['tabular-nums'] }}>
           {date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
         </Text>
         <View style={{ flex: 1 }} />
@@ -194,6 +194,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
             fontWeight: '700',
             color: c.text,
             letterSpacing: -1.5 * s,
+            fontVariant: ['tabular-nums'],
           }}
           numberOfLines={2}
           adjustsFontSizeToFit
@@ -218,7 +219,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
             {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
           </Text>
           <View style={{ flex: 1 }} />
-          <Text style={{ fontSize: 24 * s, color: c.textDim }}>
+          <Text style={{ fontSize: 24 * s, color: c.textDim, fontVariant: ['tabular-nums'] }}>
             {duration(model.activeSeconds)} active · {duration(model.wallSeconds)} elapsed
           </Text>
           <View style={{ flex: 1 }} />
@@ -234,7 +235,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
       <View style={styles.header}>
         {stats.map(([value, label]) => (
           <View key={label} style={{ flex: 1 }}>
-            <Text style={{ fontSize: 40 * s, fontWeight: '600', color: c.text }}>{value}</Text>
+            <Text style={{ fontSize: 40 * s, fontWeight: '600', color: c.text, fontVariant: ['tabular-nums'] }}>{value}</Text>
             <Text style={{ fontSize: 22 * s, color: c.textDim }}>{label}</Text>
           </View>
         ))}
@@ -246,6 +247,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
             width: 16 * s,
             height: 16 * s,
             borderRadius: 3 * s,
+            borderCurve: 'continuous',
             backgroundColor: c.accent,
             marginRight: 10 * s,
           }}
@@ -266,6 +268,7 @@ function Badge({ text, scheme, scale }: { text: string; scheme: Scheme; scale: n
         borderWidth: 1.5,
         borderColor: c.border,
         borderRadius: 999,
+        borderCurve: 'continuous',
         paddingHorizontal: 16 * scale,
         paddingVertical: 8 * scale,
         marginLeft: 12 * scale,

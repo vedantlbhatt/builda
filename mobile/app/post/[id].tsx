@@ -162,6 +162,7 @@ export default function PostScreen() {
             color: c.text,
             backgroundColor: c.card,
             borderRadius: 12,
+            borderCurve: 'continuous',
             paddingHorizontal: space.md,
             paddingVertical: space.sm,
             maxHeight: 120,
@@ -175,6 +176,7 @@ export default function PostScreen() {
             {
               backgroundColor: c.accent,
               borderRadius: 12,
+              borderCurve: 'continuous',
               paddingHorizontal: space.md,
               justifyContent: 'center',
               opacity: !draft.trim() || sending ? 0.5 : pressed ? 0.8 : 1,
@@ -200,6 +202,7 @@ const sectionTitle = {
 const banner = {
   backgroundColor: c.card,
   borderRadius: 12,
+  borderCurve: 'continuous',
   borderWidth: 1,
   borderColor: c.textDim,
   padding: space.md,

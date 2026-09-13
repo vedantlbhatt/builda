@@ -1,10 +1,9 @@
 import React from 'react';
-import { Image, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { PostMedia } from '../data/api';
-import { colors, space } from '../theme';
-
-const c = colors('dark');
+import { space } from '../theme';
+import { SHAPE, T, useColors } from '../ui';
 
 const GAP = 4;
 const COLUMNS = 3;
@@ -40,13 +39,7 @@ export function PhotoGrid({
           const ratio = p.width && p.height ? p.width / p.height : 4 / 3;
           const h = Math.round(width / ratio);
           return p.url ? (
-            <Image
-              key={p.id}
-              source={{ uri: p.url }}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
-              style={{ width, height: h, borderRadius: 10, backgroundColor: c.border }}
-            />
+            <Photo key={p.id} uri={p.url} width={width} height={h} />
           ) : (
             <Placeholder key={p.id} width={width} height={Math.min(h, width)} label={countLabel} />
           );
@@ -60,17 +53,7 @@ export function PhotoGrid({
   return (
     <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }, style]}>
       {photos.map((p) => {
-        if (p.url) {
-          return (
-            <Image
-              key={p.id}
-              source={{ uri: p.url }}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
-              style={{ width: tile, height: tile, borderRadius: 8, backgroundColor: c.border }}
-            />
-          );
-        }
+        if (p.url) return <Photo key={p.id} uri={p.url} width={tile} height={tile} />;
         const label = labeled ? null : countLabel;
         labeled = true;
         return <Placeholder key={p.id} width={tile} height={tile} label={label} />;
@@ -79,19 +62,35 @@ export function PhotoGrid({
   );
 }
 
+/** One photo, clipped to the inner radius: an Image takes no borderCurve of its own. */
+function Photo({ uri, width, height }: { uri: string; width: number; height: number }) {
+  const c = useColors();
+  return (
+    <View style={{ width, height, borderRadius: SHAPE.inner, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.raised }}>
+      <Image source={{ uri }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ width, height }} />
+    </View>
+  );
+}
+
 function Placeholder({ width, height, label }: { width: number; height: number; label: string | null }) {
+  const c = useColors();
   return (
     <View
       style={{
         width,
         height,
-        borderRadius: 8,
-        backgroundColor: c.border,
+        borderRadius: SHAPE.inner,
+        borderCurve: 'continuous',
+        backgroundColor: c.raised,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      {label && <Text style={{ color: c.textDim, fontSize: 12, fontWeight: '600' }}>{label}</Text>}
+      {label ? (
+        <T role="meta" weight={600} tone="dim">
+          {label}
+        </T>
+      ) : null}
     </View>
   );
 }

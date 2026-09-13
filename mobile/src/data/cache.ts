@@ -60,6 +60,12 @@ function db(): Promise<Db | null> {
         } catch {
           // column exists
         }
+        try {
+          await migrateKv(handle);
+        } catch (e) {
+          // Sessions still cache without it; only the kv stays as broken as it was.
+          warnOnce('migrateKv', e);
+        }
         return handle;
       } catch (e) {
         warnOnce('open', e);
@@ -68,6 +74,35 @@ function db(): Promise<Db | null> {
     })();
   }
   return dbPromise;
+}
+
+/**
+ * Give an old `kv` table the columns this file reads.
+ *
+ * The August build, whose data layer was never committed (1832f86 reconstructed it), created
+ * `kv (key, value)`. `CREATE TABLE IF NOT EXISTS kv (k, v)` then skips over it, and every
+ * `getKv`/`setKv` on that install fails with "no such column" into `guarded`, which returns
+ * the fallback: the chosen creature, the cached profile and the onboarding flag were all
+ * silently never stored. FOUND on the iOS simulator this build runs on. The old rows are
+ * carried over when the old columns are recognisable and dropped otherwise.
+ */
+export async function migrateKv(d: Db): Promise<void> {
+  const cols = (await d.getAllAsync<{ name: string }>('PRAGMA table_info(kv)')).map((c) => c.name);
+  if (cols.includes('k') && cols.includes('v')) return;
+  const carry = cols.includes('key') && cols.includes('value');
+  try {
+    await d.execAsync(`
+      BEGIN;
+      ALTER TABLE kv RENAME TO kv_legacy;
+      CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT);
+      ${carry ? 'INSERT OR IGNORE INTO kv (k, v) SELECT key, value FROM kv_legacy;' : ''}
+      DROP TABLE kv_legacy;
+      COMMIT;
+    `);
+  } catch (e) {
+    await d.execAsync('ROLLBACK;').catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Run one guarded access; any failure logs once and yields the fallback. */
@@ -324,9 +359,16 @@ export async function lastSyncAt(): Promise<string | null> {
   });
 }
 
+/**
+ * Keys under this prefix describe the install, not the person signed in to it (the onboarding
+ * flag, `src/nav/rules.ts`), and survive `clear()`. Nothing about a person may use it.
+ */
+export const DEVICE_KEY_PREFIX = 'device.';
+
 /** Sign-out: the cached sessions are the user's data, not ours to keep. */
 export async function clear(): Promise<void> {
   await guarded('clear', undefined, async (d) => {
-    await d.execAsync('DELETE FROM sessions; DELETE FROM profile; DELETE FROM kv;');
+    await d.execAsync('DELETE FROM sessions; DELETE FROM profile;');
+    await d.runAsync("DELETE FROM kv WHERE substr(k, 1, ?) <> ?", DEVICE_KEY_PREFIX.length, DEVICE_KEY_PREFIX);
   });
 }

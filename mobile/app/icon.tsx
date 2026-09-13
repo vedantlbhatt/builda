@@ -1,17 +1,24 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as cache from '../src/data/cache';
 import { PixelAnimal, PixelAnimalIcon } from '../src/pixel/PixelAnimal';
 import { ANIMALS, type Animal } from '../src/pixel/animals';
 import { openOn, step, view } from '../src/pixel/carousel';
-import { colors, space } from '../src/theme';
+import { colors, layout, space } from '../src/theme';
+import { Button, haptics, Surface, SymbolIcon, T } from '../src/ui';
 
 const c = colors('dark');
 
 /** Where the chosen creature lives. Local: it is a preference, not a fact about the work. */
 export const ANIMAL_KEY = 'profile.animal.v1';
+
+/** The creature in the middle: a multiple of 16, so every cell is whole device pixels. */
+const STAGE_CREATURE = 128;
+/** A neighbour beside a chevron, still: 32pt, the smallest size a creature reads at. */
+const NEIGHBOUR = 32;
 
 /**
  * Pick your creature: one animated in the middle, a chevron either side.
@@ -27,6 +34,7 @@ export const ANIMAL_KEY = 'profile.animal.v1';
  */
 export default function IconScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [animal, setAnimal] = useState<Animal>(ANIMALS[0]!);
   const [ready, setReady] = useState(false);
 
@@ -47,106 +55,72 @@ export default function IconScreen() {
     router.back();
   }
 
-  return (
-    <View style={{ flex: 1, backgroundColor: c.bg, padding: space.md, justifyContent: 'center' }}>
-      <Text
-        style={{
-          color: c.textDim,
-          fontSize: 11,
-          fontWeight: '700',
-          letterSpacing: 1,
-          textAlign: 'center',
-        }}
-      >
-        PICK YOUR CREATURE
-      </Text>
-      <Text
-        style={{
-          color: c.text,
-          fontSize: 15,
-          lineHeight: 21,
-          textAlign: 'center',
-          marginTop: space.sm,
-          paddingHorizontal: space.lg,
-        }}
-      >
-        It goes on your profile and on everything you post. You can change it whenever.
-      </Text>
+  /** A chevron press passes a step: the selection tick, on the same frame as the swap. */
+  function move(by: -1 | 1) {
+    haptics.select();
+    setAnimal(step(animal, by));
+  }
 
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: space.xl,
-          gap: space.md,
-        }}
-      >
-        <Chevron
-          dir="left"
-          neighbour={v.previous}
-          onPress={() => setAnimal(step(animal, -1))}
-        />
-        <View
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: c.bg,
+        paddingHorizontal: layout.gutter,
+        paddingTop: space.md,
+        paddingBottom: insets.bottom + space.md,
+        gap: space.lg,
+      }}
+    >
+      {/* Left aligned, like every heading. Only the creature is centred: it is the thing
+          being looked at. No caption over this line: the bar already says "Your creature",
+          and a "pick your creature" under it said it twice. */}
+      <T role="body" tone="dim">
+        It goes on your profile and on everything you post. You can change it whenever.
+      </T>
+
+      {/* The stage sits under the sentence that introduces it, and the free space collects
+          above the button, where a form's space goes. Centred in the leftover height it
+          floated with 190pt of nothing on either side. */}
+      <View style={{ flex: 1, gap: space.md }}>
+        {/* The stage: a plain card, no amber outline. The creature carries the colour. */}
+        <Surface
           style={{
-            width: 168,
-            height: 168,
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: c.accent,
-            backgroundColor: c.card,
+            flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: 'space-between',
+            paddingVertical: space.lg,
           }}
         >
-          {/* Only this one moves. Eight looping sprites at once is a fairground. */}
-          {ready && <PixelAnimal animal={animal} size={128} />}
+          <Chevron dir="left" neighbour={v.previous} onPress={() => move(-1)} />
+          <View style={{ width: STAGE_CREATURE, height: STAGE_CREATURE, alignItems: 'center', justifyContent: 'center' }}>
+            {/* Only this one moves. Eight looping sprites at once is a fairground. */}
+            {ready && <PixelAnimal animal={animal} size={STAGE_CREATURE} />}
+          </View>
+          <Chevron dir="right" neighbour={v.next} onPress={() => move(1)} />
+        </Surface>
+
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.md }}>
+          <T role="title" style={{ flex: 1 }} accessibilityLiveRegion="polite">
+            {v.label}
+          </T>
+          <T role="meta" tone="dim">
+            {v.position} of {v.total}
+          </T>
         </View>
-        <Chevron dir="right" neighbour={v.next} onPress={() => setAnimal(step(animal, 1))} />
       </View>
 
-      <Text
-        style={{
-          color: c.accent,
-          fontSize: 22,
-          fontWeight: '800',
-          textAlign: 'center',
-          marginTop: space.lg,
-        }}
-      >
-        {v.label}
-      </Text>
-      <Text style={{ color: c.textDim, fontSize: 12, textAlign: 'center', marginTop: 2 }}>
-        {v.position} of {v.total}
-      </Text>
-
-      <Pressable
-        onPress={choose}
-        accessibilityRole="button"
-        accessibilityLabel={`Choose the ${v.label}`}
-        style={({ pressed }) => ({
-          marginTop: space.xl,
-          marginHorizontal: space.xl,
-          paddingVertical: space.md,
-          borderRadius: 14,
-          backgroundColor: c.accent,
-          opacity: pressed ? 0.8 : 1,
-        })}
-      >
-        <Text style={{ color: c.bg, fontSize: 16, fontWeight: '800', textAlign: 'center' }}>
-          Choose the {v.label}
-        </Text>
-      </Pressable>
+      <Button label={`Choose the ${v.label}`} onPress={() => void choose()} />
     </View>
   );
 }
 
 /**
- * One chevron, with the creature it leads to drawn small and still beside it.
+ * One chevron, with the creature it leads to drawn small and still under it.
  *
  * A bare arrow makes somebody press it to find out what is there. Showing the neighbour
  * turns eight presses into one glance, and a still frame keeps it from competing with the
- * one in the middle.
+ * one in the middle. The chevron is chrome, so it is an SF Symbol in `textDim`, not amber.
  */
 function Chevron({
   dir,
@@ -162,13 +136,11 @@ function Chevron({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${dir === 'left' ? 'Previous' : 'Next'} creature, the ${neighbour}`}
-      hitSlop={16}
-      style={({ pressed }) => ({ alignItems: 'center', opacity: pressed ? 0.5 : 1 })}
+      hitSlop={space.md}
+      style={({ pressed }) => ({ alignItems: 'center', gap: space.sm, opacity: pressed ? 0.5 : 1 })}
     >
-      <Text style={{ color: c.accent, fontSize: 34, fontWeight: '300', lineHeight: 38 }}>
-        {dir === 'left' ? '‹' : '›'}
-      </Text>
-      <PixelAnimalIcon animal={neighbour} size={28} style={{ opacity: 0.45 }} />
+      <SymbolIcon name={dir === 'left' ? 'chevron.left' : 'chevron.right'} size={22} weight="semibold" tone="dim" />
+      <PixelAnimalIcon animal={neighbour} size={NEIGHBOUR} style={{ opacity: 0.45 }} />
     </Pressable>
   );
 }

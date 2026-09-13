@@ -1,14 +1,15 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
-import * as Haptics from 'expo-haptics';
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../src/data/client';
 import { parsePairingCode } from '../src/pairing/parse';
 import { PixelSprite } from '../src/pixel/PixelSprite';
 import type { SpriteState } from '../src/pixel/sprites';
-import { colors, space } from '../src/theme';
+import { colors, layout, space } from '../src/theme';
+import { Button, failure, SHAPE, Surface, success, T } from '../src/ui';
 
 /**
  * "Connect your Mac": scan the code `builder pair` shows instead of typing it.
@@ -79,11 +80,11 @@ export default function PairScreen() {
       setStatus({ kind: 'busy', text: `Pairing ${code}…` });
       try {
         const paired = await api.approvePairing(code);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        success();
         setStatus({ kind: 'ok', text: `Paired with ${paired.label}.` });
         later(() => router.back(), LEAVE_DELAY_MS);
       } catch {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        failure();
         setStatus({ kind: 'error', text: 'That code was not recognised, or it expired. Try again.' });
         later(() => {
           lockRef.current = false;
@@ -104,19 +105,23 @@ export default function PairScreen() {
 
   if (signedIn === false) {
     return (
-      <Notice title="Sign in first">
-        Pairing attaches your Mac to your account, so there has to be one.
-        <TypeInstead label="Go to Settings" />
-      </Notice>
+      <Notice
+        title="Sign in first"
+        text="Pairing attaches your Mac to your account, so there has to be one."
+        actions={<TypeInstead label="Go to Settings" />}
+      />
     );
   }
 
   if (deepLinked) {
     return (
-      <Notice title="Connecting your Mac" sprite={status.kind === 'ok' ? 'celebrating' : undefined}>
-        {status.kind === 'idle' ? `Pairing ${parsePairingCode(paramCode) ?? paramCode}…` : status.text}
-        {status.kind === 'error' ? <TypeInstead /> : null}
-      </Notice>
+      <Notice
+        title="Connecting your Mac"
+        sprite={status.kind === 'ok' ? 'celebrating' : undefined}
+        text={status.kind === 'idle' ? `Pairing ${parsePairingCode(paramCode) ?? paramCode}…` : status.text}
+        tone={status.kind === 'error' ? 'del' : 'dim'}
+        actions={status.kind === 'error' ? <TypeInstead /> : null}
+      />
     );
   }
 
@@ -126,17 +131,28 @@ export default function PairScreen() {
 
   if (!granted) {
     return canAsk ? (
-      <Notice title="Camera access">
-        Builder uses the camera only to read the pairing code on your Mac.
-        <Button label="Allow camera" onPress={() => void requestPermission()} />
-        <TypeInstead />
-      </Notice>
+      <Notice
+        title="Camera access"
+        text="Builder uses the camera only to read the pairing code on your Mac."
+        actions={
+          <>
+            <Button label="Allow camera" onPress={() => void requestPermission()} />
+            <TypeInstead />
+          </>
+        }
+      />
     ) : (
-      <Notice title="Camera access is off" sprite="idle">
-        Allow the camera in iOS Settings to scan, or type the code on the Settings screen.
-        <Button label="Open iOS Settings" onPress={() => void Linking.openSettings()} />
-        <TypeInstead />
-      </Notice>
+      <Notice
+        title="Camera access is off"
+        sprite="idle"
+        text="Allow the camera in iOS Settings to scan, or type the code on the Settings screen."
+        actions={
+          <>
+            <Button label="Open iOS Settings" onPress={() => void Linking.openSettings()} />
+            <TypeInstead />
+          </>
+        }
+      />
     );
   }
 
@@ -151,33 +167,33 @@ export default function PairScreen() {
         onBarcodeScanned={scanning ? onScanned : undefined}
       />
       {/* Framing guide, over the preview. Pointer events pass through to nothing; the
-          camera does not need touches. */}
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+          camera does not need touches. A container's corner, and amber only once the code
+          has been read: the one state change on this screen. */}
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
         <View
           style={{
             width: 220,
             height: 220,
-            borderRadius: 18,
+            borderRadius: SHAPE.container,
+            borderCurve: 'continuous',
             borderWidth: 2,
             borderColor: status.kind === 'ok' ? c.accent : c.overlayStroke,
           }}
         />
       </View>
-      <View style={{ padding: space.md, paddingBottom: space.xl, backgroundColor: c.bg }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.md }}>
+      <View style={{ paddingHorizontal: layout.gutter, paddingTop: space.md, paddingBottom: space.xl, gap: space.sm, backgroundColor: c.bg }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
           {/* Bit appears only for the cheer; the camera preview is the content until then. */}
           {status.kind === 'ok' ? <PixelSprite state="celebrating" size={48} fps={4} /> : null}
-          <Text
-            style={{
-              color: status.kind === 'error' ? c.danger : status.kind === 'ok' ? c.accent : c.text,
-              fontSize: 15,
-              fontWeight: status.kind === 'idle' ? '400' : '600',
-              textAlign: 'center',
-              flexShrink: 1,
-            }}
+          <T
+            role="body"
+            weight={status.kind === 'idle' ? 400 : 600}
+            tone={status.kind === 'error' ? 'del' : 'text'}
+            style={{ flexShrink: 1 }}
+            accessibilityLiveRegion="polite"
           >
             {status.text}
-          </Text>
+          </T>
         </View>
         <TypeInstead />
       </View>
@@ -185,55 +201,47 @@ export default function PairScreen() {
   );
 }
 
+/**
+ * A one-card screen: the title, a sentence, and the way forward. Bit beside the title
+ * only for the two moments that have one (the cheer, and the camera being off).
+ */
 function Notice({
   title,
   sprite,
-  children,
+  text,
+  tone = 'dim',
+  actions,
 }: {
   title: string;
   /** 48pt Bit beside the title: `idle` when the camera is off, `celebrating` on success. */
   sprite?: SpriteState;
-  children: React.ReactNode;
+  text: string;
+  tone?: 'dim' | 'del';
+  actions?: ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={{ flex: 1, backgroundColor: c.bg, padding: space.md }}>
-      <View style={{ backgroundColor: c.card, borderRadius: 12, padding: space.md }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm }}>
-          {sprite ? <PixelSprite state={sprite} size={48} fps={4} /> : null}
-          <Text style={{ color: c.text, fontSize: 16, fontWeight: '600', flex: 1 }}>{title}</Text>
+    <View style={{ flex: 1, backgroundColor: c.bg, paddingHorizontal: layout.gutter, paddingTop: space.md, paddingBottom: insets.bottom }}>
+      <Surface style={{ gap: space.md }}>
+        <View style={{ gap: space.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            {sprite ? <PixelSprite state={sprite} size={48} fps={4} /> : null}
+            <T role="headline" style={{ flex: 1 }} accessibilityRole="header">
+              {title}
+            </T>
+          </View>
+          <T role="meta" tone={tone}>
+            {text}
+          </T>
         </View>
-        <Text style={{ color: c.textDim, fontSize: 13, lineHeight: 19 }}>{children}</Text>
-      </View>
+        {actions ? <View style={{ gap: space.xs }}>{actions}</View> : null}
+      </Surface>
     </View>
   );
 }
 
+/** The typed path, which the scan falls back to with nothing lost: Settings has the field. */
 function TypeInstead({ label = 'Type it instead' }: { label?: string }) {
-  return (
-    <Link href="/settings" asChild>
-      <Pressable style={{ alignSelf: 'center', paddingVertical: space.md }}>
-        <Text style={{ color: c.accent, fontSize: 14, fontWeight: '600' }}>{label}</Text>
-      </Pressable>
-    </Link>
-  );
-}
-
-function Button({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        {
-          paddingVertical: space.md,
-          alignItems: 'center',
-          borderRadius: 10,
-          marginTop: space.md,
-          backgroundColor: c.bg,
-        },
-        pressed && { opacity: 0.6 },
-      ]}
-    >
-      <Text style={{ color: c.text, fontWeight: '600' }}>{label}</Text>
-    </Pressable>
-  );
+  const router = useRouter();
+  return <Button kind="secondary" size="compact" label={label} onPress={() => router.navigate('/settings')} />;
 }

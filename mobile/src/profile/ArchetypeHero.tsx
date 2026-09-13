@@ -1,14 +1,13 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { animalForArchetype, type Animal } from '../pixel/animals';
 import { PixelAnimal } from '../pixel/PixelAnimal';
 import { PixelSprite } from '../pixel/PixelSprite';
-import { colors, space } from '../theme';
+import { space } from '../theme';
 import type { CorpusArchetype } from '../data/api';
+import { PressableScale, T } from '../ui';
 import { archetypeTitle, closestRule, ruleSentence } from './format';
-
-const c = colors('dark');
 
 /**
  * The top of the profile: a creature, a title, and the one measured rule that earned it.
@@ -17,9 +16,13 @@ const c = colors('dark');
  * one is a threshold on a single named metric, so saying which one costs a line and is
  * the difference between a claim and a result.
  *
- * When no rule met its threshold there is no archetype and none is invented. The card
+ * When no rule met its threshold there is no archetype and none is invented. The hero
  * says what is missing instead, because "we do not know yet" is a true thing to say and
  * a guessed archetype is not.
+ *
+ * It sits on the canvas, not in a card: the creature and the name are the screen's one
+ * `display`, and weight and size carry it. No amber outline and no amber title; the
+ * creature is the colour here.
  */
 export function ArchetypeHero({
   archetype,
@@ -49,87 +52,62 @@ export function ArchetypeHero({
   const runners = (archetype?.runners_up ?? []).filter((r) => r.score !== null);
   const closest = archetype && !name ? closestRule(archetype.scores) : null;
 
+  // The rule, verbatim from the server, or the reason there is none.
+  const rule =
+    (archetype && ruleSentence(archetype)) ??
+    (closest
+      ? `Nothing you do is extreme enough to name yet. Closest is ${archetypeTitle(
+          closest.name
+        )}: ${closest.rule}, ${closest.value} against ${closest.threshold}.`
+      : archetype?.reason ?? 'Build a few more sessions and this fills in.');
+
   return (
-    <View
-      style={{
-        backgroundColor: c.card,
-        borderRadius: 16,
-        padding: space.lg,
-        borderWidth: 1,
-        borderColor: name ? c.accent : c.border,
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-        {/* Bit, not an animal, when there is no type. Every animal in the pack IS an
-            archetype, so drawing one here would say "quality guardian" in the picture
-            while the words say "no type yet", and the picture is the part people read. */}
-        {/* Tapping the creature is how the picker is reached. It is the one thing on this
-            screen that is purely theirs, so it is the one thing that should feel pressable. */}
-        <Pressable
-          onPress={onPressAnimal}
-          disabled={!onPressAnimal}
-          accessibilityRole={onPressAnimal ? 'button' : undefined}
-          accessibilityLabel={onPressAnimal ? 'Change your creature' : undefined}
-          hitSlop={10}
-        >
-          {name ? (
-            <PixelAnimal animal={animal ?? animalForArchetype(name)} size={64} />
-          ) : (
-            <PixelSprite state="thinking" size={64} />
-          )}
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: c.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
-            YOUR BUILDER TYPE
-          </Text>
-          <Text
-            style={{
-              color: name ? c.accent : c.textDim,
-              fontSize: 26,
-              fontWeight: '800',
-              marginTop: 2,
-            }}
-          >
-            {name ? archetypeTitle(name) : closest ? 'No clear type' : 'Not enough yet'}
-          </Text>
-        </View>
+    <View style={{ gap: space.md }}>
+      {/* Bit, not an animal, when there is no type. Every animal in the pack IS an
+          archetype, so drawing one here would say "quality guardian" in the picture
+          while the words say "no type yet", and the picture is the part people read.
+          Tapping the creature is how the picker is reached: it is the one thing on this
+          screen that is purely theirs, so it is the one thing that presses. */}
+      <PressableScale
+        onPress={onPressAnimal}
+        disabled={!onPressAnimal}
+        accessibilityRole={onPressAnimal ? 'button' : 'image'}
+        accessibilityLabel={onPressAnimal ? 'Change your creature' : undefined}
+        hitSlop={space.sm}
+        style={{ alignSelf: 'flex-start' }}
+      >
+        {name ? (
+          <PixelAnimal animal={animal ?? animalForArchetype(name)} size={64} />
+        ) : (
+          <PixelSprite state="thinking" size={64} />
+        )}
+      </PressableScale>
+
+      <View style={{ gap: space.xs }}>
+        <T role="label" tone="dim">
+          your builder type
+        </T>
+        <T role="display" tone={name ? 'text' : 'dim'} numberOfLines={2} accessibilityRole="header">
+          {name ? archetypeTitle(name) : closest ? 'No clear type' : 'Not enough yet'}
+        </T>
       </View>
 
-      {sentence && (
-        <Text style={{ color: c.text, fontSize: 16, lineHeight: 24, marginTop: space.md }}>
-          {sentence}
-        </Text>
-      )}
+      {sentence ? <T role="body">{sentence}</T> : null}
 
-      <Text
-        style={{
-          color: sentence ? c.textDim : c.text,
-          fontSize: sentence ? 12 : 14,
-          lineHeight: sentence ? 18 : 20,
-          marginTop: sentence ? space.sm : space.md,
-        }}
-      >
-        {/* The rule, verbatim from the server, or the reason there is none. An archetype
-            with nothing under it is a horoscope; this one is a threshold on a single
-            named metric, so saying which one is the difference between a claim and a
-            result. */}
-        {(archetype && ruleSentence(archetype)) ??
-          (closest
-            ? `Nothing you do is extreme enough to name yet. Closest is ${archetypeTitle(
-                closest.name
-              )}: ${closest.rule}, ${closest.value} against ${closest.threshold}.`
-            : archetype?.reason ?? 'Build a few more sessions and this fills in.')}
-      </Text>
-
-      {name && archetype?.confidence !== null && archetype?.confidence !== undefined && (
-        <Text style={{ color: c.textDim, fontSize: 12, marginTop: space.sm }}>
-          {Math.round(archetype.confidence * 100)}% confidence over {sessions}{' '}
-          {sessions === 1 ? 'session' : 'sessions'}
-          {runners.length > 0
-            ? `, next closest ${runners.map((r) => archetypeTitle(r.name)).join(' and ')}`
-            : ''}
-        </Text>
-      )}
+      <View style={{ gap: space.xs }}>
+        <T role={sentence ? 'meta' : 'body'} tone={sentence ? 'dim' : 'text'}>
+          {rule}
+        </T>
+        {name && archetype?.confidence !== null && archetype?.confidence !== undefined && (
+          <T role="meta" tone="dim">
+            {Math.round(archetype.confidence * 100)}% confidence over {sessions}{' '}
+            {sessions === 1 ? 'session' : 'sessions'}
+            {runners.length > 0
+              ? `, next closest ${runners.map((r) => archetypeTitle(r.name)).join(' and ')}`
+              : ''}
+          </T>
+        )}
+      </View>
     </View>
   );
 }

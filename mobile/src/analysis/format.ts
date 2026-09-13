@@ -1,5 +1,6 @@
 import type { EndReason, SessionDetail } from '../data/api';
 import type { SessionAnalysis } from '../generated/analysis';
+import { dayLabel } from '../theme';
 
 /**
  * Formatting for the analysis section — kept pure so it can be tested without a renderer.
@@ -61,7 +62,8 @@ export function relativeTime(iso: string, nowMs: number = Date.now()): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 14) return `${d}d ago`;
-  return new Date(t).toLocaleDateString();
+  // "Aug 29", not "8/29/2026": the same day label every list uses (theme.ts).
+  return dayLabel(t, nowMs);
 }
 
 /** The footer under the analysis: who wrote it, how sure it was, and when. */

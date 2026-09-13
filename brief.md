@@ -82,6 +82,31 @@ grid. Question in the accent colour, answer large and bold, one sentence under i
   the machine; a quoted prompt card is on device only unless the contract says otherwise.
 - Paxel's own copy uses dashes; ours cannot.
 
+### C2. What the research found about the Paxel list (the "in case I mixed stuff" check)
+
+From `~/Downloads/projects/design-refs/research/paxel.md` and `SYNTHESIS.md` section 4:
+
+- Paxel's own landing cards are: builder type, lines shipped, peak hour, planning, agents
+  at once, model mix, prompt length, cryptic prompt, politeness, change of course, longest
+  agent run, crash out, and a few more. **Longest streak (card 7) is not a Paxel card**; it
+  looks like Cursor's year in review. **Kind of work (card 15) and deep sessions (card 11)
+  are the owner's additions.** All three are kept, because the owner asked for them.
+- The owner's example numbers cannot all be true on one clock: 46 deep sessions at 205
+  minutes each is about 157 hours, inside 129 hours total. Builder uses one clock (attended
+  time) for cards 11 and 12 so its own numbers cannot contradict each other.
+- Four of the five "Paxel" `BASELINES` in `analysis/profile.py` do not come from Paxel at
+  all but from an explainx.ai mock of a Paxel report. Only `steer_rate 0.4` is Paxel copy,
+  and it describes a heavy steerer, not a norm. They get relabelled as unmeasured.
+- Paxel's axes are execution_leverage (renamed from throughput), steering,
+  engineering_quality, product_thinking and planning, scored 1 to 10 per episode with a
+  0 to 1 confidence. Builder's per session dimensions are 0 to 100.
+- Paxel counts prompt length in words; Builder counted characters. The card uses words.
+- Quote cards (go to prompt, crash out, cryptic prompt) need prompt text, which never leaves
+  the machine under `privacy/upload-contract.json`. They are computed on the Mac and reach
+  the phone only through an explicit, off by default, owner only contract block. The cryptic
+  prompt filter must drop IDs, OTPs and tokens: Paxel's own example ("Q7ZK2XW9PL") looks
+  like exactly that.
+
 ### D. Part 2 of the roadmap (what is happening right now)
 
 1. Mission control: two tiles per row, a tile is a session, mascot bottom right, sorted by

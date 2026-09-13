@@ -1,9 +1,10 @@
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Image, Pressable, Text, View } from 'react-native';
+import { Alert, Image, Pressable, View } from 'react-native';
 
-import { colors, space } from '../theme';
+import { hitSlopToReach, space } from '../theme';
+import { Button, Row, SHAPE, Section, Surface, SymbolIcon, T, useColors } from '../ui';
 import { AudioChip } from './AudioChip';
 import {
   addPhotos,
@@ -16,9 +17,9 @@ import {
   type RecordedAudio,
 } from './media';
 
-const c = colors('dark');
-
 const THUMB = 72;
+/** The remove button's circle; its hit area grows to the 44pt floor. */
+const REMOVE = 22;
 
 /**
  * Photos and a voice note for the compose sheet. Owns nothing but the recorder in
@@ -85,79 +86,103 @@ export function MediaPicker({
   );
 
   return (
-    <View>
-      <Text style={label}>PHOTOS</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-        {photos.map((p) => (
-          <View key={p.uri} style={{ width: THUMB, height: THUMB }}>
-            <Image
-              source={{ uri: p.uri }}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
-              style={{ width: THUMB, height: THUMB, borderRadius: 8, backgroundColor: c.border }}
+    <View style={{ gap: space.lg }}>
+      <Section label="Photos">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+          {photos.map((p) => (
+            <Thumb key={p.uri} uri={p.uri} onRemove={disabled ? undefined : () => remove(p.uri)} />
+          ))}
+          {room > 0 && !disabled && (
+            <AddTile
+              label={photos.length === 0 ? 'Add photos' : `Add ${room} more`}
+              caption={photos.length === 0 ? null : `${room} more`}
+              onPress={() => void pick()}
             />
-            {!disabled && (
-              <Pressable
-                onPress={() => remove(p.uri)}
-                hitSlop={8}
-                accessibilityLabel="Remove photo"
-                style={{
-                  position: 'absolute',
-                  top: -6,
-                  right: -6,
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  backgroundColor: c.bg,
-                  borderWidth: 1,
-                  borderColor: c.border,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: c.text, fontSize: 13, lineHeight: 15, fontWeight: '700' }}>×</Text>
-              </Pressable>
-            )}
-          </View>
-        ))}
-        {room > 0 && !disabled && (
-          <Pressable
-            onPress={() => void pick()}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              {
-                width: THUMB,
-                height: THUMB,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderStyle: 'dashed',
-                borderColor: c.textDim,
-                alignItems: 'center',
-                justifyContent: 'center',
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={{ color: c.text, fontSize: 22, lineHeight: 26 }}>+</Text>
-            <Text style={{ color: c.textDim, fontSize: 10 }}>
-              {photos.length === 0 ? 'Add photos' : `${room} more`}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-      <Text style={{ color: c.textDim, fontSize: 11, marginTop: 6 }}>
-        {cap < MAX_PHOTOS
-          ? `Room for ${cap} more. A post carries up to ${MAX_PHOTOS}.`
-          : `Up to ${MAX_PHOTOS}. Screenshots of the thing you built are the point.`}
-      </Text>
+          )}
+        </View>
+        <T role="meta" tone="dim">
+          {cap < MAX_PHOTOS
+            ? `Room for ${cap} more. A post carries up to ${MAX_PHOTOS}.`
+            : `Up to ${MAX_PHOTOS}. Screenshots of the thing you built are the point.`}
+        </T>
+      </Section>
 
       {allowAudio && (
-        <>
-          <Text style={[label, { marginTop: space.lg }]}>VOICE NOTE</Text>
+        <Section label="Voice note">
           <Recorder audio={audio} onAudio={onAudio} disabled={disabled} />
-        </>
+        </Section>
       )}
     </View>
+  );
+}
+
+/** A picked photo, inner corners, with a small remove button over its top right corner. */
+function Thumb({ uri, onRemove }: { uri: string; onRemove?: () => void }) {
+  const c = useColors();
+  return (
+    <View style={{ width: THUMB, height: THUMB }}>
+      {/* The clip carries the corners: an Image takes no borderCurve of its own. */}
+      <View style={{ borderRadius: SHAPE.inner, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.raised }}>
+        <Image source={{ uri }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ width: THUMB, height: THUMB }} />
+      </View>
+      {onRemove && (
+        <Pressable
+          onPress={onRemove}
+          hitSlop={hitSlopToReach(REMOVE)}
+          accessibilityRole="button"
+          accessibilityLabel="Remove photo"
+          style={({ pressed }) => ({
+            position: 'absolute',
+            top: -space.sm,
+            right: -space.sm,
+            width: REMOVE,
+            height: REMOVE,
+            borderRadius: SHAPE.action,
+            borderCurve: 'continuous',
+            backgroundColor: pressed ? c.raised : c.bg,
+            borderWidth: 1,
+            borderColor: c.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+          })}
+        >
+          <SymbolIcon name="xmark" size={10} weight="bold" tone="text" />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The next photo's slot: a `raised` tile with a plus, the size of the thumbnails beside it.
+ * Empty, the plus is enough (the section says "photos"); once there are some, it says how
+ * many more fit.
+ */
+function AddTile({ label, caption, onPress }: { label: string; caption: string | null; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        width: THUMB,
+        height: THUMB,
+        borderRadius: SHAPE.inner,
+        borderCurve: 'continuous',
+        backgroundColor: pressed ? c.border : c.raised,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: space.xs,
+      })}
+    >
+      <SymbolIcon name="plus" size={17} tone="text" />
+      {caption ? (
+        <T role="label" tone="dim" numberOfLines={1}>
+          {caption}
+        </T>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -249,77 +274,50 @@ function Recorder({
   if (recording) {
     const remaining = Math.max(0, MAX_AUDIO_MS - elapsedMs);
     return (
-      <View style={box}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.danger }} />
-          <Text style={{ color: c.text, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
-            {formatClock(elapsedMs)}
-          </Text>
-          <Text style={{ color: c.textDim, fontSize: 12, fontVariant: ['tabular-nums'] }}>
-            · {formatClock(remaining)} left
-          </Text>
-          <View style={{ flex: 1 }} />
-          <Pressable onPress={() => void stop()} hitSlop={8} style={({ pressed }) => [pill, pressed && { opacity: 0.7 }]}>
-            <Text style={{ color: c.onAccent, fontSize: 13, fontWeight: '700' }}>Stop</Text>
-          </Pressable>
-        </View>
-      </View>
+      <Surface style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.xs }}>
+        <RecordingDot />
+        <T role="row">{formatClock(elapsedMs)}</T>
+        <T role="meta" tone="dim" style={{ flex: 1 }}>
+          {formatClock(remaining)} left
+        </T>
+        <Button label="Stop" size="compact" block={false} onPress={() => void stop()} />
+      </Surface>
     );
   }
 
   if (audio) {
     return (
-      <View style={box}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <AudioChip uri={audio.uri} durationMs={audio.durationMs} />
-          <View style={{ flex: 1 }} />
-          {!disabled && (
-            <>
-              <Pressable onPress={() => void start()} hitSlop={8}>
-                <Text style={{ color: c.text, fontSize: 13, fontWeight: '600' }}>Re-record</Text>
-              </Pressable>
-              <Pressable onPress={() => onAudio(null)} hitSlop={8} style={{ marginLeft: space.md }}>
-                <Text style={{ color: c.danger, fontSize: 13, fontWeight: '600' }}>Delete</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
-      </View>
+      <Surface style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs }}>
+        <AudioChip uri={audio.uri} durationMs={audio.durationMs} />
+        <View style={{ flex: 1 }} />
+        {!disabled && (
+          <>
+            <Button kind="secondary" size="compact" block={false} label="Re-record" onPress={() => void start()} />
+            <Button kind="secondary" destructive size="compact" block={false} label="Delete" onPress={() => onAudio(null)} />
+          </>
+        )}
+      </Surface>
     );
   }
 
   return (
-    <Pressable
-      onPress={() => void start()}
-      disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [box, { opacity: disabled ? 0.5 : pressed ? 0.8 : 1 }]}
-    >
-      <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>Record a voice note</Text>
-      <Text style={{ color: c.textDim, fontSize: 12, marginTop: 2 }}>
-        Up to {formatClock(MAX_AUDIO_MS)}. Saying what you built beats a caption.
-      </Text>
-    </Pressable>
+    <Surface padding={0}>
+      <Row
+        title="Record a voice note"
+        meta={`Up to ${formatClock(MAX_AUDIO_MS)}. Saying what you built beats a caption.`}
+        metaLines={2}
+        leading={<SymbolIcon name="mic" />}
+        onPress={() => void start()}
+        disabled={disabled}
+      />
+    </Surface>
   );
 }
 
-const label = {
-  color: c.textDim,
-  fontSize: 11,
-  fontWeight: '700',
-  letterSpacing: 0.8,
-  marginBottom: space.sm,
-} as const;
-
-const box = {
-  backgroundColor: c.card,
-  borderRadius: 10,
-  padding: space.md,
-} as const;
-
-const pill = {
-  backgroundColor: c.accent,
-  borderRadius: 999,
-  paddingHorizontal: 14,
-  paddingVertical: 6,
-} as const;
+/** The one red on this sheet: the recording light. */
+function RecordingDot() {
+  const c = useColors();
+  return (
+    <View style={{ width: 10, height: 10, borderRadius: SHAPE.action, borderCurve: 'continuous', backgroundColor: c.danger }} />
+  );
+}

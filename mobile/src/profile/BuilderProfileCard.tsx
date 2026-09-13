@@ -1,10 +1,11 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
-import { Bar, Chip } from '../analysis/AnalysisView';
 import type { BuilderProfile } from '../data/api';
 import { PixelBadge } from '../pixel/PixelBadge';
-import { colors, space } from '../theme';
+import { space } from '../theme';
+import { Quote } from '../analysis/AnalysisView';
+import { Bar, Hairline, T } from '../ui';
 import {
   BUILDER_PROFILE_PENDING,
   archetypeLine,
@@ -17,15 +18,13 @@ import {
 } from './builderProfile';
 
 /**
- * "How you build": the person read across their analysed sessions.
+ * "How you build": the person read across their analysed sessions. The body of a card;
+ * the screen gives it the section label and the surface.
  *
  * Every number is the server's aggregate, shown with the count it stands on. `null`
  * means fewer than three analysed sessions in the window, and the card says so through
  * Bit rather than drawing five empty bars that would read as five zeros.
  */
-
-const c = colors('dark');
-
 export function BuilderProfileCard({ profile }: { profile: BuilderProfile | null }) {
   if (!profile) {
     return <PixelBadge state="thinking" text={BUILDER_PROFILE_PENDING} style={{ padding: 0 }} />;
@@ -37,66 +36,76 @@ export function BuilderProfileCard({ profile }: { profile: BuilderProfile | null
   const patterns = topPatterns(profile);
 
   return (
-    <>
-      {rows.map((d) => {
-        const trend = trendLabel(d.trend);
-        return (
-          <View key={d.dimension} style={{ paddingVertical: 6 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 4 }}>
-              <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>{d.label}</Text>
-              {trend ? (
-                <Text style={{ color: c.textDim, fontSize: 12, marginRight: space.sm, fontVariant: ['tabular-nums'] }}>
-                  {trend}
-                </Text>
-              ) : null}
-              <Text style={{ color: c.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
-                {meanLabel(d.mean)}
-              </Text>
-            </View>
-            <Bar value={d.mean} />
-          </View>
-        );
-      })}
-
-      {archetype ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: space.md }}>
-          <Text style={{ color: c.textDim, fontSize: 14, flex: 1 }}>Archetype</Text>
-          <Text style={{ color: c.text, fontSize: 14, fontWeight: '600' }}>{archetype}</Text>
+    <View style={{ gap: space.md }}>
+      {rows.length > 0 && (
+        <View style={{ gap: space.md }}>
+          {rows.map((d) => {
+            const trend = trendLabel(d.trend);
+            return (
+              <View key={d.dimension} style={{ gap: space.xs }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
+                  <T role="row" style={{ flex: 1 }}>
+                    {d.label}
+                  </T>
+                  {trend ? (
+                    <T role="meta" tone="dim">
+                      {trend}
+                    </T>
+                  ) : null}
+                  <T role="row">{meanLabel(d.mean)}</T>
+                </View>
+                <Bar progress={d.mean / 100} />
+              </View>
+            );
+          })}
         </View>
+      )}
+
+      {(archetype || tags.length > 0) && <Hairline />}
+
+      {archetype ? <Labelled label="archetype" value={archetype} /> : null}
+
+      {/* Words, not chips. The count is how many sessions carried the tag. */}
+      {tags.length > 0 ? (
+        <Labelled label="tags" value={tags.map((t) => `${t.tag} ×${t.sessions}`).join('   ')} />
       ) : null}
 
-      {tags.length > 0 && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md }}>
-          {tags.map((t) => (
-            <Chip key={t.tag} label={`${t.tag} · ${t.sessions}`} />
-          ))}
-        </View>
-      )}
-
       {patterns.length > 0 && (
-        <View style={{ marginTop: space.md }}>
+        <View style={{ gap: space.tile }}>
           {patterns.map((p) => (
-            <View key={p.pattern} style={{ paddingVertical: 4 }}>
-              <Text style={{ color: c.text, fontSize: 14, fontWeight: '600' }}>
-                {p.pattern}
-                <Text style={{ color: c.textDim, fontWeight: '400' }}>
-                  {' '}
-                  · {p.sessions} session{p.sessions === 1 ? '' : 's'}
-                </Text>
-              </Text>
-              {p.example ? (
-                <Text style={{ color: c.textDim, fontSize: 13, fontStyle: 'italic', lineHeight: 18 }} numberOfLines={2}>
-                  “{p.example}”
-                </Text>
-              ) : null}
-            </View>
+            <Pattern key={p.pattern} pattern={p.pattern} sessions={p.sessions} example={p.example} />
           ))}
         </View>
       )}
 
-      <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.md }}>
+      <T role="meta" tone="dim">
         {builderProfileFooter(profile)}
-      </Text>
-    </>
+      </T>
+    </View>
+  );
+}
+
+function Labelled({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={{ gap: space.xs }}>
+      <T role="label" tone="dim">
+        {label}
+      </T>
+      <T role="row">{value}</T>
+    </View>
+  );
+}
+
+function Pattern({ pattern, sessions, example }: { pattern: string; sessions: number; example: string }) {
+  return (
+    <View style={{ gap: space.xs }}>
+      <T role="row">
+        {pattern}
+        <T role="row" tone="dim" weight={400}>
+          {`  ${sessions} session${sessions === 1 ? '' : 's'}`}
+        </T>
+      </T>
+      {example ? <Quote text={example} lines={2} /> : null}
+    </View>
   );
 }

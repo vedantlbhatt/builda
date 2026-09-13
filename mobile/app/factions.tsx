@@ -18,7 +18,7 @@ import { api } from '../src/data/client';
 import { PixelBadge } from '../src/pixel/PixelBadge';
 import { pruneBySlug, upsertMine } from '../src/social/account';
 import { normalizeFactionCode } from '../src/social/format';
-import { colors, duration, hitSlopToReach, space, TAP_TARGET } from '../src/theme';
+import { colors, duration, hitSlopToReach, radius, space, TAP_TARGET } from '../src/theme';
 
 const c = colors('dark');
 
@@ -147,13 +147,16 @@ export default function FactionsScreen() {
       contentContainerStyle={{ padding: space.md, paddingBottom: space.xxl }}
       keyboardShouldPersistTaps="handled"
     >
+      {/* The fresh join code: a plain card with a hairline, the code in full-strength text.
+          It used to be an amber outline around amber text, the tinted chip the design
+          rules out; the size of the code is what makes it the thing to read. */}
       {justCreated && (
-        <View style={[card, { borderWidth: 1, borderColor: c.accent }]}>
+        <View style={[card, { borderWidth: 1, borderColor: c.border }]}>
           <Text style={{ color: c.text, fontWeight: '600' }}>{justCreated.name}</Text>
           <Text style={{ color: c.textDim, fontSize: 12 }}>/{justCreated.slug}</Text>
-          <Text style={{ color: c.textDim, fontSize: 12, marginTop: space.md }}>JOIN CODE</Text>
+          <Text style={{ color: c.textDim, fontSize: 12, fontWeight: '600', marginTop: space.md }}>join code</Text>
           <Text
-            style={{ color: c.accent, fontSize: 36, fontWeight: '800', letterSpacing: 4, fontVariant: ['tabular-nums'] }}
+            style={{ color: c.text, fontSize: 36, fontWeight: '800', letterSpacing: 4, fontVariant: ['tabular-nums'] }}
             selectable
           >
             {justCreated.join_code ?? '·'}
@@ -305,7 +308,8 @@ function Board({ board, onShare }: { board: FactionBoard; onShare: (share: boole
 
 const card = {
   backgroundColor: c.card,
-  borderRadius: 12,
+  borderRadius: radius.md,
+  borderCurve: 'continuous',
   padding: space.md,
   marginBottom: space.md,
 } as const;
@@ -316,13 +320,14 @@ const input = {
   color: c.text,
   backgroundColor: c.bg,
   borderRadius: 10,
+  borderCurve: 'continuous',
   paddingHorizontal: space.md,
   paddingVertical: space.sm,
   fontSize: 15,
 } as const;
-const button = { backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: space.md, justifyContent: 'center' } as const;
+const button = { backgroundColor: c.accent, borderRadius: 10, borderCurve: 'continuous', paddingHorizontal: space.md, justifyContent: 'center' } as const;
 const buttonText = { color: c.onAccent, fontWeight: '700' } as const;
-const pill = { backgroundColor: c.bg, borderRadius: 999, paddingHorizontal: space.md, paddingVertical: space.sm } as const;
+const pill = { backgroundColor: c.bg, borderRadius: 999, borderCurve: 'continuous', paddingHorizontal: space.md, paddingVertical: space.sm } as const;
 const th = { color: c.textDim, fontSize: 11, fontWeight: '700' } as const;
 const td = { color: c.text, fontSize: 13 } as const;
 const num: TextStyle = { width: 64, textAlign: 'right', fontVariant: ['tabular-nums'] };

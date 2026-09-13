@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import * as ReactNative from 'react-native';
-import { Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { isGoogleConfigured, onGoogleSignIn, startGoogleSignIn } from '../src/auth/googleFlow';
 import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me } from '../src/data/api';
@@ -24,19 +24,26 @@ import {
 import { api, API_BASE_URL } from '../src/data/client';
 import { getMachineId } from '../src/data/machine';
 import { PixelSprite } from '../src/pixel/PixelSprite';
+import { spriteLeftInset } from '../src/pixel/optical';
+import { sendPendingName } from '../src/nav/onboarding';
 import { registerForPush } from '../src/push/push';
 import {
   describeHandleConflict,
   displayNameProblem,
   handleProblem,
   HANDLE_MAX,
+  HANDLE_MIN,
   isValidHandle,
   MAX_DISPLAY_NAME,
   normalizeHandle,
 } from '../src/social/account';
-import { colors, space, TAP_TARGET } from '../src/theme';
+import { colors, layout, space, TAP_TARGET } from '../src/theme';
+import { Button, Hairline, Row, SHAPE, Section, Surface, T, TextField } from '../src/ui';
 
 const c = colors('dark');
+
+/** The sign-in buttons: the same 52pt capsule as every primary action. */
+const SIGN_IN_HEIGHT = 52;
 
 /** "Builder · v0.1.0" — the version is read from the config, never typed here twice. */
 function appLine(): string {
@@ -102,6 +109,8 @@ export default function SettingsScreen() {
       setSignedIn(true);
       setStatus('Signed in. Pull to refresh on Sessions.');
       void registerForPush(api);
+      // The name picked in onboarding while signed out, if it has not reached the account yet.
+      void sendPendingName();
     } catch (e) {
       if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return;
       setStatus(e instanceof Error ? e.message : 'sign in failed');
@@ -165,133 +174,147 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.bg }}
-      contentContainerStyle={{ padding: space.md, paddingBottom: space.xxl }}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{
+        paddingHorizontal: layout.gutter,
+        paddingTop: space.md,
+        paddingBottom: space.xxl,
+        gap: layout.sectionGap,
+      }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-        <PixelSprite state="idle" size={32} fps={2} />
-        <Text style={{ color: c.textDim, fontSize: 13, fontVariant: ['tabular-nums'] }}>{appLine()}</Text>
+        {/* Pulled onto the gutter by its empty columns, like every Bit beside text. */}
+        <PixelSprite state="idle" size={32} fps={2} style={{ marginLeft: -spriteLeftInset('idle', 32) }} />
+        <T role="meta" tone="dim">
+          {appLine()}
+        </T>
       </View>
 
       {!signedIn ? (
-        <Section title="Account">
-          <Text style={{ color: c.textDim, fontSize: 13, marginBottom: space.md }}>
-            Builder works without an account. You are seeing a sample session. Sign in to
-            sync your own from the Mac agent.
-          </Text>
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-            cornerRadius={10}
-            style={{ height: 48 }}
-            onPress={signIn}
-          />
-          <Pressable
-            onPress={() => void signInGoogle()}
-            disabled={!googleReady}
-            style={({ pressed }) => [
-              {
-                height: 48,
-                borderRadius: 10,
-                marginTop: space.sm,
-                backgroundColor: c.googleButton,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: googleReady ? 1 : 0.4,
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={{ color: c.onAccent, fontWeight: '600', fontSize: 16 }}>
-              Continue with Google
-            </Text>
-          </Pressable>
-          {!googleReady && (
-            <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.xs, textAlign: 'center' }}>
-              Google sign-in not configured
-            </Text>
-          )}
+        <Section label="Account">
+          <Surface style={{ gap: space.sm }}>
+            <T role="meta" tone="dim" style={{ marginBottom: space.xs }}>
+              Builder works without an account. You are seeing a sample session. Sign in to
+              sync your own from the Mac agent.
+            </T>
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+              cornerRadius={SIGN_IN_HEIGHT / 2}
+              style={{ height: SIGN_IN_HEIGHT }}
+              onPress={signIn}
+            />
+            {/* White by Google's guideline, in either scheme; shaped like Apple's beside it.
+                A build without a Google client id has no button at all: a white capsule at
+                40% was a grey slab that looked broken and could not be pressed. */}
+            {googleReady ? (
+              <Pressable
+                onPress={() => void signInGoogle()}
+                accessibilityRole="button"
+                style={({ pressed }) => ({
+                  height: SIGN_IN_HEIGHT,
+                  borderRadius: SHAPE.action,
+                  borderCurve: 'continuous',
+                  backgroundColor: c.googleButton,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <T role="headline" tone="onAccent">
+                  Continue with Google
+                </T>
+              </Pressable>
+            ) : __DEV__ ? (
+              <T role="meta" tone="faint">
+                Google sign in is off in this build: no client id.
+              </T>
+            ) : null}
+          </Surface>
         </Section>
       ) : (
         <>
-          <Section title="Pair your Mac">
-            <Text style={{ color: c.textDim, fontSize: 13, marginBottom: space.sm }}>
-              Run `builder pair` on your Mac, then scan the code it shows or type it.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: space.sm }}>
-              <TextInput
-                value={pairCode}
-                onChangeText={setPairCode}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                placeholder="XXXX-XXXX"
-                placeholderTextColor={c.textDim}
-                style={{
-                  flex: 1,
+          <Section label="pair your Mac" preserveCase>
+            <Surface style={{ gap: space.tile }}>
+              <T role="meta" tone="dim">
+                Run{' '}
+                <T role="mono" tone="text">
+                  builder pair
+                </T>{' '}
+                on your Mac, then scan the code it shows or type it.
+              </T>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile }}>
+                <TextField
+                  value={pairCode}
+                  onChangeText={setPairCode}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  placeholder="XXXX-XXXX"
+                  accessibilityLabel="Pairing code"
                   // SEEN ON WEB: a text input's intrinsic width (its `size`) is a flex
                   // minimum there, so `flex: 1` alone let it push the Scan button off the
                   // card. minWidth 0 lets it shrink; a no-op on iOS.
-                  minWidth: 0,
-                  color: c.text,
-                  backgroundColor: c.bg,
-                  borderRadius: 8,
-                  padding: space.md,
-                  fontSize: 20,
-                  letterSpacing: 2,
-                  textAlign: 'center',
-                }}
-              />
-              <Pressable
-                onPress={() => router.push('/pair')}
-                style={({ pressed }) => [
-                  {
-                    flexShrink: 0,
-                    backgroundColor: c.bg,
-                    borderRadius: 8,
-                    paddingHorizontal: space.md,
-                    justifyContent: 'center',
-                  },
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <Text style={{ color: c.accent, fontWeight: '600', fontSize: 14 }}>Scan code</Text>
-              </Pressable>
-            </View>
-            <Button label="Pair" onPress={pair} disabled={pairCode.trim().length < 8} />
+                  style={{ flex: 1, minWidth: 0, letterSpacing: 2 }}
+                />
+                <Button kind="secondary" size="compact" block={false} label="Scan code" onPress={() => router.push('/pair')} />
+              </View>
+              <Button label="Pair" size="compact" onPress={pair} disabled={pairCode.trim().length < 8} />
+            </Surface>
           </Section>
 
-          <Section title="Cloud capture">
+          <Section label="Cloud capture" gap={space.tile}>
             <CaptureKeysPanel />
           </Section>
 
-          <Section title="Profile">
-            {me ? (
-              <ProfileFields me={me} onChange={setMe} />
-            ) : (
-              <Text style={{ color: c.textDim, fontSize: 13 }}>{meError ?? 'Loading your profile…'}</Text>
-            )}
+          <Section label="Profile">
+            <Surface padding={0}>
+              {me ? (
+                <ProfileFields me={me} onChange={setMe} />
+              ) : (
+                <T role="meta" tone="dim" style={{ padding: layout.gutter }}>
+                  {meError ?? 'Loading your profile\u2026'}
+                </T>
+              )}
+            </Surface>
           </Section>
 
-          <Section title="Account">
-            <Button label="Sign out" onPress={signOut} />
-            <Button label="Delete account and all data" onPress={deleteAccount} destructive />
+          <Section label="Account">
+            <Surface padding={0}>
+              <Button kind="secondary" size="compact" label="Sign out" onPress={signOut} />
+              <Hairline />
+              <Button kind="secondary" size="compact" destructive label="Delete account and all data" onPress={deleteAccount} />
+            </Surface>
           </Section>
         </>
       )}
 
-      <Section title="Privacy">
-        <Text style={{ color: c.textDim, fontSize: 13, lineHeight: 19 }}>
-          Your prompts, your code, your diffs and your file names never leave your machine.
-          What syncs is timings, counts, the shape of the session, and, only for
-          repositories you mark public, the repository name and the title your editor
-          already wrote to your own disk.
-          {'\n\n'}
-          The Mac agent is open source, and `builder sync --dry-run --print-payload` prints
-          every byte it would send without sending it.
-        </Text>
+      <Section label="Privacy">
+        <Surface style={{ gap: space.tile }}>
+          <T role="meta" tone="dim">
+            Your prompts, your code, your diffs and your file names never leave your machine.
+            What syncs is timings, counts, the shape of the session, and, only for
+            repositories you mark public, the repository name and the title your editor
+            already wrote to your own disk.
+          </T>
+          {/* The command on a line of its own: run inline, the line breaker split it after
+              "--" and set "dry-run" on the next line, which no one can paste. */}
+          <T role="meta" tone="dim">
+            The Mac agent is open source. This prints every byte it would send, without
+            sending it:
+          </T>
+          <T role="mono" tone="text" selectable>
+            builder sync --dry-run --print-payload
+          </T>
+        </Surface>
       </Section>
 
+      {/* The outcome of the last thing done here, where the eye lands after the tap. A
+          sentence in text, not amber: amber is for actions and state, not for news. */}
       {status && (
-        <Text style={{ color: c.accent, fontSize: 13, marginTop: space.lg }}>{status}</Text>
+        <T role="meta" weight={600} accessibilityLiveRegion="polite">
+          {status}
+        </T>
       )}
     </ScrollView>
   );
@@ -398,204 +421,128 @@ function CaptureKeysPanel() {
 
   return (
     <>
-      <Text style={{ color: c.textDim, fontSize: 13, lineHeight: 19, marginBottom: space.sm }}>
+      <T role="meta" tone="dim">
         Sessions from claude.ai/code run in a cloud container the Mac agent never sees. A
         capture key lets that container upload them, and do nothing else.
-      </Text>
+      </T>
 
+      {/* The one showing of a fresh key. A plain card, the key in mono on the level above
+          it, and one amber action: copying it. Nothing here is outlined in amber. */}
       {created && (
-        <View
-          style={{
-            backgroundColor: c.bg,
-            borderRadius: 10,
-            padding: space.md,
-            marginBottom: space.md,
-            borderWidth: 1,
-            borderColor: c.accent,
-          }}
-        >
-          <Text style={{ color: c.text, fontSize: 13, fontWeight: '700' }}>
-            {created.name}: copy it now
-          </Text>
-          <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.xs, lineHeight: 16 }}>
-            This is the only time the key is shown. {CAPTURE_KEY_PASTE_HINT}
-          </Text>
-          <Text
-            selectable
-            accessibilityLabel="Capture key"
-            style={{
-              color: c.text,
-              fontSize: 13,
-              fontFamily: 'Menlo',
-              marginTop: space.sm,
-              padding: space.sm,
-              backgroundColor: c.card,
-              borderRadius: 8,
-            }}
-          >
-            {created.key}
-          </Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.md, marginTop: space.xs }}>
-            <Pressable
-              onPress={() => setCreated(null)}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', paddingHorizontal: space.sm },
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Text style={{ color: c.textDim, fontSize: 14, fontWeight: '600' }}>Done</Text>
-            </Pressable>
-            <Pressable
-              onPress={copy}
-              accessibilityRole="button"
-              accessibilityLabel="Copy capture key"
-              style={({ pressed }) => [
-                {
-                  minHeight: TAP_TARGET,
-                  minWidth: TAP_TARGET,
-                  justifyContent: 'center',
-                  paddingHorizontal: space.md,
-                  borderRadius: 10,
-                  backgroundColor: c.accent,
-                },
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{copied ? 'Copied' : 'Copy'}</Text>
-            </Pressable>
+        <Surface style={{ gap: space.tile }}>
+          <View style={{ gap: space.xs }}>
+            <T role="row">{created.name}: copy it now</T>
+            <T role="meta" tone="dim">
+              This is the only time the key is shown. {CAPTURE_KEY_PASTE_HINT}
+            </T>
           </View>
-          <Text style={{ color: c.text, fontSize: 14, fontWeight: '600', marginTop: space.md }}>
-            Set up the hook (paste once in a terminal)
-          </Text>
-          <Text
-            selectable
-            style={{
-              color: c.textDim,
-              fontFamily: 'Menlo',
-              fontSize: 11,
-              lineHeight: 15,
-              marginTop: space.xs,
-            }}
-          >
-            {hookInstallSnippet(API_BASE_URL, created.key)}
-          </Text>
-          <Pressable
+          <Surface level="raised" shape="inner" hairline={false} padding={space.tile}>
+            <T role="mono" selectable accessibilityLabel="Capture key">
+              {created.key}
+            </T>
+          </Surface>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: space.lg }}>
+            <Button kind="secondary" size="compact" block={false} label="Done" onPress={() => setCreated(null)} />
+            <Button
+              size="compact"
+              block={false}
+              label={copied ? 'Copied' : 'Copy'}
+              accessibilityHint="Copies the capture key"
+              onPress={copy}
+            />
+          </View>
+          <Hairline />
+          <T role="row">Set up the hook (paste once in a terminal)</T>
+          <Surface level="raised" shape="inner" hairline={false} padding={0}>
+            {/* Code keeps its lines: it scrolls sideways rather than wrapping mid-command. */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: space.tile }}>
+              <T role="mono" tone="dim" selectable>
+                {hookInstallSnippet(API_BASE_URL, created.key)}
+              </T>
+            </ScrollView>
+          </Surface>
+          <Button
+            kind="secondary"
+            size="compact"
+            block={false}
+            label={setupCopied ? 'Setup copied' : 'Copy setup'}
+            accessibilityHint="Copies the hook setup commands"
             onPress={() => {
               ReactNative.Clipboard.setString(hookInstallSnippet(API_BASE_URL, created.key));
               setSetupCopied(true);
             }}
-            accessibilityRole="button"
-            accessibilityLabel="Copy hook setup commands"
-            style={({ pressed }) => [
-              {
-                minHeight: TAP_TARGET,
-                justifyContent: 'center',
-                alignSelf: 'flex-start',
-                paddingHorizontal: space.md,
-                borderRadius: 10,
-                backgroundColor: c.bg,
-                borderWidth: 1,
-                borderColor: c.accent,
-                marginTop: space.sm,
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={{ color: c.accent, fontSize: 14, fontWeight: '700' }}>
-              {setupCopied ? 'Setup copied' : 'Copy setup'}
-            </Text>
-          </Pressable>
-        </View>
+          />
+        </Surface>
       )}
 
       {keys === null ? (
-        <Text style={{ color: c.textDim, fontSize: 13 }}>{loadError ?? 'Loading your keys…'}</Text>
+        <T role="meta" tone="dim">
+          {loadError ?? 'Loading your keys\u2026'}
+        </T>
       ) : keys.length === 0 ? (
-        <Text style={{ color: c.textDim, fontSize: 13 }}>No keys yet.</Text>
+        <T role="meta" tone="dim">
+          No keys yet.
+        </T>
       ) : (
-        keys.map((k) => (
-          <View
-            key={k.id}
-            style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET, gap: space.sm }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: c.text, fontSize: 15 }} numberOfLines={1}>
-                {k.name}
-              </Text>
-              <Text style={{ color: c.textDim, fontSize: 11, fontVariant: ['tabular-nums'] }}>
-                {keyLabel(k.key_prefix)} · {lastUsedLabel(k.last_used_at)}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => revoke(k)}
-              disabled={revoking === k.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Revoke ${k.name}`}
-              style={({ pressed }) => [
-                { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', alignItems: 'flex-end' },
-                (pressed || revoking === k.id) && { opacity: 0.6 },
-              ]}
-            >
-              <Text style={{ color: c.danger, fontSize: 14, fontWeight: '600' }}>
-                {revoking === k.id ? 'Revoking…' : 'Revoke'}
-              </Text>
-            </Pressable>
-          </View>
-        ))
+        <Surface padding={0}>
+          {keys.map((k, i) => (
+            <Row
+              key={k.id}
+              title={k.name}
+              meta={`${keyLabel(k.key_prefix)} · ${lastUsedLabel(k.last_used_at)}`}
+              hairline={i < keys.length - 1}
+              trailing={
+                <Button
+                  kind="secondary"
+                  destructive
+                  size="compact"
+                  block={false}
+                  label={revoking === k.id ? 'Revoking\u2026' : 'Revoke'}
+                  busy={revoking === k.id}
+                  accessibilityHint={`Revokes ${k.name}`}
+                  onPress={() => revoke(k)}
+                />
+              }
+            />
+          ))}
+        </Surface>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md }}>
-        <TextInput
-          value={name}
-          onChangeText={(t) => {
-            setMintError(null);
-            setName(t.slice(0, CAPTURE_KEY_NAME_MAX + 8));
-          }}
-          placeholder={CAPTURE_KEY_DEFAULT_NAME}
-          placeholderTextColor={c.textDim}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!minting}
-          onSubmitEditing={() => void mint()}
-          returnKeyType="done"
-          accessibilityLabel="New key name"
-          style={{
-            flex: 1,
-            color: c.text,
-            backgroundColor: c.bg,
-            borderRadius: 8,
-            paddingHorizontal: space.md,
-            minHeight: TAP_TARGET,
-            fontSize: 15,
-          }}
-        />
-        <Pressable
-          onPress={() => void mint()}
-          disabled={!canMint}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            {
-              minHeight: TAP_TARGET,
-              justifyContent: 'center',
-              paddingHorizontal: space.md,
-              borderRadius: 10,
-              backgroundColor: c.accent,
-              opacity: canMint ? 1 : 0.4,
-            },
-            pressed && canMint && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{minting ? 'Minting…' : 'New key'}</Text>
-        </Pressable>
+      <View style={{ gap: space.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile }}>
+          <TextField
+            value={name}
+            onChangeText={(t) => {
+              setMintError(null);
+              setName(t.slice(0, CAPTURE_KEY_NAME_MAX + 8));
+            }}
+            placeholder={CAPTURE_KEY_DEFAULT_NAME}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!minting}
+            onSubmitEditing={() => void mint()}
+            returnKeyType="done"
+            accessibilityLabel="New key name"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <Button
+            size="compact"
+            block={false}
+            label="New key"
+            busy={minting}
+            busyLabel={'Minting\u2026'}
+            disabled={!canMint && !minting}
+            onPress={() => void mint()}
+          />
+        </View>
+        <T role="meta" tone={mintError || nameProblem ? 'del' : 'dim'}>
+          {mintError ??
+            nameProblem ??
+            (capped
+              ? `Up to ${CAPTURE_KEY_MAX_LIVE} keys; revoke one to make room.`
+              : 'Name it after where it lives. One key per cloud environment is plenty.')}
+        </T>
       </View>
-      <Text style={{ color: mintError || nameProblem ? c.danger : c.textDim, fontSize: 11, marginTop: space.xs }}>
-        {mintError ??
-          nameProblem ??
-          (capped
-            ? `Up to ${CAPTURE_KEY_MAX_LIVE} keys; revoke one to make room.`
-            : 'Name it after where it lives. One key per cloud environment is plenty.')}
-      </Text>
     </>
   );
 }
@@ -651,7 +598,7 @@ function ProfileFields({ me, onChange }: { me: Me; onChange: (next: Me) => void 
         empty="not set"
         prefix="@"
         maxLength={HANDLE_MAX}
-        hint={`3-${HANDLE_MAX} characters: a-z, 0-9 and _. Changeable once every 30 days after the first pick.`}
+        hint={`${HANDLE_MIN} to ${HANDLE_MAX} characters: a to z, 0 to 9 and _. Changeable once every 30 days after the first pick.`}
         normalize={normalizeHandle}
         problem={handleProblem}
         canSave={(raw) => isValidHandle(raw) && normalizeHandle(raw) !== (me.handle ?? '')}
@@ -659,6 +606,7 @@ function ProfileFields({ me, onChange }: { me: Me; onChange: (next: Me) => void 
         describeError={(e) => (e.status === 409 ? describeHandleConflict(e.message) : e.message)}
         autoCapitalize="none"
       />
+      <Hairline inset={layout.gutter} />
       <InlineField
         label="Display name"
         value={me.display_name}
@@ -671,21 +619,20 @@ function ProfileFields({ me, onChange }: { me: Me; onChange: (next: Me) => void 
         onSave={saveDisplayName}
         describeError={(e) => e.message}
       />
-      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET, marginTop: space.sm }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: c.text, fontSize: 14 }}>Public profile</Text>
-          <Text style={{ color: c.textDim, fontSize: 11 }}>
-            {me.profile_public ? 'Anyone can follow you at once.' : 'Follows need your approval.'}
-          </Text>
-        </View>
-        <Switch
-          value={me.profile_public}
-          disabled={publicBusy}
-          onValueChange={(v) => void setPublic(v)}
-          trackColor={{ true: c.accent }}
-          accessibilityLabel="Public profile"
-        />
-      </View>
+      <Hairline inset={layout.gutter} />
+      <Row
+        title="Public profile"
+        meta={me.profile_public ? 'Anyone can follow you at once.' : 'Follows need your approval.'}
+        trailing={
+          <Switch
+            value={me.profile_public}
+            disabled={publicBusy}
+            onValueChange={(v) => void setPublic(v)}
+            trackColor={{ true: c.accent }}
+            accessibilityLabel="Public profile"
+          />
+        }
+      />
     </>
   );
 }
@@ -753,24 +700,23 @@ function InlineField({
 
   if (!editing) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: c.textDim, fontSize: 11 }}>{label}</Text>
-          <Text style={{ color: value ? c.text : c.textDim, fontSize: 15 }} numberOfLines={1}>
+      <View style={fieldRow}>
+        <View style={{ flex: 1, gap: space.xs }}>
+          <T role="label" tone="dim">
+            {label.toLocaleLowerCase()}
+          </T>
+          <T role="row" tone={value ? 'text' : 'dim'} numberOfLines={1}>
             {value ? `${prefix}${value}` : empty}
-          </Text>
+          </T>
         </View>
-        <Pressable
+        <Button
+          kind="secondary"
+          size="compact"
+          block={false}
+          label="Edit"
+          accessibilityHint={`Edits your ${label.toLowerCase()}`}
           onPress={begin}
-          accessibilityRole="button"
-          accessibilityLabel={`Edit ${label.toLowerCase()}`}
-          style={({ pressed }) => [
-            { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', alignItems: 'flex-end' },
-            pressed && { opacity: 0.6 },
-          ]}
-        >
-          <Text style={{ color: c.accent, fontSize: 14, fontWeight: '600' }}>Edit</Text>
-        </Pressable>
+        />
       </View>
     );
   }
@@ -778,121 +724,58 @@ function InlineField({
   const rule = serverError ?? problem(draft);
   const ok = !saving && canSave(draft);
   return (
-    <View style={{ paddingVertical: space.sm }}>
-      <Text style={{ color: c.textDim, fontSize: 11, marginBottom: space.xs }}>{label}</Text>
+    <View style={[fieldRow, { flexDirection: 'column', alignItems: 'stretch', gap: space.sm, paddingVertical: space.tile }]}>
+      <T role="label" tone="dim">
+        {label.toLocaleLowerCase()}
+      </T>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-        {prefix ? <Text style={{ color: c.textDim, fontSize: 16 }}>{prefix}</Text> : null}
-        <TextInput
+        {prefix ? (
+          <T role="body" tone="dim">
+            {prefix}
+          </T>
+        ) : null}
+        <TextField
           value={draft}
           onChangeText={(t) => {
             setServerError(null);
             setDraft(normalize(t).slice(0, maxLength));
           }}
           placeholder={placeholder}
-          placeholderTextColor={c.textDim}
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
           autoFocus
           editable={!saving}
           onSubmitEditing={() => void save()}
           returnKeyType="done"
-          style={{
-            flex: 1,
-            color: c.text,
-            backgroundColor: c.bg,
-            borderRadius: 8,
-            paddingHorizontal: space.md,
-            minHeight: TAP_TARGET,
-            fontSize: 16,
-          }}
+          accessibilityLabel={label}
+          style={{ flex: 1 }}
         />
       </View>
-      <Text style={{ color: rule ? c.danger : c.textDim, fontSize: 11, marginTop: space.xs }}>{rule ?? hint}</Text>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.md, marginTop: space.xs }}>
-        <Pressable
-          onPress={() => setEditing(false)}
-          disabled={saving}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', paddingHorizontal: space.sm },
-            pressed && { opacity: 0.6 },
-          ]}
-        >
-          <Text style={{ color: c.textDim, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
-        </Pressable>
-        <Pressable
+      <T role="meta" tone={rule ? 'del' : 'dim'}>
+        {rule ?? hint}
+      </T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: space.lg }}>
+        <Button kind="secondary" size="compact" block={false} label="Cancel" disabled={saving} onPress={() => setEditing(false)} />
+        <Button
+          size="compact"
+          block={false}
+          label="Save"
+          busy={saving}
+          busyLabel={'Saving\u2026'}
+          disabled={!ok && !saving}
           onPress={() => void save()}
-          disabled={!ok}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            {
-              minHeight: TAP_TARGET,
-              minWidth: TAP_TARGET,
-              justifyContent: 'center',
-              paddingHorizontal: space.md,
-              borderRadius: 10,
-              backgroundColor: c.accent,
-              opacity: ok ? 1 : 0.4,
-            },
-            pressed && ok && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{saving ? 'Saving…' : 'Save'}</Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={{ marginTop: space.lg }}>
-      <Text
-        style={{
-          color: c.textDim,
-          fontSize: 11,
-          fontWeight: '700',
-          letterSpacing: 0.8,
-          marginBottom: space.sm,
-        }}
-      >
-        {title.toUpperCase()}
-      </Text>
-      <View style={{ backgroundColor: c.card, borderRadius: 12, padding: space.md }}>
-        {children}
-      </View>
-    </View>
-  );
-}
-
-function Button({
-  label,
-  onPress,
-  destructive,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  destructive?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        {
-          paddingVertical: space.md,
-          alignItems: 'center',
-          borderRadius: 10,
-          marginTop: space.sm,
-          backgroundColor: destructive ? 'transparent' : c.bg,
-          opacity: disabled ? 0.4 : 1,
-        },
-        pressed && { opacity: 0.6 },
-      ]}
-    >
-      <Text style={{ color: destructive ? c.danger : c.text, fontWeight: '600' }}>{label}</Text>
-    </Pressable>
-  );
-}
+/** A field's line in the Profile surface: the gutter the rows use, the 44pt floor. */
+const fieldRow = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  minHeight: TAP_TARGET,
+  paddingHorizontal: layout.gutter,
+  paddingVertical: space.sm,
+  gap: space.tile,
+} as const;

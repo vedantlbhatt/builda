@@ -1,17 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { CELEBRATION_MS, Chip } from '../analysis/AnalysisView';
+import { CELEBRATION_MS } from '../analysis/AnalysisView';
 import { labelize } from '../analysis/format';
 import { ApiError, type FeedItem, type SessionDetail, type Visibility } from '../data/api';
 import { api } from '../data/client';
@@ -30,10 +20,10 @@ import { UploadList } from '../social/UploadLine';
 import { useUploadFlow } from '../social/useUploadFlow';
 import { decodeMarks } from '../strip/decode';
 import { TimelineStrip } from '../strip/TimelineStrip';
-import { colors, hitSlopToReach, space } from '../theme';
+import { dayLabel, layout, space, TAP_TARGET } from '../theme';
+import { Button, haptics, Row, SHAPE, Section, Stat, StatGrid, Surface, SymbolIcon, T, TextField, useColors } from '../ui';
 import { analysisEmptyCopy, defaultTitle, postBlocker, recapHeadline, statTiles } from './format';
 
-const c = colors('dark');
 
 /**
  * Strava's post-activity page, for a build session.
@@ -78,6 +68,7 @@ export function RecapSheet({
   onRetryConnection: () => void;
 }) {
   const { width } = useWindowDimensions();
+  const c = useColors();
   // The post this opening started from. Derived live from the prop, `editing` flipped
   // to "Edit post" mid-typing when a fresh detail and its post lookup landed (a post made
   // on another device) — the title field vanished with its text and Save would have
@@ -171,10 +162,12 @@ export function RecapSheet({
   );
 
   const action = primaryAction(visibility, editing);
-  const contentWidth = width - space.md * 2;
-  const stripWidth = contentWidth - space.md * 2;
+  // The strip sits inside a surface: the gutter, the surface's padding and its hairline.
+  const contentWidth = width - layout.gutter * 2;
+  const stripWidth = contentWidth - layout.tilePad * 2 - 2;
   const existingPhotos = shown?.photos.length ?? 0;
   const roomForPhotos = Math.max(0, MAX_PHOTOS - existingPhotos);
+  const inert = busy || Boolean(blocker);
 
   return (
     <Modal
@@ -185,29 +178,45 @@ export function RecapSheet({
     >
       <ScrollView
         style={{ flex: 1, backgroundColor: c.bg }}
-        contentContainerStyle={{ padding: space.md, paddingBottom: space.xxl }}
+        contentContainerStyle={{
+          paddingHorizontal: layout.gutter,
+          paddingTop: space.sm,
+          paddingBottom: space.xxl,
+          gap: space.lg,
+        }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.md }}>
-          {flow.uploading ? (
-            <View style={{ width: 56 }} />
-          ) : (
-            <Pressable onPress={onClose} hitSlop={8} disabled={busy}>
-              <Text style={{ color: c.textDim, fontSize: 15 }}>{editing ? 'Cancel' : 'Not now'}</Text>
-            </Pressable>
-          )}
-          <Text style={{ color: c.text, fontSize: 17, fontWeight: '700', flex: 1, textAlign: 'center' }}>
+        {/* The sheet's bar: an action either side and the title between them, the way a
+            system sheet lays it out. The two sides share the width so the title stays put
+            whichever button is showing. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET, gap: space.sm }}>
+          <View style={{ flex: 1, alignItems: 'flex-start' }}>
+            {flow.uploading ? null : (
+              <Button
+                kind="secondary"
+                size="compact"
+                block={false}
+                label={editing ? 'Cancel' : 'Not now'}
+                onPress={onClose}
+                disabled={busy}
+              />
+            )}
+          </View>
+          <T role="headline" numberOfLines={1} accessibilityRole="header">
             {flow.uploading ? 'Uploading' : editing ? 'Edit post' : 'Session recap'}
-          </Text>
-          {flow.uploading ? (
-            <Pressable onPress={() => void flow.finish()} disabled={busy} hitSlop={8}>
-              <Text style={{ color: c.accent, fontSize: 15, fontWeight: '700', opacity: busy ? 0.5 : 1 }}>
-                Done
-              </Text>
-            </Pressable>
-          ) : (
-            <View style={{ width: 56 }} />
-          )}
+          </T>
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+            {flow.uploading ? (
+              <Button
+                kind="secondary"
+                size="compact"
+                block={false}
+                label="Done"
+                onPress={() => void flow.finish()}
+                disabled={busy}
+              />
+            ) : null}
+          </View>
         </View>
 
         {flow.uploading ? (
@@ -225,7 +234,7 @@ export function RecapSheet({
         ) : (
           <>
             {/* The hero: the session's own shape, at full width, before any number. */}
-            <View style={card}>
+            <Surface style={{ gap: space.tile }}>
               {session.strip ? (
                 <TimelineStrip
                   cols={session.strip.cols}
@@ -235,93 +244,75 @@ export function RecapSheet({
                   width={stripWidth}
                 />
               ) : (
-                <Text style={{ color: c.textDim, fontSize: 13 }}>
+                <T role="meta" tone="dim">
                   This session predates the detail your editor keeps. Its hours still count.
-                </Text>
+                </T>
               )}
-              <Text style={{ color: c.text, fontSize: 20, fontWeight: '700', marginTop: space.md }}>
-                {headline}
-              </Text>
-              <Text style={{ color: c.textDim, fontSize: 12, marginTop: 2 }}>
-                {session.repo_name ?? 'private repo'} · {new Date(session.started_at).toLocaleDateString()}
-              </Text>
-            </View>
+              <View style={{ gap: space.xs }}>
+                <T role="title">{headline}</T>
+                <T role="meta" tone="dim">
+                  {session.repo_name ?? 'private repo'} · {dayLabel(session.started_at)}
+                </T>
+              </View>
+            </Surface>
 
             {!editing && (
-              <>
-                <Text style={[label, { marginTop: space.lg }]}>TITLE</Text>
-                <TextInput
+              <Section label="Title">
+                <TextField
                   value={title}
                   onChangeText={(t) => setTitle(t.slice(0, 120))}
                   placeholder={session.unattended ? 'Name this run' : 'Name this session'}
-                  placeholderTextColor={c.textDim}
                   editable={!busy}
-                  style={input}
+                  returnKeyType="done"
+                  accessibilityLabel="Title"
                 />
-                <Text style={{ color: c.textDim, fontSize: 11, marginTop: 4 }}>
+                <T role="meta" tone="dim">
                   Goes on your post. The session keeps the title your editor gave it.
-                </Text>
-              </>
+                </T>
+              </Section>
             )}
 
-            <Text style={[label, { marginTop: space.lg }]}>NUMBERS</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-              {tiles.map((t) => (
-                <View
-                  key={t.key}
-                  style={{
-                    width: (contentWidth - space.sm * 2) / 3,
-                    backgroundColor: c.card,
-                    borderRadius: 12,
-                    paddingVertical: space.md,
-                    paddingHorizontal: space.sm,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: t.dim ? c.textDim : c.text,
-                      fontSize: t.dim ? 13 : 20,
-                      fontWeight: t.dim ? '400' : '700',
-                      fontVariant: ['tabular-nums'],
-                    }}
-                    numberOfLines={1}
-                  >
-                    {t.value}
-                  </Text>
-                  <Text style={{ color: c.textDim, fontSize: 11, marginTop: 2 }}>{t.label}</Text>
-                </View>
-              ))}
-            </View>
+            <Section label="Numbers">
+              <Surface>
+                {/* One grid in one surface: nine little cards for nine numbers is the card
+                    soup the design rules out. "not recorded" is a refusal, not a value. */}
+                <StatGrid
+                  items={tiles.map((t) => ({
+                    value: t.dim ? null : t.value,
+                    label: t.label.toLocaleLowerCase(),
+                    refusal: t.dim ? t.value : undefined,
+                  }))}
+                />
+              </Surface>
+            </Section>
 
-            <Text style={[label, { marginTop: space.lg }]}>ANALYSIS</Text>
-            <View style={card}>
-              {analysis ? (
-                <>
-                  <PixelBadge
-                    state={cheering ? 'celebrating' : 'idle'}
-                    paused={!cheering}
-                    title={analysis.headline}
-                    text={analysis.summary}
-                    style={{ padding: 0 }}
-                  />
-                  {analysis.archetype ? (
-                    <View style={{ flexDirection: 'row', marginTop: space.md }}>
-                      <Chip label={labelize(analysis.archetype)} tone="accent" />
-                    </View>
-                  ) : null}
-                </>
-              ) : (
-                <PixelBadge state="thinking" text={analysisEmptyCopy(session)} style={{ padding: 0 }} />
-              )}
-            </View>
+            <Section label="Analysis">
+              <Surface style={{ gap: space.md }}>
+                {analysis ? (
+                  <>
+                    <PixelBadge
+                      state={cheering ? 'celebrating' : 'idle'}
+                      paused={!cheering}
+                      title={analysis.headline}
+                      text={analysis.summary}
+                      style={{ padding: 0 }}
+                    />
+                    {/* The archetype is a word under a label, not an amber chip. */}
+                    {analysis.archetype ? <Stat value={labelize(analysis.archetype)} label="archetype" /> : null}
+                  </>
+                ) : (
+                  <PixelBadge state="thinking" text={analysisEmptyCopy(session)} style={{ padding: 0 }} />
+                )}
+              </Surface>
+            </Section>
 
-            <View style={{ marginTop: space.lg }}>
-              {editing && shown.photos.length > 0 && (
-                <>
-                  <Text style={label}>ON THE POST</Text>
-                  <PhotoGrid photos={shown.photos} width={contentWidth} style={{ marginBottom: space.md }} />
-                </>
-              )}
+            {editing && shown.photos.length > 0 && (
+              <Section label="On the post">
+                <PhotoGrid photos={shown.photos} width={contentWidth} />
+              </Section>
+            )}
+
+            <View style={{ gap: space.sm }}>
               <MediaPicker
                 photos={photos}
                 onPhotos={setPhotos}
@@ -332,86 +323,72 @@ export function RecapSheet({
                 allowAudio={!shown?.audio}
               />
               {editing && shown.audio ? (
-                <Text style={{ color: c.textDim, fontSize: 11, marginTop: 6 }}>
+                <T role="meta" tone="dim">
                   This post already has its voice note.
-                </Text>
+                </T>
               ) : null}
             </View>
 
-            <Text style={[label, { marginTop: space.lg }]}>WHO CAN SEE IT</Text>
-            <View style={{ flexDirection: 'row', backgroundColor: c.card, borderRadius: 10, padding: 3 }}>
-              {VISIBILITIES.map((v) => (
-                <Pressable
-                  key={v}
-                  onPress={() => setVisibility(v)}
-                  disabled={busy}
-                  style={{
-                    flex: 1,
-                    paddingVertical: space.sm,
-                    borderRadius: 8,
-                    alignItems: 'center',
-                    backgroundColor: v === visibility ? c.accent : 'transparent',
-                  }}
-                >
-                  <Text style={{ color: v === visibility ? c.onAccent : c.text, fontWeight: '600', fontSize: 14 }}>
-                    {visibilityLabel(v)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <Section label="Who can see it">
+              <Segmented
+                options={VISIBILITIES}
+                value={visibility}
+                label={visibilityLabel}
+                onChange={setVisibility}
+                disabled={busy}
+              />
+            </Section>
 
-            <Text style={[label, { marginTop: space.lg }]}>CAPTION</Text>
-            <TextInput
-              value={caption}
-              onChangeText={(t) => setCaption(t.slice(0, CAPTION_MAX))}
-              placeholder="What did you build?"
-              placeholderTextColor={c.textDim}
-              multiline
-              editable={!busy}
-              style={[input, { minHeight: 96, textAlignVertical: 'top' }]}
-            />
-            <Text style={{ color: c.textDim, fontSize: 11, textAlign: 'right', marginTop: 4 }}>
-              {caption.length}/{CAPTION_MAX}
-            </Text>
+            <Section label="Caption">
+              <TextField
+                value={caption}
+                onChangeText={(t) => setCaption(t.slice(0, CAPTION_MAX))}
+                placeholder="What did you build?"
+                multiline
+                editable={!busy}
+                accessibilityLabel="Caption"
+                style={{ minHeight: 96 }}
+              />
+              {/* A counter belongs to the end of the field it counts. */}
+              <T role="meta" tone="dim" align="right">
+                {caption.length}/{CAPTION_MAX}
+              </T>
+            </Section>
 
             {(blocker || problem) && (
-              <View style={[card, { marginTop: space.lg, flexDirection: 'row', alignItems: 'center', gap: space.sm }]}>
-                <Text style={{ color: c.textDim, fontSize: 13, flex: 1 }}>{problem ?? blocker}</Text>
-                {(offline || problem) && !sample && (
-                  <Pressable hitSlop={hitSlopToReach(18)} onPress={onRetryConnection} accessibilityRole="button">
-                    <Text style={{ color: c.accent, fontWeight: '600', fontSize: 13 }}>Try again</Text>
-                  </Pressable>
-                )}
-              </View>
+              <Surface style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 0 }}>
+                <T role="meta" tone="dim" style={{ flex: 1, paddingVertical: space.tile }}>
+                  {problem ?? blocker}
+                </T>
+                {(offline || problem) && !sample ? (
+                  <Button kind="secondary" size="compact" block={false} label="Try again" onPress={onRetryConnection} />
+                ) : null}
+              </Surface>
             )}
 
-            <Pressable
-              onPress={() => void submit(visibility)}
-              disabled={busy || Boolean(blocker)}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                primary,
-                (busy || blocker) && { opacity: 0.5 },
-                pressed && { opacity: 0.8 },
-              ]}
-            >
-              {submitting ? (
-                <ActivityIndicator color={c.onAccent} />
-              ) : (
-                <Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 16 }}>{action.label}</Text>
+            <View style={{ gap: space.sm }}>
+              <Button
+                label={action.label}
+                onPress={() => void submit(visibility)}
+                disabled={Boolean(blocker)}
+                busy={busy}
+                busyLabel={editing || visibility === 'private' ? 'Saving\u2026' : 'Posting\u2026'}
+              />
+              {/* The quieter way out, with what it means said under it: a row, left aligned
+                  like every other sentence on the sheet, rather than a centred button with a
+                  caption hanging off it. */}
+              {action.showSavePrivately && (
+                <Surface padding={0}>
+                  <Row
+                    title="Save privately"
+                    meta="Only you. Nothing reaches a feed."
+                    leading={<SymbolIcon name="lock" />}
+                    onPress={() => void submit('private')}
+                    disabled={inert}
+                  />
+                </Surface>
               )}
-            </Pressable>
-            {action.showSavePrivately && (
-              <Pressable
-                onPress={() => void submit('private')}
-                disabled={busy || Boolean(blocker)}
-                accessibilityRole="button"
-                style={({ pressed }) => [secondary, (busy || blocker) && { opacity: 0.5 }, pressed && { opacity: 0.8 }]}
-              >
-                <Text style={{ color: c.text, fontWeight: '600', fontSize: 15 }}>Save privately</Text>
-                <Text style={{ color: c.textDim, fontSize: 11, marginTop: 2 }}>Only you. Nothing reaches a feed.</Text>
-              </Pressable>
-            )}
+            </View>
           </>
         )}
       </ScrollView>
@@ -419,40 +396,67 @@ export function RecapSheet({
   );
 }
 
-const card = {
-  backgroundColor: c.card,
-  borderRadius: 12,
-  padding: space.md,
-} as const;
-
-const label = {
-  color: c.textDim,
-  fontSize: 11,
-  fontWeight: '700',
-  letterSpacing: 0.8,
-  marginBottom: space.sm,
-} as const;
-
-const input = {
-  color: c.text,
-  backgroundColor: c.card,
-  borderRadius: 10,
-  padding: space.md,
-  fontSize: 15,
-} as const;
-
-const primary = {
-  backgroundColor: c.accent,
-  borderRadius: 12,
-  paddingVertical: space.md,
-  alignItems: 'center',
-  marginTop: space.lg,
-} as const;
-
-const secondary = {
-  backgroundColor: c.card,
-  borderRadius: 12,
-  paddingVertical: space.md,
-  alignItems: 'center',
-  marginTop: space.sm,
-} as const;
+/**
+ * Who can see it: three segments in a capsule, the chosen one a solid amber fill with dark
+ * ink (a state, not a chip), the others plain text. A value passing a step is a selection
+ * tick. Built here rather than native because the choice has to read the same on web.
+ */
+function Segmented<V extends string>({
+  options,
+  value,
+  label,
+  onChange,
+  disabled,
+}: {
+  options: readonly V[];
+  value: V;
+  label: (v: V) => string;
+  onChange: (v: V) => void;
+  disabled?: boolean;
+}) {
+  const c = useColors();
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      style={{
+        flexDirection: 'row',
+        backgroundColor: c.card,
+        borderRadius: SHAPE.action,
+        borderCurve: 'continuous',
+        borderWidth: 1,
+        borderColor: c.border,
+        padding: space.xs,
+      }}
+    >
+      {options.map((v) => {
+        const on = v === value;
+        return (
+          <Pressable
+            key={v}
+            onPress={() => {
+              if (on) return;
+              haptics.select();
+              onChange(v);
+            }}
+            disabled={disabled}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on, disabled }}
+            style={{
+              flex: 1,
+              minHeight: 36,
+              borderRadius: SHAPE.action,
+              borderCurve: 'continuous',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: on ? c.accent : 'transparent',
+            }}
+          >
+            <T role="row" tone={on ? 'onAccent' : 'text'}>
+              {label(v)}
+            </T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

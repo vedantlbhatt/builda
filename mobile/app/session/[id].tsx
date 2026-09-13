@@ -1,47 +1,23 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { AnalysisView } from '../../src/analysis/AnalysisView';
 import { describeEnd } from '../../src/analysis/format';
 import { heading, renderable } from '../../src/session/feedback';
 import { RecapCard, toCardModel, type CardModel } from '../../src/card/RecapCard';
 import { shareCard } from '../../src/card/export';
-import {
-  ApiError,
-  type FeedItem,
-  type SessionDetail,
-  type Visibility,
-} from '../../src/data/api';
+import { ApiError, type FeedItem, type SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
 import { api, SAMPLE_SESSION } from '../../src/data/client';
 import { RecapSheet } from '../../src/recap/RecapSheet';
-import { CAPTION_MAX, detailAfterPost, planMedia } from '../../src/social/composeFlow';
-import {
-  isAlreadySharedConflict,
-  VISIBILITIES,
-  visibilityLabel,
-} from '../../src/social/format';
-import type { PickedPhoto, RecordedAudio } from '../../src/social/media';
-import { MediaPicker } from '../../src/social/MediaPicker';
+import { detailAfterPost } from '../../src/social/composeFlow';
+import { visibilityLabel } from '../../src/social/format';
 import { PixelBadge } from '../../src/pixel/PixelBadge';
-import { UploadList } from '../../src/social/UploadLine';
-import { useUploadFlow } from '../../src/social/useUploadFlow';
-import { TimelineStrip } from '../../src/strip/TimelineStrip';
-import { classShare, decodeColumns, decodeMarks } from '../../src/strip/decode';
+import { classShare, decodeColumns } from '../../src/strip/decode';
 import { StripClass } from '../../src/generated/strip';
-import { colors, compactNumber, duration, hitSlopToReach, space } from '../../src/theme';
+import { colors, compactNumber, duration, layout, space } from '../../src/theme';
+import { Button, SHAPE, Section, StatGrid, Surface, T, type StatItem } from '../../src/ui';
 
 const c = colors('dark');
 
@@ -147,13 +123,13 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
 
   if (!model || !session) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: c.bg, paddingHorizontal: space.md }}>
-        <PixelBadge state="thinking" text="Reading your session…" />
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: c.bg, paddingHorizontal: layout.gutter }}>
+        <PixelBadge state="thinking" text="Reading your session…" style={{ paddingHorizontal: 0 }} />
       </View>
     );
   }
 
-  const contentWidth = width - space.md * 2;
+  const contentWidth = width - layout.gutter * 2;
   const share = model.strip ? classShare(decodeColumns(model.strip)) : null;
 
   // Boundary fields are optional on read: an older server omits them, and the row is
@@ -196,132 +172,158 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
     }
   };
 
+  // Every number the session has, as one 3-up grid. Absent, not zero: a token count the
+  // editor never wrote is a refusal sentence, and commits are dropped when there were none.
+  const numbers: StatItem[] = [];
+  if (state === 'live') numbers.push({ value: 'Live', label: 'status' });
+  numbers.push({ value: duration(model.activeSeconds), label: 'active' });
+  if (hasSplit) {
+    numbers.push({ value: duration(session.attended_seconds ?? 0), label: 'attended' });
+    numbers.push({ value: duration(session.autonomous_seconds ?? 0), label: 'autonomous' });
+  }
+  numbers.push({ value: duration(model.wallSeconds), label: 'elapsed' });
+  numbers.push({ value: `${model.prompts}`, label: 'prompts' });
+  numbers.push({ value: `${model.filesTouched}`, label: 'files touched' });
+  numbers.push({ value: model.agentLines.toLocaleString(), label: 'agent lines' });
+  if (model.commits > 0) numbers.push({ value: `${model.commits}`, label: 'commits' });
+  // Cursor accounts usage server-side and writes {0,0} locally, so a "0" here would be a
+  // claim about the session rather than about Cursor.
+  numbers.push(
+    model.tokensReported
+      ? { value: compactNumber(model.totalTokens), label: 'tokens' }
+      : { value: null, label: 'tokens', refusal: 'not recorded by this editor' }
+  );
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.bg }}
-      contentContainerStyle={{ padding: space.md, paddingBottom: space.xxl }}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        paddingHorizontal: layout.gutter,
+        paddingTop: space.md,
+        paddingBottom: space.xxl,
+        gap: layout.sectionGap,
+      }}
     >
-      {/* The card, rendered at the width it will be captured at. Live preview rather than
-          a separate "export" path: what you see is literally the view that gets captured. */}
-      <View ref={cardRef} collapsable={false} style={{ borderRadius: 14, overflow: 'hidden' }}>
-        <RecapCard model={model} width={contentWidth} />
-      </View>
+      <View style={{ gap: space.md }}>
+        {/* The card, rendered at the width it will be captured at. Live preview rather than
+            a separate "export" path: what you see is literally the view that gets captured.
+            Share cards take the 28pt corner (DESIGN-DIRECTION 3.4). */}
+        <View
+          ref={cardRef}
+          collapsable={false}
+          style={{ borderRadius: SHAPE.wrapped, borderCurve: 'continuous', overflow: 'hidden' }}
+        >
+          <RecapCard model={model} width={contentWidth} />
+        </View>
 
-      {/* Sharing to the feed is an act, never automatic, and only for a finished session:
-          a live card's numbers keep moving and a recap that moves is not a recap. */}
-      {state === 'final' && id !== 'sample' && (
-        post ? (
-          <View style={[postedBox, { flexDirection: 'row', alignItems: 'center', gap: space.md }]}>
-            <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>
-              Posted · {visibilityLabel(post.visibility)}
-            </Text>
-            <Pressable
-              hitSlop={hitSlopToReach(18)}
-              accessibilityRole="button"
-              onPress={() => setRecapOpen(true)}
-            >
-              <Text style={{ color: c.accent, fontWeight: '600', fontSize: 14 }}>Edit</Text>
-            </Pressable>
-            <Pressable
-              hitSlop={hitSlopToReach(18)}
-              accessibilityRole="button"
-              onPress={() =>
-                Alert.alert('Delete post?', 'It disappears from every feed immediately.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                      try {
-                        await api.deletePost(post.id);
-                        setPost(null);
-                        setShared(false);
-                        // Forget the id too, or the loader above would fetch a deleted post.
-                        setSession((cur) => (cur ? { ...cur, post_id: null, is_shared: false } : cur));
-                        // The cached detail is what the next visit shows first.
-                        void cache.putDetail({ ...session, post_id: null, is_shared: false }).catch(() => undefined);
-                      } catch (e) {
-                        Alert.alert('Could not delete', e instanceof Error ? e.message : 'try again');
-                      }
-                    },
-                  },
-                ])
-              }
-            >
-              <Text style={{ color: c.danger, fontWeight: '600', fontSize: 14 }}>Delete</Text>
-            </Pressable>
-          </View>
-        ) : shared ? (
-          // The post exists but this mount does not hold it (an older server sent no id, or
-          // the row failed to load). Never offer to post again: the server would
-          // answer 409. The feed is where the post — and its Delete — live.
-          <View style={[postedBox, { flexDirection: 'row', alignItems: 'center' }]}>
-            <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>Posted to the feed</Text>
-            {looking ? (
-              <ActivityIndicator color={c.accent} />
-            ) : (
-              <Pressable
-                hitSlop={hitSlopToReach(18)}
-                accessibilityRole="button"
-                onPress={() => router.push('/feed')}
-              >
-                <Text style={{ color: c.accent, fontWeight: '600', fontSize: 14 }}>Open feed</Text>
-              </Pressable>
-            )}
+        {/* The key to the card's strip, directly under it and outside the captured view: a
+            route map does not explain its own encoding, the page around it does. There used
+            to be a second, larger strip in a Timeline section below; it drew the same session
+            at a different column width, so the two shapes disagreed on one screen. */}
+        {model.strip ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: space.md, rowGap: space.sm }}>
+            <LegendItem klass={StripClass.prompting} label="you prompting" share={share} />
+            <LegendItem klass={StripClass.agent} label="agent working" share={share} />
+            <LegendItem klass={StripClass.human_edit} label="your edits" share={share} />
+            <LegendItem klass={StripClass.idle} label="idle" share={share} />
           </View>
         ) : (
-          <>
-            {/* The recap: title, tiles, analysis, photos, then Post. What a tapped
-                completion push opens, reachable here for everyone else. */}
-            <Pressable
-              onPress={() => setRecapOpen(true)}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                {
-                  backgroundColor: c.accent,
-                  borderRadius: 12,
-                  paddingVertical: space.md,
-                  alignItems: 'center',
-                  marginTop: space.md,
-                },
-                pressed && { opacity: 0.8 },
-              ]}
-            >
-              <Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 16 }}>
-                Post to the feed
-              </Text>
-              <Text style={{ color: c.onAccent, fontSize: 12, marginTop: 2, opacity: 0.75 }}>
-                Photos, a caption, and who sees it
-              </Text>
-            </Pressable>
-          </>
-        )
-      )}
+          <T role="meta" tone="dim">
+            This session predates the detail your editor keeps. Its hours still count.
+          </T>
+        )}
 
-      {/* Exporting the card as an image and posting it to the feed are different acts, and
-          calling both of them "share" made the screen read as three buttons for one thing.
-          The image export is the quiet one: it names the file it produces. */}
-      <Pressable
-        onPress={async () => {
-          setSharing(true);
-          try {
-            await shareCard(cardRef, model);
-          } finally {
-            setSharing(false);
-          }
-        }}
-        accessibilityRole="button"
-        hitSlop={hitSlopToReach(24)}
-        style={({ pressed }) => [
-          { alignItems: 'center', paddingVertical: space.sm, marginTop: space.sm },
-          pressed && { opacity: 0.6 },
-        ]}
-      >
-        <Text style={{ color: c.textDim, fontWeight: '600', fontSize: 13 }}>
-          {sharing ? 'Preparing the image…' : 'Save this card as an image'}
-        </Text>
-      </Pressable>
+        {/* Sharing to the feed is an act, never automatic, and only for a finished session:
+            a live card's numbers keep moving and a recap that moves is not a recap. */}
+        {state === 'final' && id !== 'sample' && (
+          post ? (
+            <Surface style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingVertical: 0 }}>
+              <T role="row" style={{ flex: 1, paddingVertical: space.tile }}>
+                Posted · {visibilityLabel(post.visibility)}
+              </T>
+              <Button kind="secondary" size="compact" block={false} label="Edit" onPress={() => setRecapOpen(true)} />
+              <Button
+                kind="secondary"
+                destructive
+                size="compact"
+                block={false}
+                label="Delete"
+                onPress={() =>
+                  Alert.alert('Delete post?', 'It disappears from every feed immediately.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await api.deletePost(post.id);
+                          setPost(null);
+                          setShared(false);
+                          // Forget the id too, or the loader above would fetch a deleted post.
+                          setSession((cur) => (cur ? { ...cur, post_id: null, is_shared: false } : cur));
+                          // The cached detail is what the next visit shows first.
+                          void cache.putDetail({ ...session, post_id: null, is_shared: false }).catch(() => undefined);
+                        } catch (e) {
+                          Alert.alert('Could not delete', e instanceof Error ? e.message : 'try again');
+                        }
+                      },
+                    },
+                  ])
+                }
+              />
+            </Surface>
+          ) : shared ? (
+            // The post exists but this mount does not hold it (an older server sent no id, or
+            // the row failed to load). Never offer to post again: the server would answer
+            // 409. The feed is where the post, and its Delete, live.
+            <Surface style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingVertical: 0 }}>
+              <T role="row" style={{ flex: 1, paddingVertical: space.tile }}>
+                Posted to the feed
+              </T>
+              {looking ? (
+                <ActivityIndicator color={c.accent} />
+              ) : (
+                <Button kind="secondary" size="compact" block={false} label="Open feed" onPress={() => router.push('/feed')} />
+              )}
+            </Surface>
+          ) : (
+            // The recap: title, tiles, analysis, photos, then Post. What a tapped completion
+            // push opens, reachable here for everyone else.
+            <View style={{ gap: space.sm }}>
+              <Button
+                label="Post to the feed"
+                accessibilityHint="Photos, a caption, and who sees it"
+                onPress={() => setRecapOpen(true)}
+              />
+              <T role="meta" tone="dim">
+                Photos, a caption, and who sees it.
+              </T>
+            </View>
+          )
+        )}
 
+        {/* Exporting the card as an image and posting it to the feed are different acts, and
+            calling both of them "share" made the screen read as three buttons for one thing.
+            The image export is the quiet one: it names the file it produces. Exporting a
+            share card is a commitment, so it lands with the medium tap. */}
+        <Button
+          kind="secondary"
+          size="compact"
+          label="Save this card as an image"
+          busy={sharing}
+          busyLabel="Preparing the image…"
+          haptic="commit"
+          onPress={async () => {
+            setSharing(true);
+            try {
+              await shareCard(cardRef, model);
+            } finally {
+              setSharing(false);
+            }
+          }}
+        />
+      </View>
 
       <RecapSheet
         visible={recapOpen}
@@ -334,151 +336,56 @@ function SessionScreenInner({ id, recap }: { id: string; recap?: string }) {
         onRetryConnection={() => void load()}
       />
 
-      <Section title="Timeline">
-        {model.strip ? (
-          <>
-            <TimelineStrip
-              cols={model.strip}
-              marks={decodeMarks(model.marks)}
-              spanMs={Math.max(1, model.wallSeconds * 1000)}
-              preset="hero"
-              width={contentWidth - space.md * 2}
-            />
-            {/* The legend lives HERE, not on the shared card. A route map does not explain
-                its own encoding; the moment an artifact does, it is a chart. */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginTop: space.sm }}>
-              <LegendItem klass={StripClass.prompting} label="you prompting" share={share} />
-              <LegendItem klass={StripClass.agent} label="agent working" share={share} />
-              <LegendItem klass={StripClass.human_edit} label="your edits" share={share} />
-              <LegendItem klass={StripClass.idle} label="idle" share={share} />
-            </View>
-          </>
-        ) : (
-          <Text style={{ color: c.textDim, fontSize: 13 }}>
-            This session predates the detail your editor keeps. Its hours still count.
-          </Text>
-        )}
-      </Section>
-
-      <Section title="Numbers">
-        {state === 'live' && <Row label="Status" value="Live" />}
-        <Row label="Active" value={duration(model.activeSeconds)} />
-        {hasSplit && (
-          <Row
-            label="Attended / autonomous"
-            value={`${duration(session.attended_seconds ?? 0)} / ${duration(session.autonomous_seconds ?? 0)}`}
-          />
-        )}
-        <Row label="Elapsed" value={duration(model.wallSeconds)} />
-        <Row label="Prompts you typed" value={`${model.prompts}`} />
-        <Row label="Files touched" value={`${model.filesTouched}`} />
-        <Row label="Lines from the agent" value={model.agentLines.toLocaleString()} />
-        {model.commits > 0 && <Row label="Commits" value={`${model.commits}`} />}
-        {model.tokensReported ? (
-          <Row label="Tokens" value={compactNumber(model.totalTokens)} />
-        ) : (
-          // Absent, not zero. Cursor accounts usage server-side and writes {0,0} locally,
-          // so a "0" here would be a claim about the session rather than about Cursor.
-          <Row label="Tokens" value="not recorded by this editor" dim />
-        )}
+      <Section label="Numbers">
+        <Surface>
+          <StatGrid items={numbers} />
+        </Surface>
         {endNote && (
-          <Text style={{ color: c.textDim, fontSize: 12, lineHeight: 17, marginTop: space.sm }}>
+          <T role="meta" tone="dim">
             {endNote}
-          </Text>
+          </T>
         )}
       </Section>
 
       {/* WHERE THE TIME WENT THAT YOU WOULD NOT HAVE CHOSEN. Above the analysis on
           purpose: the analysis is a reading of the session, and this is a measurement of
-          it. Silent when the sitting had nothing worth saying, which is most of them —
-          MEASURED on this container, 5 of 17. A card that flags something every session
+          it. Silent when the sitting had nothing worth saying, which is most of them
+          (MEASURED on this container, 5 of 17). A card that flags something every session
           is a card people stop reading. */}
       {notes.length > 0 && (
-        <Section title={noteHeading ?? 'Worth a look'}>
-          {notes.map((n) => (
-            <Text
-              key={n.id}
-              style={{ color: c.text, fontSize: 14, lineHeight: 21, paddingVertical: 5 }}
-            >
-              {n.text}
-            </Text>
-          ))}
-          <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.sm }}>
+        <Section label={noteHeading ?? 'Worth a look'}>
+          <Surface style={{ gap: space.tile }}>
+            {notes.map((n) => (
+              <T key={n.id} role="body">
+                {n.text}
+              </T>
+            ))}
+          </Surface>
+          <T role="meta" tone="dim">
             Measured on your machine. The command that kept failing and the file that was
             rewritten stay there; only the counts travel.
-          </Text>
+          </T>
         </Section>
       )}
 
       {session.analysis ? (
         <AnalysisView analysis={session.analysis} />
       ) : (
-        <Section title="Analysis">
-          {state === 'final' ? (
-            // Quiet, and no mascot: nothing is coming. A final session without an analysis
-            // will not grow one by waiting, and a thinking Bit would promise otherwise.
-            <Text style={{ color: c.textDim, fontSize: 13 }}>
-              Analysis not available for this session
-            </Text>
-          ) : (
-            <PixelBadge
-              state="thinking"
-              text="Analysis runs when the session ends"
-              style={{ padding: 0 }}
-            />
-          )}
+        <Section label="Analysis">
+          <Surface>
+            {state === 'final' ? (
+              // Quiet, and no mascot: nothing is coming. A final session without an analysis
+              // will not grow one by waiting, and a thinking Bit would promise otherwise.
+              <T role="meta" tone="dim">
+                Analysis not available for this session
+              </T>
+            ) : (
+              <PixelBadge state="thinking" text="Analysis runs when the session ends" style={{ padding: 0 }} />
+            )}
+          </Surface>
         </Section>
       )}
     </ScrollView>
-  );
-}
-
-
-const postedBox = {
-  backgroundColor: c.card,
-  borderRadius: 12,
-  paddingVertical: space.md,
-  paddingHorizontal: space.md,
-  marginTop: space.sm,
-} as const;
-
-const composeLabel = {
-  color: c.textDim,
-  fontSize: 11,
-  fontWeight: '700',
-  letterSpacing: 0.8,
-  marginBottom: space.sm,
-} as const;
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={{ marginTop: space.lg }}>
-      <Text
-        style={{
-          color: c.textDim,
-          fontSize: 11,
-          fontWeight: '700',
-          letterSpacing: 0.8,
-          marginBottom: space.sm,
-        }}
-      >
-        {title.toUpperCase()}
-      </Text>
-      <View style={{ backgroundColor: c.card, borderRadius: 12, padding: space.md }}>
-        {children}
-      </View>
-    </View>
-  );
-}
-
-function Row({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
-      <Text style={{ color: c.textDim, fontSize: 14 }}>{label}</Text>
-      <Text style={{ color: dim ? c.textDim : c.text, fontSize: 14, fontWeight: dim ? '400' : '600' }}>
-        {value}
-      </Text>
-    </View>
   );
 }
 
@@ -497,14 +404,21 @@ function LegendItem({
   const raw = share ? share[klass] * 100 : null;
   const pct = raw === null ? null : raw > 0 && raw < 1 ? '<1' : String(Math.round(raw));
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+      {/* A strip segment in small: a capsule of the class colour. */}
       <View
-        style={{ width: 18, height: 10, borderRadius: 2, backgroundColor: c.strip[klass] }}
+        style={{
+          width: space.md,
+          height: space.sm,
+          borderRadius: SHAPE.action,
+          borderCurve: 'continuous',
+          backgroundColor: c.strip[klass],
+        }}
       />
-      <Text style={{ color: c.textDim, fontSize: 12 }}>
+      <T role="meta" tone="dim">
         {label}
         {pct !== null ? ` ${pct}%` : ''}
-      </Text>
+      </T>
     </View>
   );
 }

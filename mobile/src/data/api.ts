@@ -628,6 +628,11 @@ export interface TokenPair {
 
 export type RepoVisibility = 'public' | 'anonymous' | 'excluded';
 
+/** What a transport failure says on screen (ApiError status 0). */
+export const OFFLINE_MESSAGE = 'Builder is not reachable right now.';
+/** What a request that ran past the timeout says on screen. */
+export const TIMEOUT_MESSAGE = 'Builder took too long to answer.';
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -1031,10 +1036,12 @@ export class Api {
         signal: controller.signal,
       });
     } catch (e) {
+      // Status 0 is the phone's side of the wire. Screens print `message` as it is, so it is
+      // a sentence a person can act on, not fetch's "Network request failed".
       if ((e as { name?: string }).name === 'AbortError') {
-        throw new ApiError(0, 'request timed out');
+        throw new ApiError(0, TIMEOUT_MESSAGE);
       }
-      throw new ApiError(0, e instanceof Error ? e.message : 'network error');
+      throw new ApiError(0, OFFLINE_MESSAGE);
     } finally {
       clearTimeout(timer);
     }

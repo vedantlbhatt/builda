@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 
-import { colors, graphLevel } from '../theme';
+import { colors, graphLevel, space } from '../theme';
 
 interface Props {
   days: { date: string; active_seconds: number }[];
@@ -12,17 +12,23 @@ interface Props {
    *
    * A year of columns on a 390pt screen gives each day under 6pt, which is below the
    * threshold where the shading is readable at all. 17 weeks is a quarter, fits at a
-   * comfortable cell size, and pages horizontally for the rest — a squeezed year is a
+   * comfortable cell size, and pages horizontally for the rest: a squeezed year is a
    * texture, not a graph.
    */
   weeksPerPage?: number;
 }
 
+/**
+ * Cells are square, with no corner radius: this is the pixel grid, the same square cell
+ * as the mascot and the dither, not a set of little rounded tiles. The gap is the 4pt
+ * base unit.
+ */
+const GAP = space.xs;
+
 export function ContributionGrid({ days, width, weeksPerPage = 17 }: Props) {
   const c = colors('dark');
-  const gap = 3;
-  const cell = Math.floor((width - gap * (weeksPerPage - 1)) / weeksPerPage);
-  const height = cell * 7 + gap * 6;
+  const cell = Math.floor((width - GAP * (weeksPerPage - 1)) / weeksPerPage);
+  const height = cell * 7 + GAP * 6;
 
   // Monday-first, and the first column is padded so weekdays line up across columns. A
   // grid whose rows do not mean the same day is unreadable.
@@ -34,7 +40,7 @@ export function ContributionGrid({ days, width, weeksPerPage = 17 }: Props) {
   const empty: { x: number; y: number }[] = [];
   for (let w = 0; w < weeksPerPage; w++) {
     for (let d = 0; d < 7; d++) {
-      empty.push({ x: w * (cell + gap), y: d * (cell + gap) });
+      empty.push({ x: w * (cell + GAP), y: d * (cell + GAP) });
     }
   }
 
@@ -42,15 +48,7 @@ export function ContributionGrid({ days, width, weeksPerPage = 17 }: Props) {
     <View style={{ width, height }}>
       <Svg width={width} height={height}>
         {empty.map((e, i) => (
-          <Rect
-            key={`e${i}`}
-            x={e.x}
-            y={e.y}
-            width={cell}
-            height={cell}
-            rx={2}
-            fill={c.graph[0]}
-          />
+          <Rect key={`e${i}`} x={e.x} y={e.y} width={cell} height={cell} fill={c.graph[0]} />
         ))}
         {days.map((d, i) => {
           const slot = i + leading;
@@ -60,11 +58,10 @@ export function ContributionGrid({ days, width, weeksPerPage = 17 }: Props) {
           return (
             <Rect
               key={d.date}
-              x={week * (cell + gap)}
-              y={weekday * (cell + gap)}
+              x={week * (cell + GAP)}
+              y={weekday * (cell + GAP)}
               width={cell}
               height={cell}
-              rx={2}
               fill={c.graph[Math.min(level, c.graph.length - 1)]}
             />
           );

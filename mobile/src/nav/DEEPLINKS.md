@@ -31,8 +31,11 @@ A launch with no link lands on the first tab (`/now`), or on onboarding when the
 
 The known expo-av deprecation is kept out of the dev warning toast (`app/_layout.tsx`), so the tab
 bar is clear in dev shots. Any other warning still raises the yellow "Open debugger to view
-warnings" toast over the bar; its close x is not an accessibility element, so tap it by point
-(about x 370, y 811 on the 402 by 874 iPhone 16 Pro).
+warnings" toast over the bar. For a screenshot run, open `builder://dev-auth?quiet=1` first (or add
+`&quiet=1` to the sign-in link): every toast stays off until the JavaScript reloads. That includes
+the red `console.error` toast, so during a quiet run an error shows only in Metro's terminal; read
+it there. Without it, the toast's close x is not an accessibility element, so tap it by point (about
+x 370, y 811 on the 402 by 874 iPhone 16 Pro).
 
 ## The gate
 
@@ -63,7 +66,7 @@ it: `builder://dev-auth?onboarded=1`.
 ## Dev auth (dev builds only)
 
 ```
-builder://dev-auth?access=<jwt>&refresh=<token>[&onboarded=1 | &reset=1][&signout=1][&to=<path>]
+builder://dev-auth?access=<jwt>&refresh=<token>[&onboarded=1 | &reset=1][&signout=1][&to=<path>][&quiet=1]
 ```
 
 | param | effect |
@@ -73,6 +76,7 @@ builder://dev-auth?access=<jwt>&refresh=<token>[&onboarded=1 | &reset=1][&signou
 | `reset=1` | close the gate and clear the onboarding name (never together with `onboarded=1`: refused) |
 | `signout=1` | clear tokens and the cache, as Settings' sign out does (runs before tokens) |
 | `to=/path` | where to land afterwards, an in-app path (`/wrapped?card=7`); percent-encode it if it has an `&`. Default: `/now` when onboarded, `/onboarding/hello` when not |
+| `quiet=1` | no LogBox toast at all for the rest of the run (`LogBox.ignoreAllLogs(true)`, until the JavaScript reloads): the yellow warnings toast AND the red `console.error` toast, so an error during a quiet run shows only in Metro's terminal. Alone or with anything above, and applied even when the rest of the link is refused. Dev builds only, like the route |
 
 Nothing is applied from a refused link; the screen says why and offers Close. The route is
 registered only when `__DEV__` is true, and renders a redirect if it is ever reached in a release

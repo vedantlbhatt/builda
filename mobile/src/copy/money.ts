@@ -124,8 +124,8 @@ export function modelLine(row: ReportModelCost): string {
 }
 
 /**
- * Every token the priced sessions moved, as `burn._human` says it: "12.9M", and "4168.5M"
- * rather than a unit the engine never prints.
+ * Every token the priced sessions moved, as `burn._human` says it: "12.9M", and "4,168.5M"
+ * (the millions grouped on both sides) rather than a unit the engine never prints.
  */
 export function totalTokens(t: ReportTokens | null | undefined): string | null {
   if (!t) return null;

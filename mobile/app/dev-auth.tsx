@@ -1,6 +1,6 @@
 import { Redirect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { LogBox, Text, View } from 'react-native';
 
 import * as cache from '../src/data/cache';
 import { api } from '../src/data/client';
@@ -10,16 +10,24 @@ import { nav, QuietButton } from '../src/nav/Skeleton';
 import { registerForPush } from '../src/push/push';
 
 /**
- * `builder://dev-auth?access=<jwt>&refresh=<token>[&onboarded=1|&reset=1][&signout=1][&to=/path]`
+ * `builder://dev-auth?access=<jwt>&refresh=<token>[&onboarded=1|&reset=1][&signout=1][&to=/path][&quiet=1]`
  *
  * Signs the simulator in without Apple or Google, for end to end runs and the screenshot
  * harness (usage in `src/nav/DEEPLINKS.md`). The tokens go through `api.setTokens`, the one
  * call every real sign-in ends with, so storage is the Api's own and nothing is duplicated;
  * then the same follow-ups a real sign-in makes (push registration, the pending name).
  *
+ * `quiet=1` silences the development build's toasts for the rest of the run, so they stop landing
+ * in screenshots: `LogBox.ignoreAllLogs(true)`, which lasts until the JavaScript reloads. That is
+ * EVERY toast, the red `console.error` one ("Open debugger to view errors") as well as the yellow
+ * warning one, so a real error during a quiet run shows only in Metro's terminal: read it there.
+ * It can come alone (`builder://dev-auth?quiet=1`) or beside anything else, and a link that is
+ * refused for another reason still applies it.
+ *
  * DEV ONLY, twice over: the root layout registers this route only when `__DEV__` is true, so a
  * release build has no such route and the link lands nowhere; and if it were ever rendered in
- * a release build it touches nothing and redirects. Tokens are never shown or logged.
+ * a release build it touches nothing and redirects (the quiet included: `DevAuth` never
+ * renders there). Tokens are never shown or logged.
  */
 export default function DevAuthRoute() {
   if (!__DEV__) return <Redirect href="/now" />;
@@ -40,6 +48,13 @@ function DevAuth() {
   // A second link while this screen is focused replaces the params in place; key on content.
   const key = JSON.stringify(params);
   const req = useMemo(() => parseDevAuth(params), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every toast off for the rest of the run (errors too, not only warnings), before anything else
+  // the link asks for.
+  const quiet = params.quiet === '1' || (Array.isArray(params.quiet) && params.quiet.includes('1'));
+  useEffect(() => {
+    if (__DEV__ && quiet) LogBox.ignoreAllLogs(true);
+  }, [quiet]);
 
   useEffect(() => {
     let cancelled = false;

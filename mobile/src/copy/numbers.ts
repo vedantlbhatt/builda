@@ -251,11 +251,11 @@ export function tally(x: number, noun: string): string {
  * `burn._human`: a token count as a person says it. 999,500 is "1.0M", never "1000k", and the
  * millions are grouped like every other number on the phone: 3,766,512,000 is "3,766.5M".
  *
- * THE ONE TOKEN FORMATTER, and the one place the phone parts from Python on purpose. FOUND IN
- * THE FINAL CAPTURE (2026-09-13): Money and the analysis page printed "3766.5M tokens" two lines
- * from "$2,564" and "47,803 lines", because `_human` writes `f"{n / 1_000_000:.1f}M"` with no
- * `,`. Below 1,000M the two agree to the byte (`__tests__/copyNumbers.test.ts` runs Python on
- * it); from 1,000M the phone groups and `analysis/burn.py` has to follow with `:,.1f`.
+ * THE ONE TOKEN FORMATTER. FOUND IN THE FINAL CAPTURE (2026-09-13): Money and the analysis page
+ * printed "3766.5M tokens" two lines from "$2,564" and "47,803 lines", because `_human` wrote
+ * `f"{n / 1_000_000:.1f}M"` with no `,`. The phone groups, and `analysis/burn.py` now does too
+ * (`:,.1f`), so the two agree to the byte at every size (`__tests__/copyNumbers.test.ts` runs
+ * Python on it).
  */
 export function human(tokens: number): string {
   if (tokens >= 1_000_000 || Number(scaledHalfEven(tokens / 1_000, 0)) >= 1_000) {

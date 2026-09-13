@@ -194,11 +194,9 @@ print(json.dumps({
     expect(VALUES.map((v) => pyRound(v, 2))).toEqual(py.round2 as number[]);
     expect(VALUES.map((v) => pyFixed(v, 1))).toEqual(py.fixed1 as string[]);
     expect(VALUES.filter((v) => v <= 1).map(shareWords)).toEqual(py.share as string[]);
-    // Python's _human writes no `,` in the millions; the phone groups them (`human`'s comment),
-    // so from 1,000M the pin is Python's digits with the phone's grouping, and below it the bytes.
-    expect(VALUES.map((v) => human(Math.trunc(v)))).toEqual(
-      (py.human as string[]).map((s) => s.replace(/^(\d+)(\.\dM)$/, (_m, int: string, rest: string) => `${Number(int).toLocaleString('en-US')}${rest}`)),
-    );
+    // One grouping rule on both sides (`burn._human` writes `:,.1f`), so the pin is the bytes at
+    // every size, 4,168.5M included.
+    expect(VALUES.map((v) => human(Math.trunc(v)))).toEqual(py.human as string[]);
     expect(SECONDS.map(mins)).toEqual(py.mins as string[]);
     expect(SECONDS.map(floorMins)).toEqual(py.floor as string[]);
   });

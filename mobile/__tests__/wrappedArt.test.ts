@@ -22,7 +22,9 @@ import {
   activityGrid,
   artFor,
   artHue,
+  artInset,
   artTones,
+  INSET_ART,
   deckArchetype,
   toneLayers,
   toneLevel,
@@ -502,5 +504,23 @@ describe('the three levels', () => {
     expect(mask.some((v) => v === 2)).toBe(false);
     const full = toneMask(fieldOf(spec, COLS, ROWS));
     expect(full.some((v) => v === 2)).toBe(true);
+  });
+});
+
+describe("card 2's art keeps the card's inner margin", () => {
+  // FOUND IN THE CAPTURE (2026-09-13): the staircase climbed to the last session at the right
+  // edge and ran into the card's edge, its tallest step clipped by the corner.
+  test('the staircase stands in by the margin it is given; every other card stays full bleed', () => {
+    expect([...INSET_ART]).toEqual(['shipped']);
+    expect(artInset('shipped', 24)).toBe(24);
+    for (const id of REPORT_ENUMS.wrapped_card.filter((c) => c !== 'shipped')) expect(artInset(id as WrappedCard, 24)).toBe(0);
+  });
+
+  test('the story card and the grid tile both read it, and fit the art inside it', () => {
+    const src = require('node:fs').readFileSync(require('node:path').join(import.meta.dir, '../src/wrapped/WrappedCardView.tsx'), 'utf8') as string;
+    expect(src).toContain('artInset(item.card.id, ty.pad)');
+    expect(src).toContain('artInset(item.card.id, GRID_PAD)');
+    expect((src.match(/fitCells\(art\.w - inset \* 2, art\.h - inset,/g) ?? []).length).toBe(2);
+    expect((src.match(/top: art\.h - inset - box\.height/g) ?? []).length).toBe(2);
   });
 });

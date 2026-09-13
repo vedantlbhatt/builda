@@ -15,10 +15,11 @@
  */
 import { capital, count, n } from '../copy/numbers';
 import type { BuilderProfileResponse } from '../data/api';
-import type { ReportStack, ReportStackItem, StackCategory, StackEvidence, StackItem } from '../generated/report';
+import type { BuilderReport, ReportStack, ReportStackItem, StackCategory, StackEvidence, StackItem } from '../generated/report';
 import { numSpec, type NumSpec } from '../insights/format';
 import { NO_REPORT, type Refused } from '../insights/model';
 import type { HueName } from '../insights/palette';
+import { toolsMix, type ToolsMix } from '../you/chapters';
 import { dayOf } from '../you/numbers';
 import { EVIDENCE_ONLY, STACK_CATEGORY_LABEL, stackView } from '../you/stack';
 import { creditsFor, markOf, type StackMark } from './marks';
@@ -234,10 +235,96 @@ function namedLine(things: readonly StackThing[]): string | null {
 
 // ------------------------------------------------------------------ the coding tools
 
-/** What `chapters.toolsMix` hands the page: the tools the sessions on this phone came from. */
+/**
+ * Where the tools chapter's count comes from. FOUND IN THE CAPTURE (2026-09-13): the chapter
+ * said "Counted over the 52 finished sessions saved on this phone" a scroll below "Git, 115 of
+ * 143 sessions", two sources on one page and nothing to say which was which. The report's
+ * projects now carry each project's tools (`window.harnesses`), over the very sittings the
+ * stack block is read from, so the chapter counts those whenever the report sends them
+ * (`toolsFromReport`); only a report without them falls back to the phone's own sessions, and
+ * then it says so beside the report's count (`phoneTools`).
+ */
+export type ToolsSource = 'report' | 'phone';
+
+/** What `chapters.toolsMix` hands the page: the tools the sessions came from, and what they were counted over. */
 export interface ToolsIn {
   tools: readonly { key: string; name: string; count: number }[];
   basis: string;
+}
+
+/**
+ * The tools the report's sittings came from: every project's `harnesses` summed, how many of the
+ * sessions the stack was read from that covers, and why any are not covered, from what the report
+ * itself says: sittings in no project (`unresolved`) carry no tool, and projects past the list it
+ * caps (`projects_total` over the listed ones) are not in it at all. Neither is guessed at. Null
+ * when the report has no projects block or no project names a tool.
+ */
+export function reportTools(
+  report: BuilderReport | null | undefined,
+): { byHarness: [string, number][]; covered: number; read: number; unresolved: number; cut: number; listed: number } | null {
+  const block = report?.projects ?? null;
+  if (!block) return null;
+  const by = new Map<string, number>();
+  let covered = 0;
+  for (const p of block.projects) {
+    for (const h of p.window?.harnesses ?? []) {
+      if (!(h.sessions > 0)) continue;
+      by.set(h.harness, (by.get(h.harness) ?? 0) + h.sessions);
+      covered += h.sessions;
+    }
+  }
+  if (covered <= 0) return null;
+  const read = Math.max(covered, report?.stack?.sessions ?? report?.coverage?.sessions ?? covered);
+  return {
+    byHarness: [...by.entries()],
+    covered,
+    read,
+    unresolved: Math.max(0, block.unresolved?.sessions ?? 0),
+    cut: Math.max(0, block.projects_total - block.projects.length),
+    listed: block.projects.length,
+  };
+}
+
+/**
+ * The tools chapter from the report, in the shape `chapters.toolsMix` gives the phone's sessions
+ * (the same marks, Cursor's two tools as one), with what it counted said in words, and the real
+ * reason for any session it could not count: in no project, in a project past the report's list,
+ * or, when the report says neither, only that it does not say.
+ */
+export function toolsFromReport(report: BuilderReport | null | undefined): ToolsMix | null {
+  const t = reportTools(report);
+  if (!t) return null;
+  // One row a sitting, so `toolsMix` decides every mark exactly as it does for the phone's.
+  const mix = toolsMix(t.byHarness.flatMap(([harness, k]) => Array.from({ length: k }, () => ({ harness }))));
+  if (!mix) return null;
+  const known = mix.tools.reduce((s, x) => s + x.count, 0);
+  const other = t.read - t.covered;
+  const byProject = 'and the report counts tools project by project';
+  const why =
+    t.unresolved > 0 && t.cut > 0
+      ? `the other ${n(other)} are in no project or in projects past the ${n(t.listed)} the report lists, ${byProject}.`
+      : t.unresolved > 0
+        ? `the other ${n(other)} belong to no project, ${byProject}.`
+        : t.cut > 0
+          ? `the other ${n(other)} are in projects past the ${n(t.listed)} the report lists, ${byProject}.`
+          : `the report does not say which tool wrote the other ${n(other)}.`;
+  const over =
+    other <= 0
+      ? `Counted over the ${count(t.read, 'session')} your Mac read, the same sessions as every count above.`
+      : `Counted over ${n(t.covered)} of the ${count(t.read, 'session')} your Mac read: ${why}`;
+  const unknown = t.covered - known;
+  const left = unknown > 0 ? ` ${count(unknown, 'session')} from a tool this build does not know ${unknown === 1 ? 'is' : 'are'} left out.` : '';
+  return { tools: mix.tools, basis: `${over}${left}` };
+}
+
+/**
+ * The phone's own count, for a report that carries no tools: what it counted, said beside what
+ * every other count on the page is out of, so the two numbers are never read as one.
+ */
+export function phoneTools(mix: ToolsMix | null, read: number | null): ToolsMix | null {
+  if (!mix) return null;
+  if (read === null) return mix;
+  return { ...mix, basis: `${mix.basis} Every other count on this page is out of the ${count(read, 'session')} your Mac read.` };
 }
 
 export interface ToolsBand {
@@ -250,11 +337,12 @@ export interface ToolsBand {
 const TOOL_HUES: readonly HueName[] = ['tide', 'cobalt', 'heather', 'brass', 'coral', 'iris', 'orchid', 'ember'];
 
 /**
- * The band over the coding tools: how many sessions it counts, which tool wrote how many, and a
- * hue, the leading tool's own (Claude Code is heather everywhere) unless a neighbour already
- * wears it. Null with no tool: no sessions is not a chapter of zeros.
+ * The band over the coding tools: how many sessions it counts and where they were counted
+ * (`source`), which tool wrote how many, and a hue, the leading tool's own (Claude Code is heather
+ * everywhere) unless a neighbour already wears it. Null with no tool: no sessions is not a
+ * chapter of zeros.
  */
-export function toolsBand(mix: ToolsIn | null, avoid: readonly HueName[], own: (key: string) => HueName | null): ToolsBand | null {
+export function toolsBand(mix: ToolsIn | null, avoid: readonly HueName[], own: (key: string) => HueName | null, source: ToolsSource = 'phone'): ToolsBand | null {
   if (!mix || !mix.tools.length) return null;
   const total = mix.tools.reduce((s, t) => s + t.count, 0);
   const lead = own(mix.tools[0]!.key);
@@ -263,7 +351,8 @@ export function toolsBand(mix: ToolsIn | null, avoid: readonly HueName[], own: (
     mix.tools.length === 1
       ? `${total === 1 ? 'It ran' : 'Every one ran'} in ${mix.tools[0]!.name}.`
       : `${capital(listOf(mix.tools.map((t) => `${t.name} ${n(t.count)}`)))}.`;
-  return { total: spec(n(total)), caption: total === 1 ? 'session on this phone' : 'sessions on this phone', note, hue };
+  const where = source === 'report' ? 'your Mac read' : 'on this phone';
+  return { total: spec(n(total)), caption: `${total === 1 ? 'session' : 'sessions'} ${where}`, note, hue };
 }
 
 // ------------------------------------------------------------------ the page
@@ -312,7 +401,7 @@ export function stackPage(b: BuilderProfileResponse, hero: HueName | null, now: 
 
   const from = [count(s.sessions, 'session')];
   if (s.manifests > 0) from.push(count(s.manifests, 'dependency name', 'dependency names'));
-  const basis = `Across ${count(chapters.length, 'category', 'categories')}, read from ${from.join(' and ')}.`;
+  const basis = `Across ${count(chapters.length, 'category', 'categories')}, read by your Mac from ${from.join(' and ')}.`;
 
   const top = used.slice(0, TOP_MAX);
   let topLine: string | null = null;

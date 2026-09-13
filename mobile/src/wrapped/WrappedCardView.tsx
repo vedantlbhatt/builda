@@ -40,7 +40,7 @@ import { SplitText } from '../ui/bits/text/SplitText';
 import { fitCells, type Field } from '../ui/dithering';
 import { useReduceMotion } from '../ui/motion';
 import { SHAPE } from '../ui/shape';
-import { artFor, fieldOf, seedOf } from './art';
+import { artFor, artInset, fieldOf, seedOf } from './art';
 import { PrintedCreature, StillCreature } from './Creature';
 import { DataField } from './DataField';
 import type { DeckItem } from './deckItems';
@@ -170,7 +170,9 @@ function CardBody({
     setArt((b) => (b && Math.abs(b.w - w) < 0.5 && Math.abs(b.h - h) < 0.5 ? b : { w, h }));
   }, []);
 
-  const box = art && art.h >= CELL * 8 ? fitCells(art.w, art.h, CELL) : null;
+  // Card 2's staircase keeps the card's inner margin (`art.artInset`); every other card's art runs to its edges.
+  const inset = artInset(item.card.id, ty.pad);
+  const box = art && art.h - inset >= CELL * 8 ? fitCells(art.w - inset * 2, art.h - inset, CELL) : null;
   const aspect = box ? Math.round((box.width / Math.max(1, box.height)) * 10) / 10 : null;
   const spec = useMemo(() => (aspect === null ? null : artFor(item.card, item.sources, aspect)), [item, aspect]);
   const field = useMemo(
@@ -261,7 +263,7 @@ function CardBody({
             />
           ) : null}
           {art && box && field && spec ? (
-            <View style={[styles.fieldBox, { left: (art.w - box.width) / 2, top: art.h - box.height, width: box.width, height: box.height }]}>
+            <View style={[styles.fieldBox, { left: (art.w - box.width) / 2, top: art.h - inset - box.height, width: box.width, height: box.height }]}>
               <Field
                 field={field}
                 width={box.width}
@@ -271,7 +273,7 @@ function CardBody({
                 motion={motion}
                 live={live && !artStill}
                 still={artStill}
-                ripple={ripple ? { x: ripple.x - (art.w - box.width) / 2, y: ripple.y - wordsH - (art.h - box.height) } : null}
+                ripple={ripple ? { x: ripple.x - (art.w - box.width) / 2, y: ripple.y - wordsH - (art.h - inset - box.height) } : null}
                 seed={(seedOf(item.card.id) % 97) + 3}
               />
               {spot ? (
@@ -646,7 +648,8 @@ export function GridCard({ item, hue, width, height, number }: { item: DeckItem;
     const { width: w, height: h } = e.nativeEvent.layout;
     setArt((b) => (b && Math.abs(b.w - w) < 0.5 && Math.abs(b.h - h) < 0.5 ? b : { w, h }));
   }, []);
-  const box = art && art.h >= GRID_CELL * 6 ? fitCells(art.w, art.h, GRID_CELL) : null;
+  const inset = artInset(item.card.id, GRID_PAD);
+  const box = art && art.h - inset >= GRID_CELL * 6 ? fitCells(art.w - inset * 2, art.h - inset, GRID_CELL) : null;
   const aspect = box ? Math.round((box.width / Math.max(1, box.height)) * 10) / 10 : null;
   const spec = useMemo(() => (aspect === null ? null : artFor(item.card, item.sources, aspect)), [item, aspect]);
   const field = useMemo(
@@ -668,7 +671,7 @@ export function GridCard({ item, hue, width, height, number }: { item: DeckItem;
       </View>
       <View style={styles.fill} onLayout={onArt}>
         {art && box && field && spec ? (
-          <View style={[styles.fieldBox, { left: (art.w - box.width) / 2, top: art.h - box.height }]}>
+          <View style={[styles.fieldBox, { left: (art.w - box.width) / 2, top: art.h - inset - box.height }]}>
             <DataField field={field} cell={GRID_CELL} width={box.width} height={box.height} ink={ON_BAND} partner={hue.partner} axis={printAxis(spec)} live={false} still seed={1} />
           </View>
         ) : null}

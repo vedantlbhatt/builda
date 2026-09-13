@@ -38,6 +38,8 @@ import { HARNESS_MARKS, isHarness, type HarnessMark } from '../pixel/harness';
 import { archetypeView, sourceLine, type ArchetypeView } from './archetype';
 import { dimensionsBasis, dimensionsPending, dimensionViews, modalArchetypeLine, topDimension } from './dimensions';
 import { glossaryView, type GlossaryMonth } from './glossary';
+import { everyPricedSessionCounted } from '../money/counted';
+import { apportion, dollarsOf, dollarUnit, shownUnits } from '../money/round';
 import { corpusBurn, corpusMoney, moneyView } from './money';
 import { stackView } from './stack';
 
@@ -194,6 +196,19 @@ export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): 
     };
   });
   models.sort((x, y) => y.usd - x.usd);
+  // Parts of the hero total add up to it as it is shown (`money/round.apportion`): FOUND IN REVIEW
+  // (2026-09-13) the ring read $2,263 + $241 + $10.98 under $2,516. The page hands the flow's own
+  // rounding to the ring when the flow is drawn, so the two never read one model two ways.
+  if (view.usd !== null && models.length) {
+    const unit = dollarUnit(view.usd);
+    const shown = apportion(
+      models.map((x) => Math.max(0, x.usd) / unit),
+      shownUnits(view.usd, unit),
+    );
+    models.forEach((x, i) => {
+      x.num = numSpec(shown[i]! * unit, dollarsOf(shown[i]!, unit, x.usd));
+    });
+  }
 
   let without: MoneyPage['without'] = null;
   if (view.usd !== null && m) {
@@ -201,7 +216,13 @@ export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): 
     const usd = m.usd_without_a_commit;
     if (said && typeof usd === 'number') {
       const figure = dollars(usd);
-      without = { usd: numSpec(usd, figure), digits: dollarDigits(usd), rest: said.slice(figure.length).trim(), share: m.share_without_a_commit ?? null };
+      // In the flow's terms, never "of the spend": "of every dollar at API list prices" when every
+      // priced session had a commit count (the share's denominator is then every priced dollar),
+      // else what the share is really over (`money/counted.ts`).
+      const share = m.share_without_a_commit ?? null;
+      const of = everyPricedSessionCounted(m) ? 'of every dollar at API list prices' : 'of the dollars on sessions with a commit count';
+      const rest = share === null ? 'on sessions that ended with no commit' : `on sessions that ended with no commit, ${shareWords(share)} ${of}`;
+      without = { usd: numSpec(usd, figure), digits: dollarDigits(usd), rest, share };
     } else {
       without = { refusal: view.sentences[0] ?? 'Too few priced sessions have a commit count yet to say what went to sessions without one.' };
     }

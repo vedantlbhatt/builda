@@ -7,9 +7,13 @@ import { Donut } from '../../src/insights/Charts';
 import { figure, GUTTER, Kicker, Ledger, Refusal, Swatch, type, Words, type LedgerItem } from '../../src/insights/kit';
 import { NOT_WHAT_YOU_PAY } from '../../src/insights/model';
 import { Num } from '../../src/insights/Num';
-import { DATA, GROUND, SPECTRUM, type Hue } from '../../src/insights/palette';
+import { DATA, GROUND, HUE_NAMES, SPECTRUM, type Hue, type HueName } from '../../src/insights/palette';
 import { Block, Section } from '../../src/insights/reveal';
 import { BUCKET_COLOR, BurnBody, modelColors } from '../../src/insights/sections/Money';
+import { FLOW_TITLE, FlowChapter, flowHue, flowPaint } from '../../src/money/FlowChapter';
+import { moneyFlow, projectHuesApart, withFlowFigures } from '../../src/money/flow';
+import { preferredHue, PROJECT_HUES, projectHues } from '../../src/projects/model';
+import { useNicknames } from '../../src/projects/nicknames';
 import { typeRoles } from '../../src/theme';
 import { useAccent } from '../../src/theme/accent';
 import { ChapterPage } from '../../src/you/ChapterPage';
@@ -20,12 +24,12 @@ import { ChapterSkeleton, DollarFigure, ErrorChapter, RefusalChapter, SignedOutC
 
 /**
  * Chapter one wears its door's hue on the You tab (ember, the burn, as money does on the analysis
- * page, unless the builder's own creature is ember); chapter two wears heather.
+ * page, unless the builder's own creature is ember); chapter three wears heather.
  */
 const WHERE = SPECTRUM.heather;
 
 /**
- * Money, as two chapters (design-refs/HOUSE-STYLE.md):
+ * Money, as three chapters (design-refs/HOUSE-STYLE.md):
  *
  *   01 what it would cost   an ember band that prints itself, the dollar figure counting up huge
  *                           with its sign set small (Cash App's balance), and right under it, in
@@ -38,7 +42,12 @@ const WHERE = SPECTRUM.heather;
  *                           sweeps in with the top model's share at its centre (Revolut's
  *                           allocation ring: 14 pt stroke, a 22 to 26 pt figure over a small
  *                           caption, a hairline legend).
- *   02 where it went        a heather band with what went to sessions that ended with no commit,
+ *   02 how it flowed        the owner's pick: the money Sankey (`src/money/`), tokens into models
+ *                           into projects into how each session ended, the stretches that changed
+ *                           nothing splitting off in grey. It prints itself left to right; a tap
+ *                           follows one stream. Every flow is a number the report carries, and
+ *                           each join it does not carry is a sentence, never an invented split.
+ *   03 where it went        a heather band with what went to sessions that ended with no commit,
  *                           its share of every dollar as a bar, and the tokens that changed
  *                           nothing, cause by cause. Plain sentences, never a scolding.
  *
@@ -50,12 +59,32 @@ export default function MoneyScreen() {
   const { load, refresh, refreshing } = useBuilderProfile();
   const mask = useMoneyMask();
   const accent = useAccent();
-  const cost = SPECTRUM[doorHues(accent.name).money];
+  const nicknames = useNicknames();
+  const costName = doorHues(accent.name).money;
+  const cost = SPECTRUM[costName];
   const data = load.kind === 'ready' ? load.data : null;
   const page = useMemo(() => (data ? moneyPage(data) : null), [data]);
 
+  // The flow wears every project's own hue from the Projects tab, stepped past any hue a model in
+  // it wears (`projectHuesApart`), and its band a hue nobody in it or beside it wears.
+  const projectHue = useMemo(() => {
+    const models = modelColors((page?.models ?? []).map((m) => m.family))
+      .map((ink) => HUE_NAMES.find((h) => SPECTRUM[h].ink === ink || SPECTRUM[h].partner === ink))
+      .filter((h): h is HueName => !!h);
+    const hues = data?.report?.projects ? projectHuesApart(projectHues(data.report.projects.projects), PROJECT_HUES, models) : {};
+    return (key: string): HueName => hues[key] ?? preferredHue(key);
+  }, [data, page]);
+  const paint = useMemo(() => flowPaint(cost, projectHue), [cost, projectHue]);
+  const flow = useMemo(() => (data && page ? moneyFlow(data, page, paint, nicknames) : null), [data, page, paint, nicknames]);
+  // The ring in chapter 01 reads each model exactly as the flow does (`withFlowFigures`).
+  const ringModels = useMemo(() => (page ? withFlowFigures(page.models, flow) : []), [page, flow]);
+  const flowHueName = useMemo(() => {
+    const inside = flow && !isRefused(flow) ? flow.nodes.map((x) => HUE_NAMES.find((h) => SPECTRUM[h].ink === x.hue.ink || SPECTRUM[h].partner === x.hue.ink)) : [];
+    return flowHue([accent.name, costName, 'heather', ...inside.filter((h): h is HueName => !!h)]);
+  }, [flow, accent.name, costName]);
+
   return (
-    <ChapterPage title="Money" chapters={1} ready={load.kind === 'ready'} refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : () => void refresh()}>
+    <ChapterPage title="Money" chapters={2} ready={load.kind === 'ready'} refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : () => void refresh()}>
       {(stage) => (
         <>
           <View style={styles.lead}>
@@ -78,8 +107,19 @@ export default function MoneyScreen() {
 
           {page ? (
             <>
-              <CostChapter page={page} cost={cost} width={width} masked={mask.masked} onToggleMask={mask.toggle} />
-              {stage >= 1 ? <WhereChapter page={page} width={width} masked={mask.masked} /> : null}
+              <CostChapter page={page} models={ringModels} cost={cost} width={width} masked={mask.masked} onToggleMask={mask.toggle} />
+              {stage >= 1 && flow ? (
+                isRefused(flow) ? (
+                  // A spacer beside the chapter, never a wrapper: a Section reads its place from its parent.
+                  <>
+                    <View style={styles.spacer} />
+                    <RefusalChapter hue={SPECTRUM[flowHueName]} index="02" title={FLOW_TITLE} refusal={flow.refusal} command={REPORT_COMMAND} />
+                  </>
+                ) : (
+                  <FlowChapter flow={flow} hue={SPECTRUM[flowHueName]} index="02" width={width} masked={mask.masked} />
+                )
+              ) : null}
+              {stage >= 2 ? <WhereChapter page={page} width={width} masked={mask.masked} index={flow ? '03' : '02'} /> : null}
             </>
           ) : null}
         </>
@@ -90,7 +130,7 @@ export default function MoneyScreen() {
 
 // ------------------------------------------------------------------ 01
 
-function CostChapter({ page, cost, width, masked, onToggleMask }: { page: MoneyPage; cost: Hue; width: number; masked: boolean; onToggleMask: () => void }) {
+function CostChapter({ page, models, cost, width, masked, onToggleMask }: { page: MoneyPage; models: MoneyModelRow[]; cost: Hue; width: number; masked: boolean; onToggleMask: () => void }) {
   const inner = width - GUTTER * 2;
   const h = page.hero;
   const lines = page.lines;
@@ -170,7 +210,7 @@ function CostChapter({ page, cost, width, masked, onToggleMask }: { page: MoneyP
       {page.models.length ? (
         <Block style={styles.block}>
           <Kicker>what each model would cost</Kicker>
-          <ModelRing models={page.models} masked={masked} width={inner} />
+          <ModelRing models={models} masked={masked} width={inner} />
           {page.modelsNote ? <Words style={[type.meta, styles.caption]}>{page.modelsNote}</Words> : null}
         </Block>
       ) : null}
@@ -256,14 +296,14 @@ function ModelRing({ models, masked, width }: { models: MoneyModelRow[]; masked:
 
 // ------------------------------------------------------------------ 02
 
-function WhereChapter({ page, width, masked }: { page: MoneyPage; width: number; masked: boolean }) {
+function WhereChapter({ page, width, masked, index }: { page: MoneyPage; width: number; masked: boolean; index: string }) {
   const inner = width - GUTTER * 2;
   const w = page.without;
   if (!w && !page.burn && !page.unpriced) return null;
   const burnLine = page.burn && !isRefused(page.burn) ? page.burn.line : null;
   return (
     <Section style={styles.chapter}>
-      <Band hue={WHERE} index="02" title="Where it went">
+      <Band hue={WHERE} index={index} title="Where it went">
         {w && !isRefused(w) ? (
           <>
             <DollarFigure digits={w.digits} masked={masked} width={inner} max={104} min={56} delay={200} label={`${w.usd.final} ${w.rest}`} />
@@ -347,6 +387,7 @@ const styles = StyleSheet.create({
   answer: { marginTop: 6 },
   read: { marginTop: 6 },
   chapter: { marginTop: 56 },
+  spacer: { height: 56 },
   block: { paddingHorizontal: GUTTER, marginTop: 30 },
   barGap: { marginTop: 14 },
   caption: { marginTop: 12 },

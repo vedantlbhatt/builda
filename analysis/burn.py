@@ -1772,9 +1772,13 @@ def _unrounded(metric: Mapping, tokens_key: str, total: int) -> float | None:
 
 
 def _human(n: int) -> str:
-    """A token count as a person says it. 999,500 is "1.0M", never "1000k"."""
+    """A token count as a person says it. 999,500 is "1.0M", never "1000k", and the millions
+    are grouped like every other number: 3,766,512,000 is "3,766.5M". FOUND IN THE FINAL
+    CAPTURE (2026-09-13): the CLI wrote "3766.5M" where the phone wrote "3,766.5M" for the
+    same count; one grouping rule now, so the two agree to the byte
+    (`mobile/src/copy/numbers.ts human`, pinned by `__tests__/copyNumbers.test.ts`)."""
     if n >= 1_000_000 or round(n / 1_000) >= 1_000:
-        return f"{n / 1_000_000:.1f}M"
+        return f"{n / 1_000_000:,.1f}M"
     if n >= 1_000:
         return f"{n / 1_000:.0f}k"
     return str(n)

@@ -1567,6 +1567,14 @@ class RoundedOnce(unittest.TestCase):
         self.assertEqual(burn._human(17_684_205), "17.7M")
         self.assertEqual(burn._human(950), "950")
 
+    def test_the_millions_are_grouped_as_the_phone_groups_them(self):
+        """One grouping rule on both sides: the phone's `human` writes "3,766.5M", so the
+        CLI does too, and a thousand millions is "1,000.0M", never "1000.0M"."""
+        self.assertEqual(burn._human(3_766_512_000), "3,766.5M")
+        self.assertEqual(burn._human(4_168_469_723), "4,168.5M")
+        self.assertEqual(burn._human(999_949_999), "999.9M")
+        self.assertEqual(burn._human(999_950_000), "1,000.0M")
+
 
 class CodexTurns(unittest.TestCase):
     """`_codex_turns`, against the real writer's fixture and hand-made rollouts."""

@@ -156,11 +156,13 @@ describe('the money page', () => {
   });
 
   test('the models, most first, each with its share of the ring; a share under 1% is words, not a count', () => {
+    // Parts of the $2,952 hero, apportioned so they add up to it: $10.98 alone would read $2,951.98.
     expect(m.models.map((x) => [x.name, x.num.final, x.shareText])).toEqual([
       ['Opus 5', '$2,484', '84%'],
       ['Fable 5', '$457', '15%'],
-      ['Fable 5.1', '$10.98', 'under 1%'],
+      ['Fable 5.1', '$11', 'under 1%'],
     ]);
+    expect(m.models.reduce((s, x) => s + x.num.value, 0)).toBe(2952);
     expect(m.models[0]!.shareNum?.final).toBe('84%');
     expect(m.models[2]!.shareNum).toBeNull();
     expect(m.modelsNote).toMatch(/^Dollars a commit are counted over the sessions a model wrote most of/);
@@ -169,7 +171,8 @@ describe('the money page', () => {
   test('where it went: the spend with no commit, its share, and the burn, never scolding', () => {
     const w = m.without;
     if (!w || isRefused(w)) throw new Error('the fixture has a spend without a commit');
-    expect([w.usd.final, w.digits.final, w.rest, w.share]).toEqual(['$657', '657', 'on sessions that ended with no commit, 22% of the spend', 0.223]);
+    // In the flow's terms, never "of the spend": every priced session here had a commit count.
+    expect([w.usd.final, w.digits.final, w.rest, w.share]).toEqual(['$657', '657', 'on sessions that ended with no commit, 22% of every dollar at API list prices', 0.223]);
     const burn = m.burn;
     if (!burn || isRefused(burn)) throw new Error('the fixture has a burn block');
     expect(burn.line).toBe('At least 3% of your tokens went into stretches where nothing was written.');

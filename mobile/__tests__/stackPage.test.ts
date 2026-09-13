@@ -19,7 +19,7 @@ import fixture from '../src/insights/fixtures/report-2026-09-13.json';
 import { formatWith, type NumSpec } from '../src/insights/format';
 import { isRefused, NO_REPORT } from '../src/insights/model';
 import { bubbleRadius, packBubbles, packTiles, rowsHeight, tileSize, TILE_UNITS, wrapMarks } from '../src/stack/layout';
-import { CATEGORY_HUES, chapterHues, listOf, LOOP_MAX, projectReach, stackPage, TOP_MAX, toolsBand, type StackBody } from '../src/stack/model';
+import { CATEGORY_HUES, chapterHues, listOf, LOOP_MAX, phoneTools, projectReach, reportTools, stackPage, TOP_MAX, toolsBand, toolsFromReport, type StackBody } from '../src/stack/model';
 import { stackPage as doorStackPage } from '../src/you/chapters';
 
 const B = fixture.builder as unknown as BuilderProfileResponse;
@@ -133,7 +133,7 @@ describe('the hero and the bubbles', () => {
     expect(s.total.final).toBe('12');
     expect(s.caption).toBe('things your work is made of');
     expect(s.note).toBe('8 turned up in your sessions, and 4 more are only named in a manifest.');
-    expect(s.basis).toBe('Across 2 categories, read from 158 sessions and 130 dependency names.');
+    expect(s.basis).toBe('Across 2 categories, read by your Mac from 158 sessions and 130 dependency names.');
     expect(s.topLine).toBe('Python turned up in the most sessions: 63 of the 158 read.');
   });
 
@@ -301,6 +301,66 @@ describe('the coding tools band', () => {
     expect(band?.total.final).toBe('52');
     expect(toolsBand(null, [], own)).toBeNull();
     expect(toolsBand({ tools: [], basis: '' }, [], own)).toBeNull();
+  });
+
+  test('counted from the report, the band says where: the sessions your Mac read', () => {
+    const band = toolsBand({ tools: [{ key: 'claude_code', name: 'Claude Code', count: 142 }], basis: '' }, [], own, 'report');
+    expect(band && [band.total.final, band.caption]).toEqual(['142', 'sessions your Mac read']);
+  });
+});
+
+describe('one source for every count on the page', () => {
+  // FOUND IN THE CAPTURE (2026-09-13): "Counted over the 52 finished sessions saved on this
+  // phone" a scroll below "Git, 115 of 143 sessions": two sources, and nothing said which.
+  const withProjects = (harnesses: { harness: string; sessions: number }[][], sessions = 142, over: { unresolved?: number; total?: number } = {}) => ({
+    ...B.report!,
+    stack: { ...B.report!.stack!, sessions },
+    projects: {
+      window_days: 30,
+      history_sessions: 160,
+      projects_total: over.total ?? harnesses.length,
+      projects: harnesses.map((hs, i) => ({ key: `${i}`.repeat(64), rank: i + 1, window: { harnesses: hs.map((h) => ({ ...h, active_seconds: 1 })) } })),
+      unresolved: { sessions: over.unresolved ?? 0, active_seconds: 0, attended_seconds: 0, history_sessions: 0 },
+      comparisons: [],
+    },
+  }) as unknown as NonNullable<BuilderProfileResponse['report']>;
+
+  test('the tools are the report\'s projects\' tools, over the very sessions the stack was read from', () => {
+    const report = withProjects([[{ harness: 'claude_code', sessions: 137 }], [{ harness: 'claude_code', sessions: 5 }]]);
+    expect(reportTools(report)).toEqual({ byHarness: [['claude_code', 142]], covered: 142, read: 142, unresolved: 0, cut: 0, listed: 2 });
+    const mix = toolsFromReport(report)!;
+    expect(mix.tools.map((t) => [t.key, t.count])).toEqual([['claude_code', 142]]);
+    expect(mix.basis).toBe('Counted over the 142 sessions your Mac read, the same sessions as every count above.');
+  });
+
+  test('Cursor\'s two tools are one mark, as on the phone; what is not covered is said by the report\'s own reason', () => {
+    const two = [[{ harness: 'claude_code', sessions: 100 }, { harness: 'cursor_ide', sessions: 10 }], [{ harness: 'cursor_agent', sessions: 20 }]];
+    const mix = toolsFromReport(withProjects(two, 142, { unresolved: 12 }))!;
+    expect(mix.tools.map((t) => [t.key, t.count])).toEqual([['claude_code', 100], ['cursor', 30]]);
+    expect(mix.basis).toBe('Counted over 130 of the 142 sessions your Mac read: the other 12 belong to no project, and the report counts tools project by project.');
+    // Past the report's cap, sessions in the cut projects are NOT "in no project".
+    expect(toolsFromReport(withProjects(two, 142, { total: 25 }))!.basis).toBe(
+      'Counted over 130 of the 142 sessions your Mac read: the other 12 are in projects past the 2 the report lists, and the report counts tools project by project.',
+    );
+    expect(toolsFromReport(withProjects(two, 142, { unresolved: 4, total: 25 }))!.basis).toBe(
+      'Counted over 130 of the 142 sessions your Mac read: the other 12 are in no project or in projects past the 2 the report lists, and the report counts tools project by project.',
+    );
+    // Neither reason in the report: it says so, and names no cause of its own.
+    expect(toolsFromReport(withProjects(two, 142))!.basis).toBe('Counted over 130 of the 142 sessions your Mac read: the report does not say which tool wrote the other 12.');
+  });
+
+  test('a report with no projects: the phone\'s own count, said beside what the rest of the page is out of', () => {
+    expect(toolsFromReport({ ...B.report!, projects: null })).toBeNull();
+    const phone = phoneTools({ tools: [], basis: 'Counted over the 52 finished sessions saved on this phone.' }, 143);
+    expect(phone?.basis).toBe('Counted over the 52 finished sessions saved on this phone. Every other count on this page is out of the 143 sessions your Mac read.');
+    expect(phoneTools(null, 143)).toBeNull();
+  });
+
+  test('the page reads the report first and the phone only without it, and says which on the band', () => {
+    const src = readFileSync(join(MOBILE, 'app/you/stack.tsx'), 'utf8');
+    expect(src).toMatch(/toolsFromReport\(data\.report\)/);
+    expect(src).toMatch(/fromReport \?\? phoneTools\(phone/);
+    expect(src).toMatch(/fromReport \? 'report' : 'phone'/);
   });
 });
 

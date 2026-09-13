@@ -599,6 +599,20 @@ export function artFor(card: ReportWrappedCard, src: ArtSources, aspect = 1.6): 
   return { ...shapeFor(card, src, aspect), hue: artHue(card, src) };
 }
 
+/**
+ * The cards whose art keeps the card's inner margin, left, right and below, rather than running
+ * to its edges. FOUND IN THE CAPTURE (2026-09-13): card 2's staircase climbs to the last session
+ * at the right edge, and flush against it the tallest step ran into the card's edge and was
+ * clipped by its corner. The others stay full bleed: a grid of days or a strip is a field, and
+ * its edges are the card's.
+ */
+export const INSET_ART: ReadonlySet<WrappedCard> = new Set<WrappedCard>(['shipped']);
+
+/** How far a card's art stands in from the card's edges, given the card's inner margin. */
+export function artInset(card: WrappedCard, pad: number): number {
+  return INSET_ART.has(card) ? pad : 0;
+}
+
 function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): ArtShape {
   const fallback = motif(MOTIFS[card.id] ?? 'drift', seedOf(card.value_id ? `${card.id}:${card.value_id}` : card.id));
   if (card.reason != null) return fallback;

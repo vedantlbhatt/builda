@@ -40,7 +40,7 @@ import type { CorpusMetric, CorpusProfile } from '../data/api';
 import { REPORT_ENUMS, type BuilderReport, type PricedModel, type ReportBurn, type ReportMoney } from '../generated/report';
 
 export interface TokenStat {
-  /** "4112.2M", as `burn._human` says a token count. */
+  /** "4,112.2M", as `burn._human` says a token count, its millions grouped. */
   value: string;
   /** "tokens, 95% cache reads", or "output tokens" when that is all the server holds. */
   label: string;

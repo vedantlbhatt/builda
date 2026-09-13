@@ -25,7 +25,7 @@ because they have no corpus twin: the lifecycle stage, the comparisons across pr
    `repo_hash` every session upload already carries. The door types it `Sha256Hex`, so no name can pass where a key goes. A private repository's name
    never leaves the machine; the server adds a PUBLIC repository's name beside the key from the `repos` row every session reads its `repo_name` from.
 3. **Numbers, ids, enums and clocks only.** No string field anywhere in the block (`test_report.py test_the_v2_blocks_carry_only_enums_numbers_and_clocks`
-   now walks it: 33 objects). Every refusal is an enum code with `n` and `needed`; the phone words it from `generated/copy.ts`.
+   now walks it: 35 objects, the two week objects included). Every refusal is an enum code with `n` and `needed`; the phone words it from `generated/copy.ts`.
 4. **Absent is not zero.** No commit read is `commits: null`, not an empty graph; a project with nothing in the window is `window: null`, not a block
    of zeroes; a comparison two projects cannot support is refused with a code, never a ratio over nothing.
 5. **Every threshold is measured or labelled** (section 2). **No dash** in any template: `plain.has_dash` in the module's tests, in `gen_copy.py`,
@@ -169,7 +169,24 @@ ReportProjectWindow   sessions first_at last_at active_days active_seconds atten
                       money: ReportMoney | usd_per_commit: ReportProjectCostPerCommit | burn: ReportBurn | stack: ReportStack
                       agents: ReportAgents? | harnesses: [ReportProjectHarness] max 8
 ReportProjectComparison metric high? low? high_value? low_value? high_sessions? low_sessions? ratio? gap? projects needed? reason?
+ReportProjectsWeek    week days sessions attended_seconds                         (the block's `weeks?`, at most 12)
+ReportProjectWeek     week sessions attended_seconds active_seconds               (each project's `history.weeks?`, the same weeks)
 ```
+
+**Week by week (added 2026-09-13 for the phone's rivers and rank race).** `weeks` is one axis for the whole block: the
+last `projects.WEEKS` (12, an UNMEASURED JUDGEMENT CALL: a quarter, about 30 points a week on a phone) ISO weeks
+through the current one, each written as its Monday on the local day at 04:00, never a week before the machine's
+first sitting (a young history is a shorter series, not one padded with weeks nobody measured), each with the `days`
+of it history covers (7, fewer in the first week and the current one). `history.weeks` is each project's sittings on
+that axis, by the local day each sitting started, every week present: a week with no sitting in a project is a
+measured 0, because the machine holds every sitting of every week on the axis. The totals on the axis count every
+counted sitting, unresolved and past the cap included, so a project's share of a week is out of all of your time
+that week. NO RANK TRAVELS: the order within a week is the phone's (`projects/model.ts weeklyRanks`: most attended
+seconds first, a tie to the list's order), because the server drops an excluded project from the list and a rank
+written on the machine would keep its place. Both fields are nullable and appended without a version bump, so a
+version 3 report from before them still validates and the phone reads their absence as not computed. Recorded,
+not fixed: after the server drops an excluded project, the axis totals still include its seconds, as
+`share_of_attended` does (the deviation below).
 
 The real block the local API serves (`GET /v1/profile/builder` `report.projects`, 2026-09-13T20:51:03Z, after `scripts/overnight_stack.sh restart`
 and `sync`), the cards, stack items and commit days cut for length:
@@ -252,7 +269,11 @@ key to the `repo_hash` capture's own session payloads carry for the same transcr
 
 ## 6. The phone (for the agent building the screens)
 
-- `src/data/api.ts`: `BuilderProfileResponse.project_names?: Record<string, string>`, `ProjectSlice`, `Api.project(key)`.
+- `src/data/api.ts`: `BuilderProfileResponse.project_names?: Record<string, string>`, `ProjectSlice`, `Api.project(key)`, and
+  `SessionDetail.repo_key?`: the salted repository key on every session row that is the VIEWER'S OWN (the list, the
+  detail, the live list, the project slice), the report's `projects[].key`, so the phone can put its sessions in their
+  project. Never on a feed item or a stranger's read of a shared session: the pepper is global, so one repository has
+  one key in every account (`server/tests/test_projects_route.py`).
 - `src/projects/model.ts` (pure, `bun test`): `projectsView(report.projects, project_names, nicknames)` gives the list (`rows` in block order with
   `label`, `stageLabel`, `stageSentence`, `lastSession`, `momentum`, `history` and `window` summaries; `hidden`; `unresolved`; `comparisons` with
   `title`, `sentence`, `answered` and the two sides' values); `projectDetail(block, key, names, nicknames)` gives one page (the cards through the

@@ -134,6 +134,8 @@ export default function RootLayout() {
                 <Stack.Screen name="you/glossary" options={{ title: 'Glossary' }} />
                 <Stack.Screen name="you/map/[id]" options={{ title: 'Codebase map' }} />
                 <Stack.Screen name="you/timelapse/[id]" options={{ title: 'Time lapse' }} />
+                {/* One project's page, from a door on the Projects tab (src/projects/). */}
+                <Stack.Screen name="project/[key]" options={{ title: '' }} />
                 {/* Settings wears the chapter pages' large title bar, set in the screen. */}
                 <Stack.Screen name="settings" options={{ title: 'Settings' }} />
                 <Stack.Screen name="pair" options={{ title: 'Connect your Mac' }} />

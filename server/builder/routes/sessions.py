@@ -33,8 +33,11 @@ router = APIRouter(prefix="/v1", tags=["sessions"])
 LIVE_LIMIT = 10
 
 
-def _row_to_session(r) -> dict:
-    return {
+def _row_to_session(r, *, own: bool = False) -> dict:
+    """One session as every route serves it. `own` is True only where the row is the
+    VIEWER'S OWN session, and adds `repo_key` (below); the feed and a stranger reading a
+    shared session never get it."""
+    out = {
         "id": str(r.id),
         "client_session_id": r.client_session_id,
         "harness": r.harness,
@@ -69,6 +72,16 @@ def _row_to_session(r) -> dict:
         # its id. `posts.session_id` is UNIQUE, so the join can never multiply rows.
         "post_id": str(r.post_id) if r.post_id else None,
     }
+    if own:
+        # The repository's KEY (report v3, docs/projects.md): the salted `repo_hash` the
+        # upload already carried, which is the report's `projects[].key`, so the phone can
+        # put each of its own sessions in its project (the project page's session swarm).
+        # Never a name: a private repository's name never reaches the server. Owner only,
+        # because the pepper is global: one repository has one key in every account, and a
+        # key on a shared session would tell a stranger two people work in the same one.
+        # Null when the sitting's repository did not resolve.
+        out["repo_key"] = r.repo_hash
+    return out
 
 
 def _live_rows(db, user_id: str) -> list[dict]:
@@ -87,7 +100,7 @@ def _live_rows(db, user_id: str) -> list[dict]:
     rows = db.execute(
         text(
             """
-            SELECT s.*, r.public_name, p.id AS post_id, sl.body AS live_body
+            SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id, sl.body AS live_body
             FROM sessions s
             LEFT JOIN repos r ON r.id = s.repo_id
             LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
@@ -100,7 +113,7 @@ def _live_rows(db, user_id: str) -> list[dict]:
     ).all()
     return [
         {
-            **_row_to_session(r),
+            **_row_to_session(r, own=True),
             "updated_at": r.updated_at.isoformat(),
             "live_state": live_store.slim(r.live_body),
         }
@@ -145,7 +158,7 @@ def list_sessions(
         rows = db.execute(
             text(
                 f"""
-                SELECT s.*, r.public_name, p.id AS post_id
+                SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
                 FROM sessions s
                 LEFT JOIN repos r ON r.id = s.repo_id
                 LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
@@ -157,7 +170,8 @@ def list_sessions(
         ).all()
 
     return {
-        "sessions": [_row_to_session(r) for r in rows],
+        # `s.user_id = :u` above: every row is the viewer's own.
+        "sessions": [_row_to_session(r, own=True) for r in rows],
         "next_before": rows[-1].started_at.isoformat() if len(rows) == limit else None,
     }
 
@@ -184,7 +198,7 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
         row = db.execute(
             text(
                 """
-                SELECT s.*, r.public_name, p.id AS post_id
+                SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
                 FROM sessions s
                 LEFT JOIN repos r ON r.id = s.repo_id
                 LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
@@ -223,7 +237,8 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
             ).scalar()
         )
 
-    out = _row_to_session(row)
+    # A shared session read by a stranger passes RLS too; only its owner gets the key.
+    out = _row_to_session(row, own=str(row.user_id) == uid)
     if strip:
         out["strip"] = {
             # base64 on the wire: the phone decodes it with the generated TypeScript
@@ -515,7 +530,7 @@ def project(key: str, device: CurrentDevice = Depends(current_device)):
         sessions = db.execute(
             text(
                 """
-                SELECT s.*, r.public_name, p.id AS post_id
+                SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
                 FROM sessions s
                 JOIN repos r ON r.id = s.repo_id
                 LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
@@ -539,7 +554,7 @@ def project(key: str, device: CurrentDevice = Depends(current_device)):
         "project": in_report.get(full),
         "comparisons": comparisons,
         "project_names": names,
-        "sessions": [_row_to_session(r) for r in sessions],
+        "sessions": [_row_to_session(r, own=True) for r in sessions],
     }
 
 

@@ -50,10 +50,17 @@ import type {
   TrendDirection,
 } from '../generated/report';
 import { corpusBurnLine, corpusBurnRefusal } from '../copy/burn';
-import { dollars, linesAdded, linesRemoved, modelLine, moneyHeadline, moneyRefusal, perActiveHour, withoutACommit } from '../copy/money';
-import { type FillTemplate, fill, n, shareWords } from '../copy/numbers';
+import { dollars, linesAdded, linesRemoved, modelLine, modelName, moneyHeadline, moneyRefusal, perActiveHour, withoutACommit } from '../copy/money';
+import { type FillTemplate, clock as clockSaid, commas, count, fill, floorMins, n, pct, shareWords } from '../copy/numbers';
+import { hourOfDay } from '../copy/time';
 import { stackName } from '../copy/vocab';
 import { type RenderedCard, renderCards } from '../copy/wrapped';
+import type { BuilderReport, ReportProjectsWeek, ReportWrappedCard } from '../generated/report';
+import { numSpec, type NumSpec } from '../insights/format';
+import { burnOf, NOT_WHAT_YOU_PAY, readSpan, type MoneyModel } from '../insights/model';
+import { CREATURE_HUE, SPECTRUM, type HueName } from '../insights/palette';
+import { resolveAnimal, type Animal } from '../pixel/animals';
+import { archetypeDisplay, metricLabel, metricValue } from '../you/archetype';
 
 // ------------------------------------------------------------------ labels
 
@@ -309,6 +316,21 @@ function day(iso: string): string {
   return iso.slice(0, 10);
 }
 
+/**
+ * The languages with every `other` row made one, last. FOUND ON THE SIMULATOR (2026-09-13, the
+ * real corpus): `languages.split` can send `other` twice for one project, once for an extension
+ * nobody mapped that ranked in the top eight and once for the tail summed past them (52 and 30
+ * lines here). Both mean "not a language the table names", so the page says it once, with both
+ * counts added, rather than two rows with one name.
+ */
+export function oneOther<T extends { language: string; lines: number; files: number; share: number }>(rows: readonly T[]): T[] {
+  const named = rows.filter((r) => r.language !== 'other');
+  const other = rows.filter((r) => r.language === 'other');
+  if (other.length <= 1) return [...named, ...other];
+  const merged = other.reduce((a, r) => ({ ...a, lines: a.lines + r.lines, files: a.files + r.files, share: a.share + r.share }));
+  return [...named, merged];
+}
+
 function labelsFor(block: ReportProjects, names?: Readonly<Record<string, string>> | null, nicknames?: Readonly<Record<string, string>> | null) {
   const out: Record<string, ProjectLabel> = {};
   const keys = new Set<string>(block.projects.map((p) => p.key));
@@ -440,7 +462,10 @@ export function projectDetail(
       refusal: qualityRefusal(q),
     },
     languages: {
-      rows: (w.languages.languages ?? []).map((r) => ({ language: r.language, share: shareWords(r.share), lines: r.lines })),
+      // The share said from the lines themselves: the wire's share is rounded to three places, and
+      // 151 of 29,300 lines (0.515%) arrives as 0.005, which `shareWords` says "0%", a zero nobody
+      // measured (FOUND ON THE SIMULATOR, 2026-09-13).
+      rows: oneOther(w.languages.languages ?? []).map((r) => ({ language: r.language, share: shareWords(w.languages.lines > 0 ? r.lines / w.languages.lines : r.share), lines: r.lines })),
       refusal: languagesRefusal(w.languages),
     },
     commits: w.commits
@@ -470,4 +495,805 @@ export function projectDetail(
     agents: w.agents ? { agents: w.agents.agents, atOnce: w.agents.max_concurrent } : null,
     comparisons,
   };
+}
+
+// ==================================================================================
+// THE PROJECTS TAB AND THE PROJECT PAGE
+//
+// What the screens draw beyond the rows above: every project's hue, the owner's own names
+// for projects, the weeks the rivers and the rank race are drawn from (report v3's
+// `projects.weeks` and each project's `history.weeks`), the tab's hero and its doors, and
+// the page's figures, each a number that counts up to the string a copy helper writes.
+// Still pure: no React Native, so `__tests__/projectsScreens.test.ts` holds every rule.
+// ==================================================================================
+
+// ------------------------------------------------------------------ hues
+
+/**
+ * The hues a project can wear, far apart first: the spectrum less amber, which is the brand and,
+ * on a live surface, "needs you" (the rule `theme.CREW_RING` keeps for sessions).
+ */
+export const PROJECT_HUES: readonly HueName[] = ['tide', 'ember', 'iris', 'brass', 'orchid', 'cobalt', 'coral', 'heather'];
+
+function fnv(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** The hue a key asks for: its first eight hex digits round the ring. A key is a salted hash, so every hue is as likely. */
+export function preferredHue(key: string): HueName {
+  const head = /^[0-9a-f]{8}/i.test(key) ? parseInt(key.slice(0, 8), 16) : fnv(key);
+  return PROJECT_HUES[head % PROJECT_HUES.length]!;
+}
+
+/**
+ * Every project's hue, the same on every screen and every launch. Each project asks for the hue
+ * its key names (`preferredHue`); the OLDEST project, by its first session, gets what it asks for,
+ * and a younger one whose hue is taken steps round the ring to the next free one. So a project
+ * never changes colour when a newer one arrives, and no two projects share a hue until there are
+ * more projects than hues.
+ */
+export function projectHues(projects: readonly { key: string; history: { first_at: string } }[]): Record<string, HueName> {
+  const order = [...projects].sort(
+    (a, b) => (Date.parse(a.history.first_at) || 0) - (Date.parse(b.history.first_at) || 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
+  const taken = new Set<HueName>();
+  const out: Record<string, HueName> = {};
+  for (const p of order) {
+    const want = preferredHue(p.key);
+    let hue = want;
+    if (taken.size < PROJECT_HUES.length) {
+      const at = PROJECT_HUES.indexOf(want);
+      for (let k = 0; k < PROJECT_HUES.length; k++) {
+        const h = PROJECT_HUES[(at + k) % PROJECT_HUES.length]!;
+        if (!taken.has(h)) {
+          hue = h;
+          break;
+        }
+      }
+    }
+    taken.add(hue);
+    out[p.key] = hue;
+  }
+  return out;
+}
+
+/** The hues a chapter falls back to when its own is taken, far apart first; amber last. */
+const SPARE_HUES: readonly HueName[] = ['cobalt', 'heather', 'brass', 'tide', 'iris', 'coral', 'orchid', 'ember', 'amber'];
+
+/**
+ * How far round the colour wheel two neighbouring bands must be, in degrees. UNMEASURED
+ * JUDGEMENT CALL, set beside a measurement of the tokens' inks: cobalt and iris are 55 degrees
+ * apart and read as one family stacked on the simulator (FOUND 2026-09-13: an iris hero over a
+ * cobalt chapter), tide and cobalt 19; the analysis page's own neighbours run from 35 (brass over
+ * ember) to 172. So 60: the house rule "neighbours are never the same family", as a number.
+ */
+export const NEIGHBOUR_DEGREES = 60;
+
+/** A hue's angle on the colour wheel, 0 to 360, from its ink. */
+export function hueAngle(name: HueName): number {
+  const hex = SPECTRUM[name].ink;
+  const v = parseInt(hex.slice(1, 7), 16);
+  const r = ((v >> 16) & 255) / 255;
+  const g = ((v >> 8) & 255) / 255;
+  const b = (v & 255) / 255;
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (d === 0) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+/** The distance between two hues round the wheel, 0 to 180 degrees. */
+export function hueDistance(a: HueName, b: HueName): number {
+  const d = Math.abs(hueAngle(a) - hueAngle(b)) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/**
+ * A page's chapter hues: each chapter's own, unless the page's hero or a project on the page
+ * already wears it (`avoid`), another chapter took it, or it sits within `NEIGHBOUR_DEGREES` of
+ * the band before it (`after`, the hero, for the first) or of the band after the last (`next`);
+ * then the first spare that clears all of that. When nothing does, the neighbour rule alone.
+ */
+export function chapterHues(wanted: readonly HueName[], avoid: readonly HueName[], after?: HueName | null, next?: HueName | null): HueName[] {
+  const out: HueName[] = [];
+  wanted.forEach((want, i) => {
+    const prev = out[out.length - 1] ?? after ?? null;
+    const last = i === wanted.length - 1 ? (next ?? null) : null;
+    const afterPrev = (h: HueName) => prev === null || hueDistance(h, prev) >= NEIGHBOUR_DEGREES;
+    const beforeNext = (h: HueName) => last === null || hueDistance(h, last) >= NEIGHBOUR_DEGREES;
+    const free = (h: HueName) => !avoid.includes(h) && !out.includes(h);
+    const pool = [want, ...SPARE_HUES];
+    // Given up in this order when nothing clears everything: the band after, then a hue already
+    // worn, and the band before last of all.
+    const pick =
+      pool.find((h) => free(h) && afterPrev(h) && beforeNext(h)) ??
+      pool.find((h) => free(h) && afterPrev(h)) ??
+      pool.find((h) => afterPrev(h) && beforeNext(h)) ??
+      pool.find((h) => afterPrev(h)) ??
+      pool.find((h) => h !== prev) ??
+      want;
+    out.push(pick);
+  });
+  return out;
+}
+
+// ------------------------------------------------------------------ the owner's own names
+
+/**
+ * Where the owner's names for projects live: the phone's cache kv, and nowhere else. Never
+ * uploaded (`__tests__/projectsScreens.test.ts` holds that nothing that reads it can send it),
+ * and cleared with the rest of the account's cache at sign out.
+ */
+export const NICKNAMES_KEY = 'projects.nicknames.v1';
+/** How long a name may be: a band's title line at the size a door sets it. */
+export const NICKNAME_MAX = 32;
+
+/** A name as it is kept: inner runs of space made one, trimmed, and cut at `NICKNAME_MAX` characters. */
+export function normalizeNickname(raw: string): string {
+  const one = raw.replace(/\s+/g, ' ').trim();
+  return [...one].slice(0, NICKNAME_MAX).join('').trim();
+}
+
+/** The saved names, keyed by the full 64 hex key. Anything that is not a name for a key is dropped, not repaired. */
+export function parseNicknames(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    if (!/^[0-9a-f]{64}$/.test(k) || typeof x !== 'string') continue;
+    const name = normalizeNickname(x);
+    if (name) out[k] = name;
+  }
+  return out;
+}
+
+/** The names with `key` named `raw`, or its name taken away when `raw` is null or blank. */
+export function withNickname(map: Readonly<Record<string, string>>, key: string, raw: string | null): Record<string, string> {
+  const next = { ...map };
+  const name = raw === null ? '' : normalizeNickname(raw);
+  if (name) next[key] = name;
+  else delete next[key];
+  return next;
+}
+
+// ------------------------------------------------------------------ hours, said
+
+/** Seconds as the hours a figure counts to: "60.6", one decimal at most (`n`). */
+export function hoursFigure(seconds: number): NumSpec {
+  const h = Math.max(0, seconds) / 3600;
+  return numSpec(h, n(h));
+}
+
+/** Seconds in a sentence: "60.6 hours", "1 hour", and under an hour the whole minutes ("42 minutes"). */
+export function hoursWords(seconds: number): string {
+  if (seconds < 3600) return floorMins(seconds);
+  const said = n(seconds / 3600);
+  return `${said} ${said === '1' ? 'hour' : 'hours'}`;
+}
+
+/** A share as a figure: "94%", "under 1%", the words `shareWords` writes. */
+function shareFigure(share: number): NumSpec {
+  return numSpec(share * 100, shareWords(share));
+}
+
+// ------------------------------------------------------------------ the weeks
+
+export interface WeekColumn {
+  /** The Monday, "YYYY-MM-DD", already the local day. */
+  day: string;
+  /** "Aug 11". */
+  label: string;
+  /** Days of it the report read: 7, fewer in the week history starts and in the week it was made. */
+  days: number;
+  /** Every counted session's time with you there that week, projects and none alike. */
+  attendedSeconds: number;
+  sessions: number;
+}
+
+export interface WeeklySeries {
+  key: string;
+  label: ProjectLabel;
+  hue: HueName;
+  /** Seconds with you there, one a week, every week. */
+  attended: number[];
+  sessions: number[];
+  /** Its place that week, 1 the most time with you there; null in a week with none. */
+  ranks: (number | null)[];
+  totalSeconds: number;
+}
+
+export interface WeeklyView {
+  weeks: WeekColumn[];
+  /** In the block's order: most of your time in the window first. */
+  series: WeeklySeries[];
+  totalSeconds: number;
+  /** Why there is nothing to draw, in a sentence. Null when there is. */
+  refusal: string | null;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** "Aug 11" from "2026-08-11": the date as written, never moved to a zone (it is already the local day). */
+export function weekLabel(ymd: string): string {
+  const m = Number(ymd.slice(5, 7));
+  const d = Number(ymd.slice(8, 10));
+  return `${MONTHS[m - 1] ?? ''} ${d}`;
+}
+
+export const WEEKS_NOT_SENT = 'Your Mac sent this report before it counted weeks. A newer Mac sends them, and this fills in.';
+export const WEEKS_EMPTY = 'No weeks to draw yet: your Mac has not counted a session.';
+export const WEEKS_QUIET = 'No time with you there in any of these weeks, so there is nothing to draw.';
+
+/**
+ * THE ORDER OF A WEEK, the one rule the rank race draws: most time with you there first, a tie to
+ * the project the list puts first (most of your time in the window), and a project with no time
+ * with you there that week has no place in it at all. The engine sends the numbers and not the
+ * ranks, so a project the server leaves out never keeps a place (analysis/projects.py, WEEK BY WEEK).
+ */
+export function weeklyRanks(series: readonly { attended: readonly number[] }[], weeks: number): (number | null)[][] {
+  const out = series.map(() => Array.from({ length: weeks }, () => null as number | null));
+  for (let w = 0; w < weeks; w++) {
+    const ranked = series
+      .map((s, i) => ({ i, v: s.attended[w] ?? 0 }))
+      .filter((x) => x.v > 0)
+      .sort((a, b) => b.v - a.v || a.i - b.i);
+    ranked.forEach((x, r) => {
+      out[x.i]![w] = r + 1;
+    });
+  }
+  return out;
+}
+
+/**
+ * The weeks as the rivers and the race draw them. Null with no block ("not computed"); a view
+ * with a refusal when the block has no weeks (an older machine), no weeks at all, or no time with
+ * you there in any of them. Never a river of zeroes.
+ */
+export function weeklyView(
+  block: ReportProjects | null | undefined,
+  names?: Readonly<Record<string, string>> | null,
+  nicknames?: Readonly<Record<string, string>> | null,
+): WeeklyView | null {
+  if (!block) return null;
+  const axis: readonly ReportProjectsWeek[] | null = block.weeks ?? null;
+  const empty = (refusal: string): WeeklyView => ({ weeks: [], series: [], totalSeconds: 0, refusal });
+  if (axis === null) return empty(WEEKS_NOT_SENT);
+  if (!axis.length) return empty(WEEKS_EMPTY);
+  const labels = labelsFor(block, names, nicknames);
+  const hues = projectHues(block.projects);
+  const weeks: WeekColumn[] = axis.map((w) => ({ day: day(w.week), label: weekLabel(day(w.week)), days: w.days, attendedSeconds: w.attended_seconds, sessions: w.sessions }));
+  const at = new Map(weeks.map((w, i) => [w.day, i]));
+  const series: WeeklySeries[] = block.projects.flatMap((p) => {
+    const ws = p.history.weeks;
+    if (!ws) return [];
+    const attended = weeks.map(() => 0);
+    const sessions = weeks.map(() => 0);
+    for (const w of ws) {
+      const i = at.get(day(w.week));
+      if (i === undefined) continue;
+      attended[i] = Math.max(0, w.attended_seconds);
+      sessions[i] = Math.max(0, w.sessions);
+    }
+    return [{ key: p.key, label: labels[p.key] ?? projectLabel(p.key), hue: hues[p.key] ?? preferredHue(p.key), attended, sessions, ranks: [], totalSeconds: attended.reduce((a, v) => a + v, 0) }];
+  });
+  weeklyRanks(series, weeks.length).forEach((r, i) => {
+    series[i]!.ranks = r;
+  });
+  const totalSeconds = series.reduce((a, s) => a + s.totalSeconds, 0);
+  return { weeks, series, totalSeconds, refusal: series.length && totalSeconds > 0 ? null : WEEKS_QUIET };
+}
+
+/** "the week of Aug 11", and how much of it was read when that is not all of it. */
+function weekPhrase(w: WeekColumn): { when: string; partial: string } {
+  return { when: `the week of ${w.label}`, partial: w.days < 7 ? ` The report read ${count(w.days, 'day')} of it.` : '' };
+}
+
+/**
+ * What a tap on a river says: the project, its time with you there that week, and its share of
+ * everything that week. A week with none says so, which is a measured nothing.
+ */
+export function riverLine(view: WeeklyView, key: string, week: number): string | null {
+  const s = view.series.find((x) => x.key === key);
+  const w = view.weeks[week];
+  if (!s || !w) return null;
+  const secs = s.attended[week] ?? 0;
+  const { when, partial } = weekPhrase(w);
+  if (secs <= 0) return `No time with you there in ${s.label.text} in ${when}.${partial}`;
+  const share = w.attendedSeconds > 0 ? `, ${shareWords(secs / w.attendedSeconds)} of every hour with you there that week` : '';
+  return `${s.label.text}: ${hoursWords(secs)} with you there in ${when}${share}.${partial}`;
+}
+
+/** What the rivers say before a tap: the widest stream, over how many weeks, and how to ask. */
+export function riversLine(view: WeeklyView): string | null {
+  if (view.refusal || !view.series.length) return null;
+  const widest = [...view.series].sort((a, b) => b.totalSeconds - a.totalSeconds)[0]!;
+  const weeks = view.weeks.length;
+  const over = weeks === 1 ? 'in the one week read' : `over ${n(weeks)} weeks`;
+  const lead =
+    view.series.length === 1
+      ? `Every hour here is ${widest.label.text}: ${hoursWords(widest.totalSeconds)} with you there ${over}.`
+      : `The widest river is ${widest.label.text}: ${hoursWords(widest.totalSeconds)} with you there ${over}, ${shareWords(widest.totalSeconds / view.totalSeconds)} of the projects' time.`;
+  return `${lead} Tap a river to name it.`;
+}
+
+// ------------------------------------------------------------------ the rank race
+
+export interface RaceSummary {
+  /** The week the order at the right is read from: the latest with any time with you there. */
+  latest: number;
+  order: { rank: number; key: string; label: ProjectLabel; hue: HueName; seconds: number }[];
+  /** Projects on the chart with no time with you there in that week. */
+  resting: ProjectLabel[];
+  leader: { key: string; label: ProjectLabel; hue: HueName; weeksLed: number } | null;
+  /** Weeks in which any project had time with you there. */
+  weeksRanked: number;
+  /** How many times the top place changed hands between one ranked week and the next. */
+  changes: number;
+  /** The race in sentences, each with its numbers. */
+  lines: string[];
+}
+
+/** "A", "A and B", "A, B, and C". */
+function listed(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+/** The race as the chapter says it. Null when the weeks were refused. */
+export function raceSummary(view: WeeklyView): RaceSummary | null {
+  if (view.refusal) return null;
+  const weeks = view.weeks.length;
+  const top: (number | null)[] = Array.from({ length: weeks }, (_, w) => {
+    const i = view.series.findIndex((s) => s.ranks[w] === 1);
+    return i < 0 ? null : i;
+  });
+  const rankedWeeks = top.map((t, w) => (t === null ? -1 : w)).filter((w) => w >= 0);
+  const latest = rankedWeeks[rankedWeeks.length - 1] ?? weeks - 1;
+  const led = view.series.map((_, i) => top.filter((t) => t === i).length);
+  let leaderIdx = -1;
+  led.forEach((k, i) => {
+    if (k > 0 && (leaderIdx < 0 || k > led[leaderIdx]!)) leaderIdx = i;
+  });
+  let changes = 0;
+  let prev: number | null = null;
+  for (const t of top) {
+    if (t === null) continue;
+    if (prev !== null && t !== prev) changes += 1;
+    prev = t;
+  }
+  const order = view.series
+    .map((s) => ({ rank: s.ranks[latest] ?? 0, key: s.key, label: s.label, hue: s.hue, seconds: s.attended[latest] ?? 0 }))
+    .filter((x) => x.rank > 0)
+    .sort((a, b) => a.rank - b.rank);
+  const everRanked = view.series.filter((s) => s.ranks.some((r) => r !== null));
+  const resting = everRanked.filter((s) => (s.ranks[latest] ?? null) === null).map((s) => s.label);
+  const leader = leaderIdx >= 0 ? { key: view.series[leaderIdx]!.key, label: view.series[leaderIdx]!.label, hue: view.series[leaderIdx]!.hue, weeksLed: led[leaderIdx]! } : null;
+
+  const lines: string[] = [];
+  const k = rankedWeeks.length;
+  if (leader) {
+    if (everRanked.length === 1) lines.push(`Only ${leader.label.text} had time with you there in these weeks, so it led ${k === 1 ? 'the one week' : `all ${n(k)}`}.`);
+    else if (leader.weeksLed === k) lines.push(`${leader.label.text} led every one of the ${n(k)} weeks with time with you there.`);
+    else lines.push(`${leader.label.text} led ${n(leader.weeksLed)} of the ${n(k)} weeks with time with you there.`);
+  }
+  if (everRanked.length > 1) lines.push(changes === 0 ? 'The top place never changed hands.' : `The top place changed hands ${changes === 1 ? 'once' : `${n(changes)} times`}.`);
+  const w = view.weeks[latest];
+  if (w && latest !== weeks - 1) lines.push(`The latest week with time with you there is ${weekPhrase(w).when}.`);
+  if (w && resting.length) lines.push(`No time with you there in ${weekPhrase(w).when}: ${listed(resting.map((l) => l.text))}.`);
+  return { latest, order, resting, leader, weeksRanked: k, changes, lines };
+}
+
+// ------------------------------------------------------------------ the tab's hero
+
+export interface ProjectsHero {
+  count: NumSpec;
+  /** "projects on your Mac". */
+  countCaption: string;
+  /** Every counted session's time with you there in the window; null when there was none. */
+  hours: NumSpec | null;
+  /** "hours with you there, the last 30 days". */
+  hoursCaption: string;
+  /** Where most of it went, or why there is no number. */
+  note: string | null;
+  /** The projects the list leaves out, and the sessions in no repository. */
+  small: string[];
+}
+
+/** The scope a window number is said in: "the last 30 days" when the report's coverage holds, else the stretch it read. */
+export function windowPhrase(report: BuilderReport | null | undefined, block: ReportProjects, nowMs: number = Date.now()): string {
+  return report ? readSpan(report, nowMs).inline : `the last ${count(block.window_days, 'day')}`;
+}
+
+export function projectsHero(view: ProjectsView, block: ReportProjects, report: BuilderReport | null | undefined, nowMs: number = Date.now()): ProjectsHero {
+  const scope = windowPhrase(report, block, nowMs);
+  const projects = view.rows.reduce((a, r) => a + (r.window?.attendedSeconds ?? 0), 0);
+  const all = projects + view.unresolved.attendedSeconds;
+  const lead = view.rows.find((r) => r.window && r.window.share !== null && r.window.attendedSeconds > 0) ?? null;
+  const small: string[] = [];
+  if (view.hidden > 0) small.push(`${count(view.hidden, 'more project', 'more projects')} on your Mac ${view.hidden === 1 ? 'is' : 'are'} left off this list, which keeps the ${n(view.rows.length)} with the most time.`);
+  if (view.unresolved.sessions > 0) {
+    small.push(`${count(view.unresolved.sessions, 'session')} in ${scope} ran in no repository, a home folder or a folder with no git, so ${view.unresolved.sessions === 1 ? 'it belongs' : 'they belong'} to no project: ${hoursWords(view.unresolved.attendedSeconds)} with you there.`);
+  }
+  return {
+    count: numSpec(block.projects_total, n(block.projects_total)),
+    countCaption: block.projects_total === 1 ? 'project on your Mac' : 'projects on your Mac',
+    hours: all > 0 ? hoursFigure(all) : null,
+    hoursCaption: `hours with you there, ${scope}`,
+    note:
+      all <= 0
+        ? `No time with you there in ${scope}.`
+        : lead && lead.window && lead.window.shareWords
+          ? `${capitalFirst(lead.window.shareWords)} of it in ${lead.label.text}.`
+          : null,
+    small,
+  };
+}
+
+function capitalFirst(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// ------------------------------------------------------------------ the doors
+
+export interface ProjectDoor {
+  key: string;
+  rank: number;
+  label: ProjectLabel;
+  hue: HueName;
+  /** "Active". */
+  stage: string | null;
+  stageSentence: string | null;
+  lastSession: string | null;
+  /** Window numbers, null when nothing ran here in the window. */
+  hours: NumSpec | null;
+  share: NumSpec | null;
+  /** "hours with you there" and "of your time with you there", or the sentence for an empty window. */
+  hoursCaption: string;
+  shareCaption: string | null;
+  quiet: string | null;
+  momentum: string | null;
+  direction: TrendDirection | null;
+  /** What VoiceOver reads for the whole band. */
+  a11y: string;
+}
+
+/** Each project as a band door, in the list's order. */
+export function projectDoors(view: ProjectsView, block: ReportProjects, report: BuilderReport | null | undefined, nowMs: number = Date.now()): ProjectDoor[] {
+  const hues = projectHues(block.projects);
+  const scope = windowPhrase(report, block, nowMs);
+  return view.rows.map((r) => {
+    const w = r.window;
+    const hours = w && w.attendedSeconds > 0 ? hoursFigure(w.attendedSeconds) : null;
+    const share = w && w.share !== null && w.attendedSeconds > 0 ? shareFigure(w.share) : null;
+    const quiet = !w ? `Nothing here in ${scope}.` : w.attendedSeconds <= 0 ? `No time with you there in ${scope}: the agent ran alone.` : null;
+    const said = [r.label.text, r.stageLabel, hours ? `${hours.final} hours with you there` : quiet, share ? `${share.final} of your time` : null, r.momentum].filter(Boolean).join('. ');
+    return {
+      key: r.key,
+      rank: r.rank,
+      label: r.label,
+      hue: hues[r.key] ?? preferredHue(r.key),
+      stage: r.stageLabel,
+      stageSentence: r.stageSentence,
+      lastSession: r.lastSession,
+      hours,
+      share,
+      hoursCaption: 'hours with you there',
+      shareCaption: share ? `of your time, ${scope}` : null,
+      quiet,
+      momentum: r.momentum,
+      direction: r.momentumDirection,
+      a11y: `${said}. Opens the project.`,
+    };
+  });
+}
+
+// ------------------------------------------------------------------ comparisons, as figures
+
+export interface ComparisonFigures {
+  high: NumSpec | null;
+  low: NumSpec | null;
+  /** Both values are floors: each is said "at least", and no ratio or gap is stated. */
+  floor: boolean;
+}
+
+/** A comparison's two numbers as figures that count up to the words its sentence says. */
+export function comparisonFigures(c: ComparisonView, raw?: ReportProjectComparison | null): ComparisonFigures {
+  const floor = raw?.reason === 'floors_only';
+  return { high: c.high ? numSpec(Number.NaN, c.high.value) : null, low: c.low ? numSpec(Number.NaN, c.low.value) : null, floor };
+}
+
+// ------------------------------------------------------------------ the page
+
+export interface RuleRow {
+  key: string;
+  display: string;
+  animal: Animal;
+  hue: HueName;
+  /** Value over the bar, capped at two and halved: 0.5 is exactly the bar. */
+  score: number;
+  said: string;
+  bar: string | null;
+  winner: boolean;
+}
+
+export interface ProjectPage {
+  detail: ProjectDetail;
+  hue: HueName;
+  /** "the last 30 days", or the stretch the report read. */
+  scope: string;
+  hero: {
+    hours: NumSpec | null;
+    autonomous: NumSpec | null;
+    sessions: NumSpec | null;
+    share: NumSpec | null;
+    historySessions: NumSpec;
+    historyHours: NumSpec;
+    longestStreak: NumSpec | null;
+    currentStreak: NumSpec | null;
+    since: string;
+  };
+  time: {
+    activeDays: NumSpec | null;
+    peak: NumSpec | null;
+    peakHour: number | null;
+    spanDays: NumSpec;
+  } | null;
+  build: {
+    type: string | null;
+    typeSentence: string | null;
+    typeRefusal: string | null;
+    rules: RuleRow[];
+    steer: NumSpec | null;
+    steerSentence: string | null;
+    perSession: NumSpec | null;
+    perPrompt: NumSpec | null;
+    green: { rate: NumSpec; passed: number; failed: number; runs: string } | null;
+    greenRefusal: string | null;
+    back: { median: NumSpec; seconds: number; dial: 'minute' | 'hour' | 'day'; worst: string; n: string } | null;
+    backRefusal: string | null;
+    agents: { agents: NumSpec; atOnce: NumSpec } | null;
+    harnesses: { harness: Harness; sessions: number; share: number; text: string }[];
+  } | null;
+  shipping: {
+    added: NumSpec | null;
+    removed: NumSpec | null;
+    addedShare: number;
+    commits: { assisted: NumSpec; alone: NumSpec; total: NumSpec; assistedN: number; aloneN: number; days: { day: string; assisted: number; alone: number }[]; sentence: string } | null;
+    commitsRefusal: string | null;
+  } | null;
+  money: {
+    usd: NumSpec | null;
+    headline: string | null;
+    refusal: string | null;
+    notAbill: string;
+    perHour: NumSpec | null;
+    perCommit: NumSpec | null;
+    perCommitRefusal: string | null;
+    without: string | null;
+    models: { key: string; name: string; usd: number; text: string; family: string }[];
+    burn: MoneyModel['burn'];
+  } | null;
+}
+
+function card(cards: readonly ReportWrappedCard[] | undefined, id: string): ReportWrappedCard | null {
+  return cards?.find((c) => c.id === id) ?? null;
+}
+
+function num(x: unknown): x is number {
+  return typeof x === 'number' && Number.isFinite(x);
+}
+
+/** The archetype metrics whose value on the Mac is always a floor (`you/archetype.ts` says why). */
+const FLOOR_METRICS: ReadonlySet<string> = new Set(['test_runs_per_hour']);
+
+/** The six rules scored on this project, the one that won first, then by score. A rule with no value is left out. */
+export function ruleRows(scores: readonly { name: string; metric: string; value?: number | null; threshold?: number | null; score?: number | null }[], winner: string | null): RuleRow[] {
+  return scores
+    .flatMap((r) => {
+      const score = num(r.score) ? r.score : num(r.value) && num(r.threshold) && r.threshold > 0 ? Math.min(r.value / r.threshold, 2) / 2 : null;
+      if (score === null || !num(r.value)) return [];
+      const animal = resolveAnimal(null, r.name);
+      return [
+        {
+          key: r.name,
+          display: archetypeDisplay(r.name),
+          animal,
+          hue: CREATURE_HUE[animal] ?? 'amber',
+          score,
+          said: `${FLOOR_METRICS.has(r.metric) ? 'at least ' : ''}${metricValue(r.metric, r.value)} ${metricLabel(r.metric)}`,
+          bar: num(r.threshold) ? metricValue(r.metric, r.threshold) : null,
+          winner: r.name === winner,
+        },
+      ];
+    })
+    .sort((a, b) => Number(b.winner) - Number(a.winner) || b.score - a.score);
+}
+
+function familyOf(model: string): string {
+  return /claude-([a-z]+)/.exec(model)?.[1] ?? model;
+}
+
+/**
+ * One project's page, every chapter's figures: the hero, time, how you build it, shipping and
+ * money. Null when the block does not hold the key. A chapter the window cannot answer is null
+ * (the page shows the stage and says the window is empty); a number inside a chapter that is
+ * refused carries its sentence.
+ */
+export function projectPage(
+  block: ReportProjects | null | undefined,
+  key: string,
+  names?: Readonly<Record<string, string>> | null,
+  nicknames?: Readonly<Record<string, string>> | null,
+  report?: BuilderReport | null,
+  nowMs: number = Date.now(),
+): ProjectPage | null {
+  const detail = projectDetail(block, key, names, nicknames, nowMs);
+  if (!block || !detail) return null;
+  const p = block.projects.find((x) => x.key === detail.key)!;
+  const hue = projectHues(block.projects)[p.key] ?? preferredHue(p.key);
+  const scope = windowPhrase(report, block, nowMs);
+  const h = p.history;
+  const w = p.window ?? null;
+
+  const hero: ProjectPage['hero'] = {
+    hours: w && w.attended_seconds > 0 ? hoursFigure(w.attended_seconds) : null,
+    autonomous: w && w.autonomous_seconds > 0 ? hoursFigure(w.autonomous_seconds) : null,
+    sessions: w ? numSpec(w.sessions, n(w.sessions)) : null,
+    share: w && num(w.share_of_attended) && w.attended_seconds > 0 ? shareFigure(w.share_of_attended) : null,
+    historySessions: numSpec(h.sessions, n(h.sessions)),
+    historyHours: hoursFigure(h.attended_seconds),
+    longestStreak: num(h.longest_streak_days) && h.longest_streak_days > 0 ? numSpec(h.longest_streak_days, n(h.longest_streak_days)) : null,
+    currentStreak: num(h.current_streak_days) && h.current_streak_days > 0 ? numSpec(h.current_streak_days, n(h.current_streak_days)) : null,
+    since: weekLabel(day(h.first_at)),
+  };
+  if (!w) return { detail, hue, scope, hero, time: null, build: null, shipping: null, money: null };
+
+  const time: ProjectPage['time'] = {
+    activeDays: w.active_days > 0 ? numSpec(w.active_days, n(w.active_days)) : null,
+    peak: num(w.clock.peak_hour) ? numSpec(w.clock.peak_hour, hourOfDay(w.clock.peak_hour), { kind: 'hour' }) : null,
+    peakHour: num(w.clock.peak_hour) ? w.clock.peak_hour : null,
+    spanDays: numSpec(h.spans_days, n(h.spans_days)),
+  };
+
+  const byId = new Map(detail.cards.map((c) => [c.id as string, c]));
+  const typeCard = byId.get('builder_type') ?? null;
+  const steerCard = card(w.cards, 'change_course');
+  const steerSaid = byId.get('change_course') ?? null;
+  const per = card(w.cards, 'prompts_per_session');
+  const q = w.quality;
+  const g = q.time_to_green ?? null;
+  const total = w.harnesses.reduce((a, x) => a + x.sessions, 0);
+  const build: ProjectPage['build'] = {
+    type: typeCard?.display ?? null,
+    typeSentence: typeCard?.sentence ?? null,
+    typeRefusal: typeCard?.refusal ?? null,
+    rules: ruleRows(w.scores, card(w.cards, 'builder_type')?.value_id ?? null),
+    // The card's own number ("42%"), said as `profile._pct` says it; the card's "of the time"
+    // is the label's to say beside it.
+    steer: steerCard && steerCard.reason == null && num(steerCard.value) ? numSpec(steerCard.value * 100, pct(steerCard.value)) : null,
+    steerSentence: steerSaid?.sentence ?? steerSaid?.refusal ?? null,
+    perSession: per && per.reason == null && num(per.value) ? numSpec(per.value, n(per.value)) : null,
+    perPrompt: per && per.reason == null && num(per.extras?.tool_calls_per_prompt) ? numSpec(per.extras.tool_calls_per_prompt, n(per.extras.tool_calls_per_prompt)) : null,
+    green:
+      num(q.first_try_rate) && num(q.passed) && num(q.failed)
+        ? { rate: shareFigure(q.first_try_rate), passed: q.passed, failed: q.failed, runs: `${commas(q.passed)} of ${count(q.runs, 'test run')} were green with no error after them.` }
+        : null,
+    greenRefusal: num(q.first_try_rate) ? null : detail.tests?.refusal ?? null,
+    back: g
+      ? {
+          median: numSpec(g.median_seconds, clockWords(g.median_seconds), { kind: 'clock' }),
+          seconds: g.median_seconds,
+          dial: g.median_seconds <= 60 ? 'minute' : g.median_seconds <= 3600 ? 'hour' : 'day',
+          worst: `The longest took ${clockWords(g.worst_seconds)}.`,
+          n: `${count(g.n, 'time')} a failing run came back to green.`,
+        }
+      : null,
+    backRefusal: g ? null : num(q.first_try_rate) ? detail.tests?.refusal ?? null : null,
+    agents: w.agents ? { agents: numSpec(w.agents.agents, n(w.agents.agents)), atOnce: numSpec(w.agents.max_concurrent, n(w.agents.max_concurrent)) } : null,
+    harnesses: w.harnesses.map((x) => ({ harness: x.harness, sessions: x.sessions, share: total > 0 ? x.sessions / total : 0, text: `${count(x.sessions, 'session')}, ${hoursWords(x.active_seconds)} active` })),
+  };
+
+  const m = w.money;
+  const added = num(m.lines_added) && m.lines_added > 0 ? m.lines_added : 0;
+  const removed = num(m.lines_removed) && m.lines_removed > 0 ? m.lines_removed : 0;
+  const c = w.commits ?? null;
+  const shipping: ProjectPage['shipping'] = {
+    added: added > 0 ? numSpec(added, `+${commas(added)}`) : null,
+    removed: removed > 0 ? numSpec(-removed, `-${commas(removed)}`) : null,
+    addedShare: added + removed > 0 ? added / (added + removed) : 1,
+    commits: c
+      ? {
+          assisted: numSpec(c.assisted, commas(c.assisted)),
+          alone: numSpec(c.alone, commas(c.alone)),
+          total: numSpec(c.assisted + c.alone, commas(c.assisted + c.alone)),
+          assistedN: c.assisted,
+          aloneN: c.alone,
+          days: detail.commits?.days ?? [],
+          sentence: `${commas(c.assisted)} landed with a session of this project running, ${commas(c.alone)} without one, over ${count(c.active_days, 'day')} with a commit. A commit made in a session this Mac never saw reads as without one.`,
+        }
+      : null,
+    commitsRefusal: c ? null : `No commit was read for this project in ${scope}.`,
+  };
+
+  const per$ = w.usd_per_commit;
+  const money: ProjectPage['money'] = {
+    usd: num(m.usd) && m.reason == null ? numSpec(m.usd, dollars(m.usd)) : null,
+    headline: detail.money?.headline ?? null,
+    refusal: detail.money?.refusal ?? null,
+    notAbill: NOT_WHAT_YOU_PAY,
+    perHour: num(m.usd_per_active_hour) ? numSpec(m.usd_per_active_hour, dollars(m.usd_per_active_hour)) : null,
+    perCommit: num(per$.usd) ? numSpec(per$.usd, dollars(per$.usd)) : null,
+    perCommitRefusal: num(per$.usd) ? null : detail.money?.perCommitRefusal ?? null,
+    without: detail.money?.withoutACommit ? `${capitalFirst(detail.money.withoutACommit)}.` : null,
+    models: m.by_model.map((x) => ({ key: x.model, name: modelName(x.model), usd: x.usd, text: dollars(x.usd), family: familyOf(x.model) })),
+    burn: burnOf(w.burn),
+  };
+  return { detail, hue, scope, hero, time, build, shipping, money };
+}
+
+/** Measured seconds as a clock, "41s", "59m 28s" (`copy/numbers.clock`). */
+function clockWords(seconds: number): string {
+  return clockSaid(seconds);
+}
+
+// ------------------------------------------------------------------ the session swarm
+
+export interface SwarmSession {
+  id: string;
+  /** Epoch ms it started. */
+  at: number;
+  activeSeconds: number;
+  /** The part with you there, 0 to 1. */
+  attendedShare: number;
+  unattended: boolean;
+}
+
+type SessionRowIn = {
+  id: string;
+  started_at: string;
+  active_seconds: number;
+  attended_seconds?: number;
+  unattended?: boolean;
+  state?: string;
+  repo_key?: string | null;
+};
+
+/**
+ * This project's finished sessions for the swarm: every row the project's own route sent, and
+ * every row this phone has saved whose `repo_key` is this project's, each once. A saved row with
+ * no key is left out (it may belong to any project), never guessed into this one.
+ */
+export function swarmSessions(fromProject: readonly SessionRowIn[], fromCache: readonly SessionRowIn[], key: string): SwarmSession[] {
+  const seen = new Map<string, SwarmSession>();
+  const take = (r: SessionRowIn) => {
+    if (seen.has(r.id) || (r.state ?? 'final') !== 'final') return;
+    const at = Date.parse(r.started_at);
+    if (!Number.isFinite(at) || !(r.active_seconds > 0)) return;
+    const attended = Math.max(0, Math.min(r.active_seconds, r.attended_seconds ?? 0));
+    seen.set(r.id, { id: r.id, at, activeSeconds: r.active_seconds, attendedShare: attended / r.active_seconds, unattended: Boolean(r.unattended) });
+  };
+  fromProject.forEach(take);
+  fromCache.filter((r) => r.repo_key === key).forEach(take);
+  return [...seen.values()].sort((a, b) => a.at - b.at);
+}
+
+/** What the swarm says under it: how many dots, against how many sessions the Mac counts here. */
+export function swarmLine(shown: number, history: number): string {
+  if (shown <= 0) return 'No session of this project is on this phone yet. They arrive as your Mac uploads them.';
+  const dots = shown === 1 ? 'One dot is one session' : `${n(shown)} dots, one a session`;
+  const all = history > shown ? `, of the ${count(history, 'session')} your Mac counts here` : '';
+  return `${dots}${all}. A dot's area is its active time, and the arc round it in your colour goes as far round as the share you were there for. Tap one to open it.`;
 }

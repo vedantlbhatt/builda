@@ -300,6 +300,92 @@ class Streaks(unittest.TestCase):
         self.assertEqual(h["current_streak_days"], 0)
 
 
+class Weeks(unittest.TestCase):
+    """The week axis and each project's sittings on it (`_week_axis`, `_weekly`, `_weeks`):
+    what the phone's rivers and rank race draw, and nothing a week could not say."""
+
+    @staticmethod
+    def days(block: dict) -> list[dt.date]:
+        return [dt.date.fromisoformat(w["week"][:10]) for w in block["weeks"]]
+
+    def test_the_axis_is_mondays_through_this_week_and_never_before_the_first_sitting(self):
+        b = pj.block(two_projects(), 30)
+        weeks = self.days(b)
+        self.assertEqual(weeks[0], pj.week_of(pf.local_day(T0, 0)))
+        self.assertEqual(weeks[-1], pj.week_of(pf.local_day(NOW, 0)))
+        self.assertTrue(all(w.weekday() == 0 for w in weeks))
+        self.assertEqual([(y - x).days for x, y in zip(weeks, weeks[1:], strict=False)], [7] * (len(weeks) - 1))
+        self.assertTrue(all(w["week"].endswith("T00:00:00Z") for w in b["weeks"]))
+
+    def test_a_long_history_is_cut_to_the_last_weeks_and_its_old_sittings_stay_in_history(self):
+        c = hand_cut([(ride("old", NOW - 200 * DAY), "zebraride"), (ride("new", NOW - DAY), "zebraride")], now=NOW)
+        b = pj.block(c, 30)
+        self.assertEqual(len(b["weeks"]), pj.WEEKS)
+        h = b["projects"][0]["history"]
+        self.assertEqual((h["sessions"], sum(w["sessions"] for w in h["weeks"])), (2, 1))
+        # History reaches back past the first week on the axis, so that week is whole.
+        self.assertEqual(b["weeks"][0]["days"], 7)
+
+    def test_every_project_reads_on_the_same_weeks_every_week_present(self):
+        b = pj.block(two_projects(), 30)
+        axis = [w["week"] for w in b["weeks"]]
+        for p in b["projects"]:
+            self.assertEqual([w["week"] for w in p["history"]["weeks"]], axis)
+
+    def test_the_weeks_add_up_to_history_and_the_axis_to_every_sitting(self):
+        c = two_projects()
+        b = pj.block(c, 30)
+        for p in b["projects"]:
+            h, ws = p["history"], p["history"]["weeks"]
+            self.assertEqual(sum(w["sessions"] for w in ws), h["sessions"])
+            self.assertAlmostEqual(sum(w["attended_seconds"] for w in ws), h["attended_seconds"], delta=len(ws))
+            self.assertAlmostEqual(sum(w["active_seconds"] for w in ws), h["active_seconds"], delta=len(ws))
+        # The axis counts every sitting, the one in no repository included.
+        self.assertEqual(sum(w["sessions"] for w in b["weeks"]), len(c.facts))
+        self.assertEqual(sum(w["sessions"] for w in b["weeks"]), sum(p["history"]["sessions"] for p in b["projects"]) + 1)
+        self.assertAlmostEqual(sum(w["attended_seconds"] for w in b["weeks"]), sum(f.attended_seconds for f in c.facts), delta=len(b["weeks"]))
+
+    def test_a_sitting_belongs_to_the_week_of_its_local_day_at_four(self):
+        """Monday 03:30 is still Sunday's local day, so that sitting is last week's; an hour
+        later is this week's. The first week counts from the first sitting's day, the current
+        one through today."""
+        monday = dt.datetime(2026, 9, 7, 3, 30, tzinfo=dt.UTC).timestamp()
+        c = hand_cut(
+            [(ride("early", monday), "zebraride"), (ride("late", monday + 3600), "zebraride")],
+            now=monday + 3 * DAY + 2 * 3600,
+        )
+        b = pj.block(c, 30)
+        weeks = b["projects"][0]["history"]["weeks"]
+        self.assertEqual([w["week"][:10] for w in weeks], ["2026-08-31", "2026-09-07"])
+        self.assertEqual([w["sessions"] for w in weeks], [1, 1])
+        self.assertEqual([w["days"] for w in b["weeks"]], [1, 4])
+
+    def test_a_quiet_week_is_a_measured_zero_and_a_week_history_never_reached_is_not_there(self):
+        sittings = [
+            (ride("r0", T0), "zebraride"),
+            (ride("r1", T0 + 14 * DAY), "zebraride"),
+            (build("b0", T0 + 14 * DAY + 6 * 3600), "builder"),
+        ]
+        b = pj.block(hand_cut(sittings, now=T0 + 15 * DAY), 30)
+        self.assertEqual(self.days(b)[0], pj.week_of(pf.local_day(T0, 0)))
+        by = by_key(b)
+        self.assertEqual([w["sessions"] for w in by[key("zebraride")]["history"]["weeks"]], [1, 0, 1])
+        # Builder's first sitting is in the third week; the two before it are measured zeroes.
+        self.assertEqual([w["attended_seconds"] for w in by[key("builder")]["history"]["weeks"]], [0, 0, 1800])
+
+    def test_no_sitting_is_no_axis(self):
+        self.assertEqual(pj._week_axis([], dt.date(2026, 9, 13)), [])
+        self.assertEqual(pj._weeks([], [], dt.date(2026, 9, 13)), [])
+
+    def test_the_order_within_a_week_is_the_phones_to_draw(self):
+        """No rank travels: the server drops an excluded project from the list, and a rank
+        written here would keep its place in every week it led."""
+        b = pj.block(two_projects(), 30)
+        for p in b["projects"]:
+            for w in p["history"]["weeks"]:
+                self.assertEqual(set(w), {"week", "sessions", "attended_seconds", "active_seconds"})
+
+
 class CommitsAndAgents(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -561,6 +647,8 @@ class WhatMayTravel(unittest.TestCase):
         self.assertEqual(caps[("ReportProjectLanguages", "languages")], lang.TOP_N + 1)
         self.assertGreaterEqual(caps[("ReportProjectWindow", "harnesses")], len(SPEC["enums"]["harness"]))
         self.assertEqual(caps[("ReportProjectCommits", "days")], rp.MAX_DAYS)
+        self.assertEqual(caps[("ReportProjects", "weeks")], pj.WEEKS)
+        self.assertEqual(caps[("ReportProjectHistory", "weeks")], pj.WEEKS)
 
 
 class Copy(unittest.TestCase):

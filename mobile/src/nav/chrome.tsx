@@ -41,6 +41,9 @@ type Symbol = SymbolViewProps['name'];
 export const TAB_SYMBOLS = {
   now: { rest: 'bolt', active: 'bolt.fill' },
   sessions: { rest: 'list.bullet.rectangle', active: 'list.bullet.rectangle.fill' },
+  // A folder, the one shape every file browser gives a project; solid at tab size beside the bolt
+  // and the list, outlined at rest and filled when chosen like them.
+  projects: { rest: 'folder', active: 'folder.fill' },
 } as const satisfies Record<Exclude<TabName, 'you'>, { rest: Symbol; active: Symbol }>;
 
 /** iOS 17's SF Symbol bounce, where the OS has it. Read once: the OS does not change under us. */

@@ -98,6 +98,14 @@ export interface SessionDetail {
    * must read "unknown" rather than "no post" from that absence.
    */
   post_id?: string | null;
+  /**
+   * The repository's KEY, the salted hash the upload carried (`repo_hash`), which is the
+   * report's `projects[].key`: how the phone puts each of its own sessions in its project
+   * (docs/projects.md). Never a name. Null when the sitting's repository did not resolve;
+   * undefined on a session that is not the viewer's own (a shared one, a feed item) and from
+   * a server older than the field, and both of those mean "not known", never "no project".
+   */
+  repo_key?: string | null;
   /** Only on the detail endpoint; absent from the list. Null when no strip was stored. */
   strip?: SessionStrip | null;
   stats?: SessionStats | null;

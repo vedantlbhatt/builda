@@ -34,7 +34,33 @@
      "move": null,
      "reason": "below_session_floor",
      "needed": 4
-    }
+    },
+    "weeks": [
+     {
+      "week": "2026-08-31T00:00:00Z",
+      "sessions": 6,
+      "attended_seconds": 10800,
+      "active_seconds": 19800
+     },
+     {
+      "week": "2026-09-07T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-14T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-21T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     }
+    ]
    },
    "window": {
     "sessions": 6,
@@ -496,7 +522,33 @@
      "move": null,
      "reason": "below_session_floor",
      "needed": 4
-    }
+    },
+    "weeks": [
+     {
+      "week": "2026-08-31T00:00:00Z",
+      "sessions": 5,
+      "attended_seconds": 9000,
+      "active_seconds": 9000
+     },
+     {
+      "week": "2026-09-07T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-14T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-21T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     }
+    ]
    },
    "window": {
     "sessions": 5,
@@ -1051,6 +1103,32 @@
    "projects": 2,
    "needed": null,
    "reason": "within_noise"
+  }
+ ],
+ "weeks": [
+  {
+   "week": "2026-08-31T00:00:00Z",
+   "days": 6,
+   "sessions": 12,
+   "attended_seconds": 21600
+  },
+  {
+   "week": "2026-09-07T00:00:00Z",
+   "days": 7,
+   "sessions": 0,
+   "attended_seconds": 0
+  },
+  {
+   "week": "2026-09-14T00:00:00Z",
+   "days": 7,
+   "sessions": 0,
+   "attended_seconds": 0
+  },
+  {
+   "week": "2026-09-21T00:00:00Z",
+   "days": 1,
+   "sessions": 0,
+   "attended_seconds": 0
   }
  ]
 }

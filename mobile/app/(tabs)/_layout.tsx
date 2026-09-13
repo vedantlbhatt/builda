@@ -10,7 +10,8 @@ import { nav } from '../../src/nav/Skeleton';
 import { useAccent } from '../../src/theme/accent';
 
 /**
- * The three peers: what is running (Now), what finished (Sessions), and who you are (You).
+ * The four peers: what is running (Now), what finished (Sessions), where the hours go project by
+ * project (Projects), and who you are (You).
  *
  * The bar is the app's theme where it is seen most (design-refs/HOUSE-STYLE.md, "the theme is
  * your creature's colour"): the warm near black ground with one hairline on top, the selected
@@ -59,6 +60,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="now" options={tab('now')} />
       <Tabs.Screen name="sessions" options={tab('sessions')} />
+      <Tabs.Screen name="projects" options={tab('projects')} />
       <Tabs.Screen name="you" options={tab('you', () => <SettingsButton />)} />
     </Tabs>
   );

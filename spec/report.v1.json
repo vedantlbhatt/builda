@@ -52,7 +52,13 @@
     "numbers, clocks and keys, and every reason an enum code the phone words.",
     "",
     "Two more enums copy a table, each pinned both ways by a test: language is every name",
-    "analysis/languages.py can give a language, and harness is the upload contract's own."
+    "analysis/languages.py can give a language, and harness is the upload contract's own.",
+    "",
+    "The projects block also carries a week axis (weeks, at most twelve ISO weeks on the local",
+    "day at 04:00, never before the machine's first sitting) and each project's sittings on it",
+    "(history.weeks), for the phone's week by week drawings. Both are nullable and appended",
+    "without a version: a version 3 document from before them still validates, and its phone",
+    "reads their absence as not computed, never as weeks of zero."
   ],
   "version": 3,
   "max_lengths": {
@@ -1680,6 +1686,28 @@
         "doc": "the session floor a below_session_floor refusal names, for each stretch."
       }
     ],
+    "ReportProjectWeek": [
+      {
+        "name": "week",
+        "type": "datetime",
+        "doc": "the Monday of an ISO week: the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings of this project that started in the week, by the local day each started on."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "their seconds with you there. 0 is measured: the machine holds every sitting of every week on the axis."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time, both clocks."
+      }
+    ],
     "ReportProjectHistory": [
       {
         "name": "sessions",
@@ -1770,6 +1798,14 @@
         "type": "object",
         "item": "ReportProjectMomentum",
         "doc": "the last week against the week before, attended time."
+      },
+      {
+        "name": "weeks",
+        "type": "list",
+        "item": "ReportProjectWeek",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "this project's sittings in each week of the block's weeks, the same weeks in the same order, every one present. Null from a machine that does not compute it."
       }
     ],
     "ReportProjectClock": [
@@ -2240,6 +2276,28 @@
         "doc": "why there is no difference to state: under two projects clear the floor, the gap is under the bar, or both values are floors that fall short by different amounts. within_noise and floors_only still carry both values. Null when answered."
       }
     ],
+    "ReportProjectsWeek": [
+      {
+        "name": "week",
+        "type": "datetime",
+        "doc": "the Monday of an ISO week: the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day."
+      },
+      {
+        "name": "days",
+        "type": "int",
+        "doc": "days of the week the machine's history covers: 7, fewer in the week history starts in and in the current week, which counts today."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "every counted sitting that started in the week: every project, the unresolved and any past the list's cap."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "their seconds with you there: what a project's share of the week is out of."
+      }
+    ],
     "ReportProjects": [
       {
         "name": "window_days",
@@ -2281,6 +2339,14 @@
         "item": "ReportProjectComparison",
         "max_items": 10,
         "doc": "one per metric in analysis/projects.py COMPARISONS, answered or refused, in that order."
+      },
+      {
+        "name": "weeks",
+        "type": "list",
+        "item": "ReportProjectsWeek",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "the week axis every project's weeks read on: the last twelve ISO weeks through the current one (analysis/projects.py WEEKS), oldest first, never a week before the machine's first sitting. Empty with no sitting. Null from a machine that does not compute it."
       }
     ]
   },

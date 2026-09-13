@@ -107,6 +107,7 @@ ENUM_FIELDS: dict[str, dict[str, str]] = {
     "ReportStackItem": {"id": "stack_item", "category": "stack_category", "evidence": "stack_evidence"},
     "ReportStack": {"reason": "stack_refusal"},
     "ReportProjectMomentum": {"direction": "trend_direction", "reason": "momentum_refusal"},
+    "ReportProjectWeek": {},
     "ReportProjectHistory": {"stage": "project_stage", "stage_rule": "project_stage_rule"},
     "ReportProjectClock": {"reason": "clock_refusal"},
     "ReportProjectQuality": {"reason": "quality_refusal"},
@@ -120,6 +121,7 @@ ENUM_FIELDS: dict[str, dict[str, str]] = {
     "ReportProject": {},
     "ReportProjectsUnresolved": {},
     "ReportProjectComparison": {"metric": "comparison_metric", "reason": "comparison_refusal"},
+    "ReportProjectsWeek": {},
     "ReportProjects": {},
     "BuilderReport": {},
 }
@@ -605,6 +607,15 @@ class ReportProjectMomentum(BaseModel):
         return v
 
 
+class ReportProjectWeek(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    week: datetime
+    sessions: int
+    attended_seconds: int
+    active_seconds: int
+
+
 class ReportProjectHistory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -625,6 +636,7 @@ class ReportProjectHistory(BaseModel):
     stage: str
     stage_rule: str
     momentum: ReportProjectMomentum
+    weeks: list[ReportProjectWeek] | None = Field(default=None, max_length=12)
 
     @field_validator("stage", "stage_rule")
     @classmethod
@@ -844,6 +856,15 @@ class ReportProjectComparison(BaseModel):
         return v
 
 
+class ReportProjectsWeek(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    week: datetime
+    days: int
+    sessions: int
+    attended_seconds: int
+
+
 class ReportProjects(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -854,6 +875,7 @@ class ReportProjects(BaseModel):
     projects: list[ReportProject] = Field(max_length=20)
     unresolved: ReportProjectsUnresolved
     comparisons: list[ReportProjectComparison] = Field(max_length=10)
+    weeks: list[ReportProjectsWeek] | None = Field(default=None, max_length=12)
 
 
 class BuilderReport(BaseModel):

@@ -134,6 +134,7 @@ from.
 |---|---|---|
 | `builder://now` | Now: live sessions, the empty state, the way into mission control | the first tab; `builder://` and `builder:///` land here too |
 | `builder://sessions` | Sessions: finished sessions, sample when signed out | the old home screen |
+| `builder://projects` | Projects: where your hours go, the rivers, the rank race, the comparisons, a door per project | `src/projects/ProjectsScreen.tsx` |
 | `builder://you` | You: profile, the You pages, gear to Settings | `builder://profile` (the old route) lands here |
 
 ### Pushed over the tabs (gate open)
@@ -150,6 +151,7 @@ from.
 | `builder://you/glossary` | none | the glossary (skeleton) |
 | `builder://you/map/<id>` | `id`: a session id | codebase map (skeleton) |
 | `builder://you/timelapse/<id>` | `id`: a session id | time lapse (skeleton) |
+| `builder://project/<key>` | `key`: a project's 64 hex key, or its 12 character prefix | one project's page: its hero, time, how you build it, shipping, money, its stack, the session swarm (a dot opens `session/<id>`), its comparisons (`src/projects/ProjectPage.tsx`) |
 | `builder://settings` | none | Settings: a band in the builder's hue (creature, name, handle, the colour rule; the creature opens `icon`), then chapters: Profile, Privacy, Your Mac, Cloud capture, Account (signed out: Sign in, Privacy). Large title bar |
 | `builder://pair` | `code` = `XXXX-XXXX` pairs at once when signed in | connect your Mac. Asks for the camera on first open |
 | `builder://icon` | none | the creature picker |
@@ -193,7 +195,7 @@ A full pass that needs no taps inside the app:
 link builder://dev-auth?reset=1                  # onboarding
 for s in hello name creature tools connect notify; do link builder://onboarding/$s; shot onb-$s; done
 link builder://dev-auth?onboarded=1             # tabs
-for t in now sessions you; do link builder://$t; shot tab-$t; done
+for t in now sessions projects you; do link builder://$t; shot tab-$t; done
 link "builder://session/sample"; shot session
 for n in 1 7 15; do link "builder://wrapped?card=$n"; shot wrapped-$n; done
 for p in dimensions money stack glossary; do link builder://you/$p; shot you-$p; done

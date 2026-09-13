@@ -30,6 +30,16 @@ a clock or a key: no string a person reads, and every refusal an enum code the p
 NULL IS NOT ZERO. A project with no commit read has `commits` null, never a graph of
 nothing; a comparison two projects cannot support is refused with a code, never a ratio
 over nothing.
+
+WEEK BY WEEK. The phone draws where the hours went week by week (its rivers and its rank
+race), so the block carries one week axis (`weeks`: the last `WEEKS` ISO weeks, never
+before the machine's first sitting, each with the days of it history covers) and every
+project's sittings on it (`history.weeks`), from the same narrowed cut `history` reads. A
+week with no sitting in a project is a measured 0 there; a week history does not reach is
+not on the axis at all. The order of the projects within a week is the phone's to draw
+(`projects/model.ts weeklyRanks`), from these numbers alone: a server that drops an
+excluded project leaves the others' weeks untouched, and a rank written here would keep
+the dropped project's place.
 """
 
 from __future__ import annotations
@@ -119,6 +129,16 @@ CADENCE_MIN_PRIOR_DAYS = 4
 MOMENTUM_DAYS = 7
 MOMENTUM_METRIC = "attended_hours"
 MOMENTUM_REFUSALS: tuple[str, ...] = ("below_session_floor", "nothing_before")
+
+# --------------------------------------------------------------------------- weeks
+#: ISO weeks the weekly series carries, the current one included (`_week_axis`). UNMEASURED
+#: JUDGEMENT CALL: a quarter of a year, which a phone draws at about 30 points a week; the
+#: corpus docs/projects.md measures reaches five. A week is Monday to Monday on the LOCAL day
+#: cut at 04:00 (`profile.local_day`, the one day rule), and a sitting belongs to the week of
+#: the day it started, the way `_momentum` windows by the start. Weeks before the machine's
+#: first sitting are not carried at all (absent, never zero), so a young history is a shorter
+#: series and not one padded with weeks nobody measured.
+WEEKS = 12
 
 # --------------------------------------------------------------------- comparisons
 #: Every comparison across projects, in the order the block carries them: the metric, how
@@ -286,6 +306,7 @@ PROJECT_CONSTANTS: dict[str, int] = {
     "dormant_after_days": DORMANT_AFTER_DAYS,
     "winding_after_days": WINDING_AFTER_DAYS,
     "max_projects": MAX_PROJECTS,
+    "weeks": WEEKS,
 }
 
 #: Every refusal code a project number can carry, per the spec enum that holds it.
@@ -403,6 +424,72 @@ def _history(sub: cp.Corpus, profile: Mapping, today: dt.date) -> dict:
         "stage_rule": rule,
         "momentum": _momentum(facts, sub.now),
     }
+
+
+# ============================================================================== weeks
+def week_of(day: dt.date) -> dt.date:
+    """The Monday of `day`'s ISO week. `day` is already a local day cut at 04:00
+    (`profile.local_day`), so a week runs from Monday 04:00 to the next Monday 04:00."""
+    return day - dt.timedelta(days=day.weekday())
+
+
+def _week_axis(facts: Sequence[pf.SessionFact], today: dt.date) -> list[dt.date]:
+    """The Mondays the weekly series is read on: the last `WEEKS` ISO weeks through today's,
+    and never a week before the one holding the first sitting the machine has."""
+    if not facts:
+        return []
+    this = week_of(today)
+    start = max(week_of(min(f.local_day for f in facts)), this - dt.timedelta(weeks=WEEKS - 1))
+    if start > this:
+        return []
+    return [start + dt.timedelta(weeks=i) for i in range((this - start).days // 7 + 1)]
+
+
+def _week_days(week: dt.date, first: dt.date, today: dt.date) -> int:
+    """Days of `week` the machine's history covers: 7, fewer in the week history starts
+    and in today's, which counts today."""
+    lo, hi = max(week, first), min(week + dt.timedelta(days=6), today)
+    return max(0, (hi - lo).days + 1)
+
+
+def _weekly(facts: Sequence[pf.SessionFact], axis: Sequence[dt.date]) -> list[dict]:
+    """One project's sittings per week of `axis`, every week present. A week with no sitting
+    here is a MEASURED 0: the machine holds every sitting of the weeks on the axis, and the
+    axis never reaches back past the first of them."""
+    at = {w: i for i, w in enumerate(axis)}
+    sessions = [0] * len(axis)
+    attended = [0.0] * len(axis)
+    active = [0.0] * len(axis)
+    for f in facts:
+        i = at.get(week_of(f.local_day))
+        if i is None:
+            continue
+        sessions[i] += 1
+        attended[i] += f.attended_seconds
+        active[i] += f.active_seconds
+    return [
+        {
+            "week": rb._day_iso(w),
+            "sessions": sessions[i],
+            "attended_seconds": round(attended[i]),
+            "active_seconds": round(active[i]),
+        }
+        for i, w in enumerate(axis)
+    ]
+
+
+def _weeks(facts: Sequence[pf.SessionFact], axis: Sequence[dt.date], today: dt.date) -> list[dict]:
+    """The block's week axis: each Monday, the days of it history covers, and every counted
+    sitting in it (every project, unresolved and past the cap alike), which is what a
+    project's share of a week is out of."""
+    if not axis:
+        return []
+    first = min(f.local_day for f in facts)
+    every = _weekly(facts, axis)
+    return [
+        {"week": row["week"], "days": _week_days(w, first, today), "sessions": row["sessions"], "attended_seconds": row["attended_seconds"]}
+        for w, row in zip(axis, every, strict=True)
+    ]
 
 
 # ============================================================================= window
@@ -686,11 +773,14 @@ def build(everything: cp.Corpus, window_days: int) -> dict:
     edge = everything.now - window_days * 86400
     in_window = [f for f in everything.facts if f.started_at >= edge]
     total_attended = sum(f.attended_seconds for f in in_window)
+    # One week axis for every project, so the weekly series line up week for week.
+    axis = _week_axis(everything.facts, today)
 
     built: list[tuple[str, dict, list[dict], dict, list[str]]] = []
     for key in groups:
         whole = cp.repository(everything, key)
         history = _history(whole, pf.corpus_profile(whole.facts, now=whole.now), today)
+        history["weeks"] = _weekly(whole.facts, axis)
         sub = cp.window(whole, window_days)
         window, cards, values = (None, [], {})
         if sub.facts:
@@ -726,6 +816,7 @@ def build(everything: cp.Corpus, window_days: int) -> dict:
             "history_sessions": len(unresolved),
         },
         "comparisons": comparisons,
+        "weeks": _weeks(everything.facts, axis, today),
     }
     local = [
         _Local(key=b[0], name=names.get(b[0]), checkouts=b[4], cards=b[2], values=b[3]) for b in built

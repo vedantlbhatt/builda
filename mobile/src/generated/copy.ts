@@ -783,6 +783,7 @@ export const PROJECT_CONSTANTS = {
   "dormant_after_days": 14,
   "winding_after_days": 7,
   "max_projects": 20,
+  "weeks": 12,
 } as const;
 
 /** Every table above, as one object (`COPY.REFUSALS`, `COPY.TERMS`, ...). */

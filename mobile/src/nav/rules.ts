@@ -63,6 +63,7 @@ export function nameProblem(raw: string): 'empty' | 'too_long' | null {
 export const TABS = [
   { name: 'now', title: 'Now' },
   { name: 'sessions', title: 'Sessions' },
+  { name: 'projects', title: 'Projects' },
   { name: 'you', title: 'You' },
 ] as const;
 export type TabName = (typeof TABS)[number]['name'];

@@ -14,15 +14,19 @@ fails for the right reason (CLAUDE.md, the negative test lesson).
 """
 
 import copy
+import re
 import sys
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import text
 from test_report_route import assert_stored
+from test_social import _person, _post, _session
 from test_sync import (  # noqa: F401 - fixtures are picked up by name
     TEST_DB,
+    _live,
     _pair,
     _payload,
     _upload,
@@ -272,3 +276,55 @@ def test_one_persons_project_is_invisible_to_another(client, created_users):
     assert client.get(f"/v1/projects/{ride[:12]}", headers=attacker).status_code == 404
     mine = client.get("/v1/profile/builder", headers=attacker).json()
     assert mine["report"] is None and mine["project_names"] == {}
+
+
+# ------------------------------------------------------------ the key on a session row
+
+
+def test_every_session_row_of_the_owner_carries_its_repository_key(client, paired):
+    """`repo_key` is the upload's own `repo_hash`, which is the report's `projects[].key`,
+    so the phone can put each of its sessions in its project (the project page's session
+    swarm). The list, the detail, the live list and the project slice all carry it; a
+    sitting whose repository did not resolve says null, never a name and never a guess."""
+    _, headers = paired
+    rhash = uuid.uuid4().hex * 2
+    _upload(client, headers, _payload(repo_hash=rhash), _payload(repo_hash=None))
+    rows = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert sorted(r["repo_key"] is None for r in rows) == [False, True]
+    keyed = next(r for r in rows if r["repo_key"])
+    assert keyed["repo_key"] == rhash
+    for r in rows:
+        assert r["repo_key"] is None or re.fullmatch(r"[0-9a-f]{64}", r["repo_key"])
+    assert client.get(f"/v1/sessions/{keyed['id']}", headers=headers).json()["repo_key"] == rhash
+    slice_ = client.get(f"/v1/projects/{rhash[:12]}", headers=headers).json()
+    assert [s["repo_key"] for s in slice_["sessions"]] == [rhash]
+
+    started = datetime.now(UTC) - timedelta(minutes=20)
+    assert _upload(client, headers, _live(started, 15, repo_hash=rhash))["accepted"] == 1
+    live = client.get("/v1/sessions/live", headers=headers).json()["sessions"]
+    assert [s["repo_key"] for s in live] == [rhash]
+
+
+def test_a_stranger_never_reads_the_key_of_a_shared_session(client, created_users):
+    """The pepper is global, so one repository has one key in every account: a key on a
+    shared session would tell a stranger that two people build in the same repository.
+    The session is proven readable to the stranger first, so the absence is the rule's
+    and not a 404's (CLAUDE.md, the negative test lesson)."""
+    uid_a, h_a = _person(client, created_users, "keyowner")
+    _, h_b = _person(client, created_users, "keyreader")
+    rhash = uuid.uuid4().hex * 2
+    sid = _session(client, h_a, uid_a, repo_hash=rhash)
+    post = _post(client, h_a, sid, "public")
+
+    theirs = client.get(f"/v1/sessions/{sid}", headers=h_b)
+    assert theirs.status_code == 200, theirs.text
+    assert theirs.json()["id"] == sid
+    assert "repo_key" not in theirs.json()
+    assert client.get(f"/v1/sessions/{sid}", headers=h_a).json()["repo_key"] == rhash
+
+    # A feed item is nobody's own row, the author's included.
+    for headers in (h_a, h_b):
+        item = client.get(f"/v1/posts/{post['id']}", headers=headers)
+        assert item.status_code == 200, item.text
+        assert "repo_key" not in item.json()["session"]
+    assert rhash not in str(client.get("/v1/feed", headers=h_b).json())

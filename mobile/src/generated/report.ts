@@ -537,6 +537,17 @@ export interface ReportProjectMomentum {
   needed?: number | null;
 }
 
+export interface ReportProjectWeek {
+  /** the Monday of an ISO week: the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day. (ISO 8601) */
+  week: string;
+  /** sittings of this project that started in the week, by the local day each started on. */
+  sessions: number;
+  /** their seconds with you there. 0 is measured: the machine holds every sitting of every week on the axis. */
+  attended_seconds: number;
+  /** their active time, both clocks. */
+  active_seconds: number;
+}
+
 export interface ReportProjectHistory {
   /** EVERY counted sitting this machine holds in the repository, however old. Not the window. */
   sessions: number;
@@ -572,6 +583,8 @@ export interface ReportProjectHistory {
   stage_rule: ProjectStageRule;
   /** the last week against the week before, attended time. */
   momentum: ReportProjectMomentum;
+  /** this project's sittings in each week of the block's weeks, the same weeks in the same order, every one present. Null from a machine that does not compute it. (max 12 items) */
+  weeks?: ReportProjectWeek[] | null;
 }
 
 export interface ReportProjectClock {
@@ -764,6 +777,17 @@ export interface ReportProjectComparison {
   reason?: ComparisonRefusal | null;
 }
 
+export interface ReportProjectsWeek {
+  /** the Monday of an ISO week: the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day. (ISO 8601) */
+  week: string;
+  /** days of the week the machine's history covers: 7, fewer in the week history starts in and in the current week, which counts today. */
+  days: number;
+  /** every counted sitting that started in the week: every project, the unresolved and any past the list's cap. */
+  sessions: number;
+  /** their seconds with you there: what a project's share of the week is out of. */
+  attended_seconds: number;
+}
+
 export interface ReportProjects {
   /** the report window every project window reads, repeated so this block is readable on its own. */
   window_days: number;
@@ -779,6 +803,8 @@ export interface ReportProjects {
   unresolved: ReportProjectsUnresolved;
   /** one per metric in analysis/projects.py COMPARISONS, answered or refused, in that order. (max 10 items) */
   comparisons: ReportProjectComparison[];
+  /** the week axis every project's weeks read on: the last twelve ISO weeks through the current one (analysis/projects.py WEEKS), oldest first, never a week before the machine's first sitting. Empty with no sitting. Null from a machine that does not compute it. (max 12 items) */
+  weeks?: ReportProjectsWeek[] | null;
 }
 
 export interface BuilderReport {

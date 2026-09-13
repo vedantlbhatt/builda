@@ -74,11 +74,12 @@ describe('the name', () => {
 });
 
 describe('tabs', () => {
-  test('bar order is Now, Sessions, You', () => {
-    expect(TABS.map((t) => t.name)).toEqual(['now', 'sessions', 'you']);
+  test('bar order is Now, Sessions, Projects, You', () => {
+    expect(TABS.map((t) => t.name)).toEqual(['now', 'sessions', 'projects', 'you']);
   });
   test('the back label over the tabs is the tab you came from, never "(tabs)"', () => {
     expect(tabTitle('sessions')).toBe('Sessions');
+    expect(tabTitle('projects')).toBe('Projects');
     expect(tabTitle('you')).toBe('You');
     expect(tabTitle(undefined)).toBe('Now');
     expect(tabTitle('(tabs)')).toBe('Now');

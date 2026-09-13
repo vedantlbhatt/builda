@@ -12,7 +12,24 @@ import { FractalNoise } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { layout, space, typeRoles, type Scheme } from '../theme';
+import type { ReportWrappedCard, WrappedCard } from '../generated/report';
+import { tokens } from '../generated/tokens';
+import { HarnessGlyph, HarnessLabel } from '../pixel/HarnessGlyph';
+import { HarnessPicker } from '../pixel/HarnessPicker';
+import { HARNESS_MARKS, type Harness } from '../pixel/harness';
+import { ANIMALS, type Animal } from '../pixel/animals';
+import { PixelCard } from './bits/components/PixelCard';
+import { ComponentsGallery } from './bits/components/ComponentsGallery';
+import { EffectsGallery } from './bits/effects/EffectsGallery';
+import { BlurText, GradientText, RotatingText, ShinyText, Shuffle, SplitFlapText, SplitText, TextType } from './bits/text';
+import { DotGrid, FieldDither, Grainient, PixelBlast, Radar, Silk, Topography, type BackgroundName } from './bits/backgrounds';
+import { creatureTileInks, type TileState } from '../pixel/palette';
+import { PixelAnimal, PixelAnimalIcon } from '../pixel/PixelAnimal';
+import { PixelIcon } from '../pixel/PixelSprite';
+import { archetypeHue, cardHue, creatureHue, harnessHue, HUE_NAMES, layout, space, typeRoles, type CreatureId, type HueName, type Scheme } from '../theme';
+import { artFor, type ArtSources } from '../wrapped/art';
+import { CardArt } from '../wrapped/CardArt';
+import { SAMPLE_SOURCES, SAMPLE_WRAPPED } from '../wrapped/sample';
 import { Button } from './Button';
 import { Counter } from './Counter';
 import { CountUp } from './CountUp';
@@ -26,7 +43,7 @@ import { haptics, HAPTIC_KINDS } from './haptics';
 import { PressableScale } from './PressableScale';
 import { Ring } from './Ring';
 import { Row } from './Row';
-import { SchemeProvider, useColors } from './scheme';
+import { SchemeProvider, useColors, useScheme } from './scheme';
 import { Section } from './Section';
 import { SHAPE, WINDOW_DOT } from './shape';
 import { StatGrid, type StatItem } from './Stat';
@@ -36,8 +53,58 @@ import { T } from './Text';
 import { ROLES } from './typeStyle';
 import { VERDICTS, VerdictGlyph, VerdictLabel } from './VerdictGlyph';
 
+/**
+ * The react-bits ports, one gallery section each (`section="clickspark"`). Each is drawn by the
+ * gallery of the group that ported it, so the demo is the porter's own; `bits` is the index.
+ */
+export const BITS_SECTIONS = [
+  // Animations
+  'clickspark',
+  'starborder',
+  'glarehover',
+  'animatedcontent',
+  'pixelswap',
+  'pixeltransition',
+  'magnet',
+  'logoloop',
+  // Components
+  'profilecard',
+  'pixelcard',
+  'carousel',
+  'stepper',
+  'spotlightcard',
+  'tiltedcard',
+  'cardswap',
+  'stack',
+  'bouncecards',
+  'magicbento',
+  'animatedlist',
+  // TextAnimations
+  'splittext',
+  'blurtext',
+  'shuffle',
+  'texttype',
+  'rotatingtext',
+  'splitflaptext',
+  'shinytext',
+  'gradienttext',
+  // Backgrounds
+  'fielddither',
+  'pixelblast',
+  'silk',
+  'grainient',
+  'radar',
+  'topography',
+  'dotgrid',
+] as const;
+
+export type BitsSection = (typeof BITS_SECTIONS)[number];
+
 export const GALLERY_SECTIONS = [
   'colour',
+  'spectrum',
+  'creatures',
+  'harness',
   'type',
   'surfaces',
   'rows',
@@ -51,6 +118,8 @@ export const GALLERY_SECTIONS = [
   'wrapped',
   'haptics',
   'light',
+  'bits',
+  ...BITS_SECTIONS,
 ] as const;
 
 export type GallerySection = (typeof GALLERY_SECTIONS)[number];
@@ -84,6 +153,9 @@ function GalleryBody({ section, seed, scroll }: { section?: GallerySection; seed
   const blocks = (
     <View style={styles.page}>
       {show('colour') ? <ColourBlock /> : null}
+      {show('spectrum') ? <SpectrumBlock /> : null}
+      {show('creatures') ? <CreaturesBlock width={content} /> : null}
+      {show('harness') ? <HarnessBlock /> : null}
       {show('type') ? <TypeBlock /> : null}
       {show('surfaces') ? <SurfacesBlock /> : null}
       {show('rows') ? <RowsBlock /> : null}
@@ -97,6 +169,8 @@ function GalleryBody({ section, seed, scroll }: { section?: GallerySection; seed
       {show('wrapped') ? <WrappedBlock width={content} data={data} /> : null}
       {show('haptics') ? <HapticsBlock /> : null}
       {show('light') ? <LightBlock /> : null}
+      {section === undefined || section === 'bits' ? <BitsIndex /> : null}
+      {isBitsSection(section) ? <BitsBlock id={section} /> : null}
     </View>
   );
 
@@ -170,7 +244,7 @@ function ColourBlock() {
     ['accent and data', [['accent', c.accent], ['pressed', c.accentPressed], ['add', c.data.add], ['del', c.data.del]]],
   ];
   return (
-    <Block id="colour" label="colour" note="One accent, one warm grey family, three data hues that are never chrome.">
+    <Block id="colour" label="colour" note="One action colour, one warm grey family, three data hues that are never chrome. Identity wears the spectrum below.">
       {groups.map(([name, swatches]) => (
         <View key={name} style={{ gap: space.sm }}>
           <T role="label" tone="faint">
@@ -198,6 +272,160 @@ function ColourBlock() {
           </View>
         </View>
       ))}
+    </Block>
+  );
+}
+
+/** Who first wears each hue: Bit amber, then the animal the spectrum gives it. */
+const WEARER: Record<HueName, CreatureId> = Object.fromEntries(
+  (Object.entries(tokens.spectrum.creature) as [CreatureId, HueName][]).map(([creature, hue]) => [hue, creature]),
+) as Record<HueName, CreatureId>;
+
+/** A creature at a size, Bit through his sprite and every animal through its own. */
+function CreatureMark({ creature, size, tone }: { creature: CreatureId; size: number; tone?: 'rest' | 'idle' | 'selected' | 'faint' }) {
+  return creature === 'bit' ? <PixelIcon state="idle" size={size} tone={tone} /> : <PixelAnimalIcon animal={creature} size={size} tone={tone} />;
+}
+
+function SpectrumBlock() {
+  const c = useColors();
+  return (
+    <Block
+      id="spectrum"
+      label="spectrum"
+      note="Nine hues for identity: an ink, a partner for the dither's middle tone, and a solid fill with dark ink. Never chrome, never a tinted chip."
+    >
+      <View style={styles.hueGrid}>
+        {HUE_NAMES.map((name) => {
+          const h = c.hues[name];
+          return (
+            <View key={name} style={styles.hueCell}>
+              <View style={styles.hueBar}>
+                <View style={{ flex: 2, backgroundColor: h.ink }} />
+                <View style={{ flex: 1, backgroundColor: h.partner }} />
+              </View>
+              <View style={styles.inline}>
+                <CreatureMark creature={WEARER[name]} size={16} />
+                <T role="meta" weight={600} numberOfLines={1} style={{ color: h.text }}>
+                  {name}
+                </T>
+              </View>
+              <Spec>{h.ink}</Spec>
+            </View>
+          );
+        })}
+      </View>
+      <View style={styles.inline}>
+        {HUE_NAMES.map((name) => (
+          <View key={name} style={[styles.fillChip, { backgroundColor: c.hues[name].fill }]}>
+            <T role="label" style={{ color: c.hues[name].onFill }}>
+              Aa
+            </T>
+          </View>
+        ))}
+      </View>
+      <Spec>fill, dark ink on it: 5.2:1 or better</Spec>
+    </Block>
+  );
+}
+
+const CREATURES: readonly CreatureId[] = ['bit', ...ANIMALS];
+
+/** A creature picker tile: the kit's PixelCard in the creature's hue, the harness picker's rule. */
+function CreatureTile({ creature, state, width, onPress }: { creature: Animal; state: TileState; width: number; onPress: () => void }) {
+  const scheme = useScheme();
+  const rest = creatureTileInks(creature, state === 'missing' ? 'missing' : 'idle', scheme);
+  const lit = creatureTileInks(creature, 'selected', scheme);
+  return (
+    <PixelCard hue={creatureHue(creature).name} selected={state === 'selected'} onPress={onPress} width={width} height={88} accessibilityLabel={creature}>
+      {(face) => {
+        const inks = face.filled ? lit : rest;
+        return (
+          <View style={{ gap: space.xs }}>
+            <PixelAnimalIcon animal={creature} size={32} tone={face.filled ? 'selected' : state === 'missing' ? 'faint' : 'idle'} />
+            <T role="meta" weight={600} style={{ color: inks.name }}>
+              {creature}
+            </T>
+            <T role="label" style={{ color: inks.status }}>
+              {face.filled ? 'selected' : state}
+            </T>
+          </View>
+        );
+      }}
+    </PixelCard>
+  );
+}
+
+function CreaturesBlock({ width }: { width: number }) {
+  const [picked, setPicked] = useState<Animal>('owl');
+  const tileW = Math.floor((width - space.tile * 2) / 3);
+  const trio: Animal[] = ['fox', 'owl', 'whale'];
+  return (
+    <Block id="creatures" label="creatures" note="One ink per creature. The same grid, the same weight, the same eyes: only the ink differs.">
+      <View style={styles.creatureRow}>
+        {CREATURES.map((cr) => (
+          <CreatureMark key={cr} creature={cr} size={32} />
+        ))}
+      </View>
+      <Spec>rest: each in its own hue, 16x16 cells at 2pt</Spec>
+      <View style={styles.inline}>
+        <PixelAnimal key={picked} animal={picked} size={64} />
+        <View style={{ flex: 1, gap: space.xs }}>
+          <T role="headline" style={{ color: creatureHue(picked).text }}>
+            the {picked}
+          </T>
+          <T role="meta" tone="dim">
+            The one creature on this page that moves.
+          </T>
+        </View>
+      </View>
+      <View style={styles.tileRow}>
+        {trio.map((a) => (
+          <CreatureTile key={a} creature={a} width={tileW} state={a === picked ? 'selected' : a === 'whale' && picked !== 'whale' ? 'missing' : 'idle'} onPress={() => setPicked(a)} />
+        ))}
+      </View>
+      <Spec>tiles: idle, selected, missing</Spec>
+    </Block>
+  );
+}
+
+const PICKER_FOUND: Partial<Record<Harness, number>> = {
+  claude_code: 212,
+  codex: 18,
+  cursor_ide: 40,
+  cursor_agent: 17,
+  gemini_cli: 0,
+  cline: 3,
+  opencode: 0,
+  aider: 1,
+};
+
+function HarnessBlock() {
+  const [tools, setTools] = useState<Harness[]>(['claude_code', 'cursor_ide', 'cursor_agent']);
+  return (
+    <Block
+      id="harness"
+      label="harness glyphs"
+      note="Where the harness is the object it wears its hue. Beside a session it stays dim: the session's creature carries that row's one hue."
+    >
+      <View style={styles.inline}>
+        {HARNESS_MARKS.map((m) => (
+          <HarnessGlyph key={m.id} harness={m.harnesses[0]!} size={32} labelled />
+        ))}
+      </View>
+      <Surface style={{ gap: space.sm }}>
+        <HarnessLabel harness="claude_code" />
+        <HarnessLabel harness="codex" />
+        <HarnessLabel harness="aider" />
+        <Spec>a tools row: the glyph in its hue</Spec>
+        <View style={styles.inline}>
+          <PixelAnimalIcon animal="whale" size={16} />
+          <T role="row">builder</T>
+          <HarnessLabel harness="claude_code" ink="dim" />
+        </View>
+        <Spec>a session row: the glyph stays dim</Spec>
+      </Surface>
+      <HarnessPicker selected={tools} onChange={setTools} found={PICKER_FOUND} />
+      <Spec>the picker: tap a tile, it fills with its hue</Spec>
     </Block>
   );
 }
@@ -411,7 +639,7 @@ function ProgressBlock() {
 
 function VerdictsBlock() {
   return (
-    <Block id="verdicts" label="verdicts" note="A drawn glyph and the word. No colour.">
+    <Block id="verdicts" label="verdicts" note="A drawn glyph and the word.">
       <View style={{ gap: space.sm }}>
         {VERDICTS.map((v) => (
           <VerdictLabel key={v} verdict={v} />
@@ -442,7 +670,7 @@ function NumbersBlock() {
     return () => clearInterval(id);
   }, [rnd]);
   return (
-    <Block id="numbers" label="numbers" note="Live numbers roll. First reveals count up once. Decrypt is for two cards only.">
+    <Block id="numbers" label="numbers" note="Live numbers roll. A number seen for the first time counts up once. A text effect finishes within 1.2s.">
       <Surface style={{ gap: space.tile }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <View style={{ gap: space.xs }}>
@@ -481,6 +709,7 @@ function NumbersBlock() {
 }
 
 function DitherBlock({ width, data }: { width: number; data: SampleData }) {
+  const c = useColors();
   const inner = width - layout.tilePad * 2;
   const sphere = useMemo(
     () =>
@@ -497,7 +726,7 @@ function DitherBlock({ width, data }: { width: number; data: SampleData }) {
     [],
   );
   return (
-    <Block id="dither" label="dither" note="One texture. Ordered Bayer 8x8 or a 45 degree halftone, amber on the card.">
+    <Block id="dither" label="dither" note="One texture: ordered Bayer 8x8 or a 45 degree halftone. Amber unless a hue is given.">
       <Surface style={{ gap: space.tile }}>
         <DitherField width={inner} height={squareGridHeight(inner, data.grid)} grid={data.grid} cell={2} gap={1} accessibilityLabel="Activity, 20 weeks" />
         <Spec>grid: 20 weeks of real levels, cell 2</Spec>
@@ -517,10 +746,10 @@ function DitherBlock({ width, data }: { width: number; data: SampleData }) {
         </Surface>
       </View>
       <Surface style={{ gap: space.sm }}>
-        <Dither width={inner} height={72}>
+        <Dither width={inner} height={72} ink={c.hues.tide.ink}>
           <FractalNoise freqX={0.018} freqY={0.03} octaves={4} seed={2} />
         </Dither>
-        <Spec>child shader: fractal noise</Spec>
+        <Spec>child shader: fractal noise, in tide</Spec>
       </Surface>
     </Block>
   );
@@ -534,58 +763,67 @@ function squareGridHeight(width: number, grid: number[][]): number {
   return Math.floor((width / cols) * grid.length);
 }
 
-function WrappedBlock({ width, data }: { width: number; data: SampleData }) {
+/** The sample deck, with its builder type, so cards two and three know card one's hue. */
+const GALLERY_SOURCES: ArtSources = {
+  ...SAMPLE_SOURCES,
+  archetype: SAMPLE_WRAPPED.cards.find((c) => c.id === 'builder_type')?.value_id ?? null,
+};
+
+function sampleCard(id: WrappedCard): ReportWrappedCard {
+  return SAMPLE_WRAPPED.cards.find((c) => c.id === id)!;
+}
+
+interface GalleryCard {
+  id: WrappedCard;
+  question: string;
+  answer: number;
+  suffix: string;
+  sentence: string;
+}
+
+const BIG_CARD: GalleryCard = { id: 'prompt_length', question: 'How long are your prompts?', answer: 108, suffix: ' words', sentence: 'Mostly conversational.' };
+
+const SMALL_CARDS: GalleryCard[] = [
+  { id: 'agents_at_once', question: 'How many agents do you run?', answer: 3, suffix: ' at once', sentence: 'Three at the same moment.' },
+  { id: 'streak', question: 'Your longest streak?', answer: 29, suffix: ' days', sentence: 'Straight, shipping something.' },
+  { id: 'time_put_in', question: 'How much time did you put in?', answer: 129, suffix: ' hours', sentence: 'Across 55 sessions.' },
+  { id: 'cryptic_prompt', question: 'Your most cryptic prompt?', answer: 10, suffix: ' letters', sentence: 'Somehow the agent knew.' },
+];
+
+function WrappedBlock({ width }: { width: number; data: SampleData }) {
   const small = (width - space.tile) / 2;
   return (
     // Share cards keep the dark palette in both schemes, so a screenshot looks the same.
     <SchemeProvider scheme="dark">
-      <Block id="wrapped" label="wrapped card" note="Radius 28, dashed outline inset 8, window dots, amber dither on top.">
-        <WrappedCard width={width} question="How long are your prompts?" answer={108} suffix=" words" sentence="Mostly conversational." strip={data.strip} />
-        <View style={{ flexDirection: 'row', gap: space.tile }}>
-          {[0, 1].map((i) => (
-            <View key={i} style={{ transform: [{ rotate: `${TILT[i]}deg` }] }}>
-              <WrappedCard
-                width={small}
-                compact
-                question={i === 0 ? 'How many agents do you run?' : 'Your longest streak?'}
-                answer={i === 0 ? 3 : 29}
-                suffix={i === 0 ? ' at once' : ' days'}
-                sentence={i === 0 ? 'Three at the same moment.' : 'Straight, shipping something.'}
-                grid={data.grid}
-              />
-            </View>
-          ))}
-        </View>
+      <Block
+        id="wrapped"
+        label="wrapped card"
+        note="Radius 28, dashed outline inset 8, window dots. Each card wears its own hue: the header in three levels, paper, partner and ink."
+      >
+        <WrappedCard width={width} card={BIG_CARD} />
+        {[0, 2].map((row) => (
+          <View key={row} style={{ flexDirection: 'row', gap: space.tile }}>
+            {SMALL_CARDS.slice(row, row + 2).map((card, i) => (
+              <View key={card.id} style={{ transform: [{ rotate: `${TILT[row + i]}deg` }] }}>
+                <WrappedCard width={small} compact card={card} />
+              </View>
+            ))}
+          </View>
+        ))}
       </Block>
     </SchemeProvider>
   );
 }
 
-function WrappedCard({
-  width,
-  question,
-  answer,
-  suffix,
-  sentence,
-  strip,
-  grid,
-  compact = false,
-}: {
-  width: number;
-  question: string;
-  answer: number;
-  suffix: string;
-  sentence: string;
-  strip?: number[];
-  grid?: number[][];
-  compact?: boolean;
-}) {
+function WrappedCard({ width, card, compact = false }: { width: number; card: GalleryCard; compact?: boolean }) {
   const c = useColors();
   const height = Math.round((width * 4) / 3);
   const pad = compact ? layout.tilePad : space.lg;
   const art = width - pad * 2;
   // The dithered header owns the top half of the card, under the window dots.
   const header = Math.floor(height / 2 - pad - WINDOW_DOT.size - space.tile);
+  const spec = useMemo(() => artFor(sampleCard(card.id), GALLERY_SOURCES, art / Math.max(1, header)), [card.id, art, header]);
+  const tone = c.hues[spec.hue ?? cardHue(card.id, GALLERY_SOURCES.archetype).name];
   return (
     <View
       style={{
@@ -601,19 +839,15 @@ function WrappedCard({
       <DashedFrame />
       <View style={{ gap: space.tile }}>
         <Dots />
-        {grid ? (
-          <DitherField width={art} height={Math.min(header, squareGridHeight(art, grid))} grid={grid} cell={compact ? 1.5 : 2} />
-        ) : (
-          <DitherField width={art} height={header} series={strip ?? []} shape="area" cell={3} />
-        )}
+        <CardArt spec={spec} width={art} height={header} cell={compact ? 2 : 3} />
       </View>
       <View style={{ gap: compact ? space.xs : space.sm }}>
-        <T role="row" tone="accent" numberOfLines={2}>
-          {question}
+        <T role="row" numberOfLines={2} style={{ color: tone.text }}>
+          {card.question}
         </T>
-        <CountUp to={answer} suffix={suffix} role={compact ? 'title' : 'hero'} />
+        <CountUp to={card.answer} suffix={card.suffix} role={compact ? 'title' : 'hero'} />
         <T role={compact ? 'meta' : 'body'} tone="dim" numberOfLines={2}>
-          {sentence}
+          {card.sentence}
         </T>
       </View>
     </View>
@@ -682,8 +916,413 @@ function LightPanel() {
           </View>
         </View>
       </View>
+      <View style={styles.creatureRow}>
+        {CREATURES.map((cr) => (
+          <CreatureMark key={cr} creature={cr} size={32} />
+        ))}
+      </View>
+      <View style={styles.inline}>
+        {HARNESS_MARKS.map((m) => (
+          <HarnessGlyph key={m.id} harness={m.harnesses[0]!} size={32} />
+        ))}
+      </View>
+      <Spec>light: each hue's 3:1 mark tone</Spec>
+      <HarnessPicker selected={LIGHT_TOOLS} onChange={() => {}} />
+      <Spec>light tiles: the text tone on raised</Spec>
       <Button label="Continue" onPress={() => {}} />
       <Button label="Not now" kind="secondary" onPress={() => {}} />
+    </View>
+  );
+}
+
+const LIGHT_TOOLS: Harness[] = ['codex', 'cline'];
+
+// ─── bits: the react-bits ports ────────────────────────────────────────────────────────
+
+interface BitsEntry {
+  /** The component, as react-bits names it. */
+  name: string;
+  /** Where the original lives under `react-bits/src/ts-default/`. */
+  from: string;
+  /** Where Builda uses it. */
+  use: string;
+  /** The porter's own demo of it. */
+  demo: () => ReactNode;
+}
+
+/** Each port's demo is the block its group's gallery draws for it, without that gallery's scroll. */
+const BITS: Record<BitsSection, BitsEntry> = {
+  clickspark: {
+    name: 'ClickSpark',
+    from: 'Animations/ClickSpark',
+    use: 'commitments: Share, Export, pairing, a commit landing live',
+    demo: () => <EffectsGallery section="spark" scroll={false} />,
+  },
+  starborder: {
+    name: 'StarBorder',
+    from: 'Animations/StarBorder',
+    use: 'the one mission tile that needs you',
+    demo: () => <EffectsGallery section="comet" scroll={false} />,
+  },
+  glarehover: {
+    name: 'GlareHover',
+    from: 'Animations/GlareHover',
+    use: 'press sheen on Wrapped cards and the share preview',
+    demo: () => <EffectsGallery section="glare" scroll={false} />,
+  },
+  animatedcontent: {
+    name: 'AnimatedContent',
+    from: 'Animations/AnimatedContent, Animations/FadeContent',
+    use: 'Rise and Stagger: section and list entrances',
+    demo: () => <EffectsGallery section="enter" scroll={false} />,
+  },
+  pixelswap: {
+    name: 'PixelSwap',
+    from: 'Animations/PixelSwap',
+    use: 'the archetype reveal: the field becomes the creature',
+    demo: () => <EffectsGallery section="swap" scroll={false} />,
+  },
+  pixeltransition: {
+    name: 'PixelTransition',
+    from: 'Animations/PixelTransition',
+    use: 'hello to name; the Wrapped grid to the story',
+    demo: () => <EffectsGallery section="transition" scroll={false} />,
+  },
+  magnet: {
+    name: 'Magnet',
+    from: 'Animations/Magnet',
+    use: 'a primary button leaning toward the thumb',
+    demo: () => <EffectsGallery section="magnet" scroll={false} />,
+  },
+  logoloop: {
+    name: 'LogoLoop',
+    from: 'Animations/LogoLoop',
+    use: 'HarnessLoop: the harness glyphs in their hues',
+    demo: () => <EffectsGallery section="loop" scroll={false} />,
+  },
+  profilecard: {
+    name: 'ProfileCard',
+    from: 'Components/ProfileCard',
+    use: 'this is you: the end of onboarding, the You page share',
+    demo: () => <ComponentsGallery section="profile" scroll={false} />,
+  },
+  pixelcard: {
+    name: 'PixelCard',
+    from: 'Components/PixelCard',
+    use: 'the selected creature and harness tiles, filling in their hue',
+    demo: () => <ComponentsGallery section="pixel" scroll={false} />,
+  },
+  carousel: {
+    name: 'Carousel',
+    from: 'Components/Carousel',
+    use: 'the creature step and the icon picker',
+    demo: () => <ComponentsGallery section="carousel" scroll={false} />,
+  },
+  stepper: {
+    name: 'Stepper',
+    from: 'Components/Stepper',
+    use: 'onboarding progress',
+    demo: () => <ComponentsGallery section="stepper" scroll={false} />,
+  },
+  spotlightcard: {
+    name: 'SpotlightCard',
+    from: 'Components/SpotlightCard',
+    use: 'press on mission tiles and the You hero: a pool of pixels',
+    demo: () => <ComponentsGallery section="spotlight" scroll={false} />,
+  },
+  tiltedcard: {
+    name: 'TiltedCard',
+    from: 'Components/TiltedCard',
+    use: 'the share preview and the ProfileCard',
+    demo: () => <ComponentsGallery section="tilted" scroll={false} />,
+  },
+  cardswap: {
+    name: 'CardSwap',
+    from: 'Components/CardSwap',
+    use: "the You page's Wrapped entry",
+    demo: () => <ComponentsGallery section="cardSwap" scroll={false} />,
+  },
+  stack: {
+    name: 'Stack',
+    from: 'Components/Stack',
+    use: 'the Wrapped story',
+    demo: () => <ComponentsGallery section="stack" scroll={false} />,
+  },
+  bouncecards: {
+    name: 'BounceCards',
+    from: 'Components/BounceCards',
+    use: 'the Wrapped cover fan and its end',
+    demo: () => <ComponentsGallery section="bounce" scroll={false} />,
+  },
+  magicbento: {
+    name: 'MagicBento',
+    from: 'Components/MagicBento',
+    use: 'a tile grid with one shared light',
+    demo: () => <ComponentsGallery section="bento" scroll={false} />,
+  },
+  animatedlist: {
+    name: 'AnimatedList',
+    from: 'Components/AnimatedList',
+    use: 'the decisions feed, the Sessions list, the Stack page rows',
+    demo: () => <ComponentsGallery section="list" scroll={false} />,
+  },
+  splittext: {
+    name: 'SplitText',
+    from: 'TextAnimations/SplitText',
+    use: 'the hello, Wrapped questions, the archetype rule',
+    demo: () => <TextDemo id="splittext" />,
+  },
+  blurtext: {
+    name: 'BlurText',
+    from: 'TextAnimations/BlurText',
+    use: 'a title coming into focus a word at a time',
+    demo: () => <TextDemo id="blurtext" />,
+  },
+  shuffle: {
+    name: 'Shuffle',
+    from: 'TextAnimations/Shuffle',
+    use: 'Wrapped answers that are words, on every arrival',
+    demo: () => <TextDemo id="shuffle" />,
+  },
+  texttype: {
+    name: 'TextType',
+    from: 'TextAnimations/TextType',
+    use: 'the pairing command typing itself',
+    demo: () => <TextDemo id="texttype" />,
+  },
+  rotatingtext: {
+    name: 'RotatingText',
+    from: 'TextAnimations/RotatingText',
+    use: 'a short list said once, each name in its hue',
+    demo: () => <TextDemo id="rotatingtext" />,
+  },
+  splitflaptext: {
+    name: 'SplitFlapText',
+    from: 'TextAnimations/SplitFlapText',
+    use: 'the ETA changing state on tiles and the live bar',
+    demo: () => <TextDemo id="splitflaptext" />,
+  },
+  shinytext: {
+    name: 'ShinyText',
+    from: 'TextAnimations/ShinyText',
+    use: 'light crossing a label once, in three flat steps',
+    demo: () => <TextDemo id="shinytext" />,
+  },
+  gradienttext: {
+    name: 'GradientText',
+    from: 'TextAnimations/GradientText',
+    use: 'one hero word in flat bands of its hue',
+    demo: () => <TextDemo id="gradienttext" />,
+  },
+  fielddither: {
+    name: 'FieldDither',
+    from: 'Backgrounds/Dither',
+    use: 'the You hero, the creature step, the ProfileCard ground',
+    demo: () => <FieldDemo id="fielddither" name="FieldDither" />,
+  },
+  pixelblast: {
+    name: 'PixelBlast',
+    from: 'Backgrounds/PixelBlast',
+    use: 'the onboarding hello and the Now empty state; tap it',
+    demo: () => <FieldDemo id="pixelblast" name="PixelBlast" />,
+  },
+  silk: {
+    name: 'Silk',
+    from: 'Backgrounds/Silk',
+    use: 'a quiet band behind a card',
+    demo: () => <FieldDemo id="silk" name="Silk" />,
+  },
+  grainient: {
+    name: 'Grainient',
+    from: 'Backgrounds/Grainient',
+    use: 'a header printed in one hue',
+    demo: () => <FieldDemo id="grainient" name="Grainient" />,
+  },
+  radar: {
+    name: 'Radar',
+    from: 'Backgrounds/Radar',
+    use: 'pairing, and anything waiting',
+    demo: () => <FieldDemo id="radar" name="Radar" />,
+  },
+  topography: {
+    name: 'Topography',
+    from: 'Backgrounds/Topography',
+    use: 'the time lapse; press to raise a hill',
+    demo: () => <FieldDemo id="topography" name="Topography" />,
+  },
+  dotgrid: {
+    name: 'DotGrid',
+    from: 'Backgrounds/DotGrid',
+    use: 'the codebase map; tap or drag across it',
+    demo: () => <FieldDemo id="dotgrid" name="DotGrid" />,
+  },
+};
+
+/** The field's height in the gallery, the backgrounds gallery's own. */
+const FIELD_HEIGHT = 180;
+
+/**
+ * One shader background, running (it is the only field on the page: DESIGN-V2 rule 2), with the
+ * props the backgrounds gallery gives it. It pauses when the gallery screen is not focused or
+ * the app is not active, which the field's own clock sees to.
+ */
+function FieldDemo({ id, name }: { id: BitsSection; name: BackgroundName }) {
+  const c = useColors();
+  const { width } = useWindowDimensions();
+  const w = Math.floor(Math.min(width, 440) - layout.gutter * 2);
+  const common = { width: w, height: FIELD_HEIGHT };
+  const field =
+    name === 'FieldDither' ? (
+      <FieldDither {...common} develop interactive />
+    ) : name === 'PixelBlast' ? (
+      <PixelBlast {...common} density={0.8} interactive />
+    ) : name === 'Silk' ? (
+      <Silk {...common} />
+    ) : name === 'Grainient' ? (
+      <Grainient {...common} />
+    ) : name === 'Radar' ? (
+      <Radar {...common} />
+    ) : name === 'Topography' ? (
+      <Topography {...common} interactive />
+    ) : (
+      <DotGrid {...common} />
+    );
+  return (
+    <View style={{ gap: space.sm, paddingHorizontal: layout.gutter }}>
+      <T role="label" tone="dim">
+        {name}
+      </T>
+      <T role="meta" tone="dim">
+        {BITS[id].use}
+      </T>
+      <View style={[styles.fieldBox, { backgroundColor: c.card }]}>{field}</View>
+    </View>
+  );
+}
+
+type TextBitsSection = 'splittext' | 'blurtext' | 'shuffle' | 'texttype' | 'rotatingtext' | 'splitflaptext' | 'shinytext' | 'gradienttext';
+
+const ETAS = ['no ETA yet', 'about 18m left', 'about 4m left'] as const;
+
+/**
+ * One text port, with a Replay. The text group's own gallery is one page with no sections, so the
+ * kit draws each port here, with the props that gallery uses.
+ */
+function TextDemo({ id }: { id: TextBitsSection }) {
+  const c = useColors();
+  const [key, setKey] = useState(0);
+  const replay = <Button label={id === 'splitflaptext' ? 'Change the ETA' : 'Replay'} kind="secondary" size="compact" block={false} onPress={() => setKey((k) => k + 1)} />;
+  let body: ReactNode = null;
+  switch (id) {
+    case 'splittext':
+      body = (
+        <>
+          <SplitText text="Hi. I'm Bit." role="display" replayKey={key} accessibilityRole="header" />
+          <SplitText text="How long are your prompts?" by="words" role="row" hue={cardHue('prompt_length', null).name} replayKey={key} />
+        </>
+      );
+      break;
+    case 'blurtext':
+      body = <BlurText text="Your 33 days of building" role="title" replayKey={key} />;
+      break;
+    case 'shuffle':
+      body = <Shuffle text="Generalist" role="hero" seed={7} replayKey={key} />;
+      break;
+    case 'texttype':
+      body = (
+        <View style={[styles.well, { backgroundColor: c.raised }]}>
+          <TextType text="npx builda pair 4821" replayKey={key} />
+        </View>
+      );
+      break;
+    case 'rotatingtext':
+      body = (
+        <RotatingText
+          key={`r${key}`}
+          texts={ROTATING_MARKS.map((m) => m.name)}
+          colors={ROTATING_MARKS.map((m) => c.hues[harnessHue(m.id)?.name ?? 'cobalt'].text)}
+          role="title"
+        />
+      );
+      break;
+    case 'splitflaptext':
+      body = (
+        <View style={[styles.well, { backgroundColor: c.card }]}>
+          <SplitFlapText text={ETAS[key % ETAS.length]} seed={7} surface={c.card} />
+        </View>
+      );
+      break;
+    case 'shinytext':
+      body = <ShinyText text="That's me" role="headline" replayKey={key} />;
+      break;
+    case 'gradienttext':
+      body = <GradientText text="Architect" hue={archetypeHue('architect').name} role="display" replayKey={key} />;
+      break;
+  }
+  return (
+    <View style={{ gap: space.tile, paddingHorizontal: layout.gutter }}>
+      <T role="label" tone="dim">
+        {BITS[id].name}
+      </T>
+      <T role="meta" tone="dim">
+        {BITS[id].use}
+      </T>
+      {body}
+      {replay}
+    </View>
+  );
+}
+
+const ROTATING_MARKS = HARNESS_MARKS.slice(0, 3);
+
+function isBitsSection(section: string | undefined): section is BitsSection {
+  return section !== undefined && (BITS_SECTIONS as readonly string[]).includes(section);
+}
+
+/** Every port as a row; a tap opens its demo in place, so the whole page stays light. */
+function BitsIndex() {
+  const [open, setOpen] = useState<BitsSection | null>(null);
+  return (
+    <Block
+      id="bits"
+      label="bits"
+      note="The react-bits ports, by David Haz, each kept to Builda's grain, hues and motion. Tap one to try it; section equal to its name opens it alone."
+    >
+      <Surface padding={0}>
+        {BITS_SECTIONS.map((id, i) => (
+          <Row
+            key={id}
+            title={BITS[id].name}
+            meta={BITS[id].use}
+            selected={open === id}
+            haptic="select"
+            onPress={() => setOpen((o) => (o === id ? null : id))}
+            hairline={i < BITS_SECTIONS.length - 1}
+            trailing={<SymbolIcon name={open === id ? 'chevron.down' : 'chevron.right'} tone="faint" />}
+          />
+        ))}
+      </Surface>
+      {open ? <BitsDemo id={open} /> : null}
+    </Block>
+  );
+}
+
+/** One port alone (`section="pixelswap"`). */
+function BitsBlock({ id }: { id: BitsSection }) {
+  return (
+    <View style={{ gap: space.sm }}>
+      <BitsDemo id={id} />
+    </View>
+  );
+}
+
+function BitsDemo({ id }: { id: BitsSection }) {
+  const entry = BITS[id];
+  return (
+    <View testID={`kit-bits-${id}`} style={{ gap: space.sm }}>
+      {/* The group galleries pad their own gutter; the kit page already has one. */}
+      <View style={{ marginHorizontal: -layout.gutter }}>{entry.demo()}</View>
+      <Spec>react-bits {entry.from}</Spec>
     </View>
   );
 }
@@ -693,4 +1332,20 @@ const styles = StyleSheet.create({
   page: { gap: layout.sectionGap, paddingTop: space.md },
   swatchRow: { flexDirection: 'row', gap: space.sm },
   swatch: { flex: 1, gap: space.xs },
+  inline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
+  hueGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.md, columnGap: space.tile },
+  hueCell: { width: '30%', flexGrow: 1, gap: space.xs },
+  hueBar: { flexDirection: 'row', height: 40, borderRadius: SHAPE.mark, borderCurve: 'continuous', overflow: 'hidden' },
+  fillChip: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: SHAPE.mark,
+    borderCurve: 'continuous',
+  },
+  creatureRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  well: { padding: layout.tilePad, borderRadius: SHAPE.inner, borderCurve: 'continuous' },
+  fieldBox: { borderRadius: SHAPE.container, borderCurve: 'continuous', overflow: 'hidden' },
+  tileRow: { flexDirection: 'row', gap: space.tile },
 });

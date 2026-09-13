@@ -379,12 +379,9 @@ export function rippleAt(r: number, t: number): number {
   return Math.exp(-d * d) * Math.exp(-RIPPLE.dampT * t) * Math.exp(-RIPPLE.dampR * r);
 }
 
-/** The 8x8 ordered dither threshold at a lattice point, 0 to 1: the band's own arithmetic. */
-export function bayer8(x: number, y: number): number {
-  'worklet';
-  return bayer2(x * 0.25, y * 0.25) * 0.0625 + bayer2(x * 0.5, y * 0.5) * 0.25 + bayer2(x, y);
-}
-
+// bayer2 is defined BEFORE bayer8 on purpose: Reanimated turns every worklet function into a
+// value that is not hoisted, and bayer8 captures bayer2 when it is created. In the other order the
+// time lapse crashed with "bayer2 is not a function (it is undefined)" (2026-09-13 capture pass).
 /** One level of the ordered matrix: `fract(floor(x) / 2 + floor(y)^2 * 3 / 4)`, as the band's shader. */
 export function bayer2(x: number, y: number): number {
   'worklet';
@@ -392,6 +389,12 @@ export function bayer2(x: number, y: number): number {
   const fy = Math.floor(y);
   const v = fx * 0.5 + fy * fy * 0.75;
   return v - Math.floor(v);
+}
+
+/** The 8x8 ordered dither threshold at a lattice point, 0 to 1: the band's own arithmetic. */
+export function bayer8(x: number, y: number): number {
+  'worklet';
+  return bayer2(x * 0.25, y * 0.25) * 0.0625 + bayer2(x * 0.5, y * 0.5) * 0.25 + bayer2(x, y);
 }
 
 /** Whether the ripple lights a cell: PixelBlast's `step(0.5, feed + bayer - 0.5)`. */

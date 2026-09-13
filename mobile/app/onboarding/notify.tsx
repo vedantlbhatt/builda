@@ -1,36 +1,81 @@
-import * as Haptics from 'expo-haptics';
-import React, { useCallback, useState } from 'react';
+import * as Notifications from 'expo-notifications';
+import { useRouter, type Href } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import { View } from 'react-native';
 
-import { completeOnboarding } from '../../src/nav/onboarding';
-import { OnboardingStepSkeleton } from '../../src/nav/OnboardingStep';
-import { PrimaryButton } from '../../src/nav/Skeleton';
+import { api } from '../../src/data/client';
+import { CONTINUE, NOT_NOW, NOTIFY } from '../../src/onboarding/copy';
+import { pathFor } from '../../src/onboarding/flow';
+import { Headline } from '../../src/onboarding/Headline';
+import { StepFrame } from '../../src/onboarding/StepFrame';
+import { Timeline, type TimelineRow } from '../../src/onboarding/Timeline';
+import { registerForPush } from '../../src/push/push';
+import { space } from '../../src/theme';
+import { Button, T } from '../../src/ui';
+
+const ROWS: readonly TimelineRow[] = [
+  { symbol: 'flag.checkered', ...NOTIFY.rows[0] },
+  { symbol: 'hand.raised', ...NOTIFY.rows[1] },
+  { symbol: 'lock.iphone', ...NOTIFY.rows[2] },
+];
 
 /**
- * Step 5: stay in the loop, then "That's me". Skeleton; the design is the priming timeline and
- * the creature's arrival (DESIGN-DIRECTION 4, "Stay in the loop").
+ * Step 5: stay in the loop (DESIGN-DIRECTION 4). What Builder will tap you about, as the
+ * paywall studies' trial timeline (three rows on a 3pt connector), before iOS asks. Continue
+ * raises the system prompt; "Not now" is a text button of equal weight and asks nothing, so
+ * the prompt is never spent on someone who has already said no.
  *
- * Finishing is the one-way door. `completeOnboarding` flips the gate, the root stack swaps the
- * onboarding group for the tabs in one render and lands on Now, and no onboarding route is
- * left in history for back, the edge swipe or a stale link to reach. This screen does not
- * navigate itself: by the time a navigation could run, this route no longer exists.
+ * With permission and an account, the APNs token is registered at once (`registerForPush`,
+ * which on the simulator stops at "no token" by design). Either way the flow moves on to
+ * "That's me". It arrives with the push and nothing else.
  */
 export default function NotifyStep() {
-  const [done, setDone] = useState(false);
+  const router = useRouter();
+  const asking = useRef(false);
+  const [busy, setBusy] = useState(false);
 
-  const finish = useCallback(async () => {
-    if (done) return;
-    setDone(true);
-    // A commitment (DESIGN-DIRECTION 3.6): Medium, on the same frame as the press.
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await completeOnboarding();
-  }, [done]);
+  const next = useCallback(() => {
+    router.push(pathFor('done') as Href);
+  }, [router]);
+
+  const ask = useCallback(async () => {
+    if (asking.current) return;
+    asking.current = true;
+    setBusy(true);
+    try {
+      const now = await Notifications.getPermissionsAsync();
+      let granted = now.granted;
+      if (!granted && now.canAskAgain) {
+        granted = (await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: true } }))
+          .granted;
+      }
+      if (granted && (await api.isSignedIn())) void registerForPush(api).catch(() => undefined);
+    } catch {
+      // A prompt that failed to show is the same as "not now": the flow goes on.
+    } finally {
+      asking.current = false;
+      setBusy(false);
+    }
+    next();
+  }, [next]);
 
   return (
-    <OnboardingStepSkeleton
+    <StepFrame
       step="notify"
-      title="Stay in the loop"
-      note="A tap when a session finishes and when an agent needs you. Live on your lock screen while one runs."
-      action={<PrimaryButton label="That's me" onPress={() => void finish()} disabled={done} />}
-    />
+      actions={
+        <>
+          <Button label={CONTINUE} onPress={() => void ask()} busy={busy} />
+          <Button kind="secondary" label={NOT_NOW} onPress={next} disabled={busy} />
+        </>
+      }
+    >
+      <T role="label" tone="dim">
+        {NOTIFY.label}
+      </T>
+      <Headline>{NOTIFY.headline}</Headline>
+      <View style={{ marginTop: space.lg }}>
+        <Timeline rows={ROWS} />
+      </View>
+    </StepFrame>
   );
 }

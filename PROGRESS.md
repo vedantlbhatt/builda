@@ -45,9 +45,10 @@ section.
   analysis page (69ac174), chrome + theme (fdac4fa), worklet crash fix (c150d95), map and
   time lapse (f7e43f0), You + Money (545f75c), mission control (d37b204), sessions
   (e2a5466), onboarding (e75eb19), Wrapped (eec66ad). bun test 2025, tsc clean.
-- Running: the native recolour (crew creature hue per session, finished is not needs you,
-  generated Palette.swift, logos natively) + rebuild + captures; an adversarial review
-  (report only until native lands).
+- Landed after the review: native recolour (8e7dff7), privacy fixes (5f4e675), numbers fixes
+  (9969477). All suites green: analysis 1218, capture 137, bun 2052, tsc clean, server 331,
+  lint, make gen stable. Stack re synced with the corrected numbers (160 sessions).
+- Running: the final capture of every screen into shots/final/ (+ videos), then the artifact.
 - Next: one simulator capture pass of every screen, the native recolour (Live Activity,
   island, widget in the creature hue) + rebuild, the adversarial review that was stopped
   (privacy, numbers, code), the artifact.

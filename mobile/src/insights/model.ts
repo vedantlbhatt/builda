@@ -21,6 +21,7 @@ import type {
   BuilderReport,
   BurnCause,
   ReportAgents,
+  ReportBurn,
   ReportTrend,
   ReportWrappedCard,
   WrappedCard,
@@ -968,41 +969,44 @@ export function moneyOf(b: BuilderProfileResponse, now: number): MoneyModel {
     };
   }
 
-  let burn: MoneyModel['burn'] = null;
-  const B = report?.burn ?? null;
-  if (report && B) {
-    const line = corpusBurnLine(B);
-    if (line && isNum(B.share)) {
-      const total = B.tokens ?? null;
-      const unreadable = B.unreadable_tokens ?? null;
-      const unreadableShare = isNum(unreadable) && isNum(total) && total > 0 ? unreadable / total : null;
-      burn = {
-        line: sentence(line),
-        share: isNum(total) && total > 0 && isNum(B.barren_tokens) ? B.barren_tokens / total : B.share,
-        unreadableShare,
-        unreadableLine:
-          unreadableShare !== null && unreadableShare > 0
-            ? sentence(`${shareWords(unreadableShare)} more went into stretches the transcripts cannot judge either way`)
-            : null,
-        causes: (B.causes ?? [])
-          .filter((c) => c.tokens > 0)
-          .sort((x, y) => y.share - x.share)
-          .map((c) => ({
-            key: c.cause,
-            label: CAUSE_LABEL[c.cause] ?? c.cause.replace(/_/g, ' '),
-            share: c.share,
-            text: shareWords(c.share),
-            stretches: `${human(c.tokens)} tokens, in ${commas(c.segments)} ${c.segments === 1 ? 'stretch' : 'stretches'}`,
-          })),
-      };
-    } else if (B.share === 0 || B.barren_tokens === 0) {
-      burn = { refusal: 'No tokens went into a stretch that changed nothing.' };
-    } else {
-      const r = corpusBurnRefusal(B);
-      burn = r ? refused(r) : null;
-    }
+  return { body, burn: report ? burnOf(report.burn ?? null) : null };
+}
+
+/**
+ * A burn block (the Mac's, or the server's mapped into its shape by `you/money.ts corpusBurn`)
+ * as the page draws it: the floor as shares, what the stretches were doing, or why there is no
+ * floor. Null when there is no block, or a refusal this build has no words for.
+ */
+export function burnOf(B: ReportBurn | null): MoneyModel['burn'] {
+  if (!B) return null;
+  const line = corpusBurnLine(B);
+  if (line && isNum(B.share)) {
+    const total = B.tokens ?? null;
+    const unreadable = B.unreadable_tokens ?? null;
+    const unreadableShare = isNum(unreadable) && isNum(total) && total > 0 ? unreadable / total : null;
+    return {
+      line: sentence(line),
+      share: isNum(total) && total > 0 && isNum(B.barren_tokens) ? B.barren_tokens / total : B.share,
+      unreadableShare,
+      unreadableLine:
+        unreadableShare !== null && unreadableShare > 0
+          ? sentence(`${shareWords(unreadableShare)} more went into stretches the transcripts cannot judge either way`)
+          : null,
+      causes: (B.causes ?? [])
+        .filter((c) => c.tokens > 0)
+        .sort((x, y) => y.share - x.share)
+        .map((c) => ({
+          key: c.cause,
+          label: CAUSE_LABEL[c.cause] ?? c.cause.replace(/_/g, ' '),
+          share: c.share,
+          text: shareWords(c.share),
+          stretches: `${human(c.tokens)} tokens, in ${commas(c.segments)} ${c.segments === 1 ? 'stretch' : 'stretches'}`,
+        })),
+    };
   }
-  return { body, burn };
+  if (B.share === 0 || B.barren_tokens === 0) return { refusal: 'No tokens went into a stretch that changed nothing.' };
+  const r = corpusBurnRefusal(B);
+  return r ? refused(r) : null;
 }
 
 // ------------------------------------------------------------------ 7 you against you

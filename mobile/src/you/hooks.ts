@@ -10,9 +10,9 @@ import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { OFFLINE_MESSAGE, type BuilderProfileResponse, type Profile } from '../data/api';
 import { getLocalName } from '../nav/name';
-import { ANIMAL_KEY } from '../onboarding/keys';
-import { resolveAnimal, type Animal } from '../pixel/animals';
+import { refreshAccent } from '../theme/accent';
 import { snap, success } from '../ui';
+import { toolsMix, type ToolsMix } from './chapters';
 import { BUILDER_KEY, BUILDER_SAVED_AT_KEY, MONEY_MASK_KEY, REVEALED_KEY } from './keys';
 import { parseSavedAt, resolveLoad, type LoadInputs, type YouLoad } from './load';
 
@@ -56,6 +56,8 @@ export function useBuilderProfile(): {
       await cache.setKv(BUILDER_KEY, JSON.stringify(fresh));
       await cache.setKv(BUILDER_SAVED_AT_KEY, String(now));
       setInputs({ data: fresh, savedAt: now, signedIn: true, error: null });
+      // A fresh archetype can move the accent for someone who never picked a creature.
+      void refreshAccent();
     } catch (e) {
       // The saved page stays; the stale line says the refresh failed and when it was saved.
       setInputs((s) => ({ ...s, error: messageOf(e) }));
@@ -105,22 +107,22 @@ export function useProfile(): { load: YouLoad<Profile>; reload: () => Promise<vo
 }
 
 /**
- * The builder's own creature and name, for the top of the You tab. The creature is their pick,
- * else the one their archetype earned; the name is the one typed in onboarding, else the
- * account's display name, else none (the row shows the creature alone rather than a
- * placeholder name).
+ * The builder's name, for the hero band on the You tab: the one typed in onboarding, else the
+ * account's display name, else none (the band says "You" rather than a placeholder name). The
+ * creature is not here: it is the accent's (`src/theme/accent.tsx`), so the hero, the links and
+ * the chrome can never show two creatures. Focusing the tab re-reads the accent too, so coming
+ * back from the creature picker repaints everything at once.
  */
-export function useIdentity(archetype: string | null): { animal: Animal; name: string | null } {
-  const [chosen, setChosen] = useState<string | null>(null);
+export function useBuilderName(): string | null {
   const [name, setName] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let live = true;
+      void refreshAccent();
       void (async () => {
-        const [pick, local] = await Promise.all([cache.getKv(ANIMAL_KEY), getLocalName(cache)]);
+        const local = await getLocalName(cache);
         if (!live) return;
-        setChosen(pick);
         if (local) {
           setName(local);
           return;
@@ -130,7 +132,7 @@ export function useIdentity(archetype: string | null): { animal: Animal; name: s
           const me = await api.getMe();
           if (live) setName(me.display_name?.trim() || me.handle || null);
         } catch {
-          // No name is a fine answer offline: the row shows the creature alone.
+          // No name is a fine answer offline: the band says "You".
         }
       })();
       return () => {
@@ -139,7 +141,30 @@ export function useIdentity(archetype: string | null): { animal: Animal; name: s
     }, []),
   );
 
-  return { animal: resolveAnimal(chosen, archetype), name };
+  return name;
+}
+
+/** How many finished sessions a tool mix is read over, at most. */
+const TOOL_SESSIONS = 5000;
+
+/**
+ * The coding tools the sessions saved on this phone came from (`chapters.toolsMix`), for the
+ * Stack page's marks. Null until read, and null with no sessions saved.
+ */
+export function useToolsMix(): ToolsMix | null {
+  const [mix, setMix] = useState<ToolsMix | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+      void cache.listSessions(TOOL_SESSIONS).then((rows) => {
+        if (live) setMix(toolsMix(rows));
+      });
+      return () => {
+        live = false;
+      };
+    }, []),
+  );
+  return mix;
 }
 
 /**

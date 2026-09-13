@@ -73,6 +73,10 @@ export interface LedgerItem {
   num: NumSpec;
   label: string;
   note?: string | null;
+  /** This line's figure in its own ink (lines added in green, removed in red). Default: the ledger's. */
+  color?: string;
+  /** Set this string still instead of counting (a masked dollar, `$•••`): no digit ever shows. */
+  shown?: string;
 }
 
 /**
@@ -86,7 +90,13 @@ export function Ledger({ items, color, size = 44, delay = 0 }: { items: readonly
       {items.map((it, i) => (
         <View key={it.key} style={[styles.ledgerRow, i > 0 ? styles.hairTop : null]}>
           <View style={styles.ledgerLine}>
-            <Num spec={it.num} textStyle={figure(size, color)} delay={delay + i * STAGGER_MS * 2} duration={COUNT_MS} />
+            {it.shown !== undefined ? (
+              <Text allowFontScaling={false} style={figure(size, it.color ?? color)}>
+                {it.shown}
+              </Text>
+            ) : (
+              <Num spec={it.num} textStyle={figure(size, it.color ?? color)} delay={delay + i * STAGGER_MS * 2} duration={COUNT_MS} />
+            )}
             <Text maxFontSizeMultiplier={1.4} style={[type.lead, styles.ledgerLabel]}>
               {it.label}
             </Text>

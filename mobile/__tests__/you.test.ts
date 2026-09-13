@@ -11,7 +11,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { BuilderProfile, BuilderProfileResponse, CorpusProfile, Profile } from '../src/data/api';
+import type { BuilderProfile, BuilderProfileResponse, CorpusProfile } from '../src/data/api';
 import type { BuilderReport, ReportMoney, ReportStack, ReportVocab, ReportWrappedCard } from '../src/generated/report';
 import { BUILDER_PROFILE_KEY } from '../src/onboarding/keys';
 import {
@@ -38,7 +38,7 @@ import { BUILDER_KEY, MONEY_MASK_KEY, REVEALED_KEY } from '../src/you/keys';
 import { parseSavedAt, resolveLoad, staleLine } from '../src/you/load';
 import { corpusBurn, corpusModelCosts, corpusMoney, moneyRowLine, moneyView } from '../src/you/money';
 import { dayOf, MASKED_DOLLARS, maskDollars, monthKey, monthLabel } from '../src/you/numbers';
-import { activityGrid, NOT_SENT, pageRows, wrappedLine } from '../src/you/pages';
+import { youTab } from '../src/you/chapters';
 import { STACK_CATEGORY_LABEL, stackRowLine, stackView } from '../src/you/stack';
 import { REPORT_ENUMS } from '../src/generated/report';
 
@@ -523,8 +523,11 @@ describe('money', () => {
     expect(/\$\d/.test(everything)).toBe(false);
     expect(everything).toContain(MASKED_DOLLARS);
     expect(v.tokens?.value).toBe('4112.2M');
-    const rows = pageRows(builder({ report: report({ money: money() }) }), true, NOW);
-    expect(rows[1]!.line).toBe('$••• at API list prices');
+    // The You tab's money door carries the digits apart from the sign, so the mask can hide them
+    // without a dollar ever counting up on screen.
+    const d = youTab(builder({ report: report({ money: money() }) }), null, NOW).doors.find((x) => x.key === 'money')!;
+    expect({ final: d.num?.final, digits: d.digits?.final }).toEqual({ final: '$1,873', digits: '1,873' });
+    expect(maskDollars(d.num!.final)).toBe(MASKED_DOLLARS);
   });
 
   test('the barren share is the profile fact, a floor unless every token was judged, with the rest said beside it', () => {
@@ -675,50 +678,42 @@ describe('the stack', () => {
 // ------------------------------------------------------------------------------ the tab
 
 describe('the You tab', () => {
-  test('each row states a real number when the page has one', () => {
+  test('each door states a real number when its page has one', () => {
     const b = builder({
       builder_profile: bp({ steering: { mean: 62, sessions: 10, trend: 1 }, execution: { mean: 71, sessions: 10, trend: 1 } }),
       report: report({ money: money(), vocab: vocab(), stack: stack() }),
     });
-    const rows = pageRows(b, false, NOW);
-    expect(rows.map((r) => r.href)).toEqual(['/you/dimensions', '/you/money', '/you/glossary', '/you/stack']);
-    expect(rows.map((r) => r.line)).toEqual([
-      'execution 71 of 100, the highest of 2',
-      '$1,873 at API list prices',
-      '3 terms so far, 71 more to find',
-      '4 things across 3 categories',
-    ]);
-    for (const r of rows) expect({ line: r.line, digit: /\d/.test(r.line), dash: DASH.test(r.line) }).toEqual({ line: r.line, digit: true, dash: false });
+    const doors = youTab(b, null, NOW).doors;
+    expect(doors.map((d) => d.href)).toEqual(['/analysis', '/wrapped', '/you/money', '/you/dimensions', '/you/glossary', '/you/stack']);
+    const byKey = Object.fromEntries(doors.map((d) => [d.key, d]));
+    expect([byKey.money!.num?.final, byKey.money!.caption]).toEqual(['$1,873', 'what the tokens would cost at API list prices']);
+    expect(byKey.money!.note).toBe('On a subscription you pay your plan, not this.');
+    expect([byKey.dimensions!.num?.final, byKey.dimensions!.caption]).toEqual(['71', 'execution, the highest of 2, out of 100']);
+    expect([byKey.glossary!.num?.final, byKey.glossary!.caption, byKey.glossary!.note]).toEqual(['3', 'of 74 terms found', '71 more to find.']);
+    expect([byKey.stack!.num?.final, byKey.stack!.caption]).toEqual(['4', 'things across 3 categories']);
+    for (const d of doors) {
+      for (const s of [d.caption, d.note, d.refusal]) if (s) expect({ s, dash: DASH.test(s) }).toEqual({ s, dash: false });
+    }
   });
 
-  test('before the Mac sends a block, the row says where it comes from instead of a zero', () => {
-    const rows = pageRows(builder(), false, NOW);
-    expect(rows[0]!.line).toBe('0 of 3 analysed sessions so far');
-    expect(rows[1]!.line).toBe(moneyView(corpus(), null, NOW)!.refusal!.replace(/\.$/, ''));
-    expect(rows[2]!.line).toBe(NOT_SENT);
-    expect(rows[3]!.line).toBe(NOT_SENT);
+  test('before the Mac sends a block, the door says where it comes from instead of a zero', () => {
+    const doors = youTab(builder(), null, NOW).doors;
+    const byKey = Object.fromEntries(doors.map((d) => [d.key, d]));
+    expect(byKey.dimensions!.num).toBeNull();
+    expect(byKey.dimensions!.refusal).toBe('Each session is scored on five axes once your Mac analyses it. 0 of 3 analysed sessions so far.');
+    expect(byKey.money!.num).toBeNull();
+    expect(byKey.money!.refusal).toBe(moneyView(corpus(), null, NOW)!.refusal);
+    expect(byKey.glossary!.refusal).toBe('Terms arrive with the report from your Mac.');
+    expect(byKey.stack!.refusal).toBe('The stack arrives with the report from your Mac.');
+    expect(byKey.wrapped!.refusal).toBe('The fifteen questions arrive with the report from your Mac.');
+    for (const d of doors) if (d.num === null) expect(d.refusal).toMatch(/^[A-Z0-9].*\.$/);
   });
 
-  test('the Wrapped entry counts the answered cards', () => {
+  test('the Wrapped door counts the answered cards and asks the first question', () => {
     const cards = [builderTypeCard(), builderTypeCard({ id: 'shipped', reason: 'no_line_counts', value_id: null })];
-    expect(wrappedLine(builder({ report: report({ wrapped: { cards, prompts_with_text: 0, attended_sessions: 0 } }) }))).toBe('1 of 2 questions answered');
-    expect(wrappedLine(builder())).toBeNull();
-  });
-
-  test('the dithered grid puts the last day in the last column, on its weekday, Monday first', () => {
-    // 2026-09-13 is a Sunday; 2026-09-07 the Monday before it.
-    const graph: Profile['graph'] = [
-      { date: '2026-09-07', active_seconds: 3 * 3600 },
-      { date: '2026-09-13', active_seconds: 9 * 3600 },
-      { date: '2026-09-06', active_seconds: 1 },
-    ];
-    const g = activityGrid(graph, 17);
-    expect(g.length).toBe(7);
-    expect(g[0]!.length).toBe(17);
-    expect(g[6]![16]).toBe(1); // Sunday, level 5 of 5
-    expect(g[0]![16]).toBe(0.6); // Monday, 3 hours is level 3
-    expect(g[6]![15]).toBe(0.2); // the Sunday before, one second is level 1
-    expect(activityGrid([], 17).flat().every((v) => v === 0)).toBe(true);
+    const d = youTab(builder({ report: report({ wrapped: { cards, prompts_with_text: 0, attended_sessions: 0 } }) }), null, NOW).doors.find((x) => x.key === 'wrapped')!;
+    expect([d.num?.final, d.caption]).toEqual(['1', 'of 2 questions answered']);
+    expect(d.note).toMatch(/Quality guardian\.$/);
   });
 });
 
@@ -760,7 +755,7 @@ describe('keys and the catalog seam', () => {
   test('the pages read catalog words from src/copy, and retype none of them', () => {
     // The glossary's 74 terms and the stack's 80 names are generated from analysis/vocab.py.
     // A You module that spelled one out would be a second copy of a catalog.
-    for (const f of ['src/you/glossary.ts', 'src/you/stack.ts', 'src/you/archetype.ts', 'src/you/WrappedEntry.tsx']) {
+    for (const f of ['src/you/glossary.ts', 'src/you/stack.ts', 'src/you/archetype.ts', 'src/you/chapters.ts']) {
       const src = readFileSync(join(MOBILE, f), 'utf8');
       expect({ f, imports: /from '\.\.\/copy\//.test(src), spells: /A saved snapshot|TypeScript|Which kind of builder|Velocity machine'/.test(src) }).toEqual({
         f,

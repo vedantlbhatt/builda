@@ -13,8 +13,9 @@
  * to 0 over the dissolve, and the arrival order.
  */
 import { Canvas, Rect, Shader, Skia, type SkRuntimeEffect } from '@shopify/react-native-skia';
+import { SymbolView } from 'expo-symbols';
 import React, { useCallback, useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated';
 
 import { MONO_FAMILY } from '../theme';
@@ -109,41 +110,70 @@ export function BandWords({ children, delay = WORDS_AT }: { children: ReactNode;
 
 export interface BandProps {
   hue: Hue;
-  /** "02". */
-  index: string;
+  /** "02". Left out on a page whose chapters are not numbered. */
+  index?: string;
   /** "Time". */
   title: string;
   children: ReactNode;
+  /**
+   * A doorway: the whole band opens a page, and an arrow at the end of its title says so. The
+   * house style's navigation is words and bands, never a row with a chevron.
+   */
+  onPress?: () => void;
+  /** What VoiceOver reads for a doorway band: where it goes and the number on it. */
+  accessibilityLabel?: string;
 }
 
-export function Band({ hue, index, title, children }: BandProps) {
+export function Band({ hue, index, title, children, onPress, accessibilityLabel }: BandProps) {
   const [box, setBox] = useState({ w: 0, h: 0 });
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setBox((b) => (b.w === width && b.h === height ? b : { w: width, h: height }));
   }, []);
-  return (
-    <Block enter={false}>
-      <View>
-        <BandPixels width={box.w} solid={box.h} ink={hue.ink} />
-        <View onLayout={onLayout} style={styles.band}>
-          <BandWords>
-            <View style={styles.head} accessibilityRole="header">
+  const body = (
+    <View>
+      <BandPixels width={box.w} solid={box.h} ink={hue.ink} />
+      <View onLayout={onLayout} style={styles.band}>
+        <BandWords>
+          <View style={styles.head} accessibilityRole={onPress ? undefined : 'header'}>
+            {index ? (
               <Text allowFontScaling={false} style={styles.index}>
                 {index}
               </Text>
-              <Text maxFontSizeMultiplier={1.4} style={styles.title}>
-                {title}
-              </Text>
-            </View>
-          </BandWords>
-          {children}
-        </View>
-        <View style={{ height: FRINGE }} />
+            ) : null}
+            <Text maxFontSizeMultiplier={1.4} style={[styles.title, onPress ? styles.titleDoor : null]}>
+              {title}
+            </Text>
+            {onPress ? <SymbolView name="arrow.right" tintColor={ON_HUE} weight="bold" size={18} style={styles.arrow} /> : null}
+          </View>
+        </BandWords>
+        {children}
       </View>
+      <View style={{ height: FRINGE }} />
+    </View>
+  );
+  return (
+    <Block enter={false}>
+      {onPress ? (
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="link"
+          accessibilityLabel={accessibilityLabel ?? title}
+          // A press settles the band a hair smaller, the way a printed card gives under a thumb.
+          // Scale, not opacity: a hue at partial opacity over the warm ground reads brown.
+          style={({ pressed }) => ({ transform: [{ scale: pressed ? PRESSED_SCALE : 1 }] })}
+        >
+          {body}
+        </Pressable>
+      ) : (
+        body
+      )}
     </Block>
   );
 }
+
+/** How far a doorway band gives under a press. */
+const PRESSED_SCALE = 0.985;
 
 const styles = StyleSheet.create({
   pixels: { position: 'absolute', left: 0, top: 0 },
@@ -151,4 +181,6 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 4 },
   index: { fontFamily: MONO_FAMILY, fontSize: 13, fontWeight: '600', color: ON_HUE, opacity: 0.62, fontVariant: ['tabular-nums'] },
   title: { fontSize: 15, fontWeight: '700', letterSpacing: 0.1, color: ON_HUE },
+  titleDoor: { flex: 1 },
+  arrow: { width: 18, height: 18, alignSelf: 'center' },
 });

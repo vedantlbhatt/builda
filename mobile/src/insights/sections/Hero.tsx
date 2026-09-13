@@ -5,7 +5,7 @@
  * headline numbers as lines of print.
  */
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { Animal } from '../../pixel/animals';
 import { Band, BandWords } from '../Band';
@@ -16,13 +16,31 @@ import type { HeroModel } from '../model';
 import { GROUND, ON_HUE, SPECTRUM, type Hue } from '../palette';
 import { Block, Section } from '../reveal';
 
-export function HeroSection({ hero, animal, hue, width }: { hero: HeroModel; animal: Animal; hue: Hue; width: number }) {
+export function HeroSection({
+  hero,
+  animal,
+  hue,
+  width,
+  index = '01',
+  ledger = true,
+  style,
+}: {
+  hero: HeroModel;
+  animal: Animal;
+  hue: Hue;
+  width: number;
+  /** Its number on the page it opens (the Dimensions page has it second). */
+  index?: string;
+  /** The three headline numbers under the rules. Off where the page already said them. */
+  ledger?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   const inner = width - GUTTER * 2;
   const creature = Math.min(128, Math.floor(inner * 0.36 / 16) * 16);
   const nameSize = hero.name.length > 14 ? 50 : 56;
   return (
-    <Section>
-      <Band hue={hue} index="01" title="Your type">
+    <Section style={style}>
+      <Band hue={hue} index={index} title="Your type">
         <BandWords delay={260}>
           <Text allowFontScaling={false} style={[styles.name, { fontSize: nameSize, lineHeight: Math.round(nameSize * 1.02) }]}>
             {hero.name}
@@ -106,7 +124,7 @@ export function HeroSection({ hero, animal, hue, width }: { hero: HeroModel; ani
         </Block>
       ) : null}
 
-      {hero.ledger.length > 0 ? (
+      {ledger && hero.ledger.length > 0 ? (
         <Block style={styles.block}>
           <Kicker>in all</Kicker>
           <Ledger items={hero.ledger} color={hue.ink} size={48} delay={80} />

@@ -65,6 +65,8 @@ export interface MoneyView {
   refusal: string | null;
   /** "at API list prices, read Sep 6". Always said beside the number. */
   label: string;
+  /** "Sep 6": the day the price table was read, or null on a refusal or an undated table. */
+  read: string | null;
   stale: boolean;
   tokens: TokenStat | null;
   /** "+64,680", "-9,021": null for a side no session counted, never "+0". */
@@ -144,6 +146,7 @@ function fromMoney(m: ReportMoney, now: number): Omit<MoneyView, 'source' | 'tok
     usd,
     refusal: usd === null ? sentence(moneyRefusal(m) ?? 'there is no price to show yet') : null,
     label: priceLabel(m.prices_read_on, usd !== null && pricesAreStale(m, now)),
+    read: usd !== null ? readOn(m.prices_read_on) : null,
     stale: usd !== null && pricesAreStale(m, now),
     added,
     removed,

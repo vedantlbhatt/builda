@@ -10,17 +10,9 @@
  * and the last chapter lists everything the page could not see and why.
  */
 import { Stack } from 'expo-router';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
-import Animated, {
-  measure,
-  runOnJS,
-  useAnimatedReaction,
-  useAnimatedRef,
-  useAnimatedScrollHandler,
-  useFrameCallback,
-  useSharedValue,
-} from 'react-native-reanimated';
+import React, { memo, useMemo } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { resolveAnimal } from '../pixel/animals';
 import { useReduceMotion } from '../ui/motion';
@@ -30,6 +22,7 @@ import { GUTTER, Refusal, type, Words } from './kit';
 import { analysisModel, REPORT_COMMAND } from './model';
 import { creatureHue, GROUND } from './palette';
 import { Block, RevealPage, Section, usePageReveal } from './reveal';
+import { useChapterStages, useRevealScroll } from './RevealScroll';
 import * as Agent from './sections/Agent';
 import * as Hero from './sections/Hero';
 import * as Money from './sections/Money';
@@ -64,68 +57,10 @@ export function AnalysisScreen() {
   const profile = load.kind === 'ready' ? load.profile : null;
   const model = useMemo(() => (builder ? analysisModel(builder, profile) : null), [builder, profile]);
 
-  // The chapters mount one at a time, the first alone: a page of thirty canvases mounted in one
-  // commit holds the UI thread long enough that the first count up would finish before a frame
-  // of it was drawn. The rest follow the first chapter's count, or as soon as a finger scrolls.
-  const [stage, setStage] = useState(0);
-  const hurry = useRef(false);
-  const [hurried, setHurried] = useState(false);
-  useEffect(() => {
-    if (!model || stage >= CHAPTERS) return;
-    const t = setTimeout(() => setStage((x) => x + 1), stage === 0 && !hurried ? FIRST_CHAPTER_MS : NEXT_CHAPTER_MS);
-    return () => clearTimeout(t);
-  }, [model, stage, hurried]);
-  const onHurry = useCallback(() => {
-    if (hurry.current) return;
-    hurry.current = true;
-    setHurried(true);
-  }, []);
-
-  // Nothing plays until the page is on screen and still: the scroll view is measured on the UI
-  // thread every frame until it has sat at the left edge for three frames (the push has landed,
-  // however long a deep link took to start it). A navigation event could fire before the slide
-  // began, which played the first chapter behind it; the page's own position cannot.
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
-  const still = useSharedValue(0);
-  const watch = useFrameCallback(() => {
-    if (page.armed.value) return;
-    const m = measure(scrollRef);
-    if (m && m.width > 0 && Math.abs(m.pageX) < 0.5) {
-      still.value += 1;
-      if (still.value >= 3) page.armed.value = 1;
-    } else {
-      still.value = 0;
-    }
-  }, true);
-  const stopWatching = useCallback(() => watch.setActive(false), [watch]);
-  useAnimatedReaction(
-    () => page.armed.value,
-    (armed) => {
-      if (armed) runOnJS(stopWatching)();
-    },
-  );
-  useEffect(() => {
-    // Should the measure never settle (an unusual container), play anyway.
-    const fallback = setTimeout(() => {
-      page.armed.value = 1;
-    }, ARM_FALLBACK_MS);
-    return () => clearTimeout(fallback);
-  }, [page]);
-
-  const hurriedSV = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler((e) => {
-    page.scrollY.value = e.contentOffset.y;
-    if (e.contentOffset.y > 40 && !hurriedSV.value) {
-      hurriedSV.value = 1;
-      runOnJS(onHurry)();
-    }
-  });
-  const onLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      page.viewport.value = e.nativeEvent.layout.height;
-    },
-    [page],
-  );
+  // The chapters mount one at a time, the first alone, and nothing plays until the page is on
+  // screen and still (`RevealScroll.tsx`, where both rules live for every chaptered page).
+  const { stage, hurry } = useChapterStages(CHAPTERS, model !== null);
+  const { scrollRef, onScroll, onLayout } = useRevealScroll(page, hurry);
 
   const animal = resolveAnimal(chosenAnimal, model?.hero.archetypeId ?? null);
   const hue = creatureHue(animal);
@@ -224,13 +159,8 @@ export function AnalysisScreen() {
   );
 }
 
-/** Chapters after the first; they mount one per `NEXT_CHAPTER_MS`. */
+/** Chapters after the first; they mount one per `NEXT_CHAPTER_MS` (`RevealScroll.tsx`). */
 const CHAPTERS = 10;
-/** The first chapter plays alone for this long, unless a finger scrolls first. */
-const FIRST_CHAPTER_MS = 1400;
-const NEXT_CHAPTER_MS = 80;
-/** If the page never measures as settled, play anyway after this. */
-const ARM_FALLBACK_MS = 2500;
 
 /** The page's shape while the first answer is on its way: the first band and its lines, flat. */
 function Skeleton() {

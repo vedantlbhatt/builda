@@ -26,7 +26,8 @@ const HUE = SPECTRUM.ember;
 /** A model family keeps one hue wherever it is drawn; a second row of one family takes the partner. */
 const FAMILY_HUE: Record<string, HueName> = { opus: 'iris', fable: 'tide', sonnet: 'cobalt', haiku: 'brass', mythos: 'orchid' };
 
-function modelColors(families: string[]): string[] {
+/** Each model's colour, in the order given: the family's ink, then its partner for a second row of it. */
+export function modelColors(families: string[]): string[] {
   const seen = new Map<string, number>();
   return families.map((f) => {
     const k = seen.get(f) ?? 0;
@@ -37,7 +38,7 @@ function modelColors(families: string[]): string[] {
 }
 
 /** The four token buckets: the bulk in the chapter's ink, the rest in hues far from it. */
-const BUCKET_COLOR: Record<string, string> = {
+export const BUCKET_COLOR: Record<string, string> = {
   cache_read: HUE.ink,
   cache_write: SPECTRUM.brass.ink,
   output: SPECTRUM.tide.ink,
@@ -150,55 +151,64 @@ export function MoneySection({ money, width, masked, onToggleMask }: { money: Mo
       {money.burn ? (
         <Block style={styles.block}>
           <Kicker>tokens that changed nothing</Kicker>
-          {isRefused(money.burn) ? (
-            <Refusal>{money.burn.refusal}</Refusal>
-          ) : (
-            <>
-              <Words style={type.lead}>{money.burn.line}</Words>
-              <View style={{ marginTop: 12 }}>
-                <StackBar
-                  height={16}
-                  delay={100}
-                  segments={[
-                    { key: 'barren', value: money.burn.share, color: HUE.ink },
-                    { key: 'unread', value: money.burn.unreadableShare ?? 0, color: GROUND.dim },
-                    { key: 'rest', value: Math.max(0, 1 - money.burn.share - (money.burn.unreadableShare ?? 0)), color: GROUND.border },
-                  ]}
-                />
-              </View>
-              <View style={styles.legend}>
-                <LegendLine color={HUE.ink} text="stretches where nothing was written, tested or committed" />
-                {money.burn.unreadableShare ? <LegendLine color={GROUND.dim} text="stretches the transcripts cannot judge" /> : null}
-                <LegendLine color={GROUND.border} text="stretches that wrote, tested or committed something" />
-              </View>
-              {money.burn.unreadableLine ? <Words style={[type.meta, styles.caption]}>{money.burn.unreadableLine}</Words> : null}
-              {money.burn.causes.length ? (
-                <View style={{ marginTop: 18, gap: 14 }}>
-                  <Text allowFontScaling={false} style={type.label}>
-                    what those stretches were doing
-                  </Text>
-                  {money.burn.causes.map((c, i) => (
-                    <View key={c.key} style={{ gap: 6 }}>
-                      <View style={styles.causeHead}>
-                        <Text maxFontSizeMultiplier={1.4} style={[type.dim, { color: GROUND.text, flex: 1 }]}>
-                          {c.label}
-                        </Text>
-                        <Text allowFontScaling={false} style={[type.lead, { color: HUE.ink }]}>
-                          {c.text}
-                        </Text>
-                      </View>
-                      <GrowBar frac={c.share} color={HUE.ink} height={6} delay={200 + i * 90} />
-                      <Words style={type.meta}>{c.stretches}</Words>
-                    </View>
-                  ))}
-                  <Words style={type.meta}>Causes overlap, so these shares are never added up.</Words>
-                </View>
-              ) : null}
-            </>
-          )}
+          <BurnBody burn={money.burn} ink={HUE.ink} />
         </Block>
       ) : null}
     </Section>
+  );
+}
+
+/**
+ * Where the tokens that changed nothing went: the floor as one bar of three parts (nothing
+ * written, cannot judge, wrote something) and what those stretches were doing, one bar a cause.
+ * Said as shares and never as a fault. The Money page draws the same block in its own chapter's
+ * ink, so it lives here once.
+ */
+export function BurnBody({ burn, ink }: { burn: NonNullable<MoneyModel['burn']>; ink: string }) {
+  if (isRefused(burn)) return <Refusal>{burn.refusal}</Refusal>;
+  return (
+    <>
+      <Words style={type.lead}>{burn.line}</Words>
+      <View style={{ marginTop: 12 }}>
+        <StackBar
+          height={16}
+          delay={100}
+          segments={[
+            { key: 'barren', value: burn.share, color: ink },
+            { key: 'unread', value: burn.unreadableShare ?? 0, color: GROUND.dim },
+            { key: 'rest', value: Math.max(0, 1 - burn.share - (burn.unreadableShare ?? 0)), color: GROUND.border },
+          ]}
+        />
+      </View>
+      <View style={styles.legend}>
+        <LegendLine color={ink} text="stretches where nothing was written, tested or committed" />
+        {burn.unreadableShare ? <LegendLine color={GROUND.dim} text="stretches the transcripts cannot judge" /> : null}
+        <LegendLine color={GROUND.border} text="stretches that wrote, tested or committed something" />
+      </View>
+      {burn.unreadableLine ? <Words style={[type.meta, styles.caption]}>{burn.unreadableLine}</Words> : null}
+      {burn.causes.length ? (
+        <View style={{ marginTop: 18, gap: 14 }}>
+          <Text allowFontScaling={false} style={type.label}>
+            what those stretches were doing
+          </Text>
+          {burn.causes.map((c, i) => (
+            <View key={c.key} style={{ gap: 6 }}>
+              <View style={styles.causeHead}>
+                <Text maxFontSizeMultiplier={1.4} style={[type.dim, { color: GROUND.text, flex: 1 }]}>
+                  {c.label}
+                </Text>
+                <Text allowFontScaling={false} style={[type.lead, { color: ink }]}>
+                  {c.text}
+                </Text>
+              </View>
+              <GrowBar frac={c.share} color={ink} height={6} delay={200 + i * 90} />
+              <Words style={type.meta}>{c.stretches}</Words>
+            </View>
+          ))}
+          <Words style={type.meta}>Causes overlap, so these shares are never added up.</Words>
+        </View>
+      ) : null}
+    </>
   );
 }
 

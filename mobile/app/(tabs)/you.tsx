@@ -1,120 +1,116 @@
-import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { archetypeSentence } from '../../src/profile/narrative';
-import { colors, layout, space } from '../../src/theme';
-import { archetypeView } from '../../src/you/archetype';
-import { ArchetypeReveal } from '../../src/you/ArchetypeReveal';
-import { useBuilderProfile, useIdentity, useMoneyMask, useProfile } from '../../src/you/hooks';
-import { Identity } from '../../src/you/Identity';
-import { pageRows, wrappedLine } from '../../src/you/pages';
-import { PageRows } from '../../src/you/PageRows';
-import { PageEmpty, PageError, PageSignedOut, StaleNote, YouSkeleton } from '../../src/you/States';
-import { WrappedEntry } from '../../src/you/WrappedEntry';
-import { YouSections } from '../../src/you/YouSections';
-
-const c = colors('dark');
-
-/** The page's frame: the gutter, and 32pt between blocks, set once here rather than by margins. */
-const page = {
-  paddingHorizontal: layout.gutter,
-  paddingTop: space.md,
-  paddingBottom: space.xxl,
-  gap: layout.sectionGap,
-} as const;
+import { GUTTER } from '../../src/insights/kit';
+import { SPECTRUM } from '../../src/insights/palette';
+import { useAccent } from '../../src/theme/accent';
+import { ChapterPage } from '../../src/you/ChapterPage';
+import { doorHues, youTab, type Door, type DoorKey } from '../../src/you/chapters';
+import { DoorBand, DoorWord } from '../../src/you/Doors';
+import { YouEmpty, YouHero } from '../../src/you/Hero';
+import { useBuilderName, useBuilderProfile, useMoneyMask, useProfile } from '../../src/you/hooks';
+import { ChapterSkeleton, ErrorChapter, SignedOutChapter, StaleLine } from '../../src/you/parts';
 
 /**
- * You: who you are as a builder.
+ * You: the doorway into everything the app knows about how you build, in the house style the
+ * owner picked (design-refs/HOUSE-STYLE.md). A column of chapters, not a list of cards:
  *
- * Top to bottom, in the order a person reads their own profile: their creature and name, small;
- * the builder type with the rule and the numbers that earned it; the way into Wrapped, drawn as
- * its first card; the four pages, each row stating a real number from the page it opens; then
- * the profile as it was (the narrative, the measured report, the facts, the totals, the
- * refusals).
+ *   the hero     a band in YOUR hue (the accent is your creature's colour), your name, your type
+ *                arriving a letter at a time, the three headline numbers counting up, and your
+ *                creature printed large; press it to pick another
+ *   three bands  your analysis, Wrapped, money: each its own hue, the one real number it opens on
+ *                counting up, the whole band the tap target
+ *   three words  dimensions, glossary, stack: the name large in its hue, its number, and a small
+ *                drawing of what is inside
  *
- * Every state is designed (the skill's law 8): a skeleton shaped like the page while the first
- * answer is on its way, Bit with the one action when signed out or when there are no sessions,
- * the error with Try again when nothing was saved, and one stale line at the top when a refresh
- * failed and the page is showing what was saved.
+ * Every state is designed: a flat band while the first answer is on its way, a sentence and one
+ * word to sign in, the error with Try again, one quiet line when a refresh failed and the page is
+ * what was saved, and your creature with one sentence when there are no sessions yet.
  */
 export default function YouScreen() {
-  const router = useRouter();
+  const { width } = useWindowDimensions();
   const builder = useBuilderProfile();
   const profile = useProfile();
   const mask = useMoneyMask();
+  const accent = useAccent();
+  const name = useBuilderName();
 
   const data = builder.load.kind === 'ready' ? builder.load.data : null;
   const profileData = profile.load.kind === 'ready' ? profile.load.data : null;
-  const view = useMemo(() => (data ? archetypeView(data.corpus, data.report) : null), [data]);
-  const identity = useIdentity(view?.id ?? data?.corpus?.archetype?.name ?? null);
-  const rows = useMemo(() => (data ? pageRows(data, mask.masked) : []), [data, mask.masked]);
+  const model = useMemo(() => (data ? youTab(data, profileData) : null), [data, profileData]);
+  const hues = useMemo(() => doorHues(accent.name), [accent.name]);
 
-  const onRefresh = useCallback(async () => {
-    await Promise.all([builder.refresh(), profile.reload()]);
-  }, [builder, profile]);
+  const { refresh } = builder;
+  const { reload } = profile;
+  const onRefresh = useCallback(() => {
+    void Promise.all([refresh(), reload()]);
+  }, [refresh, reload]);
 
   const load = builder.load;
-  const noSessions = data?.corpus?.sample.sessions === 0 && (profileData?.totals.sessions ?? 0) === 0;
-  // The Wrapped deck's first card is the type: the deck's own card when the Mac sent one.
-  const firstCard = data?.report?.wrapped?.cards.find((x) => x.id === 'builder_type') ?? null;
-  const wrappedAnswer = view && view.state !== 'refused' ? view.display : null;
+  // The hero is painted in the accent, so it waits for the one read that says which hue that is.
+  const ready = model !== null && accent.ready;
+  const doors = new Map<DoorKey, Door>((model?.doors ?? []).map((d) => [d.key, d]));
+  const band = (k: DoorKey) => {
+    const d = doors.get(k);
+    return d ? <DoorBand key={k} door={d} hue={SPECTRUM[hues[k]]} width={width} masked={mask.masked} /> : null;
+  };
+  const word = (k: DoorKey) => {
+    const d = doors.get(k);
+    if (!d) return null;
+    return (
+      <DoorWord
+        key={k}
+        door={d}
+        hue={SPECTRUM[hues[k]]}
+        width={width}
+        dimensions={k === 'dimensions' ? model?.dimensions : undefined}
+        collection={k === 'glossary' ? model?.collection : undefined}
+        categories={k === 'stack' ? model?.categories : undefined}
+      />
+    );
+  };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={page}
-      refreshControl={
-        load.kind === 'signedOut' ? undefined : (
-          <RefreshControl refreshing={builder.refreshing} onRefresh={onRefresh} tintColor={c.accent} />
-        )
-      }
-    >
-      {load.kind === 'loading' && <YouSkeleton />}
-
-      {load.kind === 'signedOut' && (
+    <ChapterPage chapters={2} ready={ready} refreshing={builder.refreshing} onRefresh={load.kind === 'signedOut' ? null : onRefresh}>
+      {(stage) => (
         <>
-          <Identity animal={identity.animal} name={identity.name} />
-          <PageSignedOut what="profile" />
-        </>
-      )}
+          {load.kind === 'signedOut' || load.kind === 'error' || (load.kind === 'ready' && load.stale) ? (
+            <View style={styles.lead}>
+              {load.kind === 'signedOut' ? <SignedOutChapter what="profile" /> : null}
+              {load.kind === 'error' ? <ErrorChapter message={load.message} onRetry={onRefresh} /> : null}
+              {load.kind === 'ready' && load.stale ? <StaleLine stale={load.stale} /> : null}
+            </View>
+          ) : null}
 
-      {load.kind === 'error' && <PageError message={load.message} onRetry={() => void onRefresh()} />}
+          {load.kind === 'loading' || (model !== null && !accent.ready) ? <ChapterSkeleton /> : null}
 
-      {load.kind === 'ready' && (
-        <>
-          {load.stale && <StaleNote stale={load.stale} />}
-          <Identity animal={identity.animal} name={identity.name} />
+          {ready && model && model.empty ? <YouEmpty animal={accent.animal} hue={accent} width={width} /> : null}
 
-          {noSessions ? (
-            <PageEmpty
-              title="No sessions yet."
-              text="Finish a session on your Mac and this page fills in: your type, your numbers, your Wrapped."
-              action={{ label: 'Connect your Mac', onPress: () => router.push('/pair') }}
-            />
-          ) : (
+          {ready && model && !model.empty ? (
             <>
-              {view && (
-                <ArchetypeReveal
-                  view={view}
-                  // The narrative's line is the Mac's, about the Mac's type: shown only beside
-                  // that type, never under the server's, which can be a different one.
-                  sentence={view.source === 'mac' ? archetypeSentence(data?.narrative) : null}
-                />
-              )}
-              <WrappedEntry
-                card={firstCard}
-                answer={wrappedAnswer}
-                line={data ? wrappedLine(data) : null}
-                graph={profileData?.graph ?? null}
-              />
-              <PageRows rows={rows} />
-              <YouSections builder={data} profile={profileData} />
+              <YouHero hero={model.hero} name={name} animal={accent.animal} hue={accent} width={width} source={model.source} />
+              {stage >= 1 ? (
+                <>
+                  {band('analysis')}
+                  {band('wrapped')}
+                  {band('money')}
+                </>
+              ) : null}
+              {stage >= 2 ? (
+                <>
+                  {word('dimensions')}
+                  {word('glossary')}
+                  {word('stack')}
+                </>
+              ) : null}
             </>
-          )}
+          ) : null}
         </>
       )}
-    </ScrollView>
+    </ChapterPage>
   );
 }
+
+const styles = StyleSheet.create({
+  lead: { paddingHorizontal: GUTTER, paddingTop: 4, paddingBottom: 20, gap: 12 },
+});

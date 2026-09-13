@@ -757,15 +757,18 @@ def _live_wire(doc: dict) -> dict:
     """What would leave this machine of a `_live_doc`: `live.wire` of each state, with the
     session's id, and nothing else. No transcript path, no `where`, no repository identity
     (the contract allows a repository's name only when it is public): those stay LOCAL,
-    as does everything `--json` prints."""
+    as does everything `--json` prints.
+
+    `ended` is always null. No ended sitting's live block leaves the machine: capture's
+    `attach_live` raises on a final payload and the server's gate refuses one. It also has
+    no wire form, since `_live_entry` refuses its ETA with a sentence and nulls `needed` and
+    `unattended`, which the spec requires; printing it here printed a document the spec
+    cannot hold. `--json` still shows the sitting as it stood when it ended."""
     from . import live as lv_mod
 
-    def one(e: dict | None) -> dict | None:
-        return None if e is None else lv_mod.wire(e["state"])
-
     return {
-        "sessions": [one(e) for e in doc["sessions"]],
-        "ended": one(doc.get("ended")),
+        "sessions": [lv_mod.wire(e["state"]) for e in doc["sessions"]],
+        "ended": None,
     }
 
 

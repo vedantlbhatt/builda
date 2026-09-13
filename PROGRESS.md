@@ -93,10 +93,12 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
 - FIXED: `api.builderProfile()` sends `?window_days=`; the session detail carries
   `lines_removed_agent`; the explainx and Paxel baselines say where they came from.
 - Still open, for a decision: a finished card that stays up still gets the server's
-  "Session finished" banner (needs a `session_notifications.kind` value, a migration);
-  `live --wire` on an ENDED sitting prints an ETA the spec cannot hold (CLI only, never
-  uploaded); the Now tile middle cuts "private repo" to "pr…epo" beside "needs you"; the
+  "Session finished" banner (needs a `session_notifications.kind` value, a migration); the
   server does not check that `live_names` ids are map ids.
+- FIXED: `live --wire` on an ENDED sitting printed an ETA the spec cannot hold; it prints
+  `"ended": null` now (test in `test_cli`). Checked at 18:30 and already fixed earlier: the
+  Now tile's "pr…epo" (f11a167, the repository wraps) and the Lock Screen's "+0 -0"
+  (`FinishedLine` shows each count only above zero, unknown says nothing).
 - per-session archetype enum and corpus archetype rules use two different name sets.
 - tools: AXe 1.8.0 at `~/.builder-overnight/tools/axe` (brew cannot build here: stale CLT);
   applesimutils on PATH. Lab kit + capture recipe: `design-refs/research/live-activities-assets/`.
@@ -106,8 +108,7 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   Every commit is pushed from now on (owner, 12:05).
 - after native capture polish: regenerate widget creature PNGs from the new pack
   (`python3 scripts/gen_widget_creatures.py`), rebuild, re-capture island/lock/widget.
-- live state: Lock Screen "Finished, with two files changed" beside "+0 -0" when line counts
-  are unknown (should be hidden, never 0); small widget truncates the sentence.
+- live state: the small widget truncates the sentence (the "+0 -0" half is fixed, above).
 - simulator: the app on <simulator 1> was rebuilt at 08:40 with `BUILDER_API_URL` (the address is
   baked in at build time) and signed in with its own minted device
   (`~/.builder-overnight/simulator.json`), never `device.json`'s pair. The rebuild's

@@ -549,6 +549,14 @@ class ReviewCorpusCut(unittest.TestCase):
             ended = cli._live_entry(t, sess, others, tl.SALT, now, names=False, ended=True)
             self.assertTrue(ended["state"]["eta"]["reason"].startswith("this session has ended, after "))
             self.assertIsNone(ended["state"]["eta"]["remaining_s"])
+            # The LOCAL state says why; the wire has no form for it. Its refusal is a
+            # sentence where the spec holds an enum, and `needed` and `unattended` are null
+            # where the spec requires them, and no ended sitting's live block can leave the
+            # machine anyway (`capture.sessions.attach_live` raises on a final).
+            self.assertIsNone(ended["state"]["eta"]["needed"])
+            w = cli._live_wire({"sessions": [e], "ended": ended})
+            self.assertIsNone(w["ended"])
+            self.assertEqual(w["sessions"], [lv_mod.wire(e["state"])])
 
     def test_a_file_that_cannot_be_read_leaves_background_absent(self):
         """None when any file of the sitting cannot be read: absent, not zero, so

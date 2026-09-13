@@ -677,6 +677,7 @@ The integration pass, 2026-09-13. Each has a test that fails when it is undone (
   attended" about one 162 second figure. The map row says "project files", because the map leaves Claude Code's own files out and the
   numbers' "files touched" does not.
 
-Recorded, not fixed: `live --wire` on an ended sitting blanks the ETA's `needed` and `unattended` (CLI only, never uploaded; a code for
-"ended" would be a spec value); the server does not check that `live_names` ids are map ids; a finished card that stays up still gets the
-server's finish banner (a `session_notifications.kind` value, a migration).
+Fixed later: `live --wire` on an ended sitting printed an ETA with `needed` and `unattended` blanked, which the spec requires. It now prints
+`"ended": null`, since no ended sitting's live block can leave the machine (`attach_live` raises on a final); `--json` still shows it.
+Recorded, not fixed: the server does not check that `live_names` ids are map ids; a finished card that stays up still gets the server's
+finish banner (a `session_notifications.kind` value, a migration).

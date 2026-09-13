@@ -37,18 +37,19 @@ section.
 
 ## In progress
 
-- Owner feedback at 09:22 and after: more colour, react-bits used visibly, "basic ai ui",
-  the full analysis with numbers counting up and charts drawing on, rename to Builda (done,
-  3665e85). The $2,951 is API list price value, not a bill (said in the money copy).
-- Workflow `builder-colour-motion`: the v2 spectrum (nine hues: amber, brass, ember, rose,
-  orchid, heather, iris, cobalt, tide; `design-refs/DESIGN-V2-COLOUR-MOTION.md`,
-  `shots/v2/design/palette.png`), then react-bits ports into `mobile/src/ui/bits/`, every
-  screen rebuilt with them, simulator video + critics + polish, native recolour.
-- Agent: the full analysis page `builder://analysis` (`mobile/app/analysis.tsx`,
-  `mobile/src/insights/`), eleven chapters, count ups per section, draw on charts, on both
-  simulators. Needs an entry row from the You tab when the redesign releases that file.
-- Artifact: https://claude.ai/code/artifact/542a2582-7538-475f-b9fc-796cfdb22a0a, built by
-  `scratchpad/artifact/build.py` from `manifest.json`; republish as screens land.
+- House style (the owner's pick, 11:05): every screen like the analysis page: full bleed
+  chapter bands that print themselves, huge numbers counting up, draw on charts, open lists,
+  words for navigation. Theme = the builder's creature hue (11:58), amber retired from chrome.
+  `design-refs/HOUSE-STYLE.md`. Real tool logos via `src/pixel/HarnessLogo.tsx` (86232de).
+- Landed: v2 spectrum (c4ac68f), react-bits ports (5dbc073), creature hues (04323c8), the
+  analysis page (69ac174), chrome + theme (fdac4fa), worklet crash fix (c150d95).
+- Running as agents (the colour workflow was stopped before its bento screens): You + Money +
+  dimensions + glossary + stack; Wrapped; mission control + Now + LiveBar; sessions + the
+  session screen; onboarding with the real logos; the codebase map + time lapse.
+- Next: one simulator capture pass of every screen, the native recolour (Live Activity,
+  island, widget in the creature hue) + rebuild, the adversarial review that was stopped
+  (privacy, numbers, code), the artifact.
+- Pushing every commit to github.com/vedantlbhatt/builder, branch claude/overnight-analysis.
 
 ## Reference material
 

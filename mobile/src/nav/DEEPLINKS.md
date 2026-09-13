@@ -38,7 +38,7 @@ One flag, `device.onboarded.v1` in the cache kv, decides which half of the app e
 
 | gate | routes that exist | a link to any other route |
 |---|---|---|
-| not onboarded | `onboarding/*`, `dev-auth`, `dev-gallery` | lands on onboarding (cold) or does nothing (warm) |
+| not onboarded | `onboarding/*`, `dev-auth`, `dev-gallery`, `debug/live` | lands on onboarding (cold) or does nothing (warm) |
 | onboarded | everything below except `onboarding/*` | `onboarding/*` does nothing; reset first |
 
 - No flag and signed in: onboarded (every install from before onboarding existed). No flag and
@@ -48,7 +48,11 @@ One flag, `device.onboarded.v1` in the cache kv, decides which half of the app e
   stack swaps the onboarding group for the tabs in one render and lands on Now; no onboarding
   route is left for back, the edge swipe or a stale link. That is the one-way door.
 - The flag is read once per launch; until it lands the root renders only the canvas colour, so
-  a cold start never flashes the wrong half.
+  a cold start never flashes the wrong half. The chosen creature (`profile.animal.v1`, the app's
+  accent, `src/theme/accent.tsx`) is read beside it and held the same way, so the first frame of
+  the tab bar is already in the builder's hue.
+- Every route file is listed in exactly one group; `__tests__/navChrome.test.ts` walks `app/`
+  and fails on a route that is not, because an unlisted route exists in every state.
 
 To shoot onboarding, close the gate first: `builder://dev-auth?reset=1`. To shoot the app, open
 it: `builder://dev-auth?onboarded=1`.
@@ -136,14 +140,14 @@ from.
 | `builder://session/<id>` | `id`; `recap=1` raises the recap sheet (not for `sample`) | session detail. `sample` is the built-in sample session. Also accepted: `builder://session/<id>/recap`, `builder:///session/<id>` |
 | `builder://live` | none | mission control, full screen (skeleton) |
 | `builder://wrapped` | `card` = 1 to 15, anything else opens card 1 | Wrapped story view, full screen modal with Close (skeleton) |
-| `builder://analysis` | none | Your analysis: every chapter of the analysis on one page, native large title (`src/insights/`). Not listed in `app/_layout.tsx`, so it sets its own options |
+| `builder://analysis` | none | Your analysis: every chapter of the analysis on one page, native large title (`src/insights/`). Listed in the onboarded group of `app/_layout.tsx`, so it does not exist before onboarding; the screen sets its own bar options |
 | `builder://you/dimensions` | none | the five dimensions and the archetype (skeleton) |
 | `builder://you/money` | none | the money view (skeleton) |
 | `builder://you/stack` | none | your stack (skeleton) |
 | `builder://you/glossary` | none | the glossary (skeleton) |
 | `builder://you/map/<id>` | `id`: a session id | codebase map (skeleton) |
 | `builder://you/timelapse/<id>` | `id`: a session id | time lapse (skeleton) |
-| `builder://settings` | none | Settings |
+| `builder://settings` | none | Settings: a band in the builder's hue (creature, name, handle, the colour rule; the creature opens `icon`), then chapters: Profile, Privacy, Your Mac, Cloud capture, Account (signed out: Sign in, Privacy). Large title bar |
 | `builder://pair` | `code` = `XXXX-XXXX` pairs at once when signed in | connect your Mac. Asks for the camera on first open |
 | `builder://icon` | none | the creature picker |
 
@@ -170,6 +174,7 @@ Six steps on one stack; a link to a step lands with `hello` underneath, so back 
 |---|---|---|
 | `builder://dev-auth` | see above | sign in, gate, sign out |
 | `builder://dev-gallery` | `section` (one of `GALLERY_SECTIONS` in `src/ui/KitGallery.tsx`: colour, type, surfaces, rows, stats, buttons, symbols, progress, verdicts, numbers, dither, wrapped, haptics), `scheme` = light or dark, `seed` = integer | the UI kit gallery |
+| `builder://debug/live` | `state`, `n`, `widget`, `render`, `creature`, `stale`, or `payload` (see `app/debug/live.tsx`) | drives the Live Activity, the Dynamic Island and the widget from fixtures |
 
 ### Not routes
 

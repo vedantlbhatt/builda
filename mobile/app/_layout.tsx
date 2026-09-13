@@ -1,8 +1,8 @@
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { LogBox, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -10,11 +10,13 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { handleIncomingUrl } from '../src/auth/googleFlow';
 import { api } from '../src/data/client';
 import { useLiveSurfaces } from '../src/live/useLiveSurfaces';
+import { HeaderRule } from '../src/nav/chrome';
+import { leftCreaturePicker } from '../src/nav/chromeRules';
 import { usePendingNameSync, useOnboarded } from '../src/nav/onboarding';
 import { tabTitle } from '../src/nav/rules';
-import { HeaderRule } from '../src/nav/chrome';
 import { useNotificationResponseRouting } from '../src/push/push';
 import { colors } from '../src/theme';
+import { refreshAccent, ThemeProvider, useAccent } from '../src/theme/accent';
 
 /**
  * A deep link lands with the tabs underneath it, so back from a session opened by a push or a
@@ -35,6 +37,10 @@ if (__DEV__) LogBox.ignoreLogs(['[expo-av]: Expo AV has been deprecated']);
  * shipping a half-tuned light mode would make the product's one recognisable asset look
  * wrong on half the devices.
  *
+ * The app's colour is the builder's creature's (design-refs/HOUSE-STYLE.md, last section): the
+ * accent is one store (`src/theme/accent.tsx`, `useAccent()`). `ThemeProvider` wraps the tree so
+ * its one read starts at launch; it adds no context, and any screen reads the same store.
+ *
  * The route tree, the gate and every deep link are written down in `src/nav/DEEPLINKS.md`.
  */
 export default function RootLayout() {
@@ -42,6 +48,12 @@ export default function RootLayout() {
   // null until the flag is read. Nothing is navigable until then: a cold start must not
   // flash onboarding at someone who finished it, or the tabs at someone who has not.
   const onboarded = useOnboarded();
+
+  // The same for the colour: the tab bar and every band paint in the accent, so nothing is
+  // drawn until the chosen creature has been read once, or the first frame would wear the
+  // default creature's hue and then change. One kv row, read beside the gate's; a read that
+  // never came back is declared ready on the default after `READY_WITHIN_MS`, never a blank app.
+  const accent = useAccent();
 
   // A tapped "Session finished" / "Agent run finished" push opens that session's recap.
   // At the root for the same reason the Google redirect is: the tap that launched the
@@ -77,75 +89,112 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={[styles.root, { backgroundColor: c.bg }]}>
       <KeyboardProvider>
-        <StatusBar style="light" />
-        {onboarded !== null && (
-          <Stack
-            screenOptions={{
-              // The bar is the canvas with one warm hairline under it, the same rule the tab
-              // roots draw (src/nav/chrome.tsx). UIKit's own shadow is the system separator,
-              // a cool grey the palette does not have, and with no rule at all a scrolled
-              // line of text was cut off at an edge nobody could see.
-              headerBackground: () => <HeaderRule />,
-              headerTintColor: c.text,
-              headerTitleStyle: { fontWeight: '600' },
-              contentStyle: { backgroundColor: c.bg },
-            }}
-          >
-            {/* The app. Every screen is listed so none of them exists before onboarding:
-                an unlisted route would be added to the stack whatever the guard says. The
-                first one is where the stack lands when the gate opens. */}
-            <Stack.Protected guard={onboarded}>
-              <Stack.Screen
-                name="(tabs)"
-                options={({ route }) => ({
-                  headerShown: false,
-                  animation: 'fade',
-                  // The back label on everything pushed over the tabs: the tab it came from.
-                  title: tabTitle(getFocusedRouteNameFromRoute(route)),
-                })}
-              />
-              <Stack.Screen name="session/[id]" options={{ title: '' }} />
-              <Stack.Screen name="live" options={{ title: 'Mission control' }} />
-              <Stack.Screen
-                name="wrapped"
-                options={{ presentation: 'fullScreenModal', headerShown: false }}
-              />
-              <Stack.Screen name="you/dimensions" options={{ title: 'Dimensions' }} />
-              <Stack.Screen name="you/money" options={{ title: 'Money' }} />
-              <Stack.Screen name="you/stack" options={{ title: 'Your stack' }} />
-              <Stack.Screen name="you/glossary" options={{ title: 'Glossary' }} />
-              <Stack.Screen name="you/map/[id]" options={{ title: 'Codebase map' }} />
-              <Stack.Screen name="you/timelapse/[id]" options={{ title: 'Time lapse' }} />
-              <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-              <Stack.Screen name="pair" options={{ title: 'Connect your Mac' }} />
-              <Stack.Screen name="icon" options={{ title: 'Your creature' }} />
-              {/* Social: out of scope for now (brief). The routes stay so old links and the
-                  session screen's post flow still resolve; no tab or row leads here. */}
-              <Stack.Screen name="feed" options={{ title: 'Feed' }} />
-              <Stack.Screen name="post/[id]" options={{ title: 'Post' }} />
-              <Stack.Screen name="factions" options={{ title: 'Factions' }} />
-              <Stack.Screen name="u/[handle]" options={{ title: '' }} />
-            </Stack.Protected>
+        <ThemeProvider>
+          <StatusBar style="light" />
+          <AccentFollowsCreature onboarded={onboarded} />
+          {onboarded !== null && accent.ready && (
+            <Stack
+              screenOptions={{
+                // The bar is the canvas with one warm hairline under it, the same rule the tab
+                // roots draw (src/nav/chrome.tsx). UIKit's own shadow is the system separator,
+                // a cool grey the palette does not have, and with no rule at all a scrolled
+                // line of text was cut off at an edge nobody could see.
+                headerBackground: () => <HeaderRule />,
+                headerTintColor: c.text,
+                headerTitleStyle: { fontWeight: '600' },
+                contentStyle: { backgroundColor: c.bg },
+              }}
+            >
+              {/* The app. Every screen is listed so none of them exists before onboarding:
+                  an unlisted route would be added to the stack whatever the guard says. The
+                  first one is where the stack lands when the gate opens. */}
+              <Stack.Protected guard={onboarded}>
+                <Stack.Screen
+                  name="(tabs)"
+                  options={({ route }) => ({
+                    headerShown: false,
+                    animation: 'fade',
+                    // The back label on everything pushed over the tabs: the tab it came from.
+                    title: tabTitle(getFocusedRouteNameFromRoute(route)),
+                  })}
+                />
+                <Stack.Screen name="session/[id]" options={{ title: '' }} />
+                <Stack.Screen name="live" options={{ title: 'Mission control' }} />
+                {/* Every piece of analysis on one page. It sets its own large title bar
+                    (src/insights/AnalysisScreen.tsx); listed here so it does not exist before
+                    onboarding either. */}
+                <Stack.Screen name="analysis" options={{ title: 'Your analysis' }} />
+                <Stack.Screen
+                  name="wrapped"
+                  options={{ presentation: 'fullScreenModal', headerShown: false }}
+                />
+                <Stack.Screen name="you/dimensions" options={{ title: 'Dimensions' }} />
+                <Stack.Screen name="you/money" options={{ title: 'Money' }} />
+                <Stack.Screen name="you/stack" options={{ title: 'Your stack' }} />
+                <Stack.Screen name="you/glossary" options={{ title: 'Glossary' }} />
+                <Stack.Screen name="you/map/[id]" options={{ title: 'Codebase map' }} />
+                <Stack.Screen name="you/timelapse/[id]" options={{ title: 'Time lapse' }} />
+                {/* Settings wears the chapter pages' large title bar, set in the screen. */}
+                <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+                <Stack.Screen name="pair" options={{ title: 'Connect your Mac' }} />
+                <Stack.Screen name="icon" options={{ title: 'Your creature' }} />
+                {/* Social: out of scope for now (brief). The routes stay so old links and the
+                    session screen's post flow still resolve; no tab or row leads here. */}
+                <Stack.Screen name="feed" options={{ title: 'Feed' }} />
+                <Stack.Screen name="post/[id]" options={{ title: 'Post' }} />
+                <Stack.Screen name="factions" options={{ title: 'Factions' }} />
+                <Stack.Screen name="u/[handle]" options={{ title: '' }} />
+              </Stack.Protected>
 
-            {/* Onboarding, until it is finished. Finishing flips the guard: this group leaves
-                the stack in the same render the tabs arrive, which is the one-way door. */}
-            <Stack.Protected guard={!onboarded}>
-              <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
-            </Stack.Protected>
+              {/* Onboarding, until it is finished. Finishing flips the guard: this group leaves
+                  the stack in the same render the tabs arrive, which is the one-way door. */}
+              <Stack.Protected guard={!onboarded}>
+                <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
+              </Stack.Protected>
 
-            {/* Dev tools, reachable in either state and absent from release builds. */}
-            <Stack.Protected guard={__DEV__}>
-              <Stack.Screen
-                name="dev-auth"
-                options={{ title: 'Dev auth', headerShown: false, animation: 'none', gestureEnabled: false }}
-              />
-              <Stack.Screen name="dev-gallery" options={{ title: 'Kit gallery' }} />
-            </Stack.Protected>
-          </Stack>
-        )}
+              {/* Dev tools, reachable in either state and absent from release builds. */}
+              <Stack.Protected guard={__DEV__}>
+                <Stack.Screen
+                  name="dev-auth"
+                  options={{ title: 'Dev auth', headerShown: false, animation: 'none', gestureEnabled: false }}
+                />
+                <Stack.Screen name="dev-gallery" options={{ title: 'Kit gallery' }} />
+                {/* Drives the Live Activity, the island and the widget from fixtures. It was
+                    unlisted, so it existed in release builds too, behind its own redirect. */}
+                <Stack.Screen name="debug/live" options={{ title: 'Live surfaces' }} />
+              </Stack.Protected>
+            </Stack>
+          )}
+        </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * The creature is written by the picker (`/icon`) and by onboarding's creature step, and neither
+ * tells the accent store. So the store reads again when either is left, and when onboarding
+ * finishes, and the bar, the bands and the buttons repaint together. The read is deduplicated
+ * and publishes nothing when the creature did not change (`src/theme/accent.tsx`).
+ *
+ * A component that draws nothing, so following the path re-renders it alone and not the root.
+ */
+function AccentFollowsCreature({ onboarded }: { onboarded: boolean | null }) {
+  const pathname = usePathname();
+  const lastPath = useRef<string | null>(null);
+  useEffect(() => {
+    const was = lastPath.current;
+    lastPath.current = pathname;
+    if (leftCreaturePicker(was, pathname)) void refreshAccent();
+  }, [pathname]);
+  // Only the flip that finishes onboarding: a cold start's null to true is the first read itself.
+  const lastGate = useRef<boolean | null>(onboarded);
+  useEffect(() => {
+    const was = lastGate.current;
+    lastGate.current = onboarded;
+    if (was === false && onboarded === true) void refreshAccent();
+  }, [onboarded]);
+  return null;
 }
 
 const styles = StyleSheet.create({

@@ -100,6 +100,12 @@ export function onboardingPosition(step: OnboardingStep): { n: number; of: numbe
 }
 
 /**
+ * The dev tools: the root layout's `__DEV__` group, which exists in either state of the gate
+ * (and in no release build).
+ */
+export const DEV_ROUTES: ReadonlySet<string> = new Set(['dev-auth', 'dev-gallery', 'debug/live']);
+
+/**
  * Where a link that arrives while onboarding is still open should go, or null to drop it.
  *
  * Until the gate opens, the app half of the route tree does not exist: a link into it can only
@@ -114,7 +120,7 @@ export function pathWhileOnboarding(path: string): string | null {
   if (!m) return null;
   const route = (m[1] ?? '').toLowerCase();
   if (route === 'onboarding' || route.startsWith('onboarding/')) return path;
-  if (route === 'dev-auth' || route === 'dev-gallery') return path;
+  if (DEV_ROUTES.has(route)) return path;
   if (route === 'pair') {
     const code = new URLSearchParams((m[2] ?? '').replace(/^\?/, '')).get('code')?.trim();
     return code ? `/onboarding/connect?code=${encodeURIComponent(code)}` : '/onboarding/connect';

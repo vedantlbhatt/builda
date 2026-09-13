@@ -177,9 +177,12 @@ def language_of(path: str) -> str | None:
 def split(sessions: Sequence) -> dict:
     """Lines the agent added per language over `sessions`, or a refusal with its count.
 
-    `sessions` are `patterns.SessionEvents`. Only events that carry BOTH a path and a line
-    count are read, which is the same set `lines_added_agent` sums, so this can never
-    disagree with the totals beside it about how much was written.
+    `sessions` are `patterns.SessionEvents`. Only PROJECT writes that carry BOTH a path and
+    a line count are read (`patterns.project_write`), each event once
+    (`patterns.distinct_events`), which is the same set `lines_added_agent` sums, so this
+    can never disagree with the totals beside it about how much was written. (It did, from
+    the day `lines_added_agent` learned to leave Claude Code's own files out: FOUND IN
+    REVIEW, 2026-09-13, the report's languages read 63,840 lines beside 50,177.)
     """
     from . import patterns as pat
 
@@ -187,8 +190,8 @@ def split(sessions: Sequence) -> dict:
     files: dict[str, set[str]] = {}
     excluded = 0
     for s in sessions:
-        for e in s.events:
-            if not pat._wrote(e) or not e.path or not e.added:
+        for e in pat.distinct_events(s.events):
+            if not pat.project_write(e) or not e.path or not e.added:
                 continue
             lang = language_of(e.path)
             if lang is None:

@@ -995,7 +995,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
         ev = dg.Ev(0, ts, "tool", "", tool=SHELL_TOOL, path=path, model=model)
         if approx is not None:
             ev.added, ev.removed = approx, 0
-        ev.text = dg.mask(dg._trunc(command.replace("\n", " ⏎ "), dg.COMMAND_MAX))
+        ev.text = dg.clip(command.replace("\n", " ⏎ "), dg.COMMAND_MAX)
         last_shell = source
         return ev
 
@@ -1004,7 +1004,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
             0,
             cur_ts,
             "result_error",
-            dg.mask(dg._trunc(text, dg.ERROR_MAX)),
+            dg.clip(text, dg.ERROR_MAX),
             tool=tool,
             path=path,
             ok=False,
@@ -1073,13 +1073,13 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                 continue
             ts, stamped = _stamp(text, "prompt")
             counters["prompt"] += 1
-            _emit(dg.Ev(0, ts, "prompt", dg.mask(dg._trunc(text, dg.PROMPT_MAX))), stamped)
+            _emit(dg.Ev(0, ts, "prompt", dg.clip(text, dg.PROMPT_MAX)), stamped)
             continue
 
         if kind == "text":
             error_body, error_ev = False, None
             counters["assistant"] += 1
-            ev = dg.Ev(0, cur_ts, "assistant", dg.mask(dg._trunc(text, dg.ASSISTANT_MAX)))
+            ev = dg.Ev(0, cur_ts, "assistant", dg.clip(text, dg.ASSISTANT_MAX))
             ev.model = model
             _emit(ev)
             last_assistant = ev
@@ -1163,7 +1163,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
             if not applied_since_prompt and last_command != "/commit":
                 counters["commit_without_applied_edit"] += 1
             counters["commit"] += 1
-            ev = dg.Ev(0, cur_ts, "tool", dg.mask(dg._trunc(m.group(2), dg.COMMAND_MAX)))
+            ev = dg.Ev(0, cur_ts, "tool", dg.clip(m.group(2), dg.COMMAND_MAX))
             ev.tool, ev.tool_id, ev.model = COMMIT_TOOL, m.group(1), model
             _emit(ev)
             continue

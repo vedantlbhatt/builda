@@ -138,3 +138,32 @@ class OneDefinitionOfAWrite(unittest.TestCase):
         would let this chart disagree with the total printed beside it."""
         events = [wrote(1, "/r/a.py", 300), Ev(2, T0 + 5, "tool", "ls", tool="Bash")]
         self.assertEqual(lg.split([sess(events)])["lines"], 300)
+
+
+class TheProjectsLinesOnly(unittest.TestCase):
+    def test_claude_codes_own_files_and_resumed_copies_are_not_languages_you_wrote(self):
+        """The chart reads exactly the set `lines_added_agent` sums, which leaves out
+        Claude Code's scratchpad and memory files and counts each event once (FOUND IN
+        REVIEW, 2026-09-13: the report's languages read 63,840 lines beside 50,177)."""
+        from analysis import profile as pf
+
+        scratch = "/private/tmp/claude-501/-r/8f7c2a4e-0000-4000-8000-000000000001/scratchpad/page.html"
+        copy = Ev(3, T0 + 3, "tool", "", tool="Write", added=250, path="/r/b.py", tool_id="t3")
+        events = [
+            wrote(1, "/r/a.py", 300),
+            wrote(2, scratch, 400),
+            copy,
+            Ev(3, T0 + 3, "tool", "", tool="Write", added=250, path="/r/b.py", tool_id="t3"),
+        ]
+        out = lg.split([sess(events)])
+        self.assertEqual(out["lines"], 550)
+        fact = pf.session_fact_from_events(
+            session_id="s",
+            events=pt.distinct_events(events),
+            started_at=T0,
+            ended_at=T0 + 3600,
+            attended_seconds=3600.0,
+            autonomous_seconds=0.0,
+            tz_offset_minutes=0,
+        )
+        self.assertEqual(fact.lines_added_agent, out["lines"])

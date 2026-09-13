@@ -302,21 +302,23 @@ def _has_error(rec: dict) -> bool:
     return False
 
 
-def fanout(agent_spans: Sequence[AgentSpan], wall_seconds: float) -> Fanout:
-    """How much of the sitting was several agents at once.
+def peak_concurrency(intervals: Sequence[tuple[float, float]]) -> tuple[int, float]:
+    """(the most intervals open at one moment, seconds with at least one open).
 
-    Concurrency is a sweep over the interval endpoints rather than a pairwise check: with
-    a dozen agents the pairwise version is both slower and easy to get wrong at the
-    boundaries, and the sweep gives the exact maximum by construction.
+    The sweep `fanout` has always run, lifted out so that `wrapped` can ask the same
+    question of whole sessions without a second copy of the boundary rules. Concurrency is
+    a sweep over the interval endpoints rather than a pairwise check: with a dozen agents
+    the pairwise version is both slower and easy to get wrong at the boundaries, and the
+    sweep gives the exact maximum by construction.
     """
     events: list[tuple[float, int]] = []
-    for s in agent_spans:
-        if s.seconds < MIN_OVERLAP_SEC:
+    for start, end in intervals:
+        if max(0.0, end - start) < MIN_OVERLAP_SEC:
             # A span shorter than the timestamp resolution cannot be shown to overlap
             # anything; it still counts as an agent, just not as concurrency.
             continue
-        events.append((s.started_at, 1))
-        events.append((s.ended_at, -1))
+        events.append((start, 1))
+        events.append((end, -1))
     # Ends before starts at the same instant: a handoff is not two agents at once.
     events.sort(key=lambda e: (e[0], e[1]))
     current = peak = 0
@@ -331,6 +333,12 @@ def fanout(agent_spans: Sequence[AgentSpan], wall_seconds: float) -> Fanout:
         last = at
         current += delta
         peak = max(peak, current)
+    return peak, busy
+
+
+def fanout(agent_spans: Sequence[AgentSpan], wall_seconds: float) -> Fanout:
+    """How much of the sitting was several agents at once (`peak_concurrency`)."""
+    peak, busy = peak_concurrency([(s.started_at, s.ended_at) for s in agent_spans])
 
     by_type: collections.Counter[str] = collections.Counter()
     for s in agent_spans:
@@ -347,4 +355,12 @@ def fanout(agent_spans: Sequence[AgentSpan], wall_seconds: float) -> Fanout:
     )
 
 
-__all__ = ["AgentSpan", "Fanout", "MIN_OVERLAP_SEC", "fanout", "sidecar_paths", "spans"]
+__all__ = [
+    "AgentSpan",
+    "Fanout",
+    "MIN_OVERLAP_SEC",
+    "fanout",
+    "peak_concurrency",
+    "sidecar_paths",
+    "spans",
+]

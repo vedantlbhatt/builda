@@ -107,10 +107,25 @@ COMMIT_ATTRIBUTION_SEC = 1800.0
 #: carries: since `ShellFileEffect` landed, BOTH clients credit edit tools and shell
 #: writes (`cat > f <<'EOF'`, `sed -i`) into one number, and the server cannot see which
 #: tool produced them, so it also cannot count the writes behind them.
-LINES_EDIT_AND_SHELL = "edit_tools_and_credited_shell_writes"
+#:
+#: `project_edit_tools_and_credited_shell_writes` is what `session_fact_from_events` counts
+#: on a machine with the transcripts: the same writes, into PROJECT files only
+#: (`patterns.project_write`: never Claude Code's scratchpad, memory notes or job files),
+#: over each event once (the corpus cut applies `patterns.distinct_events`). FOUND IN
+#: REVIEW, MEASURED on `~/.builder-overnight/corpus` (2026-09-13): 13,663 of the 64,747
+#: lines the old basis counted were written into Claude Code's own files and 907 more were
+#: a resumed transcript's copies, so "How much did you ship?" was about 29% high. The name
+#: changed with the number, so a stored `uploaded_agent_lines` total (which still counts
+#: every write: `capture/sessions.build_payload`, out of bounds here) is never read as it.
+LINES_EDIT_AND_SHELL = "project_edit_tools_and_credited_shell_writes"
 LINES_EDIT_ONLY = "edit_tools_only"
 LINES_UPLOADED = "uploaded_agent_lines"
 LINES_ABSENT = "absent"
+
+#: What `barren_token_share` was computed from: `burn.py` segments (one human prompt to
+#: the next) whose tokens produced no line, file, or commit, and that ran nothing which
+#: could have changed a file the transcript does not show (`burn.Segment.barren`).
+BARREN_BASIS = "burn_segments_that_changed_nothing"
 
 # ------------------------------------------------------------------- sample floors
 #: Below these a metric is None. They are judgement calls, not measurements, and are
@@ -198,6 +213,36 @@ class SessionFact:
     prompts: tuple[PromptFact, ...] | None = None
     test_runs: int | None = None
     unattended: bool = False
+    #: Tokens this session spent inside burn segments (`burn.session_burn_detail`), and the part
+    #: of them spent in segments that changed nothing. BOTH None when the harness wrote no
+    #: token counts or the transcripts were not read: a zero here would claim a session
+    #: was free. Only a machine that has the transcripts can fill them; the server cannot.
+    burn_tokens: int | None = None
+    barren_tokens: int | None = None
+    #: The part spent in segments this transcript cannot judge (`burn.Segment.unreadable`:
+    #: no visible work, but a script, a build or a helper agent that could have changed a
+    #: file). Optional beside the pair, from `burn.session_burn_detail`; None means "not
+    #: supplied", and the corpus then says so rather than summing a partial count.
+    unreadable_tokens: int | None = None
+
+    def __post_init__(self) -> None:
+        # One of the pair without the other is a share with half its inputs, and a barren
+        # count above the total is a share above 1. Both are plausible wrong numbers one
+        # division later, so they are refused at the door instead.
+        if (self.burn_tokens is None) != (self.barren_tokens is None):
+            raise ValueError("burn_tokens and barren_tokens are both known or both None")
+        if self.burn_tokens is not None and not (0 <= self.barren_tokens <= self.burn_tokens):
+            raise ValueError(
+                f"barren_tokens {self.barren_tokens} is outside 0..burn_tokens {self.burn_tokens}"
+            )
+        if self.unreadable_tokens is not None:
+            if self.burn_tokens is None:
+                raise ValueError("unreadable_tokens needs burn_tokens beside it")
+            if not (0 <= self.unreadable_tokens <= self.burn_tokens - self.barren_tokens):
+                raise ValueError(
+                    f"unreadable_tokens {self.unreadable_tokens} is outside 0.."
+                    f"{self.burn_tokens - self.barren_tokens} (burn_tokens less barren_tokens)"
+                )
 
     @property
     def local_day(self) -> dt.date:
@@ -208,6 +253,37 @@ def local_day(ts: float, tz_offset_minutes: int) -> dt.date:
     """The local day a moment belongs to, with the day starting at 04:00."""
     local = dt.datetime.fromtimestamp(ts, dt.UTC) + dt.timedelta(minutes=tz_offset_minutes)
     return (local - dt.timedelta(hours=DAY_BOUNDARY_HOUR)).date()
+
+
+def is_attended(f: SessionFact) -> bool:
+    """Whether a person was at this session. THE rule for records and streaks.
+
+    CLAUDE.md, "Ranking sessions by duration alone": attended time decides records, and an
+    unattended run can never win one or extend a streak. `unattended` has two definitions
+    today (docs/overnight-engine.md 5.7: `presence == 0` in the corpus cut, and `presence
+    == 0 and active >= NOTABLE_MIN_ACTIVE_SEC` in `capture/sessions.build_payload`). The
+    `attended_seconds > 0` half makes this right under both, because a sitting with no
+    presence signal has no attended seconds either way.
+    """
+    return not f.unattended and f.attended_seconds > 0
+
+
+def longest_run(days: Sequence[dt.date]) -> int:
+    """The longest run of consecutive calendar days in `days`. 0 for none.
+
+    Written once: `corpus_profile` and `contributions._streaks` each had their own loop.
+    The input is sorted and deduplicated here rather than trusted, because a repeated day
+    reads as a gap of zero and resets the run, which is a plausible wrong streak rather
+    than an error.
+    """
+    ordered = sorted(set(days))
+    if not ordered:
+        return 0
+    best = run = 1
+    for prev, cur in zip(ordered, ordered[1:]):
+        run = run + 1 if (cur - prev).days == 1 else 1
+        best = max(best, run)
+    return best
 
 
 # ------------------------------------------------------------------ corrective text
@@ -265,13 +341,24 @@ def session_fact_from_events(
     output_tokens_by_model: Mapping[str, int] | None = None,
     tokens: pricing.Tokens | None = None,
     unattended: bool = False,
+    burn_tokens: int | None = None,
+    barren_tokens: int | None = None,
+    unreadable_tokens: int | None = None,
 ) -> SessionFact:
     """A `SessionFact` from one session's digest events (`analysis.digest.Ev`).
 
     Imported here rather than at module scope so that a caller with no transcripts (the
     server) can use this module without `analysis.digest` being importable at all.
+
+    `burn_tokens` and `barren_tokens` are passed through, not computed: they come from
+    `burn.session_burn_detail(events, burn.turns_for_window(...))`, which needs the transcript
+    PATHS as well as the events, and the caller that has the paths is the one that memoises
+    `burn.load_turns` across a whole corpus. `unreadable_tokens` is the third number of
+    `burn.session_burn_detail`, for a caller that wants the corpus to say how much of the
+    spend it could not judge.
     """
     from . import digest as dg
+    from . import patterns as pat
 
     prompts: list[PromptFact] = []
     tools: Counter[str] = Counter()
@@ -288,8 +375,10 @@ def session_fact_from_events(
             continue
         if e.kind == "tool":
             tools[e.tool or "unknown"] += 1
-            lines += e.added or 0
-            if e.tool in dg.EDIT_TOOLS or (e.tool in dg.SHELL_TOOLS and e.added is not None):
+            # Lines into the PROJECT (`LINES_EDIT_AND_SHELL`): a write into Claude Code's
+            # own files is the agent's scratch, never work that shipped.
+            if pat.project_write(e):
+                lines += e.added or 0
                 writes += 1
             if e.tool in dg.COMMIT_TOOLS or (
                 e.tool in dg.SHELL_TOOLS and re.search(r"\bgit commit\b", e.text or "")
@@ -344,6 +433,9 @@ def session_fact_from_events(
         test_runs=tests,
         tokens=tokens,
         unattended=unattended,
+        burn_tokens=burn_tokens,
+        barren_tokens=barren_tokens,
+        unreadable_tokens=unreadable_tokens,
     )
 
 
@@ -609,7 +701,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             "interrupts_and_correction_markers",
             "prompt text and interrupt counts are not stored server side"
             if not texts or not interrupts_known
-            else f"{len(all_prompts)} prompts, {MIN_PROMPTS} needed",
+            else f"{_count(len(all_prompts), 'prompt')}, {MIN_PROMPTS} needed",
         )
 
     # ---- code velocity
@@ -636,8 +728,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             n_sessions,
             lines_basis,
             (
-                "no agent lines were attributed: this corpus writes files a way the "
-                "line counters do not credit, and 0 would read as 'you wrote nothing'"
+                no_lines_reason(len(lines_known))
                 if lines_known and lines_total == 0
                 else (
                     f"only {writes_total} tool calls wrote a file and {lines_total} lines "
@@ -848,6 +939,70 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             f"{MIN_SESSIONS_FOR_SHARE} needed",
         )
 
+    # ---- the tokens that went into stretches where nothing was written
+    #
+    # Segment level, not session level: a sitting that shipped can still have spent a
+    # third of its tokens on a stretch that changed nothing, and that stretch is the one a
+    # person remembers. The segments and the "changed nothing" rule are `burn.py`'s, read
+    # through `burn_tokens` / `barren_tokens`; nothing is recomputed here. MEASURED on the
+    # real corpus, 2026-09-13, 157 counted sessions of which 156 report usage: 2.9%
+    # (120,070,737 of 4,168,469,723 tokens), with 1,192,481,138 more (28.6%) in segments
+    # the transcripts cannot judge. The first cut read 31.6% because it called every
+    # segment with no VISIBLE work barren, including ones that rewrote files through
+    # `python3 - <<'PY'` scripts (`burn.Segment.unreadable`). The share is therefore what
+    # can be shown, a floor, and `unreadable_tokens` rides beside it when supplied.
+    burned = [s for s in ss if s.burn_tokens is not None]
+    burn_total = sum(s.burn_tokens or 0 for s in burned)
+    barren_total = sum(s.barren_tokens or 0 for s in burned)
+    # Summed only when EVERY session with counts supplied it: a partial sum would read as
+    # the whole corpus's unjudged spend.
+    unreadable_total = (
+        sum(s.unreadable_tokens for s in burned)
+        if burned and all(s.unreadable_tokens is not None for s in burned)
+        else None
+    )
+    # "No session reported token counts" is false on the server, where every Claude Code
+    # session reports them and none can be split into segments (that needs the
+    # transcript). The refusal names which of the two it is.
+    reported = any(
+        (s.tokens is not None and s.tokens.any)
+        or any(v > 0 for v in s.output_tokens_by_model.values())
+        for s in ss
+    )
+    if len(burned) >= MIN_SESSIONS and burn_total > 0:
+        m["barren_token_share"] = _metric(
+            round(barren_total / burn_total, 3),
+            "share",
+            len(burned),
+            BARREN_BASIS,
+            barren_tokens=barren_total,
+            tokens=burn_total,
+            unreadable_tokens=unreadable_total,
+        )
+    else:
+        m["barren_token_share"] = _metric(
+            None,
+            "share",
+            len(burned),
+            BARREN_BASIS,
+            (
+                "sessions reported token counts, but none was split into segments, which "
+                "needs the transcripts"
+                if reported
+                else "no session reported token counts"
+            )
+            if not burned
+            else f"{len(burned)} sessions with token counts, {MIN_SESSIONS} needed"
+            if len(burned) < MIN_SESSIONS
+            else "the sessions with token counts spent none inside a segment, so there is "
+            "nothing to divide",
+            # Sums over the sessions that DID report are measured even when the share is
+            # refused; with no such session there is nothing to sum, and 0 would be a claim.
+            barren_tokens=barren_total if burned else None,
+            tokens=burn_total if burned else None,
+            unreadable_tokens=unreadable_total,
+        )
+
     # ---- night, peak hour
     by_hour = _active_by_hour(ss)
     night = sum(v for h, v in by_hour.items() if h >= NIGHT_START_HOUR or h < NIGHT_END_HOUR)
@@ -895,25 +1050,51 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         )
 
     # ---- days, streak
+    #
+    # `days` is every day you BUILT, attended or not, because unattended runs count toward
+    # hours (CLAUDE.md) and `sample.days` has always meant that. The streak is a different
+    # question and reads `attended_days` only: an unattended run can never extend a streak.
+    # MEASURED on the real corpus, 2026-09-13: 21 days before this rule, 11 after, because
+    # unattended runs on ten days were bridging the gaps between days somebody was there.
     days = sorted({s.local_day for s in ss if s.active_seconds > 0})
-    streak, best = 0, 0
-    prev: dt.date | None = None
-    for d in days:
-        streak = streak + 1 if prev is not None and (d - prev).days == 1 else 1
-        best = max(best, streak)
-        prev = d
+    attended_days = sorted({s.local_day for s in ss if is_attended(s)})
+    best = longest_run(attended_days)
+    # The busiest day is a RECORD (the phone calls it "the day you were at it longest"), so
+    # attended time decides it, exactly as it decides `session_rank`. MEASURED on the real
+    # corpus, 2026-09-13: by active time 2026-09-12 came within 72 seconds of 2026-08-18
+    # (9.43 h against 9.45 h) with 3.14 h of it in unattended runs; one more autonomous
+    # hour and a day the agent spent alone would have been named the day you worked
+    # hardest. By attended time it is 5.42 h against 8.64 h.
     by_day: Counter[dt.date] = Counter()
+    active_by_day: Counter[dt.date] = Counter()
     for s in ss:
-        by_day[s.local_day] += s.active_seconds
+        active_by_day[s.local_day] += s.active_seconds
+        if is_attended(s):
+            by_day[s.local_day] += s.attended_seconds
     busiest = max(by_day.items(), key=lambda kv: (kv[1], kv[0])) if by_day else None
-    m["longest_streak_days"] = _metric(best or None, "days", len(days), "local_days_at_04h")
+    m["longest_streak_days"] = _metric(
+        best or None,
+        "days",
+        len(attended_days),
+        "local_days_at_04h_attended",
+        None
+        if best
+        else "no sessions"
+        if not ss
+        else "no session had you present, and an unattended run never counts toward a streak",
+    )
     m["busiest_day"] = _metric(
         busiest[0].isoformat() if busiest else None,
         "date",
-        len(days),
-        "local_days_at_04h",
-        None if busiest else "no active time",
-        active_seconds=round(busiest[1]) if busiest else None,
+        len(attended_days),
+        "local_days_at_04h_attended",
+        None
+        if busiest
+        else "no active time"
+        if not days
+        else "no session had you present, and an unattended run never decides a record",
+        attended_seconds=round(busiest[1]) if busiest else None,
+        active_seconds=round(active_by_day[busiest[0]]) if busiest else None,
     )
 
     # ---- the day the most code landed
@@ -1004,7 +1185,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # personal record (CLAUDE.md, "Rank sessions by duration alone"). `unattended`
     # sessions are excluded outright, which is the same rule the Mac uses for records.
     ranked = sorted(
-        (s for s in ss if not s.unattended and s.attended_seconds > 0),
+        (s for s in ss if is_attended(s)),
         key=lambda s: (-s.attended_seconds, s.started_at),
     )
     session_rank = [
@@ -1064,23 +1245,32 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
 
 
 # ------------------------------------------------------------------------ archetype
+#: The label every Paxel anchored number carries. Paxel's landing page shows an EXAMPLE
+#: report; its figures are marketing copy, and this repository's standard is that every
+#: constant carries the measurement it came from or says it has none.
+PAXEL_UNMEASURED = "UNMEASURED: Paxel landing page example copy, not a measurement"
+
 #: Each archetype is ONE named metric crossing ONE threshold. The rule is written out in
 #: `rule` so the UI can show why, and the threshold's source is written beside it here.
 #: Where a threshold is a judgement call it says so; nothing here is fitted.
+#:
+#: architect and velocity_machine KEEP the Paxel thresholds (2.4, 487) even though the
+#: `BASELINES` below moved to measured figures: moving a threshold moves people's
+#: archetypes, and that is a product decision, not a relabelling.
 ARCHETYPE_RULES: tuple[dict, ...] = (
     {
         "name": "architect",
         "metric": "planning_ratio",
         "threshold": 2.4,
         "rule": "prose before the first tool on more than twice as many prompts as go straight to work",
-        "source": "Paxel's published example report shows planning_ratio 2.4 for an Architect",
+        "source": f"{PAXEL_UNMEASURED}. The published example report shows planning_ratio 2.4 for an Architect",
     },
     {
         "name": "velocity_machine",
         "metric": "code_velocity",
         "threshold": 487.0,
         "rule": "agent lines per active hour",
-        "source": "Paxel's published example report shows code_velocity 487 lines/hour",
+        "source": f"{PAXEL_UNMEASURED}. The published example report shows code_velocity 487 lines/hour",
     },
     {
         "name": "quality_guardian",
@@ -1108,7 +1298,7 @@ ARCHETYPE_RULES: tuple[dict, ...] = (
         "metric": "steer_rate",
         "threshold": 0.4,
         "rule": "interrupts plus corrective prompts, over prompts",
-        "source": "Paxel's example copy calls out 'about 4 in 10 prompts' as steering hard",
+        "source": f"{PAXEL_UNMEASURED}. The example copy calls out 'about 4 in 10 prompts' as steering hard",
     },
 )
 
@@ -1200,31 +1390,42 @@ def _rule_value(name: str, metrics: Mapping[str, dict]) -> float | None:
 #: What a number is compared against to decide whether it is worth saying out loud.
 #: `scale` is the distance at which a difference counts as one unit of unusual, so the
 #: ranking does not simply favour whichever metric happens to have the biggest numbers.
+#:
+#: Five of these were anchored on Paxel's landing page example (docs/approved-roadmap.md
+#: 1.3). Two now carry figures measured in this repository; the other three have no
+#: measurement to replace them and say so. Every `source` starts MEASURED or UNMEASURED,
+#: or states the arithmetic it came from.
 BASELINES: dict[str, dict] = {
     "steer_rate": {
         "value": 0.4,
         "scale": 0.2,
-        "source": "Paxel example copy: 'stop and redirect about 4 in 10 prompts'",
+        "source": f"{PAXEL_UNMEASURED} ('stop and redirect about 4 in 10 prompts')",
     },
     "planning_ratio": {
-        "value": 2.4,
+        "value": 2.5,
         "scale": 1.2,
-        "source": "Paxel example report: planning_ratio 2.4",
+        "source": (
+            "MEASURED on the container corpus: 20 prose first against 8 tool first over 28 "
+            "prompts (profile.py docstring); one person, a small sample"
+        ),
     },
     "code_velocity": {
-        "value": 487.0,
+        "value": 523.0,
         "scale": 250.0,
-        "source": "Paxel example report: 487 lines/hour",
+        "source": (
+            "MEASURED in the proof database: 2,300 transcript lines over 4.4 active hours "
+            "across seven sittings (profile.py docstring)"
+        ),
     },
     "autonomy_score": {
         "value": 0.82,
         "scale": 0.25,
-        "source": "Paxel example report: autonomy_score 0.82",
+        "source": f"{PAXEL_UNMEASURED} (autonomy_score 0.82)",
     },
     "avg_prompt_chars": {
         "value": 156.0,
         "scale": 100.0,
-        "source": "Paxel example report: avg prompt length 156 chars",
+        "source": f"{PAXEL_UNMEASURED} (average prompt length 156 characters)",
     },
     "iteration_depth": {
         "value": 16.4,
@@ -1254,15 +1455,46 @@ BASELINES: dict[str, dict] = {
 }
 
 
+#: Where the barren token fact ranks among the others. UNMEASURED JUDGEMENT CALL, the
+#: `peak_hour` device (a fixed rank, 0.2 there): there is no measured baseline for how
+#: much of a person's spend usually changes nothing, and inventing one to rank against
+#: would be a wrong number wearing a source.
+BARREN_FACT_UNUSUALNESS = 0.25
+
+
 def _n(x: float) -> str:
-    """A number a person reads out loud: no trailing .0, thousands separated."""
+    """A number a person reads out loud: one decimal at most, no trailing .0, thousands
+    separated. Rounded FIRST: 4.96 checked for a whole number before rounding printed
+    "5.0" (FOUND IN REVIEW)."""
+    x = round(x, 1)
     if x == int(x):
         return f"{int(x):,}"
     return f"{x:,.1f}"
 
 
+def _count(n: float, one: str, many: str | None = None) -> str:
+    """The number and its noun, agreed: `1 prompt`, `3 prompts`, `1,234 lines`."""
+    return f"{_n(n)} {one if n == 1 else (many or one + 's')}"
+
+
 def _pct(x: float) -> str:
     return f"{round(x * 100)}%"
+
+
+def in_ten(share: float) -> int:
+    """A share as "N in 10", rounded half UP. `round(0.45 * 10)` is Python's half to even,
+    4, and printed "4 in 10" beside a "45%" that rounds the other way; 0.55 and 0.65 both
+    read "6 in 10" (FOUND IN REVIEW). The one rule every "in 10" sentence reads."""
+    return int(share * 10 + 0.5 + 1e-9)
+
+
+#: Why agent lines cannot be shown, for the velocity metric and the wrapped "How much did
+#: you ship?" card alike: said from what was counted, never a cause nobody measured.
+def no_lines_reason(sessions: int) -> str:
+    return (
+        f"none of the {_count(sessions, 'session')} has a line the agent wrote into a "
+        "project file that can be counted, and 0 would read as nothing written"
+    )
 
 
 def headline_facts(profile: Mapping) -> list[dict]:
@@ -1298,7 +1530,7 @@ def headline_facts(profile: Mapping) -> list[dict]:
 
     v = m["steer_rate"]["value"]
     if v is not None:
-        n_in_ten = round(v * 10)
+        n_in_ten = in_ten(v)
         text = (
             f"You steer hard: {n_in_ten} in 10 prompts stop or redirect the agent"
             if v >= 0.3
@@ -1444,11 +1676,38 @@ def headline_facts(profile: Mapping) -> list[dict]:
     if v is not None:
         add("peak_hour", f"You build most at {_hour(v)}", v, "local hour", 0.2)
 
+    bm = m["barren_token_share"]
+    v = bm["value"]
+    barren, spent = bm.get("barren_tokens"), bm.get("tokens")
+    if v is not None and barren:
+        # From the integers it was divided from and said the way `burn` says a share
+        # (`burn._share_words`): the value is rounded to 3 dp, and `_pct` of it printed "0%"
+        # for 4,000 barren tokens of 3,000,000 and "100%" for a share short of all of it
+        # (FOUND IN REVIEW). A measured zero is no fact at all: nothing to point at.
+        from . import burn as _burn
+
+        share = barren / spent if isinstance(barren, int) and spent else v
+        said = _burn._share_words(share)
+        # The share is what can be SHOWN (burn.py rule 5). Unless every other token is
+        # known to have been judged, it is a floor and says so: "3% went into stretches
+        # where nothing was written" beside 28.6% nobody could judge reads as "only 3% was
+        # spent on nothing", which the corpus does not know (MEASURED, 2026-09-13). Never
+        # "At least" in front of words that already bound it ("under 1%", "over 99%").
+        floor = bm.get("unreadable_tokens") != 0 and not said.startswith(("under", "over"))
+        text = f"{'at least ' if floor else ''}{said} of your tokens went into stretches where nothing was written"
+        add(
+            "barren_token_share",
+            text[0].upper() + text[1:],
+            v,
+            "share",
+            BARREN_FACT_UNUSUALNESS,
+        )
+
     v = m["longest_streak_days"]["value"]
     if v is not None and v >= 2:
         add(
             "longest_streak_days",
-            f"{_n(v)} days in a row with a session",
+            f"{_n(v)} days in a row with a session you were at",
             v,
             "days",
             min(v / 7.0, 1.0),

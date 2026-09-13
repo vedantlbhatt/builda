@@ -170,8 +170,150 @@ def _tested(e) -> bool:
     return e.kind == "tool" and e.tool in dg.SHELL_TOOLS and bool(_TEST_CMD.search(e.text or ""))
 
 
+def _touched(e) -> bool:
+    """Did this tool call change a file it NAMES? The one answer to "which files did this
+    change" that `burn` (`Segment.files_touched`, the file churn rule), `live` (the map,
+    the time lapse, "Finished, with N files changed") and `vocab` read.
+
+    `_wrote` with a path, or a shell call the digest gave a path and no line count, which
+    is `sed -i` (`digest._bash_file_effect`: "the file was touched, the magnitude is not in
+    the command", CLAUDE.md). Whether it succeeded is the caller's to check: this is the
+    SHAPE of the call, and a failed one changed nothing.
+
+    FOUND IN REVIEW (2026-09-13): four functions answered this and disagreed on `sed -i`.
+    The map drew a `sed -i` file as edited (MEASURED, 23 of 1,335 corpus map rows were
+    files changed only that way), `live` said "Finished" with 0 files changed about the
+    same turn, and `burn` called the stretch unreadable.
+    """
+    from . import digest as dg
+
+    return bool(
+        e.kind == "tool"
+        and e.path
+        and (_wrote(e) or (e.tool in dg.SHELL_TOOLS and e.added is None))
+    )
+
+
+# ------------------------------------------------------------- the project, and the harness
+
+
+def rooted_path(path: str) -> str:
+    """Lowercased posix path, rooted, so a `*/name` glob also matches a top level file and
+    a relative path compares like an absolute one."""
+    p = path.replace("\\", "/").lower()
+    return p if p.startswith("/") else "/" + p
+
+
+#: Claude Code's own state: under the home directory its memory notes, background job
+#: scratch and plans, and its per session temp directory (`/tmp/claude-<uid>/`, which macOS
+#: spells `/private/tmp/...`), home of the scratchpad and of background task output. A path
+#: there is the harness's file, not the project's: its directory NAMES are the harness's
+#: words, and what is written there never ships. MEASURED on the corpus: every one of the
+#: 48 events that unlocked `queue` through the design's `*/jobs/*` glob was under
+#: `~/.claude/jobs/`; titles counted these files as the session's work, and 25 of 157
+#: titles change without them ("Edited eleven docs" was eleven scratchpad `.txt` files,
+#: "Refactored seven files across five modules" had three memory notes among its seven,
+#: "Shipped changes to seven source files" six scripts under `~/.claude/jobs/`); and HTML
+#: was on the stack for 21 sessions where 10 had only written HTML into the scratchpad,
+#: the pages an agent renders for itself. Anchored at the home directory and at `/tmp`, so
+#: a repository's own `.claude/worktrees/` (six of RideGT's project directories) is still
+#: the project.
+_HARNESS_STATE = re.compile(
+    r"^/(users|home)/[^/]+/\.claude/|^/root/\.claude/|^/~/\.claude/|^/(private/)?tmp/claude-\d+/"
+)
+
+#: A `cd` and its target, quoted or not, wherever a simple command can start.
+_CD = re.compile(r"(?:^|[\s;&|(])cd\s+([\"']?)([^\s\"';&|)]+)\1")
+
+
+def harness_path(path: str | None) -> bool:
+    """Is this path Claude Code's own state rather than the project's (`_HARNESS_STATE`)?"""
+    return bool(path) and bool(_HARNESS_STATE.match(rooted_path(path)))
+
+
+def harness_event(e) -> bool:
+    """Is this tool event's file Claude Code's own rather than the project's?
+
+    THE one rule, read by every count of project work: `vocab` (titles, the stack),
+    `profile.session_fact_from_events` (agent lines), `wrapped` (the kind of work card) and
+    `live` (the map, the time lapse, files changed). Moved here from `vocab`, where it was
+    written, because "what counts as project work belongs with `_wrote`"
+    (docs/overnight-engine.md, Deviations (vocab)).
+
+    An absolute path says so itself (`harness_path`). A shell call's path (a heredoc write,
+    a `sed -i`) is RELATIVE when the agent worked from its current directory (`cat >
+    part1.html <<'EOF'`), and then it is the harness's when every directory the command
+    `cd`s into, as far as the digest kept the command, is. MEASURED on the corpus: of 303
+    relative shell writes, 142 were in commands whose only `cd`s went into Claude Code's
+    state, 128 in commands whose `cd`s went only elsewhere, none into both, and 33 had no
+    `cd` at all (kept as the project's: nothing says otherwise). With the absolute paths
+    already out, the 142 still changed 17 titles: "Built out seven source files" was seven
+    parts of an HTML page assembled in the scratchpad, in a session whose project gained
+    one test file.
+
+    MEASURED on the corpus with this rule applied to the wrapped "How much did you ship?"
+    card (2026-09-13): 13,663 of its 64,747 lines were written into Claude Code's own
+    files, 21% of the number, which `live`'s absolute path only rule also missed.
+    """
+    from . import digest as dg
+
+    if not e.path:
+        return False
+    if harness_path(e.path):
+        return True
+    if e.path.startswith(("/", "~", "\\")) or re.match(r"^[A-Za-z]:", e.path):
+        return False
+    if e.tool not in dg.SHELL_TOOLS:
+        return False
+    targets = [m.group(2) for m in _CD.finditer(dg.shell_text(e.text))]
+    return bool(targets) and all(harness_path(t) for t in targets)
+
+
+def project_write(e) -> bool:
+    """Lines put into a PROJECT file: `_wrote`, and not into Claude Code's own
+    (`harness_event`). What "agent lines" counts on every corpus surface."""
+    return _wrote(e) and not harness_event(e)
+
+
+def distinct_events(events: Sequence) -> list:
+    """Each event once, in order.
+
+    A resumed session's new transcript begins with a copy of the old one's records (the
+    same `uuid` and timestamp under a new `sessionId`), and the sessionizer pools both
+    files, so a copied tool call reaches the session twice. A tool call and its result are
+    keyed on the call id, which names one call; an event of another kind (a prompt, a
+    compaction) on its kind, time, text and path. A call or result with NO id is never
+    merged: Aider stamps every call in a turn with the turn's time, so two identical
+    `pytest` runs in one turn would look like one copied twice.
+
+    MEASURED on the corpus: 153 `tool_use` ids sit in two root transcripts, and every one
+    of them reached a counted session twice, in 5 of 157 sessions. One title said it had
+    read 254 tool calls where there were 140, and the glossary counted 41 `ssh` calls where
+    there were 33. The same copies carried 907 agent lines and 5 prompts into the corpus
+    totals (FOUND IN REVIEW, 2026-09-13), which is why the corpus cut applies it once, to
+    every sitting, before anything is counted (`__main__._corpus_facts`).
+    """
+    seen: set = set()
+    out = []
+    for e in events:
+        if e.tool_id:
+            key = (e.kind, e.tool_id)
+        elif e.kind in ("tool", "result_error"):
+            out.append(e)
+            continue
+        else:
+            key = (e.kind, e.ts, e.text, e.path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(e)
+    return out
+
+
 def _lines_added(s: SessionEvents) -> int:
-    return sum(e.added or 0 for e in s.events if _wrote(e))
+    """Lines put into PROJECT files (`project_write`), the lines "landed" in a finding:
+    a scratchpad page the agent rendered for itself landed nothing."""
+    return sum(e.added or 0 for e in s.events if project_write(e))
 
 
 def _commits(s: SessionEvents) -> int:

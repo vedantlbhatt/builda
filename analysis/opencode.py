@@ -736,7 +736,7 @@ def scan(path: pathlib.Path) -> Scan:
         "parent_id": parent,
         "is_child": parent is not None,
         "child_sessions": [c.get("id") for c in extras.get("children", [])],
-        "title": dg.mask(dg._trunc(str(_s("title")), 120)) if _s("title") else None,
+        "title": dg.clip(str(_s("title")), 120) if _s("title") else None,
         "slug": _s("slug"),
         "directory": _s("directory"),
         "cwd": _s("directory"),
@@ -876,7 +876,7 @@ def _tool_event(ts: float, part: dict, model: str | None, counters: Counter) -> 
         ev.path = path
         if approx is not None and applied:
             ev.added, ev.removed = approx, 0
-        ev.text = dg.mask(dg._trunc(cmd.replace("\n", " ⏎ "), dg.COMMAND_MAX))
+        ev.text = dg.clip(cmd.replace("\n", " ⏎ "), dg.COMMAND_MAX)
     elif name in (EDIT_TOOL, WRITE_TOOL, READ_TOOL):
         p = inp.get("filePath")
         ev.path = p if isinstance(p, str) and p else None
@@ -911,16 +911,16 @@ def _tool_event(ts: float, part: dict, model: str | None, counters: Counter) -> 
             ev.path, ev.added, ev.removed = _patch_text_effect(inp["patchText"])
         ev.text = dg.mask(ev.path or "")
     elif name in ("glob", "grep"):
-        ev.text = dg.mask(dg._trunc(str(inp.get("pattern", "")), 80))
+        ev.text = dg.clip(str(inp.get("pattern", "")), 80)
     elif name in ("webfetch", "websearch"):
-        ev.text = dg.mask(dg._trunc(str(inp.get("url") or inp.get("query") or ""), 100))
+        ev.text = dg.clip(str(inp.get("url") or inp.get("query") or ""), 100)
     elif name == TASK_TOOL:
-        ev.text = dg.mask(dg._trunc(str(inp.get("description") or inp.get("prompt") or ""), 100))
+        ev.text = dg.clip(str(inp.get("description") or inp.get("prompt") or ""), 100)
         if isinstance(md.get("sessionId"), str):
             counters["task_child_sessions"] += 1
     else:
         ev.text = (
-            dg.mask(dg._trunc(json.dumps(inp, separators=(",", ":"))[:200], 100)) if inp else ""
+            dg.clip(json.dumps(inp, separators=(",", ":"))[:200], 100) if inp else ""
         )
     return ev
 
@@ -1029,7 +1029,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                 user_texts[str(mid)] = human
             if _in_window(ts):
                 counters[f"prompt_from_{source}"] += 1
-                _emit(dg.Ev(0, ts, "prompt", dg.mask(dg._trunc(text, dg.PROMPT_MAX))))
+                _emit(dg.Ev(0, ts, "prompt", dg.clip(text, dg.PROMPT_MAX)))
 
         elif role == "assistant":
             model = info.get("modelID") if isinstance(info.get("modelID"), str) else None
@@ -1057,7 +1057,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                                 0,
                                 tts,
                                 "assistant",
-                                dg.mask(dg._trunc(p["text"], dg.ASSISTANT_MAX)),
+                                dg.clip(p["text"], dg.ASSISTANT_MAX),
                                 model=model,
                                 tok_out=tokens["output"] if first_text else None,
                             )
@@ -1090,7 +1090,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                                 0,
                                 _ms(sttime.get("end")) or tts,
                                 "result_error",
-                                dg.mask(dg._trunc(str(st.get("error") or "(error)"), dg.ERROR_MAX)),
+                                dg.clip(str(st.get("error") or "(error)"), dg.ERROR_MAX),
                                 tool=ev.tool,
                                 path=ev.path,
                                 ok=False,
@@ -1107,7 +1107,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                                     0,
                                     _ms(sttime.get("end")) or tts,
                                     "result_error",
-                                    dg.mask(dg._trunc(output or f"exit {code}", dg.ERROR_MAX)),
+                                    dg.clip(output or f"exit {code}", dg.ERROR_MAX),
                                     tool=ev.tool,
                                     path=ev.path,
                                     ok=False,
@@ -1127,11 +1127,9 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                                 0,
                                 rts,
                                 "result_error",
-                                dg.mask(
-                                    dg._trunc(
-                                        str(data.get("message") or err.get("name") or "(retry)"),
-                                        dg.ERROR_MAX,
-                                    )
+                                dg.clip(
+                                    str(data.get("message") or err.get("name") or "(retry)"),
+                                    dg.ERROR_MAX,
                                 ),
                                 tool="api_request",
                                 ok=False,
@@ -1160,7 +1158,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                                 0,
                                 ets,
                                 "result_error",
-                                dg.mask(dg._trunc(str(data.get("message") or name), dg.ERROR_MAX)),
+                                dg.clip(str(data.get("message") or name), dg.ERROR_MAX),
                                 tool="api_request",
                                 ok=False,
                             )

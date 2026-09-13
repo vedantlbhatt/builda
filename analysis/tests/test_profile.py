@@ -15,8 +15,17 @@ from analysis import profile as pf
 from analysis.digest import Ev
 
 HOUR = 3600.0
+DAY = 24 * HOUR
 #: 2026-09-01 09:00:00 UTC, a Tuesday. Every timestamp below is an offset from it.
 T0 = dt.datetime(2026, 9, 1, 9, 0, tzinfo=dt.UTC).timestamp()
+
+
+def has_dash(text: str) -> bool:
+    """`plain.has_dash`, the one definition of a dash (docs/overnight-engine.md 1.1): an em
+    dash, an en dash, or a hyphen with space on both sides."""
+    from analysis import plain
+
+    return plain.has_dash(text)
 
 
 def ev(n, ts, kind, text="", tool=None, added=None):
@@ -214,6 +223,60 @@ class Clocks(unittest.TestCase):
         self.assertEqual(p["metrics"]["longest_streak_days"]["value"], 3)
         self.assertEqual(p["sample"]["days"], 4)
 
+    def test_an_unattended_run_never_bridges_a_streak(self):
+        """docs/overnight-engine.md 5.4: attended days 1 and 3, an unattended run on day 2.
+        The streak is 1, not 3. MEASURED on the real corpus: 21 before, 11 after."""
+        facts = [
+            session([], session_id="d1", start=T0),
+            dataclasses.replace(
+                session([], session_id="d2", start=T0 + DAY, attended=0.0, autonomous=HOUR),
+                unattended=True,
+            ),
+            session([], session_id="d3", start=T0 + 2 * DAY),
+        ]
+        m = pf.corpus_profile(facts)["metrics"]["longest_streak_days"]
+        self.assertEqual(m["value"], 1)
+        self.assertEqual(m["basis"], "local_days_at_04h_attended")
+        self.assertEqual(m["n"], 2, "n is the attended days the streak was read from")
+
+    def test_days_built_still_counts_the_unattended_day(self):
+        """`sample.days` stays "days built": unattended runs count toward hours."""
+        facts = [
+            session([], session_id="d1", start=T0),
+            dataclasses.replace(
+                session([], session_id="d2", start=T0 + DAY, attended=0.0, autonomous=HOUR),
+                unattended=True,
+            ),
+        ]
+        self.assertEqual(pf.corpus_profile(facts)["sample"]["days"], 2)
+
+    def test_a_day_with_zero_attended_seconds_is_not_attended_under_either_definition(self):
+        """`capture/sessions.build_payload` only calls a sitting unattended above a minimum
+        length, so a short unattended run can arrive with `unattended=False` and no attended
+        seconds. It must not bridge a streak either."""
+        facts = [
+            session([], session_id="d1", start=T0),
+            session([], session_id="d2", start=T0 + DAY, attended=0.0, autonomous=600.0),
+            session([], session_id="d3", start=T0 + 2 * DAY),
+        ]
+        self.assertEqual(pf.corpus_profile(facts)["metrics"]["longest_streak_days"]["value"], 1)
+
+    def test_a_streak_with_nobody_present_is_refused_with_a_reason(self):
+        robot = dataclasses.replace(
+            session([], session_id="r", attended=0.0, autonomous=HOUR), unattended=True
+        )
+        m = pf.corpus_profile([robot])["metrics"]["longest_streak_days"]
+        self.assertIsNone(m["value"])
+        self.assertIn("unattended run never counts toward a streak", m["reason"])
+        empty = pf.corpus_profile([])["metrics"]["longest_streak_days"]
+        self.assertIsNone(empty["value"])
+        self.assertEqual(empty["reason"], "no sessions")
+
+    def test_the_streak_fact_says_you_were_there(self):
+        facts = [session([], session_id=str(i), start=T0 + i * DAY) for i in range(3)]
+        texts = [f["text"] for f in pf.corpus_profile(facts)["facts"]]
+        self.assertIn("3 days in a row with a session you were at", texts)
+
     def test_autonomy_score_is_the_second_clock_over_both(self):
         s = session([], attended=HOUR, autonomous=3 * HOUR)
         self.assertEqual(pf.corpus_profile([s])["metrics"]["autonomy_score"]["value"], 0.75)
@@ -315,7 +378,8 @@ class Facts(unittest.TestCase):
         return pf.corpus_profile(facts)
 
     def test_no_user_facing_string_contains_a_dash_the_user_hates(self):
-        """The rule is absolute: em dashes and en dashes never reach a person."""
+        """The rule is absolute: em dashes, en dashes and spaced hyphens never reach a
+        person."""
         p = self._profile()
         strings = [f["text"] for f in p["facts"]]
         strings += [str(v.get("reason")) for v in p["metrics"].values()]
@@ -323,6 +387,7 @@ class Facts(unittest.TestCase):
         for s in strings:
             self.assertNotIn("—", s)
             self.assertNotIn("–", s)
+            self.assertFalse(has_dash(s), s)
 
     def test_facts_are_ranked_by_distance_from_a_documented_baseline(self):
         p = self._profile()
@@ -481,6 +546,33 @@ class WhereEachSessionStands(unittest.TestCase):
         self.assertEqual(p['session_rank'][0]['attended_seconds'], 3_000)
         # The robot still counted toward the hours; it just cannot hold a record.
         self.assertGreater(p['totals']['total_hours'], 8)
+
+    def test_a_day_the_agent_spent_alone_is_never_the_busiest(self):
+        """The phone reads `busiest_day` as "the day you were at it longest", a record, so
+        attended time decides it. MEASURED on the real corpus (2026-09-13): by ACTIVE time
+        2026-09-12 came within 72 seconds of 2026-08-18 (9.43 h against 9.45 h) with 3.14 h
+        of it in unattended runs; by attended time it is 5.42 h against 8.64 h. Here a
+        ten hour overnight run and one attended hour share a day, against three attended
+        hours on the next: active time names the robot's day, attended time the person's."""
+        day = 1_780_000_000.0
+        robot = self._fact('robot', day, 0, 36_000, 0, {}, unattended=True)
+        evening = self._fact('evening', day + 7_200, 3_600, 3_600, 0, {})
+        next_day = self._fact('next', day + 86_400 + 3_600, 10_800, 10_800, 0, {})
+        self.assertEqual(robot.local_day, evening.local_day, 'the shape this test is about')
+        self.assertNotEqual(robot.local_day, next_day.local_day)
+        m = pf.corpus_profile([robot, evening, next_day])['metrics']['busiest_day']
+        self.assertEqual(m['value'], next_day.local_day.isoformat())
+        self.assertEqual((m['attended_seconds'], m['active_seconds']), (10_800, 10_800))
+        self.assertEqual((m['basis'], m['n']), ('local_days_at_04h_attended', 2))
+
+    def test_a_corpus_of_robots_has_no_busiest_day_and_says_why(self):
+        day = 1_780_000_000.0
+        m = pf.corpus_profile([self._fact('robot', day, 0, 36_000, 0, {}, unattended=True)])[
+            'metrics'
+        ]['busiest_day']
+        self.assertIsNone(m['value'])
+        self.assertIn('unattended run never decides a record', m['reason'])
+        self.assertEqual(pf.corpus_profile([])['metrics']['busiest_day']['reason'], 'no active time')
 
 
 class AttributeCommits(unittest.TestCase):
@@ -654,3 +746,476 @@ class Spend(unittest.TestCase):
         # 5M cache reads at $0.50/M is $2.50, not $25.
         delta = p["metrics"]["spend_usd"]["value"] - 175.0
         self.assertLess(delta, 3.0)
+
+
+class IsAttendedAndLongestRun(unittest.TestCase):
+    """The two rules other modules import (docs/overnight-engine.md 1.4), written once."""
+
+    @staticmethod
+    def _fact(attended: float, unattended: bool) -> pf.SessionFact:
+        return pf.SessionFact(
+            session_id="s",
+            started_at=T0,
+            ended_at=T0 + HOUR,
+            active_seconds=HOUR,
+            attended_seconds=attended,
+            autonomous_seconds=HOUR - attended,
+            unattended=unattended,
+        )
+
+    def test_attended_means_present_and_not_flagged(self):
+        self.assertTrue(pf.is_attended(self._fact(600.0, False)))
+        self.assertFalse(pf.is_attended(self._fact(600.0, True)))
+        # `unattended` with the build_payload definition (too short to be flagged): no
+        # presence means no attended seconds, and that alone keeps it out.
+        self.assertFalse(pf.is_attended(self._fact(0.0, False)))
+
+    def test_longest_run_counts_consecutive_calendar_days(self):
+        d = dt.date
+        self.assertEqual(pf.longest_run([]), 0)
+        self.assertEqual(pf.longest_run([d(2026, 9, 1)]), 1)
+        self.assertEqual(
+            pf.longest_run([d(2026, 9, 1), d(2026, 9, 2), d(2026, 9, 3), d(2026, 9, 5)]), 3
+        )
+        self.assertEqual(pf.longest_run([d(2026, 9, 1), d(2026, 9, 3), d(2026, 9, 5)]), 1)
+
+    def test_longest_run_crosses_month_and_year_ends(self):
+        d = dt.date
+        self.assertEqual(pf.longest_run([d(2026, 8, 31), d(2026, 9, 1)]), 2)
+        self.assertEqual(pf.longest_run([d(2025, 12, 31), d(2026, 1, 1), d(2026, 1, 2)]), 3)
+
+    def test_longest_run_does_not_trust_its_input_order(self):
+        """A repeated day reads as a gap of zero and would reset the run: a plausible wrong
+        streak rather than an error, so the input is sorted and deduplicated."""
+        d = dt.date
+        days = [d(2026, 9, 3), d(2026, 9, 1), d(2026, 9, 2), d(2026, 9, 2)]
+        self.assertEqual(pf.longest_run(days), 3)
+
+    def test_the_ranking_uses_the_same_rule(self):
+        """A session flagged attended but with no attended seconds cannot hold a record."""
+        facts = [
+            self._fact(600.0, False),
+            dataclasses.replace(self._fact(0.0, False), session_id="zero"),
+        ]
+        p = pf.corpus_profile(facts)
+        self.assertEqual(p["ranked_sessions"], 1)
+        self.assertEqual([r["session_id"] for r in p["session_rank"]], ["s"])
+
+
+class BarrenTokenShare(unittest.TestCase):
+    """The corpus rollup of `burn.session_burn_detail` (docs/overnight-engine.md 5.3)."""
+
+    @staticmethod
+    def _fact(i: int, burn: int | None, barren: int | None) -> pf.SessionFact:
+        return pf.session_fact_from_events(
+            session_id=f"s{i}",
+            events=[],
+            started_at=T0 + i * DAY,
+            ended_at=T0 + i * DAY + HOUR,
+            attended_seconds=HOUR,
+            autonomous_seconds=0.0,
+            tz_offset_minutes=0,
+            burn_tokens=burn,
+            barren_tokens=barren,
+        )
+
+    def test_the_share_is_barren_tokens_over_segment_tokens(self):
+        """(1,000, 250) + (3,000, 750) + (4,000, 1,000): 2,000 of 8,000 is 0.25. The
+        session with no counts is not in the sample at all."""
+        facts = [
+            self._fact(0, 1_000, 250),
+            self._fact(1, 3_000, 750),
+            self._fact(2, 4_000, 1_000),
+            self._fact(3, None, None),
+        ]
+        m = pf.corpus_profile(facts)["metrics"]["barren_token_share"]
+        self.assertEqual(m["value"], 0.25)
+        self.assertEqual((m["n"], m["unit"], m["basis"]), (3, "share", "burn_segments_that_changed_nothing"))
+        self.assertEqual((m["barren_tokens"], m["tokens"]), (2_000, 8_000))
+        self.assertIsNone(m["reason"])
+
+    def test_no_session_with_counts_is_refused_not_zeroed(self):
+        m = pf.corpus_profile([self._fact(i, None, None) for i in range(4)])["metrics"][
+            "barren_token_share"
+        ]
+        self.assertIsNone(m["value"])
+        self.assertEqual(m["reason"], "no session reported token counts")
+        self.assertIsNone(m["barren_tokens"])
+        self.assertIsNone(m["tokens"])
+
+    def test_a_corpus_with_counts_but_no_segments_is_not_told_it_has_no_counts(self):
+        """The server's shape: every session reports output tokens, none can be cut into
+        segments (that needs the transcript). "No session reported token counts" would be
+        false there."""
+        facts = [
+            dataclasses.replace(self._fact(i, None, None), output_tokens_by_model={"claude-opus-5": 900})
+            for i in range(4)
+        ]
+        m = pf.corpus_profile(facts)["metrics"]["barren_token_share"]
+        self.assertIsNone(m["value"])
+        self.assertEqual(
+            m["reason"],
+            "sessions reported token counts, but none was split into segments, which needs the transcripts",
+        )
+        with_buckets = [
+            dataclasses.replace(self._fact(i, None, None), tokens=pf.pricing.Tokens(output=10))
+            for i in range(4)
+        ]
+        self.assertIn("split into segments", pf.corpus_profile(with_buckets)["metrics"]["barren_token_share"]["reason"])
+
+    def test_two_sessions_with_counts_are_too_few(self):
+        m = pf.corpus_profile([self._fact(0, 100, 10), self._fact(1, 100, 30)])["metrics"][
+            "barren_token_share"
+        ]
+        self.assertIsNone(m["value"])
+        self.assertEqual(m["reason"], "2 sessions with token counts, 3 needed")
+        self.assertEqual((m["barren_tokens"], m["tokens"]), (40, 200))
+
+    def test_a_zero_total_has_nothing_to_divide(self):
+        m = pf.corpus_profile([self._fact(i, 0, 0) for i in range(3)])["metrics"][
+            "barren_token_share"
+        ]
+        self.assertIsNone(m["value"])
+        self.assertIn("nothing to divide", m["reason"])
+
+    def test_the_fact_names_the_share(self):
+        """A floor unless every other token is known to have been judged: MEASURED on the
+        real corpus (2026-09-13) the share is 2.9% beside 28.6% no transcript could judge,
+        and "3% went into stretches where nothing was written" alone reads as "only 3%"."""
+        facts = [self._fact(0, 1_000, 250), self._fact(1, 3_000, 750), self._fact(2, 4_000, 1_000)]
+        fact = next(f for f in pf.corpus_profile(facts)["facts"] if f["id"] == "barren_token_share")
+        self.assertEqual(
+            fact["text"], "At least 25% of your tokens went into stretches where nothing was written"
+        )
+        self.assertEqual(fact["unusualness"], pf.BARREN_FACT_UNUSUALNESS)
+        self.assertEqual(pf.BARREN_FACT_UNUSUALNESS, 0.25)
+        self.assertIsNone(fact["baseline"], "no baseline is invented for it")
+        judged = [dataclasses.replace(f, unreadable_tokens=0) for f in facts]
+        fact = next(f for f in pf.corpus_profile(judged)["facts"] if f["id"] == "barren_token_share")
+        self.assertEqual(fact["text"], "25% of your tokens went into stretches where nothing was written")
+
+    def test_no_fact_rests_on_a_refused_share(self):
+        ids = {f["id"] for f in pf.corpus_profile([self._fact(0, 100, 10)])["facts"]}
+        self.assertNotIn("barren_token_share", ids)
+
+    def test_a_small_share_is_never_zero_and_a_large_one_never_all(self):
+        """FOUND IN REVIEW: `_pct(round(x, 3))` printed "At least 0% of your tokens ..." for
+        4,000 barren tokens of 3,000,000, and "At least 100%" for a share short of all of it
+        while unreadable tokens existed. Said from the integers, as `burn` says a share,
+        and never "at least" in front of a bound."""
+
+        def text(barren: int, total: int, unreadable: int | None = None) -> str | None:
+            per = [self._fact(i, total // 3, barren // 3) for i in range(3)]
+            if unreadable is not None:
+                per = [dataclasses.replace(f, unreadable_tokens=unreadable // 3) for f in per]
+            facts = pf.corpus_profile(per)["facts"]
+            return next((f["text"] for f in facts if f["id"] == "barren_token_share"), None)
+
+        self.assertEqual(text(4_002, 3_000_000), "Under 1% of your tokens went into stretches where nothing was written")
+        self.assertEqual(text(2_997_000, 3_000_000, 3_000), "Over 99% of your tokens went into stretches where nothing was written")
+        # A measured zero is no fact to point at.
+        self.assertIsNone(text(0, 3_000_000))
+
+    def test_the_fields_travel_through_the_builder(self):
+        f = self._fact(0, 1_000, 250)
+        self.assertEqual((f.burn_tokens, f.barren_tokens), (1_000, 250))
+        default = session([])
+        self.assertEqual((default.burn_tokens, default.barren_tokens), (None, None))
+
+    def test_burn_to_profile_end_to_end(self):
+        """`burn.session_burn_detail` feeds the fact, the fact feeds the share. Each session: a
+        segment that wrote a file on 1,000 tokens, then one that only talked, on 3,000.
+        Three of them: 9,000 barren of 12,000."""
+        from analysis import burn
+
+        def one(i: int) -> pf.SessionFact:
+            start = T0 + i * DAY
+            events = [
+                Ev(0, start, "prompt", "write it"),
+                Ev(1, start + 1, "tool", "cat > a.py <<'EOF'", tool="Bash", path="a.py", added=10, tool_id="w"),
+                Ev(2, start + 10, "prompt", "now explain it"),
+                Ev(3, start + 11, "assistant", "sure"),
+            ]
+            turns = [
+                burn.Turn(start + 1, "m1", "claude-opus-5", 1000, 0, 0, 0, ["Bash"], ["w"]),
+                burn.Turn(start + 11, "m2", "claude-opus-5", 3000, 0, 0, 0),
+            ]
+            spent = burn.session_burn_detail(events, turns)
+            total, barren = spent["tokens"], spent["barren"]
+            return pf.session_fact_from_events(
+                session_id=f"s{i}",
+                events=events,
+                started_at=start,
+                ended_at=start + HOUR,
+                attended_seconds=HOUR,
+                autonomous_seconds=0.0,
+                tz_offset_minutes=0,
+                burn_tokens=total,
+                barren_tokens=barren,
+            )
+
+        m = pf.corpus_profile([one(i) for i in range(3)])["metrics"]["barren_token_share"]
+        self.assertEqual((m["value"], m["barren_tokens"], m["tokens"], m["n"]), (0.75, 9_000, 12_000, 3))
+
+    def test_half_a_pair_or_an_impossible_pair_is_refused_at_the_door(self):
+        """One without the other is a share with half its inputs; barren above the total
+        is a share above 1. Both are refused before any division can happen."""
+        for burn, barren in ((1_000, None), (None, 5), (100, 101), (100, -1), (-5, -5)):
+            with self.assertRaises(ValueError, msg=(burn, barren)):
+                self._fact(0, burn, barren)
+
+
+class UnreadableTokens(unittest.TestCase):
+    """What the corpus could not judge rides beside the barren share (burn.py rule 5).
+
+    MEASURED on the real corpus (2026-09-13, 157 counted sessions, 156 with counts): the
+    first cut of `barren_token_share` read 31.6%, because every segment with no VISIBLE
+    work counted as barren, including ones that rewrote files through `python3 - <<'PY'`
+    scripts. Proven barren is 120,070,737 of 4,168,469,723 tokens (2.9%); another
+    1,192,481,138 (28.6%) sit in segments the transcripts cannot judge."""
+
+    @staticmethod
+    def _fact(i: int, burn: int, barren: int, unreadable: int | None) -> pf.SessionFact:
+        return pf.session_fact_from_events(
+            session_id=f"u{i}",
+            events=[],
+            started_at=T0 + i * DAY,
+            ended_at=T0 + i * DAY + HOUR,
+            attended_seconds=HOUR,
+            autonomous_seconds=0.0,
+            tz_offset_minutes=0,
+            burn_tokens=burn,
+            barren_tokens=barren,
+            unreadable_tokens=unreadable,
+        )
+
+    def test_the_real_corpus_totals_read_as_a_floor_with_the_unjudged_part_beside_it(self):
+        per = [(1_389_489_907, 40_023_579, 397_493_712)] * 2 + [(1_389_489_909, 40_023_579, 397_493_714)]
+        m = pf.corpus_profile([self._fact(i, *p) for i, p in enumerate(per)])["metrics"][
+            "barren_token_share"
+        ]
+        self.assertEqual((m["tokens"], m["barren_tokens"]), (4_168_469_723, 120_070_737))
+        self.assertEqual(m["unreadable_tokens"], 1_192_481_138)
+        self.assertEqual(m["value"], 0.029)
+
+    def test_a_partial_unreadable_count_is_not_summed(self):
+        facts = [self._fact(0, 1_000, 100, 500), self._fact(1, 1_000, 100, None), self._fact(2, 1_000, 100, 0)]
+        m = pf.corpus_profile(facts)["metrics"]["barren_token_share"]
+        self.assertEqual(m["value"], 0.1)
+        self.assertIsNone(m["unreadable_tokens"], "one session did not supply it")
+
+    def test_refusals_carry_it_too(self):
+        m = pf.corpus_profile([self._fact(0, 100, 10, 50)])["metrics"]["barren_token_share"]
+        self.assertIsNone(m["value"])
+        self.assertEqual(m["unreadable_tokens"], 50)
+        none = pf.corpus_profile([])["metrics"]["barren_token_share"]
+        self.assertIsNone(none["unreadable_tokens"])
+
+    def test_an_impossible_unreadable_count_is_refused_at_the_door(self):
+        for burn, barren, unreadable in ((100, 10, 91), (100, 10, -1)):
+            with self.assertRaises(ValueError, msg=(burn, barren, unreadable)):
+                self._fact(0, burn, barren, unreadable)
+        with self.assertRaises(ValueError):
+            pf.SessionFact(
+                session_id="x",
+                started_at=T0,
+                ended_at=T0 + HOUR,
+                active_seconds=HOUR,
+                attended_seconds=HOUR,
+                autonomous_seconds=0.0,
+                unreadable_tokens=5,
+            )
+        self.assertEqual(self._fact(0, 100, 10, 90).unreadable_tokens, 90)
+
+    def test_burn_to_profile_end_to_end(self):
+        """Each session: a written file on 1,000 tokens, talk on 3,000, and a
+        `python3 - <<'PY'` rewrite on 5,000. Before the rule the rewrite was barren and the
+        share read 8,000 of 9,000; it is 3,000 of 9,000 with 5,000 unjudged."""
+        from analysis import burn
+
+        def one(i: int) -> pf.SessionFact:
+            start = T0 + i * DAY
+            events = [
+                Ev(0, start, "prompt", "write it"),
+                Ev(1, start + 1, "tool", "cat > a.py <<'EOF'", tool="Bash", path="a.py", added=10, tool_id="w"),
+                Ev(2, start + 10, "prompt", "now explain it"),
+                Ev(3, start + 11, "assistant", "sure"),
+                Ev(4, start + 20, "prompt", "rename the flag"),
+                Ev(5, start + 21, "tool", "python3 - <<'PY' ⏎ p = 'a.py'", tool="Bash", tool_id="p"),
+            ]
+            turns = [
+                burn.Turn(start + 1, "m1", "claude-opus-5", 1000, 0, 0, 0, ["Bash"], ["w"]),
+                burn.Turn(start + 11, "m2", "claude-opus-5", 3000, 0, 0, 0),
+                burn.Turn(start + 21, "m3", "claude-opus-5", 5000, 0, 0, 0, ["Bash"], ["p"]),
+            ]
+            d = burn.session_burn_detail(events, turns)
+            return pf.session_fact_from_events(
+                session_id=f"s{i}",
+                events=events,
+                started_at=start,
+                ended_at=start + HOUR,
+                attended_seconds=HOUR,
+                autonomous_seconds=0.0,
+                tz_offset_minutes=0,
+                burn_tokens=d["tokens"],
+                barren_tokens=d["barren"],
+                unreadable_tokens=d["unreadable"],
+            )
+
+        m = pf.corpus_profile([one(i) for i in range(3)])["metrics"]["barren_token_share"]
+        self.assertEqual(
+            (m["value"], m["barren_tokens"], m["unreadable_tokens"], m["tokens"]),
+            (0.333, 9_000, 15_000, 27_000),
+        )
+
+
+class Baselines(unittest.TestCase):
+    """Five BASELINES were Paxel's landing page example copy (docs/approved-roadmap.md
+    1.3). Two now carry measurements from this repository; three say they have none."""
+
+    #: Sources that state the arithmetic they came from instead of a MEASURED prefix.
+    DERIVED = {"night_share", "night_commit_share", "iteration_depth"}
+    DERIVED_RULES = {"night_owl", "director"}
+
+    def test_the_two_replaced_by_measurements(self):
+        b = pf.BASELINES
+        self.assertEqual(b["planning_ratio"]["value"], 2.5)
+        self.assertEqual(round(20 / 8, 1), 2.5, "20 prose first against 8 tool first")
+        self.assertEqual(b["code_velocity"]["value"], 523.0)
+        self.assertEqual(round(2_300 / 4.4), 523, "2,300 lines over 4.4 active hours")
+        for key in ("planning_ratio", "code_velocity"):
+            self.assertTrue(b[key]["source"].startswith("MEASURED"), key)
+
+    def test_the_three_without_a_measurement_keep_their_values_and_say_so(self):
+        b = pf.BASELINES
+        self.assertEqual(
+            (b["steer_rate"]["value"], b["autonomy_score"]["value"], b["avg_prompt_chars"]["value"]),
+            (0.4, 0.82, 156.0),
+        )
+        for key in ("steer_rate", "autonomy_score", "avg_prompt_chars"):
+            self.assertTrue(b[key]["source"].startswith(pf.PAXEL_UNMEASURED), key)
+
+    def test_the_scales_did_not_move(self):
+        want = {
+            "steer_rate": 0.2,
+            "planning_ratio": 1.2,
+            "code_velocity": 250.0,
+            "autonomy_score": 0.25,
+            "avg_prompt_chars": 100.0,
+        }
+        self.assertEqual({k: pf.BASELINES[k]["scale"] for k in want}, want)
+
+    def test_every_baseline_source_is_labelled(self):
+        for key, b in pf.BASELINES.items():
+            src = b["source"]
+            self.assertFalse(src.startswith("Paxel"), key)
+            self.assertTrue(
+                src.startswith(("MEASURED", "UNMEASURED")) or key in self.DERIVED, (key, src)
+            )
+
+    def test_the_archetype_thresholds_did_not_move_and_their_sources_are_labelled(self):
+        rules = {r["name"]: r for r in pf.ARCHETYPE_RULES}
+        self.assertEqual(rules["architect"]["threshold"], 2.4)
+        self.assertEqual(rules["velocity_machine"]["threshold"], 487.0)
+        for name in ("architect", "velocity_machine", "skeptic"):
+            self.assertTrue(rules[name]["source"].startswith(pf.PAXEL_UNMEASURED), name)
+        for name, r in rules.items():
+            self.assertFalse(r["source"].startswith("Paxel"), name)
+            self.assertTrue(
+                r["source"].startswith(("MEASURED", "UNMEASURED")) or name in self.DERIVED_RULES,
+                (name, r["source"]),
+            )
+
+    def test_no_source_or_rule_has_a_dash(self):
+        for b in pf.BASELINES.values():
+            self.assertFalse(has_dash(b["source"]), b["source"])
+        for r in pf.ARCHETYPE_RULES:
+            self.assertFalse(has_dash(r["source"]), r["source"])
+            self.assertFalse(has_dash(r["rule"]), r["rule"])
+
+
+class EveryStringThePersonReads(unittest.TestCase):
+    """Every fact, every refusal reason, the archetype's reason: across an empty corpus, a
+    single short session, a server shaped corpus and a full one."""
+
+    def _profiles(self):
+        yield pf.corpus_profile([])
+        yield pf.corpus_profile([session([ev(0, T0, "prompt", "hi")], attended=60)])
+        yield pf.corpus_profile(
+            [
+                pf.SessionFact(
+                    session_id=str(i),
+                    started_at=T0 + i * HOUR,
+                    ended_at=T0 + (i + 1) * HOUR,
+                    active_seconds=HOUR,
+                    attended_seconds=HOUR,
+                    autonomous_seconds=0,
+                    tool_calls={"Bash": 20},
+                    tool_basis=pf.TOOLS_ALLOWLIST,
+                    lines_added_agent=4,
+                    lines_basis=pf.LINES_UPLOADED,
+                    write_events=None,
+                )
+                for i in range(4)
+            ]
+        )
+        yield pf.corpus_profile(
+            [
+                dataclasses.replace(
+                    session([], session_id="r", attended=0.0, autonomous=2 * HOUR), unattended=True
+                )
+            ]
+        )
+        yield pf.corpus_profile([BarrenTokenShare._fact(0, 100, 10), BarrenTokenShare._fact(1, 100, 30)])
+        yield pf.corpus_profile([BarrenTokenShare._fact(i, 0, 0) for i in range(3)])
+        full = Facts()._profile()
+        yield full
+        facts = [
+            BarrenTokenShare._fact(i, 1_000 * (i + 1), 250 * (i + 1)) for i in range(4)
+        ] + [session([], session_id=f"n{i}", start=T0 + (10 + i) * DAY) for i in range(3)]
+        yield pf.corpus_profile(facts)
+
+    def test_no_dash_anywhere_a_person_reads(self):
+        seen = 0
+        for p in self._profiles():
+            strings = [f["text"] for f in p["facts"]]
+            strings += [v["reason"] for v in p["metrics"].values() if v.get("reason")]
+            strings += [v for v in p["sample"]["missing"].values()]
+            if p["archetype"]["reason"]:
+                strings.append(p["archetype"]["reason"])
+            for s in strings:
+                seen += 1
+                self.assertFalse(has_dash(s), s)
+        self.assertGreater(seen, 40, "the check must actually reach the strings")
+
+
+class ProjectLinesAndPlainNumbers(unittest.TestCase):
+    """FOUND IN REVIEW (2026-09-13), each a number or a word a person reads."""
+
+    SCRATCH = "/private/tmp/claude-501/-r/8f7c2a4e-0000-4000-8000-000000000001/scratchpad"
+
+    def test_lines_into_claude_codes_own_files_are_not_agent_lines(self):
+        """MEASURED on `~/.builder-overnight/corpus`: 13,663 of 64,747 agent lines were
+        written into Claude Code's scratchpad, memory notes and job files. The basis names
+        what is counted, so a stored total that still counts them is never read as it."""
+        events = [
+            Ev(0, T0, "prompt", "go"),
+            Ev(1, T0 + 1, "tool", "/r/app.py", tool="Edit", path="/r/app.py", added=12, removed=0),
+            Ev(2, T0 + 2, "tool", "", tool="Write", path=f"{self.SCRATCH}/probe.py", added=40, removed=0),
+            Ev(3, T0 + 3, "tool", "", tool="Write", path="/Users/me/.claude/projects/-r/memory/MEMORY.md", added=9, removed=0),
+            Ev(4, T0 + 4, "tool", f"cd {self.SCRATCH} && cat > part.html <<'EOF'", tool="Bash", path="part.html", added=30, removed=0),
+            Ev(5, T0 + 5, "tool", "cat > src/b.py <<'EOF'", tool="Bash", path="src/b.py", added=5, removed=0),
+        ]
+        f = session(events)
+        self.assertEqual((f.lines_added_agent, f.write_events), (17, 2))
+        self.assertEqual(f.lines_basis, "project_edit_tools_and_credited_shell_writes")
+
+    def test_a_number_is_rounded_before_it_is_checked_for_a_whole_one(self):
+        """`_n(4.96)` checked for a whole number first and printed "5.0"."""
+        self.assertEqual([pf._n(x) for x in (4.96, 2.96, 4.94, 1234.0, 0.05)], ["5", "3", "4.9", "1,234", "0.1"])
+
+    def test_one_prompt_is_singular_in_the_steer_refusal(self):
+        m = pf.corpus_profile([prompt_session(["go"])])["metrics"]["steer_rate"]
+        self.assertEqual(m["reason"], "1 prompt, 5 needed")
+        m = pf.corpus_profile([prompt_session(["go", "more"])])["metrics"]["steer_rate"]
+        self.assertEqual(m["reason"], "2 prompts, 5 needed")

@@ -134,6 +134,70 @@ def main() -> int:
         default=None,
         help="a segment is a spike at this multiple of the median segment cost",
     )
+    wr = sub.add_parser(
+        "wrapped",
+        help="fifteen questions about how you build, each one answered or refused with a reason",
+    )
+    wr.add_argument("path", nargs="?", default="~/.claude/projects")
+    wr.add_argument("--json", action="store_true", help="the whole LOCAL result, quotes included when asked")
+    wr.add_argument(
+        "--wire",
+        action="store_true",
+        help="only what `wrapped.wire` keeps, the form that may leave this machine",
+    )
+    wr.add_argument(
+        "--quotes",
+        action="store_true",
+        help="also print the prompts three cards quote; they never leave this machine",
+    )
+    lv = sub.add_parser(
+        "live",
+        help="what each running session is doing now, whether it is working, and who needs you",
+    )
+    lv.add_argument(
+        "transcript",
+        nargs="?",
+        help="one transcript; without it, every session running under --root",
+    )
+    lv.add_argument(
+        "--root",
+        default="~/.claude/projects",
+        help="where to look for running sessions (default ~/.claude/projects)",
+    )
+    lv.add_argument(
+        "--history",
+        help="finished sessions for the ETA (default: --root, or the transcript's grandparent)",
+    )
+    lv.add_argument("--json", action="store_true", help="the whole LOCAL document")
+    lv.add_argument(
+        "--wire",
+        action="store_true",
+        help="only what `live.wire` keeps of each session, the form that may leave this machine",
+    )
+    lv.add_argument(
+        "--names",
+        action="store_true",
+        help="name files, commands and packages; these never leave this machine",
+    )
+    lv.add_argument(
+        "--watch",
+        type=float,
+        default=None,
+        metavar="N",
+        help="refresh every N seconds until interrupted",
+    )
+    vc = sub.add_parser(
+        "vocab",
+        help="the words your sessions have earned, what the project is made of, and titles",
+    )
+    vc.add_argument("path", nargs="?", default="~/.claude/projects")
+    vc.add_argument("--json", action="store_true", help="the whole LOCAL result")
+    vc.add_argument(
+        "--wire",
+        action="store_true",
+        help="only what `vocab.wire` keeps, the form that may leave this machine",
+    )
+    vc.add_argument("--titles", type=int, default=10, help="how many recent titles (default 10)")
     pr = sub.add_parser("probe", help="read-only shape report over a file or directory")
     pr.add_argument(
         "path",
@@ -189,6 +253,15 @@ def main() -> int:
     if a.cmd == "narrative":
         return _narrative(a)
 
+    if a.cmd == "wrapped":
+        return _wrapped(a)
+
+    if a.cmd == "live":
+        return _live(a)
+
+    if a.cmd == "vocab":
+        return _vocab(a)
+
     if a.cmd == "probe":
         from . import probe as pb
 
@@ -238,47 +311,87 @@ def main() -> int:
 
 
 def _print_burn(rep: dict) -> None:
-    """The burn report as a person reads it. Numbers first, sentences last."""
+    """The burn report as a person reads it. Numbers first, sentences last.
+
+    Every share is said the way `burn.explain` says it: from the integers it was divided
+    from (`burn._unrounded`), so the numbers block and the sentence under it can never
+    print two figures for one quantity, and through `burn._share_words`, so a positive
+    share that rounds to nothing reads "under 1%" rather than a zero that was never
+    measured (FOUND BY RUNNING IT: the live transcript's 15,460 token fan out printed 0%).
+    """
     from . import burn as bn_mod
 
     t = rep["totals"]
+    total = t["tokens"]["value"] or 0
+
+    def share(metric: dict | None, key: str) -> str | None:
+        v = bn_mod._unrounded(metric, key, total) if metric else None
+        return None if v is None else bn_mod._share_words(v)
+
     print()
     if not rep["harness_records_usage"]:
-        print("  This harness writes no token counts to disk. Cost cannot be attributed.")
+        # The report's own reason, never a blanket "this harness writes no token counts":
+        # Codex and Gemini do write them, and a Claude Code file with no assistant record
+        # (a bookkeeping transcript) is not a harness that cannot count.
+        print(f"  tokens            not shown: {t['tokens'].get('reason')}")
     else:
         print(f"  tokens            {t['tokens']['value']:,}")
-        cr = t["cache_read_share"]["value"]
+        cr = share(t["cache_read_share"], "cache_read_tokens")
         if cr is not None:
-            print(f"  context replay    {cr:.0%} of it")
+            print(f"  context replay    {cr} of it")
         tpl = t["tokens_per_line"]["value"]
         if tpl is not None:
             print(f"  tokens per line   {tpl:,.0f}")
-        bs = t["barren_token_share"]["value"]
+        bs = share(t["barren_token_share"], "barren_tokens")
         if bs is not None:
-            print(f"  spent on nothing  {bs:.0%}")
-    print(f"  lines             +{t['lines_added']['value']} / -{t['lines_removed']['value']}")
-    print(f"  segments          {rep['sample']['segments']}")
+            # Not "spent on nothing": a stretch that only read is labelled investigated,
+            # never accused (`burn.Segment.barren`). FOUND IN REVIEW.
+            print(f"  nothing written   {bs}")
+        us = share(t.get("unreadable_token_share"), "unreadable_tokens")
+        if us is not None:
+            print(f"  could not judge   {us}, where a script or helper agent may have changed files unseen")
+    la, lr = t["lines_added"]["value"], t["lines_removed"]["value"]
+    if la is not None and lr is not None:
+        print(f"  lines             {_burn_lines(rep, la, lr)}")
+    else:
+        print(f"  lines             not shown: {t['lines_added'].get('reason')}")
+    print(
+        f"  stretches         {rep['sample']['segments']}, one from each prompt of yours to the next"
+    )
     for m in rep["sample"]["missing"]:
-        print(f"  refused           {m}")
+        if m != t["tokens"].get("reason"):
+            print(f"  refused           {m}")
 
     if rep["causes"]:
         print()
-        print("  WHERE IT WENT  (a segment can have several causes, so these overlap)")
+        # What each cause can CLAIM of the session's tokens (`attributed_tokens`). The old
+        # column was `share_of_session`, every token of any segment the cause appeared in,
+        # so one expensive segment with three causes printed its whole cost three times.
+        print("  WHERE IT WENT  (what each cause can claim; one turn can count toward two)")
         for c in rep["causes"][:6]:
-            share = f"{c['share_of_session']:.0%}" if c.get("share_of_session") is not None else "  ?"
-            print(f"    {share:>5}  {c['cause']:<18} {c['segments']} segment(s)")
+            claimed = c.get("attributed_tokens")
+            said = (
+                bn_mod._share_words(claimed / total)
+                if isinstance(claimed, int) and total
+                else ""
+            )
+            k = c["segments"]
+            print(f"    {said:>8}  {c['cause']:<18} {k} segment{'' if k == 1 else 's'}")
 
     if rep["spikes"]:
         print()
         print("  SPIKES")
         for row in rep["spikes"][:5]:
             mult = row["multiple_of_median"]
-            flag = "nothing written" if row["barren"] else f"+{row['lines_added']} lines"
+            # burn's own verdict: "+0 lines" was printed for a stretch that removed lines,
+            # ran `sed -i`, only committed, or whose work a script did unseen.
+            flag = bn_mod._verdict(row)
             print(f"\n    {row['tokens']:>9,} tokens  ({mult}x median)  {flag}")
             if row["prompt"]:
-                print(f"      you asked: {row['prompt'][:88]}")
+                # One line: a pasted prompt's newlines broke the column.
+                print(f"      you asked: {' '.join(row['prompt'].split())[:88]}")
             for c in row["causes"][:3]:
-                print(f"      - {c['detail']}")
+                print(f"        {c['detail']}")
 
     sentences = bn_mod.explain(rep)
     if sentences:
@@ -286,6 +399,664 @@ def _print_burn(rep: dict) -> None:
         print("  IN PLAIN TERMS")
         for line in sentences:
             print(f"    {line}")
+    print()
+
+
+def _burn_lines(rep: dict, added: int, removed: int) -> str:
+    """The lines figure of the burn numbers block: `+a / -r` when either was counted, and
+    otherwise what `burn.explain` says of the same session, never a "+0 / -0" beside "it
+    made 4 commits" or a transcript whose work the digest cannot see (FOUND IN REVIEW, 17
+    corpus transcripts)."""
+    from . import burn as bn_mod
+
+    if added or removed:
+        return f"+{added:,} / -{removed:,}"
+    clause = bn_mod._work_clause(rep).lstrip(", ")
+    return "none counted: " + clause.removeprefix("and ")
+
+
+def _wrapped(a) -> int:
+    """The fifteen cards over a corpus: `analysis/wrapped.py`, with everything it needs cut
+    here, the one place the corpus is cut. Refused cards print their reason."""
+    from . import profile as pf_mod
+    from . import wrapped as wr_mod
+
+    root = pathlib.Path(a.path).expanduser()
+    facts, sessions = _narrative_inputs(root)
+    roots, since = _commit_window(facts)
+    res = wr_mod.wrapped(
+        facts,
+        sessions,
+        profile=pf_mod.corpus_profile(facts),
+        contributions=_corpus_contributions(facts),
+        fanout=_corpus_fanout(root),
+        commit_subjects=_commit_subjects(roots, since) if since is not None else (),
+        quotes=a.quotes,
+    )
+    if a.wire:
+        # FOUND IN REVIEW: the only machine readable output was the full LOCAL result,
+        # with nothing to show what `wire()` would keep.
+        print(json.dumps(wr_mod.wire(res), indent=1, ensure_ascii=False, default=str))
+        return 0
+    if a.json:
+        print(json.dumps(res, indent=1, ensure_ascii=False, default=str))
+        return 0
+    _print_wrapped(res)
+    return 0
+
+
+def _day(ts: float) -> str:
+    """The day an instant belongs to, by `profile.local_day`: this machine's offset at that
+    instant, and the 04:00 boundary. Never the calendar date, which files a 01:00 sitting
+    under the next day and disagrees with every streak and day count beside it (CLAUDE.md,
+    "'Today' is not the calendar date")."""
+    from . import profile as pf_mod
+
+    offset = dt.datetime.fromtimestamp(ts).astimezone().utcoffset() or dt.timedelta(0)
+    return pf_mod.local_day(ts, int(offset.total_seconds() // 60)).isoformat()
+
+
+def _local_date(iso: str | None) -> str | None:
+    """An ISO instant as the day a person would name it by (`_day`)."""
+    ts = _ts(iso)
+    return _day(ts) if ts is not None else None
+
+
+def _print_wrapped(res: dict) -> None:
+    """The cards as a person reads them. Numbers first, sentences last: what the cards rest
+    on, then each question with its answer and the sentence under it, or why it is not
+    answered yet. A quote prints above its answer only when `--quotes` asked for it."""
+    s = res["sample"]
+    print()
+    print(f"  WRAPPED   {_plural(s['sessions'], 'session')}, {s['attended_sessions']:,} with you there")
+    if s.get("active_hours") is not None:
+        print(f"    active hours      {s['active_hours']:,}")
+    if s.get("days") is not None:
+        span = (
+            f" of the {s['spans_days']:,} days from first session to last"
+            if s.get("spans_days") is not None
+            else ""
+        )
+        print(f"    days built        {s['days']:,}{span}")
+    if s.get("prompts_with_text") is not None:
+        print(f"    prompts           {s['prompts_with_text']:,} in your own words")
+    first, last = _local_date(s.get("first_at")), _local_date(s.get("last_at"))
+    if first and last:
+        print(f"    from              {first} to {last}")
+
+    from . import wrapped as wr_mod
+
+    quotes = res.get("quotes") or {}
+    answered = 0
+    for i, c in enumerate(res["cards"], 1):
+        print()
+        print(f"  {i:>2}  {c['question']}")
+        if c["reason"] is not None:
+            print(f"      not yet: {c['reason']}")
+            continue
+        answered += 1
+        q = quotes.get(c["id"])
+        if q:
+            print(f"      “{q['text']}”")
+        print(f"      {c['display']}")
+        print(f"      {c['sentence']}")
+        if not quotes and c["id"] in wr_mod.QUOTE_CARDS:
+            # The quote stays off the screen unless asked for; say how to see it.
+            print("      (run with --quotes to see the prompt; it never leaves this machine)")
+    print()
+    print(f"  {answered} of {len(res['cards'])} answered.")
+    print()
+
+
+def _map_salt(path: pathlib.Path | None = None) -> str:
+    """The salt the codebase map keys its file ids with (`live._hash`), never printed.
+
+    32 random bytes, written once to `map-salt` beside the capture credentials
+    (`~/.builder/`, mode 0600, the directory 0700) and read back on every later run, so a
+    file keeps one id across runs and machines never share one.
+
+    FOUND IN REVIEW (2026-09-13): it was `sha256("builder-map-salt:" + raw)` of the raw
+    machine identifier, and the uploaded `machine_id` is `sha256("builder-machine-v1|" +
+    raw)`, which hands a server an offline test for any guess of `raw`.
+    `BUILDER_MACHINE_ID` may be "any stable string" (docs/cloud-capture.md); set to a
+    guessable one, the server recovered it from `machine_id`, then the salt, then two
+    file paths from their wire ids by dictionary. Nothing derived from what is hashed onto
+    the wire may key the map. When the file cannot be written (a read only home), the
+    salt is random for this run alone: the ids hold for every `--watch` refresh and are
+    never guessable.
+    """
+    import os
+    import secrets
+    import tempfile
+
+    from capture import client as cl
+
+    from . import live as lv_mod
+
+    path = path or cl.credentials_path().with_name("map-salt")
+    try:
+        text = path.read_text().strip()
+        if len(text) >= lv_mod.SALT_MIN_CHARS:
+            return text
+    except OSError:
+        pass
+    salt = secrets.token_hex(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(path.parent, 0o700)
+        except OSError:
+            pass
+        fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(salt + "\n")
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except OSError:
+        pass
+    return salt
+
+
+def _live(a) -> int:
+    """Mission control in a terminal: every running session, the one that needs you first.
+
+    A TRANSCRIPT is one file. Without one, every transcript under `--root` written to within
+    `live.LIVE_MTIME_SEC` whose last sitting the reference cut calls live. The finished
+    sessions the ETA compares against are cut ONCE, before the first refresh: they are the
+    history, and re-cutting a corpus every few seconds would answer the same question.
+    """
+    import datetime as _dt
+
+    root = pathlib.Path(a.root).expanduser()
+    one = pathlib.Path(a.transcript).expanduser() if a.transcript else None
+    if one is not None:
+        if not one.is_file():
+            sys.stderr.write(f"no transcript at {one}.\n")
+            return 1
+        harness = dg.detect_harness(one)
+        if harness != "claude_code":
+            sys.stderr.write(
+                f"live reads Claude Code transcripts only, and this one was written by {harness}.\n"
+            )
+            return 1
+    if a.watch is not None and a.watch <= 0:
+        sys.stderr.write("--watch takes a number of seconds above zero.\n")
+        return 2
+
+    history_root = (
+        pathlib.Path(a.history).expanduser()
+        if a.history
+        else (one.parent.parent if one is not None else root)
+    )
+    history = _History(history_root)
+    salt = _map_salt()
+    tz = _dt.datetime.now().astimezone().tzinfo
+    tty = sys.stdout.isatty()
+    try:
+        while True:
+            now = time.time()
+            doc = _live_doc(one, root, history, salt, tz, now, names=a.names)
+            if a.watch is not None and tty and not (a.json or a.wire):
+                sys.stdout.write("\033[H\033[J")  # clear the screen, then redraw
+            if a.wire:
+                out = _live_wire(doc)
+                print(
+                    json.dumps(out, ensure_ascii=False)
+                    if a.watch is not None
+                    else json.dumps(out, indent=1, ensure_ascii=False)
+                )
+            elif a.json:
+                print(
+                    json.dumps(doc, ensure_ascii=False, default=str)
+                    if a.watch is not None
+                    else json.dumps(doc, indent=1, ensure_ascii=False, default=str)
+                )
+            else:
+                _print_live(doc, names=a.names, every=a.watch)
+            sys.stdout.flush()
+            if a.watch is None:
+                return 0
+            time.sleep(a.watch)
+    except KeyboardInterrupt:
+        return 0
+
+
+class _History:
+    """The finished sessions the ETA compares against, cut ONCE and only when a sitting
+    needs them. FOUND IN REVIEW (2026-09-13): `live` cut the whole history, commit
+    attribution and burn included, before it knew whether anything was running, and
+    printed "NOTHING IS RUNNING" after 22.5 s. The ETA reads only each fact's repository,
+    its `unattended` flag and its active seconds, so the cut is lean (`_corpus_facts`)."""
+
+    def __init__(self, root: pathlib.Path):
+        self.root = root
+        self._facts: list | None = None
+
+    def facts(self) -> list:
+        if self._facts is None:
+            self._facts, _ = _corpus_facts(self.root, lean=True)
+        return self._facts
+
+
+def _history_facts(history) -> list:
+    """A `_History`, or a plain list of facts (tests)."""
+    return history.facts() if isinstance(history, _History) else list(history)
+
+
+def _live_entry(t, session, history, salt: str, now: float, names: bool, *, ended: bool = False) -> dict:
+    """One sitting's `live.live_state` at `now`, with what the caller knows about it that
+    the state does not carry (which transcript, which repository, the two clocks).
+
+    `ended` is a sitting that has finished: its ETA is refused with the time it ran, never
+    estimated as though it were running ("about 24 minutes left" was printed for a
+    sitting that ended 13 days ago, FOUND IN REVIEW)."""
+    from . import burn as bn_mod
+    from . import feedback as fb
+    from . import live as lv_mod
+
+    session = _distinct(session)
+    paths = sorted({r["path"] for r in session.records})
+    # Background work still out, summed over every file the sitting's records came from.
+    # None when any could not be read: absent, not zero, so `live_state` keeps its lower
+    # bound rather than hearing "nothing is out" from a file it never opened.
+    counts = [lv_mod.background_tasks(pathlib.Path(p), session.started_at, now) for p in paths]
+    background = None if any(c is None for c in counts) else sum(counts)
+    state = lv_mod.live_state(
+        session.events,
+        bn_mod.turns_for_window(paths, session.started_at, now),
+        now,
+        # A sitting is never its own history (the snapshot of an ended one is final). An
+        # ended sitting's ETA is refused below, so its history is never cut.
+        []
+        if ended
+        else [f for f in _history_facts(history) if f.session_id != session.client_session_id],
+        salt=salt,
+        repo=session.repo.common_root if session.repo else None,
+        active_seconds=session.attended + session.autonomous,
+        unattended=session.presence == 0,
+        session_id=session.client_session_id,
+        names=names,
+        background=background,
+        root=lv_mod.worktree_root(session),
+    )
+    if ended:
+        active = session.attended + session.autonomous
+        state["eta"] = {
+            **{k: None for k in state["eta"]},
+            "elapsed_s": round(active),
+            "basis": state["eta"]["basis"],
+            "reason": f"this session has ended, after {fb._mins(active)} active",
+        }
+    return {
+        "transcript": str(t.path),
+        "repo": session.repo.identity if session.repo else None,
+        "attended_s": round(session.attended),
+        "autonomous_s": round(session.autonomous),
+        "unattended": session.presence == 0,
+        "background": background,
+        "state": state,
+    }
+
+
+def _live_doc(one, root, history, salt: str, tz, now: float, names: bool) -> dict:
+    """Every running sitting in mission control's order (`live.mission_order`), or, when
+    none is running, why not. For one TRANSCRIPT whose last sitting has ended, that sitting
+    as it stood when it ended, labelled as such."""
+    from capture import discover
+    from capture import sessions as cap
+
+    from . import live as lv_mod
+
+    doc: dict = {
+        "now": now,
+        "where": str(one if one is not None else root),
+        "sessions": [],
+        "ended": None,
+        "reason": None,
+        "moved": None,
+    }
+    from capture import repo as cap_repo
+
+    excluded = cap_repo.excluded_origins()
+    if one is not None:
+        t = discover.Transcript(project_dir=one.parent.name, path=one)
+        # One parse and one cut per tick, whichever way the sitting stands (FOUND IN
+        # REVIEW: an ended transcript was parsed and cut twice, 2 s a tick on 129 MB).
+        last = lv_mod.last_session(t, now, tz)
+        if last is None:
+            doc["reason"] = "the transcript holds no sitting yet"
+            return doc
+        if _excluded(last, excluded):
+            doc["reason"] = "its repository is excluded, so nothing about it is shown"
+            return doc
+        if last.state == "live":
+            doc["sessions"] = [_live_entry(t, last, history, salt, now, names)]
+            return doc
+        doc["ended"] = _live_entry(t, last, history, salt, last.ended_at, names, ended=True)
+        doc["ended"]["ended_at"] = last.ended_at
+        doc["ended"]["end_reason"] = last.end_reason
+        doc["reason"] = (
+            f"its last sitting ended {_ago(now - last.ended_at)}, "
+            f"at {dt.datetime.fromtimestamp(last.ended_at).strftime('%Y-%m-%d %H:%M')}"
+        )
+        return doc
+
+    moved = lv_mod.live_transcripts(root, now)
+    doc["moved"] = len(moved)
+    entries = []
+    for t in moved:
+        session = lv_mod.current_session(t, now, tz)
+        if session is not None and not _excluded(session, excluded):
+            entries.append(_live_entry(t, session, history, salt, now, names))
+    by_state = {id(e["state"]): e for e in entries}
+    doc["sessions"] = [by_state[id(s)] for s in lv_mod.mission_order(e["state"] for e in entries)]
+    if not entries:
+        hour = f"the last {_ago(lv_mod.LIVE_MTIME_SEC, bare=True)}"
+        k = len(moved)
+        doc["reason"] = (
+            f"no transcript was written to in {hour}"
+            if not k
+            else f"1 transcript was written to in {hour}, and its last session has ended"
+            if k == 1
+            else f"{k} transcripts were written to in {hour}, and every session in them has ended"
+        )
+    return doc
+
+
+def _live_wire(doc: dict) -> dict:
+    """What would leave this machine of a `_live_doc`: `live.wire` of each state, with the
+    session's id, and nothing else. No transcript path, no `where`, no repository identity
+    (the contract allows a repository's name only when it is public): those stay LOCAL,
+    as does everything `--json` prints."""
+    from . import live as lv_mod
+
+    def one(e: dict | None) -> dict | None:
+        return None if e is None else lv_mod.wire(e["state"])
+
+    return {
+        "sessions": [one(e) for e in doc["sessions"]],
+        "ended": one(doc.get("ended")),
+    }
+
+
+def _clock(seconds: float) -> str:
+    """Measured seconds, exactly, for the numbers block: `45s`, `3m 35s`, `1h 02m 05s`.
+
+    Not a sentence, so not `feedback._mins`: that rounds to the nearest minute while
+    `live.sentence` floors, and the two printed one above the other read "for 4 minutes"
+    beside "for three minutes" about one 215 second wait (FOUND BY RUNNING IT on the live
+    transcript). The exact figure agrees with both."""
+    s = int(round(max(0.0, seconds)))
+    h, rest = divmod(s, 3600)
+    m, sec = divmod(rest, 60)
+    if h:
+        return f"{h}h {m:02d}m {sec:02d}s"
+    if m:
+        return f"{m}m {sec:02d}s"
+    return f"{sec}s"
+
+
+def _ago(seconds: float, bare: bool = False) -> str:
+    """A duration as a person says it (`feedback._mins`), with "ago" unless `bare`. From two
+    days of elapsed time it counts whole days: "316h 49m ago" is a number nobody reads."""
+    from . import feedback as fb
+
+    seconds = max(0.0, seconds)
+    if seconds >= 2 * 86400:
+        words = f"{int(seconds // 86400)} days"
+    else:
+        words = fb._mins(seconds)
+    if bare:
+        return "hour" if words == "1h 00m" else words
+    return "just now" if words == "under a minute" else f"{words} ago"
+
+
+def _print_live(doc: dict, names: bool = False, every: float | None = None) -> None:
+    """Mission control as a person reads it. Numbers first, sentences last."""
+    print()
+    if every is not None:
+        at = dt.datetime.fromtimestamp(doc["now"]).strftime("%H:%M:%S")
+        often = "every second" if every == 1 else f"every {every:g} seconds"
+        print(f"  at {at}, {often}, Ctrl+C to stop")
+    where = doc["where"].replace(str(pathlib.Path.home()), "~", 1)
+    if doc["sessions"]:
+        n = len(doc["sessions"])
+        head = (
+            f"  RUNNING NOW   {n} session{'' if n == 1 else 's'} in {where}"
+            + (", the one that needs you most first" if n > 1 else "")
+        )
+        print(head)
+        for e in doc["sessions"]:
+            _print_live_entry(e, names)
+        print()
+        return
+    if doc["ended"] is not None:
+        print(f"  NOT RUNNING   {where}")
+        print(f"    {doc['reason'][0].upper()}{doc['reason'][1:]}. As it stood when it ended:")
+        _print_live_entry(doc["ended"], names)
+        print()
+        return
+    print(f"  NOTHING IS RUNNING   {where}")
+    print(f"    {doc['reason'][0].upper()}{doc['reason'][1:]}. Nothing needs you.")
+    print()
+
+
+#: The printers' words for the engine's ids: a person reads "circling on the same call run
+#: over and over", never `causes:repeated_call` (FOUND IN REVIEW). An id missing here
+#: prints as itself with its underscores spaced, never as nothing.
+_NEEDS_YOU_WORDS = {
+    "waiting_for_input": "waiting for you",
+    "circling": "circling",
+    "lost": "lost",
+    "error_loop": "failing again and again",
+    "idle": "no new output",
+    "finished_unreviewed": "finished, not looked at yet",
+    "waiting_on_background": "waiting on its own background work",
+    "running_fine": "running fine",
+}
+_BASIS_WORDS = {
+    "turn_ended": "the turn was handed back",
+    "turn_ended_background_out": "the turn was handed back with its background work still out",
+    "segment_tool_calls": "too few tool calls since your last prompt to judge",
+    "causes:repeated_call": "the same call run over and over",
+    "causes:file_churn_with_failures": "one file rewritten while tests fail",
+    "consecutive_failures": "failures in a row",
+    "edits_to_unread_files": "edits to files it has not read",
+    "error_rate_down_and_new_files": "fewer errors and new files coming in",
+}
+
+
+def _words(table: dict, key: str | None) -> str:
+    return table.get(key or "", (key or "").replace("_", " "))
+
+
+def _plural(n: int, one: str, many: str | None = None) -> str:
+    """The number and its noun, agreed (`profile._count`)."""
+    from . import profile as pf_mod
+
+    return pf_mod._count(n, one, many)
+
+
+def _print_live_entry(e: dict, names: bool) -> None:
+    from . import feedback as fb
+    from . import live as lv_mod
+
+    st = e["state"]
+    ny = st["needs_you"]
+    repo = e["repo"].rsplit("/", 1)[-1] if e["repo"] else "no repository"
+    print()
+    print(
+        f"  {(st['session_id'] or 'unknown')[:8]}  {repo}  needs you: {ny['score']} of 100, "
+        f"{_words(_NEEDS_YOU_WORDS, ny['reason'])}"
+    )
+    active = e["attended_s"] + e["autonomous_s"]
+    print(f"    active            {_clock(active)}, {_clock(e['attended_s'])} of it with you")
+    sm = st["sample"]
+    segs = sm["segments"]
+    print(
+        f"    tool calls        {sm['tool_calls']:,} in "
+        f"{_plural(segs, 'stretch between your prompts', 'stretches between your prompts')}"
+    )
+    if sm["tokens"] is not None:
+        print(f"    tokens            {sm['tokens']:,}")
+    else:
+        print("    tokens            not recorded by this transcript")
+    if e["background"] is not None:
+        print(f"    background        {_plural(e['background'], 'task')} still out")
+    rows = st["map"]["files"]
+    print(
+        f"    map               {_plural(len(rows), 'file')}, "
+        f"{sum(1 for r in rows if r['reads'])} read, {sum(1 for r in rows if r['edits'])} edited, "
+        f"{_plural(len(st['timelapse']), 'frame')}"
+    )
+    a = st["activity"]
+    if a is not None:
+        print(f"    activity          {a['kind'].replace('_', ' ')}, for {_clock(a['since_s'])}")
+    v = st["verdict"]
+    if v["state"] is not None:
+        print(f"    verdict           {v['state']}: {_words(_BASIS_WORDS, v['basis'])}")
+    else:
+        print(f"    verdict           none yet: {v['reason']}")
+    ev = list(v["evidence"].items())
+    for i in range(0, len(ev), 4):
+        label = "      evidence        " if i == 0 else " " * 22
+        print(label + "  ".join(f"{k} {val}" for k, val in ev[i : i + 4]))
+    eta = st["eta"]
+    if eta["reason"] is not None:
+        print(f"    eta               not yet: {eta['reason']}")
+    else:
+        left = (
+            "less than a minute left"
+            if eta["remaining_s"] < 30
+            else f"about {fb._mins(eta['remaining_s'])} left"
+        )
+        spread = (
+            f"all of the middle half {fb._mins(eta['p25_s'])}"
+            if fb._mins(eta["p25_s"]) == fb._mins(eta["p75_s"])
+            else f"middle half {fb._mins(eta['p25_s'])} to {fb._mins(eta['p75_s'])}"
+        )
+        print(
+            f"    eta               {left}; typical {fb._mins(eta['typical_s'])}, {spread}; "
+            f"over {eta['n']} finished "
+            f"{'unattended runs' if e['unattended'] else 'sessions'} on this repository "
+            "that ran at least this long"
+        )
+    if names and st.get("names"):
+        hot = sorted(rows, key=lambda r: (-r["edits"], -r["reads"], r["id"]))[:5]
+        files = st["names"]["files"]
+        for i, r in enumerate(hot):
+            label = "    hot files         " if i == 0 else " " * 22
+            ed, rd = r["edits"], r["reads"]
+            print(
+                f"{label}{ed} edit{'' if ed == 1 else 's'}, {rd} read{'' if rd == 1 else 's'}  "
+                f"{files.get(r['id'], r['id'])}"
+            )
+    if st["decisions"]:
+        print("    decisions")
+        for d in st["decisions"]:
+            k = d["evidence"]["count"]
+            print(f"      {lv_mod.decision_sentence(d, names)}" + (f"  ({k} times)" if k > 1 else ""))
+    print()
+    print(f"    {lv_mod.sentence(st, names=names)}.")
+
+
+def _vocab(a) -> int:
+    """The glossary your sessions unlocked, the stack they ran on, and the latest titles."""
+    from . import shipped as sh
+    from . import vocab as vc_mod
+
+    # Lean: the vocabulary reads events and repositories, never burn or commit attribution
+    # (FOUND IN REVIEW: 16.9 s of `_narrative_inputs`, 9.5 s of it those two).
+    facts, sessions = _narrative_inputs(pathlib.Path(a.path).expanduser(), lean=True)
+    roots = sorted({f.repo for f in facts if f.repo})
+    latest = sorted(sessions, key=lambda s: s.started_at)[-a.titles :] if a.titles > 0 else []
+    res = {
+        "glossary": vc_mod.glossary(sessions),
+        "stack": vc_mod.stack(
+            sessions, dependencies=[d for r in roots for d in sh.stack_evidence(r)]
+        ),
+        "titles": [
+            {"session_id": s.session_id, "started_at": s.started_at, **vc_mod.session_title(s)}
+            for s in latest
+        ],
+    }
+    if a.wire:
+        print(json.dumps(vc_mod.wire(res), indent=1, ensure_ascii=False, default=str))
+        return 0
+    if a.json:
+        print(json.dumps(res, indent=1, ensure_ascii=False, default=str))
+        return 0
+    _print_vocab(res)
+    return 0
+
+
+def _print_vocab(res: dict) -> None:
+    """The vocabulary as a person reads it. Numbers first, then the stack and the titles,
+    and the glossary's definitions last."""
+    from . import vocab as vc_mod
+
+    g, st = res["glossary"], res["stack"]
+    print()
+    print(f"  VOCABULARY   {g['n']:,} session{'' if g['n'] == 1 else 's'} read")
+    if g["reason"] is None:
+        print(f"    words earned      {len(g['terms'])} of {g['catalog_size']}")
+    else:
+        print(f"    words earned      not yet: {g['reason']}")
+    if st["reason"] is None:
+        print(
+            f"    stack items       {len(st['items'])}, "
+            f"with {st['manifest_names']:,} manifest names read"
+        )
+    else:
+        print(f"    stack items       not yet: {st['reason']}")
+    if g["shell_calls"]:
+        print(
+            f"    shell calls       {g['shell_calls']:,}, {g['shell_calls_cut']:,} of them too "
+            "long to read to the end, so a word may have come after where the reading stopped"
+        )
+
+    if st["items"]:
+        print()
+        print(
+            "  STACK   a number is the sessions that touched it; a name with no number comes "
+            "only from your dependency files"
+        )
+        for cat in vc_mod.CATEGORIES:
+            items = [i for i in st["items"] if i["category"] == cat]
+            if not items:
+                continue
+            words = ", ".join(
+                f"{i['name']} {i['sessions']}" if i["sessions"] else i["name"] for i in items
+            )
+            print(f"    {cat:<13} {words}")
+    if st.get("language_reason"):
+        print(f"    languages not yet: {st['language_reason']}")
+
+    if res["titles"]:
+        print()
+        print(f"  THE LAST {len(res['titles'])} SESSIONS")
+        for t in res["titles"]:
+            when = dt.datetime.fromtimestamp(t["started_at"]).strftime("%Y-%m-%d %H:%M")
+            print(f"    {when}   {t['title'] if t['title'] else 'not titled: ' + t['reason']}")
+
+    if g["terms"]:
+        print()
+        print("  GLOSSARY, in the order you met each word")
+        for term in g["terms"]:
+            first = _day(term["first_seen_ts"])
+            k = term["sessions"]
+            print(f"    {term['word']:<24} {k} session{'' if k == 1 else 's'}, first {first}")
+            print(f"      {term['definition']}")
+    if g["locked_count"] is not None:
+        print()
+        print(f"  {g['locked_count']} more to find.")
     print()
 
 
@@ -670,11 +1441,13 @@ def _shipped(a) -> int:
     return 0
 
 
-def _commit_messages(common_root: str | None, since: float) -> list[str]:
+def _commit_messages(common_root: str | None, since: float, cap: int | None = 40) -> list[str]:
     """Commit SUBJECTS in the window, from capture's own git runner.
 
     Subjects only: a body can run to forty lines in a repository with a commit-message
     convention, and the post needs to know what landed, not to read the reasoning again.
+    `cap` is the post's: forty subjects are enough to describe a week, and `None` reads
+    them all for a caller that counts them (`_commit_subjects`).
     """
     from capture import repo as cap_repo
     from capture.tuning import GIT_EXCLUDE_PATHSPECS
@@ -692,7 +1465,28 @@ def _commit_messages(common_root: str | None, since: float) -> list[str]:
         ],
         common_root,
     )
-    return [line for line in (out or "").splitlines() if line.strip()][:40]
+    subjects = [line for line in (out or "").splitlines() if line.strip()]
+    return subjects if cap is None else subjects[:cap]
+
+
+def _commit_subjects(roots, since: float) -> list[str]:
+    """Every commit subject in the window across every repository, uncapped: the kind of
+    work card counts them, and a cap would turn "25 of 247 are labelled" into a number
+    about the first forty. The same `git log` filters as `capture.repo.commits_in`
+    (no merges, vendored paths excluded), so the count matches `contributions.total`."""
+    return [s for r in roots for s in _commit_messages(r, since, cap=None)]
+
+
+def _commit_window(facts) -> tuple[list[str], float | None]:
+    """(every repository the facts resolved to, when their commit window opens): the first
+    sitting's start less the attribution lookback. The one definition both the
+    contribution graph and the commit subjects read, so the two count the same commits."""
+    from . import contributions as co_mod
+
+    roots = sorted({f.repo for f in facts if f.repo})
+    if not roots or not facts:
+        return roots, None
+    return roots, min(f.started_at for f in facts) - co_mod.LOOKBACK_SEC
 
 
 def _stored_summaries(session_ids: list[str]) -> list[dict]:
@@ -764,13 +1558,28 @@ def _recent_trends(facts, window_days: int = 30):
     return tr_mod.compare(pf_mod.corpus_profile(earlier), pf_mod.corpus_profile(recent))
 
 
-def _corpus_fanout(root: pathlib.Path):
-    """Every subagent across the corpus, as one `Fanout`. Never a token: see agents.py."""
+def _transcripts(root: pathlib.Path):
+    """Every root transcript under `root`, or `root` itself when it is one transcript file.
+
+    A directory is walked through `capture.discover.iter_root_transcripts`, the allowlist
+    on path shape (CLAUDE.md, "Globbing"). A FILE is taken as the one transcript the person
+    named, so every corpus command can answer about a single sitting's transcript; before,
+    a file here was walked as a directory, found nothing, and answered about zero sessions
+    without saying why.
+    """
     from capture import discover
 
+    root = pathlib.Path(root).expanduser()
+    if root.is_file():
+        return [discover.Transcript(project_dir=root.parent.name, path=root)]
+    return discover.iter_root_transcripts(root)
+
+
+def _corpus_fanout(root: pathlib.Path):
+    """Every subagent across the corpus, as one `Fanout`. Never a token: see agents.py."""
     from . import agents as ag_mod
 
-    spans = [s for t in discover.iter_root_transcripts(root) for s in ag_mod.spans(t.path)]
+    spans = [s for t in _transcripts(root) for s in ag_mod.spans(t.path)]
     if not spans:
         return None
     wall = max(s.ended_at for s in spans) - min(s.started_at for s in spans)
@@ -783,10 +1592,9 @@ def _corpus_contributions(facts):
 
     from . import contributions as co_mod
 
-    roots = sorted({f.repo for f in facts if f.repo})
-    if not roots or not facts:
+    roots, since = _commit_window(facts)
+    if since is None:
         return None
-    since = min(f.started_at for f in facts) - co_mod.LOOKBACK_SEC
     commits = [ts for r in roots for _sha, ts in cap_repo.commits_in(r, since, time.time())]
     if not commits:
         return None
@@ -795,15 +1603,16 @@ def _corpus_contributions(facts):
     )
 
 
-def _narrative_inputs(root: pathlib.Path):
-    """(facts, session events) for the whole corpus: the one place both commands cut it."""
+def _narrative_inputs(root: pathlib.Path, *, lean: bool = False):
+    """(facts, session events) for the whole corpus: the one place both commands cut it.
+    `lean` as `_corpus_facts` takes it."""
     import datetime as _dt
 
     from capture import sessions as cap
 
     from . import patterns as pat
 
-    facts, kept = _corpus_facts(root)
+    facts, kept = _corpus_facts(root, lean=lean)
     tz = _dt.datetime.now().astimezone().tzinfo
     from . import pricing as pr_mod
     from . import profile as pf_mod
@@ -921,7 +1730,32 @@ def _narrative(a) -> int:
     return 0
 
 
-def _corpus_facts(root: pathlib.Path) -> tuple[list, list]:
+def _excluded(session, excluded: set[str]) -> bool:
+    """Is this sitting in a repository the person excluded (`BUILDER_CAPTURE_EXCLUDE`,
+    read by `capture.repo.excluded_origins`)? The rule `capture/cli.py` applies before it
+    builds a payload, written as a function here because every wire bound input this
+    module cuts (`_corpus_facts` for wrapped, vocab and the ETA; `_live_doc` for live) must
+    apply it: "an excluded repo produces ZERO uploads" (privacy/upload-contract.json).
+    FOUND IN REVIEW (2026-09-13): none of them did, and `live.wire` built a full state for
+    a session in an excluded repository. RECORDED: the rule belongs beside `is_counted` in
+    `capture.sessions`, out of bounds for this workflow."""
+    return session.repo is not None and session.repo.identity in excluded
+
+
+def _distinct(session):
+    """The sitting with each event once (`patterns.distinct_events`): a resumed
+    transcript's copy of the old one's records reaches the pooled sitting twice, and every
+    count read off the events (lines, tool calls, prompts, commits, burn segments) would
+    count them twice. FOUND IN REVIEW, MEASURED on the corpus: 5 of 158 sittings, 907
+    agent lines and 5 prompts."""
+    import dataclasses
+
+    from . import patterns as pat
+
+    return dataclasses.replace(session, events=pat.distinct_events(session.events))
+
+
+def _corpus_facts(root: pathlib.Path, *, lean: bool = False) -> tuple[list, list]:
     """Sessionize a whole `~/.claude/projects` tree: (facts, the sessions they came from).
 
     The sessions travel back beside the facts because the comparative findings
@@ -931,19 +1765,38 @@ def _corpus_facts(root: pathlib.Path) -> tuple[list, list]:
     The sessionizer is `capture`, which is the reference cut (v3 lineage pooling, fitted
     tau) rather than a second implementation of the boundary rules. Live sessions are
     excluded: their numbers move every minute, so a profile that included them would
-    disagree with itself between two runs.
+    disagree with itself between two runs. So is every sitting in an excluded repository
+    (`_excluded`), and each sitting's events are read once (`_distinct`).
+
+    `lean` skips what only the corpus cards read, the burn segments and the per session
+    `git log` attribution, for a caller that reads only the clocks and the repository (the
+    live ETA, the vocabulary). MEASURED (FOUND IN REVIEW, 2026-09-13): `live` spent 19.7 s
+    of 19.9 s here, 7.2 s of it in 329 `git` calls for commit attribution it never reads.
     """
     import dataclasses
     import datetime as _dt
+    import functools
 
-    from capture import discover
+    from capture import repo as cap_repo
     from capture import sessions as cap
 
+    from . import burn as bn_mod
     from . import profile as pf_mod
 
     tz = _dt.datetime.now().astimezone().tzinfo
-    sources = [cap.load_source(t) for t in discover.iter_root_transcripts(root)]
-    cut = [s for s in cap.sessionize_sources(sources, tz) if s.state == "final"]
+    excluded = cap_repo.excluded_origins()
+    sources = [cap.load_source(t) for t in _transcripts(root)]
+    cut = [
+        _distinct(s)
+        for s in cap.sessionize_sources(sources, tz)
+        if s.state == "final" and not _excluded(s, excluded)
+    ]
+
+    # One parse per transcript however many sittings share it (docs/overnight-engine.md
+    # 5.3). MEASURED on `~/.claude/projects`, 345 counted sessions, 2026-09-13: 1.6 s of
+    # burn over a 7.4 s cut with the loader memoised, where unmemoised it was 49.9 s. Local
+    # to this call, so a long `live --watch` never answers from a stale parse.
+    load_turns = functools.lru_cache(maxsize=None)(bn_mod.load_turns)
 
     facts, kept = [], []
     for s in cut:
@@ -964,6 +1817,23 @@ def _corpus_facts(root: pathlib.Path) -> tuple[list, list]:
             for entry in ledger.models:
                 by_model[entry["model_id"]] = round(entry["output_token_share"] * out_tokens)
         offset = _dt.datetime.fromtimestamp(s.started_at, tz).utcoffset() or _dt.timedelta(0)
+        # Where the tokens went, cut at the same prompts `burn` cuts one transcript at.
+        # Every file the sitting's records came from, each deduplicated on message id alone
+        # (the ledger's `(source_id, message.id)` rule), windowed to the sitting. None when
+        # the harness wrote no counts: `session_burn_detail` refuses rather than say 0.
+        spent = (
+            None
+            if lean
+            else bn_mod.session_burn_detail(
+                s.events,
+                bn_mod.turns_for_window(
+                    sorted({r["path"] for r in s.records}),
+                    s.started_at,
+                    s.ended_at,
+                    loader=load_turns,
+                ),
+            )
+        )
         facts.append(
             pf_mod.session_fact_from_events(
                 session_id=s.client_session_id,
@@ -984,6 +1854,9 @@ def _corpus_facts(root: pathlib.Path) -> tuple[list, list]:
                     else None
                 ),
                 unattended=s.presence == 0,
+                burn_tokens=spent["tokens"] if spent else None,
+                barren_tokens=spent["barren"] if spent else None,
+                unreadable_tokens=spent["unreadable"] if spent else None,
             )
         )
         kept.append(s)
@@ -997,8 +1870,6 @@ def _corpus_facts(root: pathlib.Path) -> tuple[list, list]:
     # (three sessions ran inside one 17:15-18:31 stretch, and every window reaches
     # `tauCommitAttributionSec` back before its start), so summing per-session counts
     # reported 92 commits where the repository had 68.
-    from capture import repo as cap_repo
-
     roots = [s.repo.common_root if s.repo else None for s in kept]
     # WHICH repository, on the fact itself. Without it every session looks like it ran in
     # the same place, which makes `_corpus_commits` treat one machine's whole corpus as a
@@ -1006,7 +1877,8 @@ def _corpus_facts(root: pathlib.Path) -> tuple[list, list]:
     # build post with no commits to describe. FOUND BY RUNNING `shipped --dry-run`, which
     # reported "0 commits" for a window with nine of them in it.
     facts = [dataclasses.replace(f, repo=r) for f, r in zip(facts, roots, strict=True)]
-    facts = pf_mod.attribute_commits(facts, roots, cap_repo.commits_in)
+    if not lean:
+        facts = pf_mod.attribute_commits(facts, roots, cap_repo.commits_in)
     return facts, kept
 
 

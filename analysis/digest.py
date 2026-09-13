@@ -100,6 +100,20 @@ _SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*['\"]?[^\s'\"]{6,}"),
     re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),  # JWT
+    # FOUND IN REVIEW (2026-09-13): shapes the list above let through unchanged, each
+    # checked on a sample string. A private key whose END line is gone (a cut paste, and
+    # any PEM longer than the text kept around it) keeps its body: the rest is the key.
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*"),
+    re.compile(r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{10,}"),  # Stripe
+    re.compile(r"\bAIza[0-9A-Za-z_\-]{30,}"),  # Google API key
+    re.compile(r"\bglpat-[A-Za-z0-9_\-]{16,}"),  # GitLab
+    re.compile(r"\bhf_[A-Za-z0-9]{20,}"),  # Hugging Face
+    re.compile(r"\bnpm_[A-Za-z0-9]{30,}"),  # npm
+    re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}"),  # SendGrid
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/\-]{10,}=*"),
+    re.compile(r"(?i)\b(password|passwd|passcode)\s+is\s+['\"]?[^\s'\"]{4,}"),
+    # Credentials in a URL (`postgres://user:pass@host`): the userinfo, scheme and host kept.
+    re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+@"),
 ]
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
@@ -108,6 +122,16 @@ def mask(text: str) -> str:
     for pat in _SECRET_PATTERNS:
         text = pat.sub("[redacted]", text)
     return _EMAIL.sub("[email]", text)
+
+
+def clip(text: str, n: int) -> str:
+    """`mask` THEN `_trunc`: every text a loader keeps goes through this.
+
+    The other order is how a key leaked: a pasted PEM longer than `PROMPT_MAX` lost its END
+    line to the cut, the private key rule never matched, and 1,335 characters of the key
+    body stayed in the prompt the analysis model reads and in burn's segment prompts
+    (FOUND IN REVIEW, 2026-09-13). Masking the whole text first sees every secret whole."""
+    return _trunc(mask(text), n)
 
 
 def _trunc(s: str, n: int) -> str:
@@ -196,6 +220,84 @@ def _command_lines(command: str):
         i = j + 1
 
 
+#: `_tool_line` writes a multi line shell command on one line with this between the lines.
+LINE_MARK = " ⏎ "
+
+#: The tail `_trunc` leaves on a text it cut (`…[+N]`, N the characters dropped).
+_CUT_TAIL = re.compile("…" + r"\[\+\d+\]$")
+
+
+def is_cut(text: str | None) -> bool:
+    """Did `_trunc` cut this text? Then its tail is gone, and no rule may read the tail's
+    absence as a fact (`burn._shell_reads_only`, `live`, `vocab`'s coverage). The one
+    definition of the marker, beside the function that writes it."""
+    return bool(text) and _CUT_TAIL.search(text) is not None
+
+
+def shell_text(text: str | None) -> str:
+    """A digest shell event's text with its lines put back (`LINE_MARK` to newlines)."""
+    return (text or "").replace(LINE_MARK, "\n")
+
+
+def shell_lines(text: str | None) -> list[str]:
+    """The command lines of a digest shell event, heredoc bodies skipped
+    (`_command_lines`: a body is data)."""
+    return [line for _, line in _command_lines(shell_text(text))]
+
+
+def split_simple(line: str) -> list[str]:
+    """One command line split at unquoted `;`, `&&`, `||`, `|` and `&`.
+
+    Quote aware, because a separator inside quotes is data (`grep -E "a|b"`,
+    `git commit -m "fix; rm x next time"`), and `&` next to a redirection (`2>&1`, `&>`)
+    is not a separator. A leading `(` or `{` is dropped so an anchored rule sees the
+    program first. The one splitter `vocab` (its detectors) and `live` (its decisions and
+    its command word) read; `burn._split_commands` answers a different question (does the
+    line write a file through a redirection) and keeps its own walk.
+
+    FOUND IN REVIEW (2026-09-13): `live` split on a quote blind regex, so
+    `git commit -m "docs: never git push --force to main"` was a force push and
+    `echo "next: npm install redis"` added a dependency. MEASURED prevalence on the corpus:
+    0 of 9,139 shell calls; the rule is here so the first one is not a decision card.
+    """
+    out: list[str] = []
+    buf: list[str] = []
+    quote = None
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if quote:
+            buf.append(c)
+            if c == "\\" and quote == '"' and i + 1 < n:
+                buf.append(line[i + 1])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            buf.append(line[i : i + 2])
+            i += 2
+            continue
+        if c in "'\"":
+            quote = c
+            buf.append(c)
+            i += 1
+            continue
+        redirect = c == "&" and ((buf and buf[-1] in "<>") or (i + 1 < n and line[i + 1] == ">"))
+        if c in ";|" or (c == "&" and not redirect):
+            out.append("".join(buf))
+            buf = []
+            i += 2 if (i + 1 < n and line[i + 1] == c and c in "|&") else 1
+            continue
+        buf.append(c)
+        i += 1
+    out.append("".join(buf))
+    segs = (s.strip().lstrip("({").strip() for s in out)
+    return [s for s in segs if s]
+
+
 def _bash_file_effect(command: str) -> tuple[str | None, int | None]:
     """(path, approx lines written) for shell-driven file writes.
 
@@ -254,6 +356,14 @@ class Ev:
     tool_id: str | None = None
     model: str | None = None
     tok_out: int | None = None
+    #: On a tool Ev: when its `tool_result` arrived, ok or error. On assistant and tool Evs:
+    #: the record's `message.stop_reason` (MEASURED on the live transcript, 2026-09-13: all
+    #: 221 assistant records carry it, 202 `tool_use` and 19 `end_turn`). Set ONLY by
+    #: `load_claude_code_events`; every other loader leaves both None, meaning "cannot
+    #: tell", and `live.py` falls back to timing. Neither is read by `stats` or `render`,
+    #: so the digest text is byte identical with or without them (`test_plain`).
+    result_ts: float | None = None
+    stop_reason: str | None = None
 
 
 def _tool_line(b: dict) -> tuple[str, str | None, str]:
@@ -266,19 +376,19 @@ def _tool_line(b: dict) -> tuple[str, str | None, str]:
     if name == "Bash":
         cmd = str(inp.get("command", ""))
         path, _ = _bash_file_effect(cmd)
-        return name, path, _trunc(cmd.replace("\n", " ⏎ "), COMMAND_MAX)
+        return name, path, clip(cmd.replace("\n", " ⏎ "), COMMAND_MAX)
     if name in ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit"):
         return name, path, str(path or "")
     if name in ("Glob", "Grep"):
-        return name, None, _trunc(str(inp.get("pattern", "")), 80)
+        return name, None, clip(str(inp.get("pattern", "")), 80)
     if name in ("Agent", "Task"):
-        return name, None, _trunc(str(inp.get("description") or inp.get("prompt", "")), 100)
+        return name, None, clip(str(inp.get("description") or inp.get("prompt", "")), 100)
     if name in ("WebSearch", "WebFetch"):
-        return name, None, _trunc(str(inp.get("query") or inp.get("url", "")), 100)
+        return name, None, clip(str(inp.get("query") or inp.get("url", "")), 100)
     if name == "TodoWrite" or name.startswith("Task"):
         return name, None, ""
     # MCP and everything else: name only. Inputs may be anything.
-    return name, None, _trunc(json.dumps(inp, separators=(",", ":"))[:200], 100) if inp else ""
+    return name, None, clip(json.dumps(inp, separators=(",", ":"))[:200], 100) if inp else ""
 
 
 def _is_gemini_record(r: dict) -> bool:
@@ -428,7 +538,12 @@ def load_claude_code_events(
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            ts = _ts(r.get("timestamp"))
+            # A valid JSON line that is not an object crashed every command that reads a
+            # transcript (FOUND IN REVIEW; 0 of 165,452 local lines, a crash and not a wrong
+            # number, and CLAUDE.md: type check at every nesting level).
+            if not isinstance(r, dict):
+                continue
+            ts = _ts(r.get("timestamp")) if isinstance(r.get("timestamp"), str) else None
             if ts is None:
                 continue
             if start is not None and ts < start:
@@ -439,16 +554,17 @@ def load_claude_code_events(
     raw.sort(key=lambda t: (t[0], t[1]))
 
     tool_names: dict[str, tuple[str, str | None]] = {}  # tool_use_id -> (name, path)
+    tool_evs: dict[str, Ev] = {}  # tool_use_id -> the tool Ev, for `result_ts`
     out: list[Ev] = []
     seen_msg: set[str] = set()
 
     for ts, _, r in raw:
         t = r.get("type")
         if t == "user":
-            msg = r.get("message") or {}
+            msg = r.get("message") if isinstance(r.get("message"), dict) else {}
             content = msg.get("content")
             ps = r.get("promptSource")
-            origin = (r.get("origin") or {}).get("kind")
+            origin = r.get("origin").get("kind") if isinstance(r.get("origin"), dict) else None
             is_meta = bool(r.get("isMeta"))
             text = _text_of(content)
             if (
@@ -456,7 +572,7 @@ def load_claude_code_events(
                 and (ps == "typed" or (ps == "sdk" and origin == "human"))
                 and text.strip()
             ):
-                out.append(Ev(0, ts, "prompt", mask(_trunc(text, PROMPT_MAX))))
+                out.append(Ev(0, ts, "prompt", clip(text, PROMPT_MAX)))
             elif text.startswith(INTERRUPT_PREFIX):
                 out.append(Ev(0, ts, "interrupt", ""))
             if isinstance(content, list):
@@ -466,6 +582,12 @@ def load_claude_code_events(
                         continue
                     tid = b.get("tool_use_id")
                     name, path = tool_names.get(tid, ("tool", None))
+                    # When the result arrived, ok or error, stamped on the call itself: a
+                    # successful result writes no event of its own, and without this a
+                    # finished five minute build reads as one still running.
+                    origin_ev = tool_evs.get(tid) if isinstance(tid, str) else None
+                    if origin_ev is not None and origin_ev.result_ts is None:
+                        origin_ev.result_ts = ts
                     body = (
                         _text_of(b.get("content"))
                         if not isinstance(b.get("content"), str)
@@ -476,18 +598,13 @@ def load_claude_code_events(
                     if isinstance(tur, dict):
                         patch = tur.get("structuredPatch")
                         if isinstance(patch, list) and patch:
-                            added = sum(
-                                1
+                            hunks = [
+                                h.get("lines") if isinstance(h.get("lines"), list) else []
                                 for h in patch
-                                for ln in h.get("lines", [])
-                                if str(ln).startswith("+")
-                            )
-                            removed = sum(
-                                1
-                                for h in patch
-                                for ln in h.get("lines", [])
-                                if str(ln).startswith("-")
-                            )
+                                if isinstance(h, dict)
+                            ]
+                            added = sum(1 for h in hunks for ln in h if str(ln).startswith("+"))
+                            removed = sum(1 for h in hunks for ln in h if str(ln).startswith("-"))
                         elif tur.get("type") == "create" and isinstance(tur.get("content"), str):
                             # Lines = newlines, plus one only for an unterminated last
                             # line. FOUND ON A REAL SESSION (Claude Code 2.1.261, `claude
@@ -510,7 +627,7 @@ def load_claude_code_events(
                                 0,
                                 ts,
                                 "result_error",
-                                mask(_trunc(body or "(error)", ERROR_MAX)),
+                                clip(body or "(error)", ERROR_MAX),
                                 tool=name,
                                 path=path,
                                 ok=False,
@@ -524,14 +641,16 @@ def load_claude_code_events(
                                 e.added, e.removed, e.path = added, removed, path or e.path
                                 break
         elif t == "assistant":
-            msg = r.get("message") or {}
+            msg = r.get("message") if isinstance(r.get("message"), dict) else {}
             mid = msg.get("id") or r.get("requestId")
             model = msg.get("model")
-            usage = msg.get("usage") or {}
+            usage = msg.get("usage") if isinstance(msg.get("usage"), dict) else {}
+            stop = msg.get("stop_reason") if isinstance(msg.get("stop_reason"), str) else None
             first = mid not in seen_msg
             if mid:
                 seen_msg.add(mid)
-            for b in msg.get("content") or []:
+            content = msg.get("content")
+            for b in content if isinstance(content, list) else []:
                 if not isinstance(b, dict):
                     continue
                 bt = b.get("type")
@@ -541,9 +660,10 @@ def load_claude_code_events(
                             0,
                             ts,
                             "assistant",
-                            mask(_trunc(b["text"], ASSISTANT_MAX)),
+                            clip(b["text"], ASSISTANT_MAX),
                             model=model,
                             tok_out=usage.get("output_tokens") if first else None,
+                            stop_reason=stop,
                         )
                     )
                     first = False
@@ -559,7 +679,10 @@ def load_claude_code_events(
                         path=path,
                         tool_id=b.get("id"),
                         model=model,
+                        stop_reason=stop,
                     )
+                    if isinstance(b.get("id"), str):
+                        tool_evs[b["id"]] = ev
                     if name == "Bash":
                         _, approx = _bash_file_effect(
                             str((b.get("input") or {}).get("command", ""))
@@ -567,10 +690,12 @@ def load_claude_code_events(
                         if approx is not None:
                             ev.added, ev.removed = approx, 0
                     out.append(ev)
-        elif t == "attachment" and (r.get("attachment") or {}).get("type") == "edited_text_file":
-            out.append(
-                Ev(0, ts, "human_edit", "", path=(r.get("attachment") or {}).get("filename"))
-            )
+        elif (
+            t == "attachment"
+            and isinstance(r.get("attachment"), dict)
+            and r["attachment"].get("type") == "edited_text_file"
+        ):
+            out.append(Ev(0, ts, "human_edit", "", path=r["attachment"].get("filename")))
         elif t == "system" and r.get("subtype") == "compact_boundary":
             out.append(Ev(0, ts, "compaction", ""))
 

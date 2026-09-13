@@ -29,6 +29,7 @@ from __future__ import annotations
 import collections
 import dataclasses
 import datetime as dt
+import time
 from collections.abc import Sequence
 
 #: A commit made shortly before a sitting's first record still belongs to it: the agent
@@ -36,9 +37,11 @@ from collections.abc import Sequence
 #: per-session counts use, imported rather than re-chosen.
 from .profile import COMMIT_ATTRIBUTION_SEC as LOOKBACK_SEC
 
-#: The day boundary. 04:00 everywhere in this product: at 00:20 mid-session the menu bar
-#: read "0s active today", which was technically correct and completely wrong.
-DAY_BOUNDARY_HOUR = 4
+#: The day boundary and the local day, imported from `profile` rather than kept as a
+#: second copy (docs/overnight-engine.md 5.6; CLAUDE.md, "'Today' is not the calendar
+#: date": three definitions of "day" disagree about streaks in ways nobody can see). 04:00
+#: everywhere in this product: at 00:20 mid-session the menu bar read "0s active today".
+from .profile import DAY_BOUNDARY_HOUR, local_day, longest_run
 
 #: A share needs this many commits under it. Below it one commit moves it by a fifth.
 MIN_COMMITS = 5
@@ -81,12 +84,6 @@ class Contributions:
         return round(self.assisted / self.total, 3) if self.total >= MIN_COMMITS else None
 
 
-def local_day(ts: float, tz_offset_minutes: int) -> dt.date:
-    """The local day a moment belongs to, with the day starting at 04:00."""
-    local = dt.datetime.fromtimestamp(ts, dt.UTC) + dt.timedelta(minutes=tz_offset_minutes)
-    return (local - dt.timedelta(hours=DAY_BOUNDARY_HOUR)).date()
-
-
 def _windows(sessions: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
     """Session windows, merged, so a commit in two overlapping sittings is checked once."""
     spans = sorted((start - LOOKBACK_SEC, end) for start, end in sessions)
@@ -103,8 +100,11 @@ def split(
     commits: Sequence[float],
     sessions: Sequence[tuple[float, float]],
     tz_offset_minutes: int = 0,
+    now: float | None = None,
 ) -> Contributions:
-    """The whole graph. `commits` are unix times; `sessions` are (started, ended) pairs."""
+    """The whole graph. `commits` are unix times; `sessions` are (started, ended) pairs;
+    `now` is when "today" is, on the same clock the days are cut on (the wall clock when
+    None)."""
     windows = _windows(sessions)
     by_day: dict[dt.date, list[int]] = collections.defaultdict(lambda: [0, 0])
     assisted = alone = 0
@@ -120,7 +120,8 @@ def split(
     days = tuple(
         Day(day=d, assisted=v[0], alone=v[1]) for d, v in sorted(by_day.items())
     )
-    longest, current = _streaks([d.day for d in days])
+    today = local_day(time.time() if now is None else now, tz_offset_minutes)
+    longest, current = _streaks([d.day for d in days], today)
     return Contributions(
         days=days,
         assisted=assisted,
@@ -131,22 +132,24 @@ def split(
     )
 
 
-def _streaks(days: Sequence[dt.date]) -> tuple[int, int]:
+def _streaks(days: Sequence[dt.date], today: dt.date) -> tuple[int, int]:
     """(longest run, the run still going). Both count days you SHIPPED.
 
-    "Still going" allows for today not being over: a streak that ended yesterday is still
-    current until a day passes without a commit, or every streak in the world would break
-    every morning before the first commit.
+    The longest run is `profile.longest_run`, the one loop. "Still going" allows for today
+    not being over: a streak that ended yesterday is still current until a day passes
+    without a commit, or every streak in the world would break every morning before the
+    first commit. `today` is cut at the person's offset, as the days are: it was a UTC day
+    compared with local ones, read off the wall clock inside the function
+    (docs/overnight-engine.md 5.6, still undone when the review found it).
     """
-    if not days:
+    ordered = sorted(set(days))
+    if not ordered:
         return 0, 0
-    longest = run = 1
-    for prev, cur in zip(days, days[1:], strict=False):
+    run = 1
+    for prev, cur in zip(ordered, ordered[1:], strict=False):
         run = run + 1 if (cur - prev).days == 1 else 1
-        longest = max(longest, run)
-    today = local_day(dt.datetime.now(dt.UTC).timestamp(), 0)
-    current = run if (today - days[-1]).days <= 1 else 0
-    return longest, current
+    current = run if (today - ordered[-1]).days <= 1 else 0
+    return longest_run(ordered), current
 
 
 __all__ = [

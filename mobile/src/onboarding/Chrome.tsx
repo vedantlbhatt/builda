@@ -4,7 +4,8 @@ import { Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '../theme';
+import { ON_HUE } from '../insights/palette';
+import { useAccent } from '../theme/accent';
 import { useReduceMotion } from '../ui/motion';
 import { SymbolIcon } from '../ui/Symbol';
 import { chromeAt } from './chromeProgress';
@@ -22,8 +23,6 @@ import {
   type FlowStep,
 } from './flow';
 
-const c = colors('dark');
-
 /**
  * The back button is 44pt square with the chevron centred in it. The chevron's DRAWN left
  * edge sits on the 20pt gutter, the same edge as every line of text under it: at 20pt the
@@ -36,14 +35,18 @@ const BACK_LEFT = GUTTER + BACK_GLYPH_HALF_WIDTH - BACK_BOX / 2;
 
 /**
  * The flow's chrome, drawn once above the stack so it stays put while the steps push under it:
- * a back chevron on every step that has one, and the segmented progress bar on the steps it
- * counts (DESIGN-DIRECTION 4).
+ * a back chevron on every step that has one, and the progress bars on the steps they count.
  *
- * Everything here is drawn from one number, `chromeAt` (where the flow stands, in steps),
- * which the step frames move with their own native transitions (`StepFrame`). So a bar fills
- * across the push that brings its step in, empties across a pop, and follows a finger on the
- * back swipe, giving the bar back when the swipe is abandoned; the chevron and the bars agree
- * with the page under them however the person goes back.
+ * Every step opens on a band that runs under this row, so the chrome is printed in the band's
+ * dark ink: the chevron in ink, each bar a track in the builder's partner tone (the dither's
+ * middle tone of the band's own hue) filled with ink from its left edge. It reads the accent, so
+ * on the creature step the track changes with the creature in the middle, as the band does.
+ *
+ * The bars are react-bits Stepper's, as the kit ports them (`barFill`, here `chromeFill`), drawn
+ * from one number, `chromeAt` (where the flow stands, in steps), which the step frames move with
+ * their own native transitions (`StepFrame`). So a bar fills across the push that brings its
+ * step in, empties across a pop, and follows a finger on the back swipe, giving the bar back
+ * when the swipe is abandoned.
  *
  * `step` is the route React knows: it decides what the chevron does and what VoiceOver hears.
  */
@@ -51,6 +54,7 @@ export function OnboardingChrome({ step }: { step: FlowStep | null }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const reduced = useReduceMotion();
+  const accent = useAccent();
   const progress = step ? progressFor(step) : null;
   const back = step !== null && showsBack(step);
 
@@ -83,7 +87,7 @@ export function OnboardingChrome({ step }: { step: FlowStep | null }) {
             opacity: pressed ? 0.5 : 1,
           })}
         >
-          <SymbolIcon name="chevron.left" size={BACK_GLYPH} weight="semibold" tone="text" />
+          <SymbolIcon name="chevron.left" size={BACK_GLYPH} weight="bold" tone="onAccent" />
         </Pressable>
       </Animated.View>
       <Animated.View
@@ -98,7 +102,7 @@ export function OnboardingChrome({ step }: { step: FlowStep | null }) {
       >
         <View style={{ flexDirection: 'row', gap: PROGRESS.gap }}>
           {PROGRESS_STEPS.map((s, i) => (
-            <Bar key={s} index={i} reduced={reduced} />
+            <Bar key={s} index={i} reduced={reduced} track={accent.partner} />
           ))}
         </View>
       </Animated.View>
@@ -107,12 +111,11 @@ export function OnboardingChrome({ step }: { step: FlowStep | null }) {
 }
 
 /**
- * One bar, 27 x 3.7pt, radius 2: the `border` grey, with the amber growing from its left edge
- * as the flow passes it. Under Reduce Motion it is filled or not, switched at half way, never
- * a partial amber (which is brown).
+ * One bar, 27 x 3.7pt, radius 2: the partner track, with the ink growing from its left edge as
+ * the flow passes it. Under Reduce Motion it is filled or not, switched at half way.
  */
-function Bar({ index, reduced }: { index: number; reduced: boolean }) {
-  const amber = useAnimatedStyle(() => {
+function Bar({ index, reduced, track }: { index: number; reduced: boolean; track: string }) {
+  const fill = useAnimatedStyle(() => {
     const f = chromeFill(chromeAt.value, index);
     return reduced ? { opacity: f >= 0.5 ? 1 : 0, transform: [{ scaleX: 1 }] } : { opacity: 1, transform: [{ scaleX: f }] };
   });
@@ -123,7 +126,7 @@ function Bar({ index, reduced }: { index: number; reduced: boolean }) {
         height: PROGRESS.height,
         borderRadius: PROGRESS.radius,
         borderCurve: 'continuous',
-        backgroundColor: c.border,
+        backgroundColor: track,
         overflow: 'hidden',
       }}
     >
@@ -135,10 +138,10 @@ function Bar({ index, reduced }: { index: number; reduced: boolean }) {
             top: 0,
             bottom: 0,
             width: PROGRESS.width,
-            backgroundColor: c.accent,
+            backgroundColor: ON_HUE,
             transformOrigin: 'left',
           },
-          amber,
+          fill,
         ]}
       />
     </View>

@@ -18,12 +18,16 @@ import {
 import { ANIMAL_FRAMES, ANIMAL_LABELS, ANIMALS, type Animal } from '../pixel/animals';
 import { animalAt, indexOf, litSlot, panTarget } from '../pixel/carousel';
 import { GRID } from '../pixel/frames';
-import { glyphInk } from '../pixel/palette';
+import type { InkTone } from '../pixel/palette';
 import { PixelAnimal } from '../pixel/PixelAnimal';
 import { cellsFor } from '../pixel/PixelSprite';
 import { space } from '../theme';
 import { select } from '../ui/haptics';
 import { SNAP, useReduceMotion } from '../ui/motion';
+import type { Tone } from '../ui/scheme';
+
+/** The pager's ink: the chrome's `dim` on the ground, the band's ink on a band. */
+type PagerTone = Extract<Tone, 'dim' | 'onAccent'>;
 import { SymbolIcon } from '../ui/Symbol';
 import { T } from '../ui/Text';
 import { CREATURE, positionLine } from './copy';
@@ -40,14 +44,16 @@ import { STAGE_CREATURE } from './flow';
  * picks: 30% of the way to a neighbour or an 800pt/s flick moves on. Every slot the centre
  * passes is a `selectionAsync` tick, during the drag and during the spring alike.
  *
- * Only the centre creature animates, and only once it has come to rest. The neighbours are
- * still frames at half size (whole points per cell, so still crisp) in the faint ink: the
- * one-ink rule's tone for a carousel neighbour (`src/pixel/palette.ts`), the text colour at
- * about 40% over the canvas. Amber at 45% opacity is the muddy brown that rule forbids, so
- * the ink never blends: exactly one slot is lit at any moment (`litSlot`, with a little
- * hysteresis so a finger held half way does not flicker it), and the lit slot changes on the
- * same frame as the selection tick. Every creature scales about its feet (row 14 of 16), so
- * the small neighbours stand on the same ground line as the one in the middle.
+ * Only the centre creature animates, and only once it has come to rest. In the house style the
+ * stage sits on a band in the centre creature's own hue (design-refs/HOUSE-STYLE.md), so the
+ * lit creature is printed in the band's dark ink (`ink`) and the neighbours, still frames at
+ * half size (whole points per cell, so still crisp), in the band's partner tone (`dim`), the
+ * dither's middle tone. A hue at partial opacity is the muddy brown the family forbids, so the
+ * ink never blends: exactly one slot is lit at any moment (`litSlot`, with a little hysteresis
+ * so a finger held half way does not flicker it), and the lit slot changes on the same frame as
+ * the selection tick, which is the frame the band starts re-printing in the new hue. Every
+ * creature scales about its feet (row 14 of 16), so the small neighbours stand on the same
+ * ground line as the one in the middle.
  *
  * The chevrons under the stage (the caller's) and the VoiceOver adjustable action both move
  * through `step`, the same spring as a swipe.
@@ -73,6 +79,15 @@ export interface CreatureCarouselProps {
   onChange?: (animal: Animal) => void;
   /** When the stage comes to rest on a creature. */
   onSettle?: (animal: Animal) => void;
+  /**
+   * The ink of the creature in the middle. On a band of the creature's own hue it is the band's
+   * dark ink (`ON_HUE`), as the analysis page prints the creature on its band.
+   */
+  ink: string;
+  /** The neighbours' ink: on a band, the band's partner tone. */
+  dim: string;
+  /** The live creature's tone (`selected` is the dark ink on a fill). Default `rest`, its own hue. */
+  liveTone?: InkTone;
 }
 
 /** Neighbours are drawn at half size: 80pt from a 160pt stage, 5pt per cell. */
@@ -88,13 +103,11 @@ const REACH = 2;
 const LIVE_HANDOFF_MS = 260;
 /** Room over the creatures inside the stage (the stage is `size + 2 * STAGE_PAD` tall). */
 const STAGE_PAD = 8;
-const AMBER = glyphInk('dark', 'rest');
-const FAINT = glyphInk('dark', 'faint');
 /** No slot hidden: the live creature is not over its twin. */
 const NONE = -1e9;
 
 export const CreatureCarousel = forwardRef<CreatureCarouselHandle, CreatureCarouselProps>(function CreatureCarousel(
-  { initial, width, size = STAGE_CREATURE, onChange, onSettle },
+  { initial, width, size = STAGE_CREATURE, onChange, onSettle, ink, dim, liveTone = 'rest' },
   ref,
 ) {
   const reduced = useReduceMotion();
@@ -244,12 +257,14 @@ export const CreatureCarousel = forwardRef<CreatureCarouselHandle, CreatureCarou
               pitch={pitch}
               size={size}
               left={left}
+              ink={ink}
+              dim={dim}
             />
           ))}
         </Canvas>
         {live && (
           <View pointerEvents="none" style={{ position: 'absolute', left, top: STAGE_PAD }}>
-            <PixelAnimal key={centre} animal={current} size={size} />
+            <PixelAnimal key={centre} animal={current} size={size} tone={liveTone} />
           </View>
         )}
       </View>
@@ -259,9 +274,9 @@ export const CreatureCarousel = forwardRef<CreatureCarouselHandle, CreatureCarou
 
 /**
  * One still creature on the stage's canvas: its frame's cells as rectangles, placed at
- * `(k - position) * pitch` and scaled about its feet, in the amber ink while it is the lit
- * slot and the faint one otherwise. A switch, never a blend: any cross fade between the two
- * inks spends its middle in a brown that is neither.
+ * `(k - position) * pitch` and scaled about its feet, in `ink` while it is the lit slot and
+ * `dim` otherwise. A switch, never a blend: any cross fade between the two inks spends its
+ * middle in a colour that is neither.
  */
 function StillSlot({
   k,
@@ -271,6 +286,8 @@ function StillSlot({
   pitch,
   size,
   left,
+  ink,
+  dim,
 }: {
   k: number;
   position: SharedValue<number>;
@@ -279,10 +296,13 @@ function StillSlot({
   pitch: number;
   size: number;
   left: number;
+  ink: string;
+  dim: string;
 }) {
   const animal = animalAt(k);
   const px = Math.max(1, Math.floor(size / GRID));
-  const cells = useMemo(() => cellsFor(ANIMAL_FRAMES[animal][0]!, { b: AMBER }), [animal]);
+  // The cells only; their colour is the group's (`color` below), switched on the UI thread.
+  const cells = useMemo(() => cellsFor(ANIMAL_FRAMES[animal][0]!, { b: ink }), [animal, ink]);
   const origin = vec(left + size / 2, STAGE_PAD + size * GROUND_ROW);
 
   const transform = useDerivedValue(() => {
@@ -290,7 +310,7 @@ function StillSlot({
     const s = interpolate(Math.abs(d), [0, 1], [1, NEIGHBOUR_SCALE], Extrapolation.CLAMP);
     return [{ translateX: d * pitch }, { scale: s }];
   });
-  const color = useDerivedValue(() => (lit.value === k ? AMBER : FAINT));
+  const color = useDerivedValue(() => (lit.value === k ? ink : dim));
   const opacity = useDerivedValue(() => (hiddenSlot.value === k ? 0 : 1));
 
   return (
@@ -304,29 +324,33 @@ function StillSlot({
 
 /**
  * The accessible path under the stage: a chevron either side of "6 of 8". The chevrons are
- * chrome, so SF Symbols in `textDim`, and like bar buttons they dim when pressed. Both move
- * through the stage's own `step`, the same spring and the same tick as a swipe.
+ * chrome, so SF Symbols in `textDim` on the ground, or in the band's ink on a band (`tone`),
+ * and like bar buttons they dim when pressed. Both move through the stage's own `step`, the same
+ * spring and the same tick as a swipe.
  */
 export function CreaturePager({
   stage,
   animal,
+  tone = 'dim',
 }: {
   stage: React.RefObject<CreatureCarouselHandle | null>;
   /** Null until the stage knows where it opens: the chevrons are there, the count is not. */
   animal: Animal | null;
+  /** `onAccent` on a band. */
+  tone?: PagerTone;
 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.lg }}>
-      <PagerChevron dir="left" onPress={() => stage.current?.step(-1)} />
-      <T role="meta" tone="dim" style={{ minWidth: 44, textAlign: 'center' }}>
+      <PagerChevron dir="left" tone={tone} onPress={() => stage.current?.step(-1)} />
+      <T role="meta" tone={tone} weight={600} style={{ minWidth: 44, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
         {animal ? positionLine(ANIMALS.indexOf(animal) + 1, ANIMALS.length) : ' '}
       </T>
-      <PagerChevron dir="right" onPress={() => stage.current?.step(1)} />
+      <PagerChevron dir="right" tone={tone} onPress={() => stage.current?.step(1)} />
     </View>
   );
 }
 
-function PagerChevron({ dir, onPress }: { dir: 'left' | 'right'; onPress: () => void }) {
+function PagerChevron({ dir, tone, onPress }: { dir: 'left' | 'right'; tone: PagerTone; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -335,7 +359,7 @@ function PagerChevron({ dir, onPress }: { dir: 'left' | 'right'; onPress: () => 
       hitSlop={space.sm}
       style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
     >
-      <SymbolIcon name={dir === 'left' ? 'chevron.left' : 'chevron.right'} size={20} weight="semibold" tone="dim" />
+      <SymbolIcon name={dir === 'left' ? 'chevron.left' : 'chevron.right'} size={20} weight="bold" tone={tone} />
     </Pressable>
   );
 }

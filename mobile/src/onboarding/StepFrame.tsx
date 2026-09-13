@@ -6,58 +6,74 @@ import Animated, { Easing, ReduceMotion, useAnimatedReaction, useAnimatedStyle, 
 import { useReanimatedTransitionProgress } from 'react-native-screens/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { RevealPage, Section } from '../insights/reveal';
 import { colors, space } from '../theme';
 import { chromeAt } from './chromeProgress';
 import { CHROME_HEIGHT, chromeIndex, GUTTER, PROGRESS, type FlowStep } from './flow';
+import { useStepPage } from './stepPage';
 
 const c = colors('dark');
 
+/** Where a band's words start: under the status bar and the chrome row, with a little air. */
+export function useBandInset(): number {
+  const insets = useSafeAreaInsets();
+  return insets.top + CHROME_HEIGHT + space.sm;
+}
+
 /**
- * One onboarding step's frame: room for the chrome row (drawn by the layout, above the stack),
- * the step's column on the 20pt gutter, and the actions pinned to the bottom.
+ * One onboarding step's frame, in the house style: a chapter. It opens on the step's band
+ * (`band`, a `StepBand`, full bleed from the top of the screen, under the chrome the layout draws
+ * above the stack), then the warm dark ground carries the step's column on the 20pt gutter, and
+ * the actions are pinned to the bottom.
+ *
+ * The whole step is one reveal page (`stepPage.ts`), armed when `ready`: the band prints itself,
+ * its figure counts up and its words fade up on the analysis page's clock.
  *
  * `keyboard`: the actions ride the keyboard, frame for frame with the system's own curve
  * (react-native-keyboard-controller, never a listener and a guessed duration). Closed they sit
  * above the home indicator; open they sit 12pt above the keys.
- *   - A step that does not scroll (the name step: one field at the top) moves the actions
- *     with a transform on the keyboard's height, and nothing else moves. It reads the
- *     provider's Reanimated values on the UI thread, not `KeyboardStickyView`'s Animated
- *     ones: a step mounted while the keyboard is still moving (the creature step, arriving as
- *     the name step's keyboard goes down) must start where the keyboard IS, and a native
- *     driven Animated value attached mid-flight started from closed instead.
+ *   - A step that does not scroll (the name step: the name is the band) moves the actions with a
+ *     transform on the keyboard's height, and nothing else moves. It reads the provider's
+ *     Reanimated values on the UI thread, so a step mounted while the keyboard is still moving
+ *     (the creature step, arriving as the name step's keyboard goes down) starts where the
+ *     keyboard IS.
  *   - A step that scrolls (connect: a code field over a hook setup) must not let the actions
  *     ride up OVER its column: the frame grows a spacer under the actions as tall as the
- *     keyboard, so the column above shrinks and scrolls, and nothing is ever drawn on top of
- *     anything else.
+ *     keyboard, so the column above shrinks and scrolls, and nothing is drawn on anything else.
  *
- * `scroll`: the column scrolls when it can overflow (a small phone, Dynamic Type). The actions
- * stay outside the scroll view, so Continue never scrolls away.
+ * `scroll`: the band and the column scroll together when they can overflow (a small phone,
+ * Dynamic Type). The actions stay outside the scroll view, so Continue never scrolls away.
  *
- * `step`: which step this is, for the chrome above the stack. The frame reports its own
- * native transition (react-native-screens' progress, on the UI thread) as the flow's position,
- * so the bars fill with a push and empty with a pop, and follow a finger on the back swipe,
- * giving the bar back if the swipe is abandoned.
+ * `step`: which step this is, for the chrome above the stack. The frame reports its own native
+ * transition (react-native-screens' progress, on the UI thread) as the flow's position, so the
+ * bars fill with a push and empty with a pop, and follow a finger on the back swipe.
  */
 export function StepFrame({
   step,
+  band,
   children,
   actions,
   keyboard = false,
   scroll = true,
+  ready = true,
   contentStyle,
 }: {
   step: FlowStep;
-  children: ReactNode;
+  band: ReactNode;
+  children?: ReactNode;
   actions?: ReactNode;
   keyboard?: boolean;
   scroll?: boolean;
+  /** Arm the reveal (the band's print, the counts). Default at once. */
+  ready?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
 }) {
   const insets = useSafeAreaInsets();
-  const top = insets.top + CHROME_HEIGHT + space.md;
-  const column: ViewStyle = { paddingHorizontal: GUTTER, paddingTop: top, paddingBottom: space.lg, gap: space.sm };
+  const page = useStepPage(ready);
+  const column: ViewStyle = { paddingHorizontal: GUTTER, paddingBottom: space.lg, gap: space.sm };
   // Open, the keyboard already covers the home indicator: give back the inset and keep 12pt.
   const lift = insets.bottom + space.sm - space.tile;
+  const hasColumn = children !== undefined && children !== null && children !== false;
 
   const footer = actions ? (
     <View
@@ -76,22 +92,30 @@ export function StepFrame({
   const body = scroll ? (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={[column, { flexGrow: 1 }, contentStyle]}
+      contentContainerStyle={{ flexGrow: 1 }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
+      // The band runs to the top edge; a pull past it would show the ground above the band.
+      bounces={false}
     >
-      {children}
+      <Section style={{ flexGrow: 1 }}>
+        {band}
+        {hasColumn ? <View style={[column, contentStyle]}>{children}</View> : null}
+      </Section>
     </ScrollView>
   ) : (
-    <View style={[{ flex: 1 }, column, contentStyle]}>{children}</View>
+    <Section style={{ flex: 1 }}>
+      {band}
+      {hasColumn ? <View style={[{ flex: 1 }, column, contentStyle]}>{children}</View> : null}
+    </Section>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <ChromeTracker index={chromeIndex(step)} />
-      {body}
+      <RevealPage page={page}>{body}</RevealPage>
       {footer && keyboard && !scroll ? <KeyboardRide lift={lift}>{footer}</KeyboardRide> : footer}
       {keyboard && scroll ? <KeyboardSpacer lift={lift} /> : null}
     </View>
@@ -104,7 +128,7 @@ const PAGE_EASE = Easing.inOut(Easing.cubic);
  * Reports this step's transition as the flow's position. A push reports from the page coming
  * in (the one before it plus the progress), a pop from the page going out (itself less the
  * progress); the other page of each pair is ignored, so exactly one writer moves the chrome.
- * An arrival with no transition to report (under hello's pixel cells, a deep link) walks the
+ * An arrival with no transition to report (under hello's pixel cover, a deep link) walks the
  * chrome there over the bar's own 267ms instead.
  */
 function ChromeTracker({ index }: { index: number }) {

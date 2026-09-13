@@ -1,46 +1,59 @@
-import type { SkImage } from '@shopify/react-native-skia';
 import { useSyncExternalStore } from 'react';
 
 import { DISSOLVE } from './flow';
 
 /**
- * The hello to name transition, as a tiny store shared by three places: hello takes a picture
- * of itself and `cover`s the screen with it, the name step `reveal`s once it has mounted
- * underneath, and `PixelDissolve` (in the onboarding layout, above the stack) draws the picture
- * breaking into cells and calls `finish` when the last one has turned.
+ * Hello to the name step, as a tiny store shared by three places: hello asks for a `cover` in
+ * the builder's colour, `PixelDissolve` (in the onboarding layout, above the stack) gathers the
+ * cells over the screen and says when it is `covered`, hello then pushes the name step under
+ * the full cover, the name step `reveal`s once it has mounted, and the dissolve clears the
+ * cells and calls `finish`.
  *
- *   idle, then warm(image), then cover(image), then reveal(), then finish(id), and idle again
+ *   idle, then cover, then covered, then reveal, then idle again
  *
- * `warm`: hello hands over its picture as soon as it is taken, while the person reads, and the
- * dissolve draws it once through the shader fully turned (every cell transparent), so the
- * canvas exists and the shader is compiled before Continue is pressed. Doing both on the press
- * stalled the first fifth of a second of the effect.
+ * It is react-bits PixelTransition's rule (cells switch on over the content, the content
+ * changes while every cell is on, the cells switch off) stretched across two routes. It used
+ * to lay a picture of hello over the screen and break THAT into cells; hello now draws Skia
+ * canvases (its band, Bit, the field), and a picture of a view is not a promise of what a Metal
+ * layer showed, so the cover is drawn live, in one colour, and nothing is photographed.
  *
- * A cover that nobody reveals (the push failed, the step threw) reveals itself after
- * `STALE_COVER_MS`, so a picture of hello can never be left over the app.
+ * A cover nobody reveals (the push failed, the step threw) reveals itself after
+ * `STALE_COVER_MS`, so the colour can never be left over the app.
  */
+
 /**
- * Where the wave starts and where the grid is laid, in window points. `origin` is the centre of
- * the Continue that was pressed; `anchor` is Bit's top left corner, so the cells fall on Bit's
- * pixel grid. Either missing: the bottom centre of the screen, and the screen's corner.
+ * Where the wave starts and where the grid is laid, in window points. `origin` is where the
+ * finger left the page (or the centre of the Continue that was pressed); `anchor` is Bit's top
+ * left corner, so the cells fall on Bit's pixel grid. Either missing: the bottom centre of the
+ * screen, and the screen's corner.
  */
 export interface DissolveGeometry {
   origin: readonly [number, number] | null;
   anchor: readonly [number, number] | null;
 }
 
+interface Cover {
+  id: number;
+  /** The cells, and the front's tone (the partner: the dither's middle tone of the same hue). */
+  ink: string;
+  front: string;
+  geometry: DissolveGeometry;
+}
+
 export type DissolveState =
   | { phase: 'idle' }
-  | { phase: 'warm'; id: number; image: SkImage }
-  | { phase: 'cover'; id: number; image: SkImage; geometry: DissolveGeometry }
-  | { phase: 'reveal'; id: number; image: SkImage; geometry: DissolveGeometry };
+  | ({ phase: 'cover' } & Cover)
+  | ({ phase: 'covered' } & Cover)
+  | ({ phase: 'reveal' } & Cover);
 
 const STALE_COVER_MS = 600;
-const DISPOSE_AFTER_MS = 1000;
 
 let state: DissolveState = { phase: 'idle' };
 let nextId = 1;
 let staleTimer: ReturnType<typeof setTimeout> | null = null;
+let onCovered: (() => void) | null = null;
+/** The next page asked to be revealed before the cover had finished gathering. */
+let revealAsked = false;
 const listeners = new Set<() => void>();
 
 function publish(s: DissolveState): void {
@@ -59,55 +72,81 @@ function snapshot(): DissolveState {
   return state;
 }
 
-/** Draw `image` through the shader, invisibly, so the first real frame is not the first frame. */
-export function warmWith(image: SkImage): void {
-  if (state.phase !== 'idle') return;
-  publish({ phase: 'warm', id: nextId++, image });
-}
-
-/** Hello let go of its picture without a dissolve: stop drawing it. The caller disposes it. */
-export function coolDown(image: SkImage): void {
-  if (state.phase === 'warm' && state.image === image) publish({ phase: 'idle' });
-}
-
-export function coverWith(image: SkImage, geometry: DissolveGeometry = { origin: null, anchor: null }): void {
-  // The warm picture is the same picture: it is covered with, not disposed.
-  if (state.phase !== 'idle' && state.image !== image) state.image.dispose?.();
-  const id = nextId++;
-  publish({ phase: 'cover', id, image, geometry });
-  if (staleTimer) clearTimeout(staleTimer);
-  staleTimer = setTimeout(() => reveal(), STALE_COVER_MS);
-}
-
-/** Start turning the cells over. A no-op unless a cover is up. */
-export function reveal(): void {
+function clearStale(): void {
   if (staleTimer) {
     clearTimeout(staleTimer);
     staleTimer = null;
   }
-  if (state.phase !== 'cover') return;
-  publish({ phase: 'reveal', id: state.id, image: state.image, geometry: state.geometry });
 }
 
-/** The last cell has turned. Only the transition that asked can end itself. */
+/**
+ * Gather the cells over the screen in `ink`, the front in `front`, and call `then` once every
+ * cell is on (that is when the next page goes under it). Refused while one is already running.
+ */
+export function coverWith(ink: string, front: string, geometry: DissolveGeometry, then: () => void): boolean {
+  if (state.phase !== 'idle') return false;
+  clearStale();
+  onCovered = then;
+  revealAsked = false;
+  publish({ phase: 'cover', id: nextId++, ink, front, geometry });
+  return true;
+}
+
+/** Every cell is on. Only the cover that asked can say so. */
+export function covered(id: number): void {
+  if (state.phase !== 'cover' || state.id !== id) return;
+  publish({ phase: 'covered', id: state.id, ink: state.ink, front: state.front, geometry: state.geometry });
+  const then = onCovered;
+  onCovered = null;
+  then?.();
+  if (revealAsked) {
+    reveal();
+    return;
+  }
+  clearStale();
+  staleTimer = setTimeout(() => reveal(), STALE_COVER_MS);
+}
+
+/** Start clearing the cells. The page that went under the cover calls this once it has mounted. */
+export function reveal(): void {
+  if (state.phase === 'cover') {
+    revealAsked = true;
+    return;
+  }
+  if (state.phase !== 'covered') return;
+  clearStale();
+  publish({ phase: 'reveal', id: state.id, ink: state.ink, front: state.front, geometry: state.geometry });
+}
+
+/** The last cell has cleared. Only the transition that asked can end itself. */
 export function finish(id: number): void {
-  if (state.phase === 'idle' || state.phase === 'warm' || state.id !== id) return;
-  const image = state.image;
+  if (state.phase !== 'reveal' || state.id !== id) return;
   publish({ phase: 'idle' });
-  // Well after the canvas has let go of it: the overlay unmounts on this render, and a draw
-  // already queued on the UI thread must not find the picture freed under it.
-  setTimeout(() => image.dispose?.(), DISPOSE_AFTER_MS);
 }
 
+/** A cover is up, or on its way up, or clearing: the page under it arrived through the cells. */
 export function isCovering(): boolean {
-  return state.phase === 'cover' || state.phase === 'reveal';
+  return state.phase !== 'idle';
 }
 
 export function useDissolve(): DissolveState {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
+/** The current state, outside React. */
+export function currentDissolve(): DissolveState {
+  return state;
+}
+
 /** How long the cells take to turn, or the fade that stands in for them. */
 export function revealTailMs(reduced: boolean): number {
   return reduced ? DISSOLVE.reducedMs : DISSOLVE.ms;
+}
+
+/** Forget a transition (a test, a reset). */
+export function resetDissolve(): void {
+  clearStale();
+  onCovered = null;
+  revealAsked = false;
+  publish({ phase: 'idle' });
 }

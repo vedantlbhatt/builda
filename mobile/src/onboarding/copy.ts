@@ -16,12 +16,16 @@ export const CONTINUE = 'Continue';
  */
 export const NOT_NOW = 'Not now';
 /** The commitment at the end, with a typographic apostrophe. */
-export const THATS_ME = 'That\u2019s me';
+export const THATS_ME = 'That’s me';
 export const BACK = 'Back';
 
 export const HELLO = {
   headline: 'Your build sessions, read back to you.',
   body: 'Builda reads what your coding agents write and tells you how every session went.',
+  /** Before the tool name that turns over under the headline: "from Claude Code". */
+  from: 'from',
+  /** Under the page, fading as a finger lifts it (liquid glass's hint). */
+  hint: 'swipe up',
 } as const;
 
 export const NAME = {
@@ -33,6 +37,8 @@ export const NAME = {
 export const CREATURE = {
   label: 'pick your creature',
   suggested: 'picked for how you build',
+  /** The theme, said once where it is being chosen: the band is the app's colour. */
+  theme: 'Builda wears your creature’s colour.',
   previous: 'Previous creature',
   next: 'Next creature',
 } as const;
@@ -54,6 +60,11 @@ export function creatureCaption(name: string | null | undefined, animal: Animal)
   return n ? `${n}, the ${label}` : `The ${label}`;
 }
 
+/** The second half of the caption on its own, for the word that turns over: "the fox". */
+export function creatureWord(animal: Animal): string {
+  return `the ${ANIMAL_LABELS[animal]}`;
+}
+
 /** "6 of 8". */
 export function positionLine(position: number, total: number): string {
   return `${position} of ${total}`;
@@ -65,6 +76,8 @@ export const TOOLS = {
   // Two sentences on two lines: wrapped as one paragraph, "Pick" hung alone off the end of
   // the first line.
   unknown: 'Builda reads the sessions these tools write.\nPick the ones you use.',
+  /** Over the found count when more sessions exist than were counted. */
+  atLeast: 'at least',
 } as const;
 
 /**
@@ -78,6 +91,22 @@ export function toolsFound(total: number, partial: boolean, tools: readonly stri
   if (tools.length === 1) return `Builda found ${sessions} from ${tools[0]} on your account and picked it.`;
   if (tools.length > 1) return `Builda found ${sessions} on your account, from ${listOf(tools)}, and picked them.`;
   return `Builda found ${sessions} on your account and picked the tools ${total === 1 && !partial ? 'it came' : 'they came'} from.`;
+}
+
+/** Beside the big count on the tools band: "sessions on your account". */
+export function sessionsCaption(total: number, partial: boolean): string {
+  return total === 1 && !partial ? 'session on your account' : 'sessions on your account';
+}
+
+/** Beside a tile's own count: "session" or "sessions". */
+export function sessionWord(n: number): string {
+  return n === 1 ? 'session' : 'sessions';
+}
+
+/** What VoiceOver hears for the drifting row of marks: "Builda reads Claude Code, Codex, Cursor and 4 more." */
+export function readsList(names: readonly string[]): string {
+  const l = listOf(names);
+  return l ? `Builda reads ${l}.` : '';
 }
 
 /**
@@ -109,6 +138,9 @@ export const CONNECT = {
   signInFailed: 'Sign in did not finish. Try again, or do it later from Settings.',
   clipboardFailed: 'The clipboard would not take it. Try again.',
   keyFailed: 'Could not make a key for the setup. Try again.',
+  /** Beside the arriving count on the band. */
+  arrivedCaption: 'sessions have reached your account',
+  arrivedCaptionOne: 'session has reached your account',
 } as const;
 
 /** "77 sessions have reached your account.", the body of the connected state. */
@@ -123,13 +155,17 @@ export function pairedWith(label: string): string {
   return l ? `Paired with ${l}.` : 'Paired.';
 }
 
+/**
+ * The notification step, as facetune primes its trial: a timeline, in the order it happens to
+ * a session. First it runs (the Lock Screen), then an agent may stop to ask, then it finishes.
+ */
 export const NOTIFY = {
   label: 'stay in the loop',
   headline: 'Know when to look.',
   rows: [
-    { title: 'A session finishes', body: 'The recap is ready the moment you stop.' },
-    { title: 'An agent needs you', body: 'A tap when a run stops to ask you.' },
-    { title: 'Live on your lock screen', body: 'A running session, without unlocking.' },
+    { title: 'While it runs', body: 'Live on your lock screen, without unlocking.' },
+    { title: 'When it stops to ask', body: 'A tap the moment an agent needs you.' },
+    { title: 'When it finishes', body: 'The recap, ready the moment you stop.' },
   ],
 } as const;
 
@@ -158,7 +194,7 @@ export function listOf(items: readonly string[]): string {
 }
 
 /** 1234 as "1,234", the same on every device (no locale). */
-function grouped(n: number): string {
+export function grouped(n: number): string {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 

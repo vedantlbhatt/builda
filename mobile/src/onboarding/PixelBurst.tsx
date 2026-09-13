@@ -3,12 +3,8 @@ import React, { useEffect } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { Easing, ReduceMotion, runOnJS, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { colors } from '../theme';
 import { BURST } from './flow';
 import { BURST_SKSL, colorUniform } from './shaders';
-
-const c = colors('dark');
-const INK = colorUniform(c.accent);
 
 let effect: SkRuntimeEffect | null | undefined;
 function burstEffect(): SkRuntimeEffect | null {
@@ -20,18 +16,21 @@ function burstEffect(): SkRuntimeEffect | null {
 }
 
 /**
- * One ring of amber pixel squares leaving the creature on "That's me" (DESIGN-DIRECTION 4),
- * about 600ms, then nothing: it plays once per `play` and is not a loop. The canvas is a
- * square of `size` points centred on the creature; place it so its centre is the creature's.
- * `onDone` fires when the ring has gone, which is when the flow finishes.
+ * One ring of pixel squares leaving the creature on "That's me" (DESIGN-DIRECTION 4), about
+ * 600ms, then nothing: it plays once per `play` and is not a loop. The canvas is a square of
+ * `size` points centred on the creature; place it so its centre is the creature's. `ink` is the
+ * squares' colour: on the finale's band, the band's dark ink (squares in the band's own hue would
+ * be invisible on it). `onDone` fires when the ring has gone, which is when the flow finishes.
  */
 export function PixelBurst({
   size,
+  ink,
   play,
   onDone,
   style,
 }: {
   size: number;
+  ink: string;
   /** Starts the burst when it becomes true. */
   play: boolean;
   onDone?: () => void;
@@ -56,6 +55,7 @@ export function PixelBurst({
   }, [play, source]);
 
   const half = size / 2;
+  const inkU = colorUniform(ink);
   const uniforms = useDerivedValue(() => ({
     center: [half, half],
     cell: BURST.cell,
@@ -64,7 +64,7 @@ export function PixelBurst({
     r1: BURST.to,
     ring: BURST.ring,
     density: BURST.density,
-    ink: INK,
+    ink: inkU,
   }));
 
   if (!source || !play) return null;

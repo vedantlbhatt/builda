@@ -6,6 +6,7 @@ import { ReanimatedScreenProvider } from 'react-native-screens/reanimated';
 import * as cache from '../../src/data/cache';
 import { OnboardingChrome } from '../../src/onboarding/Chrome';
 import { chromeAt } from '../../src/onboarding/chromeProgress';
+import { resetDissolve } from '../../src/onboarding/dissolve';
 import { primeDraft, resetDraft } from '../../src/onboarding/draft';
 import { loadFacts } from '../../src/onboarding/facts';
 import { isFlowStep, NAME_TO_CREATURE_MS } from '../../src/onboarding/flow';
@@ -13,18 +14,21 @@ import { PixelDissolve } from '../../src/onboarding/PixelDissolve';
 import { nav } from '../../src/nav/Skeleton';
 
 /**
- * Onboarding: seven routes on one native stack (DESIGN-DIRECTION 4). Every step is a push, so
- * the edge swipe and the chevron go back one step; nothing here blocks back.
+ * Onboarding: seven routes on one native stack (DESIGN-DIRECTION 4), each a chapter in the house
+ * style (design-refs/HOUSE-STYLE.md): a band in the builder's colour at the top, the warm ground
+ * under it. Every step is a push, so the edge swipe and the chevron go back one step; nothing
+ * here blocks back.
  *
- *   hello, through the pixel dissolve, to name, a cross fade to creature, then pushes to
+ *   hello, through the pixel cover, to name, a cross fade to creature, then pushes to
  *   tools, connect, notify and done
  *
- * Above the stack, drawn once: the chrome (back chevron and the segmented progress bar, which
- * stays put while the steps push under it and fills with them, `StepFrame`) and the pixel
- * dissolve that carries hello into the name step. The name step arrives with no native animation, because the dissolve IS its
+ * Above the stack, drawn once: the chrome (back chevron and the progress bars in the band's ink,
+ * which stay put while the steps push under them and fill with them, `StepFrame`) and the pixel
+ * cover that carries hello into the name step (`PixelDissolve`, react-bits PixelTransition across
+ * two routes). The name step arrives with no native animation, because the cover IS its
  * transition; the creature step arrives as a cross fade, so the name typed on one step stays
- * where it is and becomes the start of the next step's caption. Each restores the platform
- * push for its own pop afterwards.
+ * where it is and becomes the start of the next step's caption. Each restores the platform push
+ * for its own pop afterwards.
  *
  * The whole group sits behind `Stack.Protected guard={!onboarded}` in the root layout.
  * "That's me" on `done` flips the gate, which removes this group from the root stack in the
@@ -51,6 +55,7 @@ export default function OnboardingLayout() {
   // stored load while Bit says hello, so every step after it draws its first frame whole.
   useEffect(() => {
     resetDraft();
+    resetDissolve();
     void primeDraft(cache);
     void loadFacts();
     // A new run of the flow starts on hello, with the chrome there too.
@@ -73,8 +78,8 @@ export default function OnboardingLayout() {
           }}
         >
           <Stack.Screen name="hello" />
-          {/* Under the pixel cells it arrives with no animation of its own; without them (no
-              picture of hello yet, a deep link) it fades in. */}
+          {/* Under the pixel cover it arrives with no animation of its own; without it (Reduce
+              Motion, a deep link) it fades in. */}
           <Stack.Screen
             name="name"
             options={({ route }) => ({

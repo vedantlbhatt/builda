@@ -1,88 +1,75 @@
-import { Canvas, ImageShader, Rect, Shader, Skia, type SkRuntimeEffect } from '@shopify/react-native-skia';
+import { Canvas, ColorShader, Rect, Shader, Skia, type SkRuntimeEffect } from '@shopify/react-native-skia';
 import React, { useEffect } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, {
-  Easing,
-  ReduceMotion,
-  runOnJS,
-  useAnimatedStyle,
-  useDerivedValue,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import { Easing, ReduceMotion, runOnJS, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { colors } from '../theme';
-import { EASE, useReduceMotion } from '../ui/motion';
-import { finish, useDissolve } from './dissolve';
+import { covered, finish, useDissolve } from './dissolve';
 import { DISSOLVE } from './flow';
 import { colorUniform, DISSOLVE_SKSL, waveSpan } from './shaders';
-
-const c = colors('dark');
-/**
- * A switching cell is a `card` square for its moment: one step off the canvas, so the wave's
- * front reads as pixels turning over, never as a flash of amber or a grey checkerboard.
- */
-const FLASH = colorUniform(c.card);
-/** Beyond the last cell's turn and its band: the shader returns transparent everywhere. */
-const WARM_PROGRESS = 2;
 
 let effect: SkRuntimeEffect | null | undefined;
 function dissolveEffect(): SkRuntimeEffect | null {
   if (effect === undefined) {
     effect = Skia.RuntimeEffect.Make(DISSOLVE_SKSL);
-    if (!effect && __DEV__) console.warn('[onboarding] DISSOLVE_SKSL did not compile; hello fades instead');
+    if (!effect && __DEV__) console.warn('[onboarding] DISSOLVE_SKSL did not compile; hello pushes with a fade');
   }
   return effect;
 }
 
+/** Past the last cell's turn and its front: every cell clear. */
+const CLEAR = 1 + DISSOLVE.band;
+
+/** Whether the cover can be drawn at all (the shader compiled). Hello asks before it covers. */
+export function canCover(): boolean {
+  return dissolveEffect() !== null;
+}
+
 /**
- * The picture of hello, breaking into 32pt cells that turn over in a ragged wave out of the
- * Continue that was pressed (DESIGN-DIRECTION 4, react-bits PixelTransition as SkSL). Sits
- * above the onboarding stack, touches pass straight through it, and it is not in the tree at
- * all when idle.
+ * Hello into the name step, react-bits PixelTransition across two routes (`dissolve.ts`): 32pt
+ * cells in the builder's colour, laid on Bit's grid, GATHER over the screen in a ragged wave that
+ * closes on the finger (the far cells first), the name step is pushed under the full cover, and
+ * the cells CLEAR in a wave out of the finger, so the name step's Continue, standing where
+ * hello's was, is the first thing uncovered. One shader (`DISSOLVE_SKSL`, the flow's own, its
+ * hash held bit for bit to the kit's PixelTransition by the kit's tests) over one colour: the
+ * front of each wave is the colour's partner tone, the dither's middle tone. Linear in time: the
+ * front moves at an even speed.
  *
- * Reduce Motion, or a shader that did not compile: the picture fades out over 150ms instead.
+ * It sits above the onboarding stack and the chrome, touches pass straight through it, and it
+ * is not in the tree at all when idle. Hello does not ask for it under Reduce Motion (the name
+ * step fades in instead), nor when the shader did not compile.
  */
 export function PixelDissolve() {
   const state = useDissolve();
   const { width, height } = useWindowDimensions();
-  const reduced = useReduceMotion();
-  const progress = useSharedValue(0);
-  const opacity = useSharedValue(1);
+  const progress = useSharedValue(CLEAR);
   const source = dissolveEffect();
 
   useEffect(() => {
-    if (state.phase === 'warm') {
-      // Past the end: every cell has turned, so the canvas draws nothing a person can see.
-      progress.value = WARM_PROGRESS;
-      opacity.value = 1;
-      return;
-    }
     if (state.phase === 'cover') {
-      progress.value = 0;
-      opacity.value = 1;
+      const id = state.id;
+      progress.value = CLEAR;
+      progress.value = withTiming(0, { duration: DISSOLVE.ms, easing: Easing.linear, reduceMotion: ReduceMotion.Never }, (ok) => {
+        if (ok) runOnJS(covered)(id);
+      });
       return;
     }
-    if (state.phase !== 'reveal') return;
-    const id = state.id;
-    const done = () => finish(id);
-    if (reduced || !source) {
-      // The fade is what Reduce Motion asks for, so it is never skipped itself.
-      opacity.value = withTiming(0, { duration: DISSOLVE.reducedMs, easing: EASE, reduceMotion: ReduceMotion.Never }, (ok) => {
-        if (ok) runOnJS(done)();
-      });
-    } else {
-      // Linear: the wave front moves out of the finger at an even speed.
-      progress.value = withTiming(1 + DISSOLVE.band, { duration: DISSOLVE.ms, easing: Easing.linear, reduceMotion: ReduceMotion.Never }, (ok) => {
-        if (ok) runOnJS(done)();
+    if (state.phase === 'covered') {
+      progress.value = 0;
+      return;
+    }
+    if (state.phase === 'reveal') {
+      const id = state.id;
+      progress.value = withTiming(CLEAR, { duration: DISSOLVE.ms, easing: Easing.linear, reduceMotion: ReduceMotion.Never }, (ok) => {
+        if (ok) runOnJS(finish)(id);
       });
     }
-  }, [state, reduced, source, progress, opacity]);
+  }, [state, progress]);
 
-  const geometry = state.phase === 'cover' || state.phase === 'reveal' ? state.geometry : null;
+  const geometry = state.phase === 'idle' ? null : state.geometry;
   const origin: [number, number] = geometry?.origin ? [geometry.origin[0], geometry.origin[1]] : [width / 2, height];
   const anchor: [number, number] = geometry?.anchor ? [geometry.anchor[0], geometry.anchor[1]] : [0, 0];
   const span = waveSpan(origin, width, height);
+  const front = colorUniform(state.phase === 'idle' ? '#000000' : state.front);
   const uniforms = useDerivedValue(() => ({
     cell: DISSOLVE.cell,
     anchor,
@@ -92,28 +79,19 @@ export function PixelDissolve() {
     jitter: DISSOLVE.jitter,
     progress: progress.value,
     band: DISSOLVE.band,
-    flash: FLASH,
+    flash: front,
   }));
-  const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  if (state.phase === 'idle') return null;
+  if (state.phase === 'idle' || !source) return null;
   return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, fade]}>
-      <View style={{ width, height }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Canvas style={{ width, height }}>
-          {source && (!reduced || state.phase === 'warm') ? (
-            <Rect x={0} y={0} width={width} height={height}>
-              <Shader source={source} uniforms={uniforms}>
-                <ImageShader image={state.image} fit="fill" rect={{ x: 0, y: 0, width, height }} />
-              </Shader>
-            </Rect>
-          ) : (
-            <Rect x={0} y={0} width={width} height={height}>
-              <ImageShader image={state.image} fit="fill" rect={{ x: 0, y: 0, width, height }} />
-            </Rect>
-          )}
-        </Canvas>
-      </View>
-    </Animated.View>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Canvas style={{ width, height }}>
+        <Rect x={0} y={0} width={width} height={height}>
+          <Shader source={source} uniforms={uniforms}>
+            <ColorShader color={state.ink} />
+          </Shader>
+        </Rect>
+      </Canvas>
+    </View>
   );
 }

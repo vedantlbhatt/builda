@@ -57,7 +57,14 @@ section.
   no redraws after the sweep, copy without jargon. Plus the stack tools chapter, `burn._human`
   parity, Wrapped card 2's margin, `dev-auth?quiet=1`. Captures `shots/money/*-v2.png`.
   Artifact version 6 carries Projects and Money.
-- Running: a read only review of the Projects commit (bf7407d), privacy of `repo_key` first.
+- Projects review (20:15), being fixed by the Projects agent: PRIVACY, private projects were
+  labelled with 6 hex of the repo key, an HMAC under the public pepper (`capture/tuning.py`),
+  so a screenshot confirms a guessed repository in one try; they become phone local numbers.
+  Also: nicknames survived sign out; "since" dates read a UTC instant as a local day; the
+  week sentences said "no time" for a week another device uploaded; the swarm sampled only
+  recent notables on a cut axis; the drawings redrew every frame after landing. `repo_key`
+  itself reaches only its owner (traced). Real keys in `docs/projects.md` and two tests go
+  synthetic; both repository names were already public in CLAUDE.md, so history stays.
 - Visualizations the owner liked the sound of (16:40): project rivers, the rank race and the
   session swarm are built (bf7407d); the Money Sankey is built and in review fixes. Still on
   the list, not started: day ridgelines, tool chords, commit constellation, session

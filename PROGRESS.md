@@ -86,9 +86,10 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
 - per-session archetype enum and corpus archetype rules use two different name sets.
 - tools: AXe 1.8.0 at `~/.builder-overnight/tools/axe` (brew cannot build here: stale CLT);
   applesimutils on PATH. Lab kit + capture recipe: `design-refs/research/live-activities-assets/`.
-- MUST BEFORE ANY PUSH: rewrite the local commits 0f2c735 (brief.md) and faddc4d
-  (mobile/__tests__/uikit.test.ts) that contain the owner's Apple Team ID from the Paxel
-  screenshot (replaced in the working tree by Q7ZK2XW9PL). Run scripts/check_private_tokens.py.
+- DONE 12:10: history rewritten (filter-branch in a scratch clone, tip tree byte identical)
+  so no commit carries the Apple Team ID, then pushed: github.com/vedantlbhatt/builder, branch
+  `claude/overnight-analysis` (PUBLIC repo). Commit hashes before 0533f35's successors changed.
+  Every commit is pushed from now on (owner, 12:05).
 - after native capture polish: regenerate widget creature PNGs from the new pack
   (`python3 scripts/gen_widget_creatures.py`), rebuild, re-capture island/lock/widget.
 - live state: Lock Screen "Finished, with two files changed" beside "+0 -0" when line counts

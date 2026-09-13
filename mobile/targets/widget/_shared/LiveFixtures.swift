@@ -151,6 +151,17 @@ enum LiveFixtures {
     ])
   }
 
+  /// The longest sentence a surface can show: 58 characters, the longest over every branch of
+  /// `analysis.live.sentence` with names off, and the phone only ever renders names off
+  /// (`src/live/sentence.ts`). The small widget holds it whole: an ellipsis there cut the one
+  /// line that says what is wrong.
+  static var widgetLongest: WidgetSnapshot {
+    snapshot([
+      row("fixture-longest", "gt-transit", "codex", "working", "Going back and forth on a database migration, seventh pass",
+          "circling", "dog", minutes: 31, progress: 0.9, files: 4, eta: t + 2 * 60),
+    ])
+  }
+
   static var widgetWorking: WidgetSnapshot {
     snapshot([
       row("fixture-ridegt", "RideGT", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",

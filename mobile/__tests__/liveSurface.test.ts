@@ -922,6 +922,8 @@ describe('the debug route\'s sessions and link', () => {
       renderLiveSentence(background(1)),
       renderLiveSentence({ verdict: { state: 'circling', basis: 'consecutive_failures', evidence: { stuck_s: 0 } } }),
       renderLiveSentence({ verdict: { state: 'circling', basis: 'causes:file_churn_with_failures', evidence: { churn_writes: 4 }, file_id: 'x' }, map: { files: [{ id: 'x', role: 'source' }] } }),
+      // the longest sentence a surface can show, 58 characters (LiveFixtures.widgetLongest)
+      renderLiveSentence({ verdict: { state: 'circling', basis: 'causes:file_churn_with_failures', evidence: { churn_writes: 7 }, file_id: 'x' }, map: { files: [{ id: 'x', role: 'migration' }] } }),
       renderLiveSentence({ verdict: { state: 'lost', evidence: { blind_edits: 3 } } }),
       renderLiveSentence({ activity: { kind: 'idle', since_s: 0 } }),
       renderLiveSentence({ verdict: { state: 'done', evidence: { files_changed: 12 } } }),

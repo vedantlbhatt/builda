@@ -201,11 +201,15 @@ private struct SmallRunning: View {
         .foregroundStyle(stale ? pal.textDim : pal.text)
         .lineLimit(1)
         .minimumScaleFactor(0.7)
+      // Three lines is all a small widget has under the number, and 0.9 still cut the longest
+      // sentence the engine writes (58 characters, `LiveFixtures.widgetLongest`) to
+      // "migration, seventh…": the word that said how long it had been circling was the one
+      // lost. At 0.8 it holds whole; a sentence that fits at 13pt never shrinks.
       Text(d.sentence)
         .font(LiveType.font(13, .semibold))
         .foregroundStyle(stale ? pal.textDim : pal.text)
         .lineLimit(3)
-        .minimumScaleFactor(0.9)
+        .minimumScaleFactor(0.8)
         .fixedSize(horizontal: false, vertical: true)
       StateLine(d: d, stale: stale, pal: pal, size: 12)
         .padding(.top, 3)

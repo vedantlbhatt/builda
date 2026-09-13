@@ -100,7 +100,11 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   `"ended": null` now (test in `test_cli`). Checked at 18:30 and already fixed earlier: the
   Now tile's "pr…epo" (f11a167, the repository wraps) and the Lock Screen's "+0 -0"
   (`FinishedLine` shows each count only above zero, unknown says nothing).
-- per-session archetype enum and corpus archetype rules use two different name sets.
+- For a decision: the per-session archetype enum (`spec/analysis.v1.json`: architect,
+  velocity_machine, quality_guardian, night_owl, explorer, firefighter) and the corpus rules
+  (`spec/report.v1.json`: the same four, then director, skeptic) name two different sets.
+  One set is a contract rename in either spec (generated models, the phone's copy, stored
+  rows); `docs/analysis-complete.md` also says an archetype is never read from one session.
 - tools: AXe 1.8.0 at `~/.builder-overnight/tools/axe` (brew cannot build here: stale CLT);
   applesimutils on PATH. Lab kit + capture recipe: `design-refs/research/live-activities-assets/`.
 - DONE 12:10: history rewritten (filter-branch in a scratch clone, tip tree byte identical)
@@ -109,7 +113,14 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   Every commit is pushed from now on (owner, 12:05).
 - after native capture polish: regenerate widget creature PNGs from the new pack
   (`python3 scripts/gen_widget_creatures.py`), rebuild, re-capture island/lock/widget.
-- live state: the small widget truncates the sentence (the "+0 -0" half is fixed, above).
+- FIXED 18:55: the small widget cut the longest sentence a surface can show (58 characters,
+  measured over every branch of `live.sentence`) to "migration, seventh…". It shrinks to 0.8
+  now, only when it must; rendered before and after in `shots/widget-longest/` from the new
+  `LiveFixtures.widgetLongest`, which `liveSurface.test.ts` holds to the phone's renderer.
+- ENVIRONMENT, not code: inside `bun test`, a child process started from a test file in a
+  subfolder of `mobile/` returns empty stdout here (even `echo hi`; the same file in
+  `mobile/` itself or the scratchpad prints). So `dither.test.ts` and `missionFit.test.ts`
+  fail on `JSON.parse('')` in this terminal; `make gen` still asserts the Bayer parity.
 - simulator: the app on <simulator 1> was rebuilt at 08:40 with `BUILDER_API_URL` (the address is
   baked in at build time) and signed in with its own minted device
   (`~/.builder-overnight/simulator.json`), never `device.json`'s pair. The rebuild's

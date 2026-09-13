@@ -95,7 +95,7 @@ public final class BuilderPreviewRenderer: NSObject {
 
     let widgets: [(String, WidgetSnapshot)] = [
       ("four", F.widgetFour), ("circling", F.widgetCircling), ("one", F.widgetWorking), ("idle", F.widgetIdle),
-      ("finished", F.widgetFinished),
+      ("finished", F.widgetFinished), ("longest", F.widgetLongest),
     ]
     for (name, snap) in widgets {
       for scheme in [ColorScheme.dark, .light] {

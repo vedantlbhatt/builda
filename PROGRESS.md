@@ -5,21 +5,34 @@ section.
 
 ## Done
 
+- `3a4fa08` analysis engine: wrapped.py (15 cards, 14 answered on the real corpus), live.py,
+  vocab.py, plain.py, burn/profile fixes, 1101 tests. `a704386` integration design + the
+  Team ID scrub.
+- `1386f84` Live Activity, Dynamic Island, widget authored in SwiftUI + builder-live module
+  + JS sync layer + debug deep link + capture script. Catalyst renders of 35 states in
+  `shots/live-renders-catalyst/`.
+- `faddc4d` Mobile foundation: SDK 53 animation/graphics deps, tokens, `mobile/src/ui/` kit,
+  tabs Now/Sessions/You, onboarding skeleton, dev auth, refit, slop and dashes removed, three
+  simulator review passes (`shots/foundation/final-*`).
+- `54588ff` Local end to end stack (`scripts/overnight_stack.sh`).
 - Burn forensics patch applied on top of `claude/hello-hvkwll` (546 analysis tests green).
 - `planzz.md`, `docs/approved-roadmap.md`, `burn-forensics.patch`, `brief.md` added.
 
 ## In progress
 
-- Workflow `builder-engine`: `analysis/wrapped.py` (15 Paxel cards), `analysis/live.py`
-  (sentence, verdict, ETA, decisions, needs you, map, timelapse), `analysis/vocab.py`
-  (glossary, stack, engineer titles), burn/profile fixes. Design doc:
-  `docs/overnight-engine.md`.
-- Workflow `builder-mobile-foundation`: deps (reanimated, gesture handler, skia, symbols,
-  keyboard controller), tokens + `mobile/src/ui/` kit, tabs (Now, Sessions, You),
-  onboarding skeleton behind `Stack.Protected`, `builder://dev-auth`, refit + slop removal,
-  simulator verify. Shots in `shots/foundation/`.
-- Workflow `builder-overnight-research`: Paxel, Live Activities on SDK 53, simulator capture,
-  Phantom, competitors. Output in `~/Downloads/projects/design-refs/research/`.
+- Workflow `builder-integrate-and-screens`: contract v4 + live spec, report v2, server
+  (migrations 0020 to 0022, live state, spend fix), capture (tool bucketing fix, `capture
+  live`), phone data and copy, and the screens: Wrapped deck, You pages (dimensions, money,
+  glossary, stack), session burn + summary + title, mission control + LiveBar, codebase map
+  + timelapse. Then end to end with this session live, simulator screenshots, three critics,
+  polish, adversarial review. Design: `docs/overnight-integration.md` + addendum (per
+  session burn and title_ids).
+- Workflow `builder-native-capture`: real simulator captures of the island, Lock Screen,
+  widgets, banners, and this session live (`shots/native/`), critics, polish.
+- Workflow `builder-onboarding`: the six step flow on the second simulator
+  (`Builder Screens`, C3F41B44), video + stills in `shots/onboarding/`.
+- Workflow `builder-identity-art`: simplified creature family + harness glyphs
+  (`shots/identity/`), finalize stage.
 
 ## Reference material
 
@@ -56,3 +69,6 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   0.4 is Paxel copy.
 - tools: AXe 1.8.0 at `~/.builder-overnight/tools/axe` (brew cannot build here: stale CLT);
   applesimutils on PATH. Lab kit + capture recipe: `design-refs/research/live-activities-assets/`.
+- MUST BEFORE ANY PUSH: rewrite the local commits 0f2c735 (brief.md) and faddc4d
+  (mobile/__tests__/uikit.test.ts) that contain the owner's Apple Team ID from the Paxel
+  screenshot (replaced in the working tree by Q7ZK2XW9PL). Run scripts/check_private_tokens.py.

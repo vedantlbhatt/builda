@@ -10,7 +10,9 @@
 #   scripts/overnight_stack.sh phone     GET the phone's endpoints with device.json's token
 #   scripts/overnight_stack.sh token     print a valid access token for device.json (refreshing it)
 #   scripts/overnight_stack.sh test      the server pytest suite against the separate test DB
-#   scripts/overnight_stack.sh down      stop the API
+#   scripts/overnight_stack.sh lan [stop]  a second API on this Mac's Wi-Fi address, for a real iPhone
+#   scripts/overnight_stack.sh iphone ID [--onboarded]  sign the app on iPhone ID in with a freshly minted device
+#   scripts/overnight_stack.sh down      stop the API (and the Wi-Fi one)
 #   scripts/overnight_stack.sh restart   down + up
 #   scripts/overnight_stack.sh logs      tail the API log
 #   scripts/overnight_stack.sh reset     drop the two overnight DBs and the minted state (asks first)
@@ -202,7 +204,85 @@ cmd_up() {
   start_api
 }
 
+# A real iPhone cannot reach 127.0.0.1, and rebinding the main API would drop every simulator
+# mid request. So the phone gets a SECOND uvicorn on the Wi-Fi address, same database, same
+# key: two processes, one stack. Build the app with BUILDER_API_URL set to the address this
+# prints; the address is baked in at build time (CLAUDE.md).
+LAN_PID_FILE="$STATE_DIR/api-lan.pid"
+LAN_LOG_FILE="$STATE_DIR/api-lan.log"
+lan_ip() { ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true; }
+lan_pid() {
+  [ -f "$LAN_PID_FILE" ] || return 0
+  local pid; pid="$(cat "$LAN_PID_FILE" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 0
+  if kill -0 "$pid" 2>/dev/null && ps -p "$pid" -o command= | grep -q "builder.main:app"; then
+    echo "$pid"
+  fi
+}
+cmd_lan() {
+  if [ "${1:-}" = "stop" ]; then
+    local pid; pid="$(lan_pid)"
+    [ -n "$pid" ] && kill "$pid" && say "stopped the Wi-Fi API (pid $pid)"
+    rm -f "$LAN_PID_FILE"
+    return
+  fi
+  require_api
+  local ip; ip="$(lan_ip)"
+  [ -n "$ip" ] || die "no Wi-Fi address on en0 or en1; is this Mac on a network?"
+  local url="http://$ip:$PORT"
+  if [ -n "$(lan_pid)" ]; then say "Wi-Fi API already running at $url"; return; fi
+  say "starting a second API on $url (log $LAN_LOG_FILE)"
+  touch "$LAN_LOG_FILE" && chmod 600 "$LAN_LOG_FILE"
+  (
+    cd "$SERVER_DIR"
+    exec env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-en_US.UTF-8}" \
+      ENVIRONMENT=development \
+      APP_DATABASE_URL="$(db_url "$APP_ROLE" "$DB")" \
+      JWT_PRIVATE_KEY="$(cat "$KEY_FILE")" \
+      BASE_URL="$url" \
+      nohup "$PY" -c 'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
+      "$VENV/bin/uvicorn" builder.main:app --host "$ip" --port "$PORT" \
+      >>"$LAN_LOG_FILE" 2>&1 </dev/null
+  ) &
+  echo $! >"$LAN_PID_FILE"
+  chmod 600 "$LAN_PID_FILE"
+  local i
+  for i in $(seq 1 60); do
+    if curl -fsS --max-time 3 "$url/health" >/dev/null 2>&1; then
+      say "Wi-Fi API healthy. Build the phone with BUILDER_API_URL=$url"
+      return
+    fi
+    sleep 0.5
+  done
+  tail -n 40 "$LAN_LOG_FILE" >&2
+  die "the Wi-Fi API did not answer /health within 30 s"
+}
+
+# Signs the app on a real iPhone in through the dev-auth link (a Debug build only). The phone
+# gets a device of its OWN, minted here and never written to disk: refresh tokens rotate, and
+# a spent one presented again revokes the whole device, so a pair shared with device.json or a
+# simulator dies the second time either side refreshes. ID is the CoreDevice identifier from
+# `xcrun devicectl list devices`.
+cmd_iphone() {
+  require_api
+  local id="${1:-}"; [ -n "$id" ] || die "usage: $0 iphone <devicectl device id> [--onboarded]"
+  local onboarded=""; [ "${2:-}" = "--onboarded" ] && onboarded="&onboarded=1"
+  local name; name="$(xcrun devicectl device info details --device "$id" 2>/dev/null \
+    | awk -F': ' '/^ *• name:/ {print $2; exit}')"
+  say "minting a device for ${name:-the iPhone} and opening the app signed in"
+  local url
+  url="$(mint "${name:-iPhone} (overnight)" ios "iphone-$id" | "$PY" -c '
+import json, sys, urllib.parse
+d = json.load(sys.stdin)
+print("builder://dev-auth?" + urllib.parse.urlencode({"access": d["access_token"], "refresh": d["refresh_token"]}) + sys.argv[1])
+' "$onboarded")" || die "minting the iPhone device failed"
+  xcrun devicectl device process launch --device "$id" --terminate-existing \
+    --payload-url "$url" com.vedantlbhatt.Builder >/dev/null || die "launch failed; is the app installed?"
+  say "launched"
+}
+
 cmd_down() {
+  cmd_lan stop
   local pid; pid="$(api_pid)"
   if [ -z "$pid" ]; then say "API not running"; rm -f "$PID_FILE"; return; fi
   say "stopping the API (pid $pid)"
@@ -433,5 +513,7 @@ case "${1:-}" in
   test) shift; cmd_test "$@" ;;
   logs) shift; cmd_logs "$@" ;;
   reset) shift; cmd_reset "$@" ;;
-  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  lan) shift; cmd_lan "$@" ;;
+  iphone) shift; cmd_iphone "$@" ;;
+  *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

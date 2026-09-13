@@ -136,6 +136,7 @@ from.
 | `builder://session/<id>` | `id`; `recap=1` raises the recap sheet (not for `sample`) | session detail. `sample` is the built-in sample session. Also accepted: `builder://session/<id>/recap`, `builder:///session/<id>` |
 | `builder://live` | none | mission control, full screen (skeleton) |
 | `builder://wrapped` | `card` = 1 to 15, anything else opens card 1 | Wrapped story view, full screen modal with Close (skeleton) |
+| `builder://analysis` | none | Your analysis: every chapter of the analysis on one page, native large title (`src/insights/`). Not listed in `app/_layout.tsx`, so it sets its own options |
 | `builder://you/dimensions` | none | the five dimensions and the archetype (skeleton) |
 | `builder://you/money` | none | the money view (skeleton) |
 | `builder://you/stack` | none | your stack (skeleton) |

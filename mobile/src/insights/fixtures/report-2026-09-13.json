@@ -1,0 +1,1956 @@
+{
+ "builder": {
+  "builder_profile": null,
+  "sessions_analysed": 0,
+  "min_sessions": 3,
+  "window_days": 90,
+  "corpus": {
+   "profile_version": 1,
+   "generated_at": "2026-09-13T13:49:18Z",
+   "sample": {
+    "sessions": 171,
+    "sessions_with_prompt_text": 0,
+    "prompts": 938,
+    "prompts_with_text": 0,
+    "tool_calls": 11518,
+    "active_hours": 88.0,
+    "days": 28,
+    "spans_days": 34,
+    "first_at": "2026-08-12T00:44:30Z",
+    "last_at": "2026-09-13T13:04:24Z",
+    "min_sessions": 3,
+    "enough_sessions": true,
+    "missing": {
+     "avg_prompt_chars": "prompt text is not stored server side",
+     "median_prompt_chars": "prompt text is not stored server side",
+     "short_prompt_share": "prompt text is not stored server side",
+     "planning_ratio": "what the agent did after each prompt is not stored server side",
+     "steer_rate": "prompt text and interrupt counts are not stored server side",
+     "tool_diversity": "tool names are bucketed to an allowlist here, so distinct names would undercount every corpus",
+     "test_runs_per_hour": "test runs are not counted server side",
+     "barren_token_share": "sessions reported token counts, but none was split into segments, which needs the transcripts",
+     "night_commit_share": "commit times are not stored: the strip marks are deduped for rendering"
+    }
+   },
+   "totals": {
+    "total_sessions": 171,
+    "total_hours": 88.0,
+    "total_prompts": 938,
+    "total_lines_added": 67167,
+    "total_lines_removed": 2258,
+    "total_commits": null,
+    "commit_basis": "overlapping_session_windows",
+    "total_tool_calls": 11518
+   },
+   "metrics": {
+    "avg_prompt_chars": {
+     "value": null,
+     "unit": "chars",
+     "n": 0,
+     "basis": "prompt_text",
+     "reason": "prompt text is not stored server side"
+    },
+    "median_prompt_chars": {
+     "value": null,
+     "unit": "chars",
+     "n": 0,
+     "basis": "prompt_text",
+     "reason": "prompt text is not stored server side"
+    },
+    "short_prompt_share": {
+     "value": null,
+     "unit": "share",
+     "n": 0,
+     "basis": "prompt_text",
+     "reason": "prompt text is not stored server side"
+    },
+    "planning_ratio": {
+     "value": null,
+     "unit": "ratio",
+     "n": 0,
+     "basis": "prose_before_first_tool",
+     "reason": "what the agent did after each prompt is not stored server side",
+     "planning_prompts": 0,
+     "execution_prompts": 0
+    },
+    "iteration_depth": {
+     "value": 12.3,
+     "unit": "tool calls per prompt",
+     "n": 938,
+     "basis": "allowlisted_tool_names",
+     "reason": null
+    },
+    "autonomy_score": {
+     "value": 0.136,
+     "unit": "share",
+     "n": 171,
+     "basis": "two_clocks",
+     "reason": null
+    },
+    "steer_rate": {
+     "value": null,
+     "unit": "share",
+     "n": 0,
+     "basis": "interrupts_and_correction_markers",
+     "reason": "prompt text and interrupt counts are not stored server side"
+    },
+    "code_velocity": {
+     "value": 763.3,
+     "unit": "lines per active hour",
+     "n": 171,
+     "basis": "uploaded_agent_lines",
+     "reason": null,
+     "write_events": null
+    },
+    "tool_diversity": {
+     "value": null,
+     "unit": "distinct tools per session",
+     "n": 155,
+     "basis": "allowlisted_tool_names",
+     "reason": "tool names are bucketed to an allowlist here, so distinct names would undercount every corpus"
+    },
+    "test_runs_per_hour": {
+     "value": null,
+     "unit": "test runs per active hour",
+     "n": 0,
+     "basis": "absent",
+     "reason": "test runs are not counted server side"
+    },
+    "ships_rate": {
+     "value": 0.485,
+     "unit": "share of sessions that ended with a commit",
+     "n": 171,
+     "basis": "git_log_window",
+     "reason": null,
+     "shipped_sessions": 83
+    },
+    "spend_usd": {
+     "value": 3000.9,
+     "unit": "US dollars at API list prices",
+     "n": 170,
+     "basis": "anthropic_api_list_price",
+     "reason": null,
+     "unpriced_sessions": null,
+     "prices_read_on": "2026-09-06"
+    },
+    "spend_per_hour_usd": {
+     "value": 34.1,
+     "unit": "US dollars per active hour at list prices",
+     "n": 170,
+     "basis": "anthropic_api_list_price",
+     "reason": null
+    },
+    "spend_without_a_commit_usd": {
+     "value": 682.34,
+     "unit": "US dollars on sittings that ended with no commit",
+     "n": 170,
+     "basis": "anthropic_api_list_price",
+     "reason": null,
+     "sessions": 87,
+     "share_of_spend": 0.227
+    },
+    "barren_token_share": {
+     "value": null,
+     "unit": "share",
+     "n": 0,
+     "basis": "burn_segments_that_changed_nothing",
+     "reason": "sessions reported token counts, but none was split into segments, which needs the transcripts",
+     "barren_tokens": null,
+     "tokens": null,
+     "unreadable_tokens": null,
+     "code": "not_segmented",
+     "needed": null,
+     "by_cause": null
+    },
+    "night_share": {
+     "value": 0.221,
+     "unit": "share",
+     "n": 171,
+     "basis": "active_seconds_by_local_hour",
+     "reason": null,
+     "note": "22:00 to 04:00 local"
+    },
+    "peak_hour": {
+     "value": 11,
+     "unit": "local hour",
+     "n": 171,
+     "basis": "active_seconds_by_local_hour",
+     "reason": null
+    },
+    "night_commit_share": {
+     "value": null,
+     "unit": "share",
+     "n": 0,
+     "basis": "commit_timestamps",
+     "reason": "commit times are not stored: the strip marks are deduped for rendering"
+    },
+    "longest_streak_days": {
+     "value": 11,
+     "unit": "days",
+     "n": 26,
+     "basis": "local_days_at_04h_attended",
+     "reason": null
+    },
+    "busiest_day": {
+     "value": "2026-08-18",
+     "unit": "date",
+     "n": 26,
+     "basis": "local_days_at_04h_attended",
+     "reason": null,
+     "attended_seconds": 31097,
+     "active_seconds": 34030
+    },
+    "shipping_day": {
+     "value": "2026-08-15",
+     "unit": "date",
+     "n": 28,
+     "basis": "uploaded_agent_lines",
+     "reason": null,
+     "lines_added": 19535
+    },
+    "default_model": {
+     "value": "claude-opus-5",
+     "unit": "model id",
+     "n": 3,
+     "basis": "output_token_share",
+     "reason": null,
+     "share": 0.9197
+    }
+   },
+   "top_tools": [
+    {
+     "tool": "Bash",
+     "calls": 9284,
+     "share": 0.806
+    },
+    {
+     "tool": "Read",
+     "calls": 723,
+     "share": 0.063
+    },
+    {
+     "tool": "Edit",
+     "calls": 692,
+     "share": 0.06
+    },
+    {
+     "tool": "Write",
+     "calls": 341,
+     "share": 0.03
+    }
+   ],
+   "model_mix": [
+    {
+     "model": "claude-opus-5",
+     "output_tokens": 8099961,
+     "share": 0.9197
+    },
+    {
+     "model": "claude-fable-5",
+     "output_tokens": 645441,
+     "share": 0.0733
+    },
+    {
+     "model": "claude-fable-5-1",
+     "output_tokens": 61759,
+     "share": 0.007
+    }
+   ],
+   "model_costs": [
+    {
+     "model": "Opus 5",
+     "model_id": "claude-opus-5",
+     "usd": 2532.96,
+     "output_tokens": 8099961,
+     "sessions": 160,
+     "commits": 220,
+     "sessions_dominated": 158,
+     "usd_per_commit": 11.44,
+     "commits_basis": "sittings_this_model_wrote_most_of"
+    },
+    {
+     "model": "Fable 5",
+     "model_id": "claude-fable-5",
+     "usd": 456.96,
+     "output_tokens": 645441,
+     "sessions": 12,
+     "commits": 31,
+     "sessions_dominated": 9,
+     "usd_per_commit": 13.6,
+     "commits_basis": "sittings_this_model_wrote_most_of"
+    },
+    {
+     "model": "Fable 5.1",
+     "model_id": "claude-fable-5-1",
+     "usd": 10.98,
+     "output_tokens": 61759,
+     "sessions": 2,
+     "commits": 1,
+     "sessions_dominated": 1,
+     "usd_per_commit": 2.94,
+     "commits_basis": "sittings_this_model_wrote_most_of"
+    }
+   ],
+   "session_rank": [
+    {
+     "rank": 1,
+     "session_id": "fixture-1",
+     "attended_seconds": 11173,
+     "active_seconds": 11173,
+     "started_at": "2026-08-19T01:23:20Z"
+    },
+    {
+     "rank": 2,
+     "session_id": "fixture-2",
+     "attended_seconds": 10233,
+     "active_seconds": 11567,
+     "started_at": "2026-08-18T11:47:48Z"
+    },
+    {
+     "rank": 3,
+     "session_id": "fixture-3",
+     "attended_seconds": 8305,
+     "active_seconds": 9274,
+     "started_at": "2026-08-16T01:07:09Z"
+    },
+    {
+     "rank": 4,
+     "session_id": "fixture-4",
+     "attended_seconds": 6994,
+     "active_seconds": 8772,
+     "started_at": "2026-08-25T14:09:35Z"
+    },
+    {
+     "rank": 5,
+     "session_id": "fixture-5",
+     "attended_seconds": 6581,
+     "active_seconds": 6668,
+     "started_at": "2026-08-12T14:53:27Z"
+    }
+   ],
+   "ranked_sessions": 139,
+   "archetype": {
+    "name": "velocity_machine",
+    "confidence": 0.79,
+    "reason": null,
+    "metric": "code_velocity",
+    "value": 763.3,
+    "threshold": 487.0,
+    "rule": "agent lines per active hour",
+    "scores": [
+     {
+      "name": "architect",
+      "metric": "planning_ratio",
+      "value": null,
+      "threshold": 2.4,
+      "score": null,
+      "rule": "prose before the first tool on more than twice as many prompts as go straight to work"
+     },
+     {
+      "name": "velocity_machine",
+      "metric": "code_velocity",
+      "value": 763.3,
+      "threshold": 487.0,
+      "score": 0.784,
+      "rule": "agent lines per active hour"
+     },
+     {
+      "name": "quality_guardian",
+      "metric": "test_runs_per_hour",
+      "value": null,
+      "threshold": 3.0,
+      "score": null,
+      "rule": "test runs per active hour"
+     },
+     {
+      "name": "night_owl",
+      "metric": "night_share",
+      "value": 0.221,
+      "threshold": 0.4,
+      "score": 0.276,
+      "rule": "share of active seconds between 22:00 and 04:00 local"
+     },
+     {
+      "name": "director",
+      "metric": "autonomy_score",
+      "value": 0.136,
+      "threshold": 0.5,
+      "score": 0.136,
+      "rule": "share of active time the agent ran with nobody present"
+     },
+     {
+      "name": "skeptic",
+      "metric": "steer_rate",
+      "value": null,
+      "threshold": 0.4,
+      "score": null,
+      "rule": "interrupts plus corrective prompts, over prompts"
+     }
+    ],
+    "runners_up": [
+     {
+      "name": "night_owl",
+      "score": 0.276,
+      "metric": "night_share",
+      "value": 0.221
+     },
+     {
+      "name": "director",
+      "score": 0.136,
+      "metric": "autonomy_score",
+      "value": 0.136
+     }
+    ]
+   },
+   "facts": [
+    {
+     "id": "autonomy_score",
+     "text": "14% of your build time runs without you",
+     "value": 0.136,
+     "unit": "share",
+     "unusualness": 2.736,
+     "baseline": {
+      "value": 0.82,
+      "scale": 0.25,
+      "source": "UNMEASURED: from an explainx.ai mock of a Paxel report, which Paxel never published; not a measurement (autonomy_score 0.82, a guessed formula)"
+     }
+    },
+    {
+     "id": "longest_streak_days",
+     "text": "11 days in a row with a session you were at",
+     "value": 11,
+     "unit": "days",
+     "unusualness": 1.0,
+     "baseline": null
+    },
+    {
+     "id": "code_velocity",
+     "text": "763.3 lines an hour while the agent is running",
+     "value": 763.3,
+     "unit": "lines per active hour",
+     "unusualness": 0.961,
+     "baseline": {
+      "value": 523.0,
+      "scale": 250.0,
+      "source": "MEASURED in the proof database: 2,300 transcript lines over 4.4 active hours across seven sittings (profile.py docstring)"
+     }
+    },
+    {
+     "id": "iteration_depth",
+     "text": "12.3 tool calls per prompt, on average",
+     "value": 12.3,
+     "unit": "tool calls per prompt",
+     "unusualness": 0.512,
+     "baseline": {
+      "value": 16.4,
+      "scale": 8.0,
+      "source": "CLAUDE.md reference corpus: 23,838 tool calls over 1,456 typed prompts"
+     }
+    },
+    {
+     "id": "model_mix",
+     "text": "You default to Opus: 92% of output tokens",
+     "value": 0.9197,
+     "unit": "share",
+     "unusualness": 0.42,
+     "baseline": null
+    },
+    {
+     "id": "top_tool",
+     "text": "Bash is 81% of every tool call you make",
+     "value": 0.806,
+     "unit": "share",
+     "unusualness": 0.406,
+     "baseline": null
+    },
+    {
+     "id": "peak_hour",
+     "text": "You build most at 11am",
+     "value": 11,
+     "unit": "local hour",
+     "unusualness": 0.2,
+     "baseline": null
+    },
+    {
+     "id": "night_share",
+     "text": "22% of your build time is between 10pm and 4am",
+     "value": 0.221,
+     "unit": "share",
+     "unusualness": 0.193,
+     "baseline": {
+      "value": 0.25,
+      "scale": 0.15,
+      "source": "22:00-04:00 is six of twenty four hours, so no bias at all is 0.25"
+     }
+    },
+    {
+     "id": "totals",
+     "text": "88 hours across 171 sessions",
+     "value": 88.0,
+     "unit": "hours",
+     "unusualness": 0.0,
+     "baseline": null
+    }
+   ]
+  },
+  "narrative": null,
+  "report": {
+   "burn": {
+    "share": 0.029,
+    "causes": [
+     {
+      "cause": "context_replay",
+      "share": 0.942,
+      "tokens": 112830673,
+      "segments": 242
+     }
+    ],
+    "needed": null,
+    "reason": null,
+    "tokens": 4144956746,
+    "sessions": 157,
+    "barren_tokens": 119827180,
+    "unreadable_tokens": 1187421132
+   },
+   "money": {
+    "usd": 2951.68,
+    "basis": "anthropic_api_list_price",
+    "reason": null,
+    "tokens": {
+     "input": 85372,
+     "output": 8581908,
+     "cache_w1h": 44754814,
+     "cache_w5m": 0,
+     "cache_read": 4117070688
+    },
+    "by_model": [
+     {
+      "usd": 2483.75,
+      "model": "claude-opus-5",
+      "commits": 196,
+      "sessions": 147,
+      "output_tokens": 7874708,
+      "usd_per_commit": 12.59,
+      "sessions_dominated": 145
+     },
+     {
+      "usd": 456.96,
+      "model": "claude-fable-5",
+      "commits": 29,
+      "sessions": 12,
+      "output_tokens": 645441,
+      "usd_per_commit": 14.54,
+      "sessions_dominated": 9
+     },
+     {
+      "usd": 10.98,
+      "model": "claude-fable-5-1",
+      "commits": 1,
+      "sessions": 2,
+      "output_tokens": 61759,
+      "usd_per_commit": 2.94,
+      "sessions_dominated": 1
+     }
+    ],
+    "lines_added": 50177,
+    "lines_basis": "project_edit_tools_and_credited_shell_writes",
+    "lines_removed": 1941,
+    "prices_read_on": "2026-09-06T00:00:00Z",
+    "token_sessions": 157,
+    "priced_sessions": 157,
+    "unpriced_sessions": 0,
+    "usd_per_active_hour": 34.65,
+    "usd_without_a_commit": 657.01,
+    "share_without_a_commit": 0.223
+   },
+   "stack": {
+    "items": [
+     {
+      "id": "python",
+      "category": "language",
+      "evidence": "language",
+      "sessions": 63,
+      "first_seen": "2026-08-12T00:52:11Z"
+     },
+     {
+      "id": "javascript",
+      "category": "language",
+      "evidence": "language",
+      "sessions": 27,
+      "first_seen": "2026-08-12T01:01:53Z"
+     },
+     {
+      "id": "html",
+      "category": "language",
+      "evidence": "language",
+      "sessions": 7,
+      "first_seen": "2026-08-12T16:09:27Z"
+     },
+     {
+      "id": "swift",
+      "category": "language",
+      "evidence": "language",
+      "sessions": 3,
+      "first_seen": "2026-08-16T02:51:20Z"
+     },
+     {
+      "id": "typescript",
+      "category": "language",
+      "evidence": "language",
+      "sessions": 2,
+      "first_seen": "2026-08-16T04:33:25Z"
+     },
+     {
+      "id": "sql",
+      "category": "language",
+      "evidence": "language",
+      "sessions": 1,
+      "first_seen": "2026-08-16T02:56:14Z"
+     },
+     {
+      "id": "expo",
+      "category": "framework",
+      "evidence": "manifest",
+      "sessions": 15,
+      "first_seen": "2026-08-13T00:18:01Z"
+     },
+     {
+      "id": "swiftui",
+      "category": "framework",
+      "evidence": "path",
+      "sessions": 1,
+      "first_seen": "2026-08-16T04:06:47Z"
+     },
+     {
+      "id": "react",
+      "category": "framework",
+      "evidence": "manifest",
+      "sessions": 0,
+      "first_seen": null
+     },
+     {
+      "id": "react_native",
+      "category": "framework",
+      "evidence": "manifest",
+      "sessions": 0,
+      "first_seen": null
+     },
+     {
+      "id": "nextjs",
+      "category": "framework",
+      "evidence": "manifest",
+      "sessions": 0,
+      "first_seen": null
+     },
+     {
+      "id": "fastapi",
+      "category": "framework",
+      "evidence": "manifest",
+      "sessions": 0,
+      "first_seen": null
+     }
+    ],
+    "reason": null,
+    "sessions": 158,
+    "manifests": 130,
+    "shell_calls": 8987,
+    "shell_calls_cut": 6580
+   },
+   "vocab": {
+    "terms": [
+     {
+      "id": "regex",
+      "count": 2266,
+      "sessions": 139,
+      "first_seen": "2026-08-12T00:44:34Z"
+     },
+     {
+      "id": "compaction",
+      "count": 11,
+      "sessions": 10,
+      "first_seen": "2026-08-12T00:48:21Z"
+     },
+     {
+      "id": "endpoint",
+      "count": 367,
+      "sessions": 71,
+      "first_seen": "2026-08-12T00:49:46Z"
+     },
+     {
+      "id": "port",
+      "count": 210,
+      "sessions": 55,
+      "first_seen": "2026-08-12T00:49:46Z"
+     },
+     {
+      "id": "process",
+      "count": 72,
+      "sessions": 36,
+      "first_seen": "2026-08-12T00:49:51Z"
+     },
+     {
+      "id": "server",
+      "count": 70,
+      "sessions": 38,
+      "first_seen": "2026-08-12T00:50:02Z"
+     }
+    ],
+    "locked": 68,
+    "reason": null,
+    "sessions": 158,
+    "shell_calls": 8987,
+    "catalog_size": 74,
+    "shell_calls_cut": 6580
+   },
+   "agents": {
+    "agents": 39,
+    "by_type": [
+     {
+      "name": "general-purpose",
+      "agents": 29
+     },
+     {
+      "name": "Explore",
+      "agents": 7
+     },
+     {
+      "name": "unknown",
+      "agents": 3
+     }
+    ],
+    "produced": 38,
+    "parallelism": 2.11,
+    "busy_seconds": 5878.4,
+    "wall_seconds": 1532923.5,
+    "agent_seconds": 12429.3,
+    "max_concurrent": 9
+   },
+   "trends": [
+    {
+     "now": 0.223,
+     "good": null,
+     "move": 1.451,
+     "label": "work after 22:00",
+     "before": 0.091,
+     "metric": "night_share",
+     "direction": "up",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 624.5,
+     "good": true,
+     "move": 1.422,
+     "label": "lines an hour",
+     "before": 257.8,
+     "metric": "code_velocity",
+     "direction": "up",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 5.09,
+     "good": true,
+     "move": 0.906,
+     "label": "how often you test",
+     "before": 2.67,
+     "metric": "test_runs_per_hour",
+     "direction": "up",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 0.462,
+     "good": false,
+     "move": -0.454,
+     "label": "sittings that end with a commit",
+     "before": 0.846,
+     "metric": "ships_rate",
+     "direction": "down",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 12.5,
+     "good": null,
+     "move": 0.453,
+     "label": "tool calls between your messages",
+     "before": 8.6,
+     "metric": "iteration_depth",
+     "direction": "up",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 1.7,
+     "good": null,
+     "move": 0.318,
+     "label": "planning against doing",
+     "before": 1.29,
+     "metric": "planning_ratio",
+     "direction": "up",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 0.128,
+     "good": null,
+     "move": 0.306,
+     "label": "time the agent runs alone",
+     "before": 0.098,
+     "metric": "autonomy_score",
+     "direction": "up",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 3.5,
+     "good": null,
+     "move": -0.205,
+     "label": "different tools a sitting",
+     "before": 4.4,
+     "metric": "tool_diversity",
+     "direction": "down",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 0.424,
+     "good": true,
+     "move": -0.165,
+     "label": "how often you take the wheel back",
+     "before": 0.508,
+     "metric": "steer_rate",
+     "direction": "down",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 0.277,
+     "good": null,
+     "move": -0.092,
+     "label": "one line prompts",
+     "before": 0.305,
+     "metric": "short_prompt_share",
+     "direction": "steady",
+     "sessions_now": 145,
+     "sessions_before": 13
+    },
+    {
+     "now": 34.48,
+     "good": null,
+     "move": -0.048,
+     "label": "cost an hour",
+     "before": 36.22,
+     "metric": "spend_per_hour_usd",
+     "direction": "steady",
+     "sessions_now": 145,
+     "sessions_before": 13
+    }
+   ],
+   "quality": {
+    "runs": 411,
+    "failed": 72,
+    "passed": 339,
+    "reason": null,
+    "time_to_green": {
+     "n": 43,
+     "worst_seconds": 3568,
+     "median_seconds": 39,
+     "median_attempts": 2
+    },
+    "first_try_rate": 0.825
+   },
+   "wrapped": {
+    "cards": [
+     {
+      "n": 158,
+      "id": "builder_type",
+      "unit": "archetype",
+      "basis": "archetype_rules",
+      "value": null,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": "test_runs_per_hour",
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": 0.55,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": [
+        {
+         "name": "velocity_machine",
+         "score": 0.605,
+         "value": 589.0,
+         "metric": "code_velocity",
+         "threshold": 487.0
+        },
+        {
+         "name": "skeptic",
+         "score": 0.544,
+         "value": 0.435,
+         "metric": "steer_rate",
+         "threshold": 0.4
+        }
+       ],
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": 4.86,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": true,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": "quality_guardian"
+     },
+     {
+      "n": 158,
+      "id": "shipped",
+      "unit": "lines",
+      "basis": "project_edit_tools_and_credited_shell_writes",
+      "value": 50177.0,
+      "extras": {
+       "alone": 15,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": 247,
+       "assisted": 232,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": "git_log_distinct_commits",
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 132,
+      "id": "work_style",
+      "unit": "style",
+      "basis": "autonomy_then_prompts_then_steer",
+      "value": null,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": 0.125,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": 0.435,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": 3.5,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": "steering"
+     },
+     {
+      "n": 132,
+      "id": "longest_session",
+      "unit": "seconds",
+      "basis": "attended_seconds_rank",
+      "value": 11173.0,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": "2026-08-19T01:23:20Z",
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": 11173,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 158,
+      "id": "agents_at_once",
+      "unit": "sessions",
+      "basis": "sweep_over_first_to_last_event",
+      "value": 3.0,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": 39,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": 9,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 898,
+      "id": "go_to_prompt",
+      "unit": "sends",
+      "basis": "normalized_prompt_text_across_sessions",
+      "value": 4.0,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": 2,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": 4,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 20,
+      "id": "streak",
+      "unit": "days",
+      "basis": "days_with_a_commit_and_an_attended_session",
+      "value": 11.0,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": 20,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": 24,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": 25,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 927,
+      "id": "change_course",
+      "unit": "share",
+      "basis": "interrupts_and_correction_markers",
+      "value": 0.435,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": 151,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": 252,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 898,
+      "id": "crash_out",
+      "unit": "score",
+      "basis": "profanity_caps_punctuation_markers",
+      "value": null,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 906,
+      "id": "prompt_length",
+      "unit": "words",
+      "basis": "words_per_prompt",
+      "value": 29.9,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": 16.0,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 132,
+      "id": "deep_sessions",
+      "unit": "sessions",
+      "basis": "attended_sessions_over_an_hour",
+      "value": 19.0,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": 99,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": 186,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 158,
+      "id": "time_put_in",
+      "unit": "hours",
+      "basis": "active_seconds",
+      "value": 85.2,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": 74.5,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": 1.2
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 392,
+      "id": "cryptic_prompt",
+      "unit": "share",
+      "basis": "vowelless_runs",
+      "value": null,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": "no_cryptic_prompt",
+      "value_id": null
+     },
+     {
+      "n": 132,
+      "id": "prompts_per_session",
+      "unit": "prompts_per_session",
+      "basis": "prompts_over_attended_sessions",
+      "value": 7.0,
+      "extras": {
+       "alone": null,
+       "kinds": null,
+       "lines": null,
+       "words": null,
+       "median": 3.5,
+       "metric": null,
+       "closest": null,
+       "commits": null,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": null,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": null,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": null,
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": null,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": null,
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": 11.3,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": null
+     },
+     {
+      "n": 50177,
+      "id": "kind_of_work",
+      "unit": "kind",
+      "basis": "lines_by_file_role",
+      "value": null,
+      "extras": {
+       "alone": null,
+       "kinds": [
+        {
+         "kind": "feature",
+         "commits": 12
+        },
+        {
+         "kind": "fix",
+         "commits": 5
+        },
+        {
+         "kind": "refactor",
+         "commits": 5
+        },
+        {
+         "kind": "docs",
+         "commits": 1
+        },
+        {
+         "kind": "test",
+         "commits": 1
+        },
+        {
+         "kind": "revert",
+         "commits": 1
+        }
+       ],
+       "lines": 50177,
+       "words": null,
+       "median": null,
+       "metric": null,
+       "closest": null,
+       "commits": 247,
+       "assisted": null,
+       "autonomy": null,
+       "coverage": 0.101,
+       "sessions": null,
+       "both_days": null,
+       "subagents": null,
+       "classified": 25,
+       "confidence": null,
+       "interrupts": null,
+       "role_lines": [
+        {
+         "role": "test",
+         "lines": 11088
+        },
+        {
+         "role": "source",
+         "lines": 34867
+        },
+        {
+         "role": "config",
+         "lines": 834
+        },
+        {
+         "role": "docs",
+         "lines": 2442
+        },
+        {
+         "role": "migration",
+         "lines": 530
+        },
+        {
+         "role": "build",
+         "lines": 175
+        },
+        {
+         "role": "dependency",
+         "lines": 192
+        },
+        {
+         "role": "unknown",
+         "lines": 49
+        }
+       ],
+       "runners_up": null,
+       "started_at": null,
+       "steer_rate": null,
+       "avg_minutes": null,
+       "commit_days": null,
+       "lines_needed": 200,
+       "metric_value": null,
+       "attended_days": null,
+       "commits_basis": null,
+       "active_seconds": null,
+       "attended_hours": null,
+       "commit_refusal": "low_label_coverage",
+       "median_prompts": null,
+       "subagents_peak": null,
+       "longest_minutes": null,
+       "corrective_prompts": null,
+       "metric_lower_bound": null,
+       "tool_calls_per_prompt": null,
+       "attended_overlap_hours": null
+      },
+      "needed": null,
+      "reason": null,
+      "value_id": "source"
+     }
+    ],
+    "attended_sessions": 132,
+    "prompts_with_text": 927
+   },
+   "coverage": {
+    "last_at": "2026-09-13T07:06:05Z",
+    "first_at": "2026-08-12T00:44:30Z",
+    "sessions": 158,
+    "spans_days": 33,
+    "active_days": 27,
+    "window_days": 30
+   },
+   "languages": {
+    "lines": 50177,
+    "reason": null,
+    "languages": [
+     {
+      "name": "Python",
+      "files": 241,
+      "lines": 26273,
+      "share": 0.524
+     },
+     {
+      "name": "Swift",
+      "files": 56,
+      "lines": 10196,
+      "share": 0.203
+     },
+     {
+      "name": "JavaScript",
+      "files": 66,
+      "lines": 6146,
+      "share": 0.122
+     },
+     {
+      "name": "Markdown",
+      "files": 14,
+      "lines": 2295,
+      "share": 0.046
+     },
+     {
+      "name": "TypeScript",
+      "files": 17,
+      "lines": 2192,
+      "share": 0.044
+     },
+     {
+      "name": "HTML",
+      "files": 2,
+      "lines": 1113,
+      "share": 0.022
+     },
+     {
+      "name": "YAML",
+      "files": 21,
+      "lines": 570,
+      "share": 0.011
+     },
+     {
+      "name": "SQL",
+      "files": 2,
+      "lines": 460,
+      "share": 0.009
+     },
+     {
+      "name": "other",
+      "files": 35,
+      "lines": 932,
+      "share": 0.019
+     }
+    ],
+    "generated_lines_excluded": 0
+   },
+   "prompting": {
+    "clean": 149,
+    "costly": 641,
+    "reason": null,
+    "attempts": 790,
+    "clean_share": 0.189
+   },
+   "window_days": 30,
+   "generated_at": "2026-09-13T12:34:52.024603Z",
+   "contributions": {
+    "days": [
+     {
+      "day": "2026-08-11",
+      "alone": 0,
+      "assisted": 4
+     },
+     {
+      "day": "2026-08-12",
+      "alone": 6,
+      "assisted": 22
+     },
+     {
+      "day": "2026-08-13",
+      "alone": 1,
+      "assisted": 15
+     },
+     {
+      "day": "2026-08-14",
+      "alone": 0,
+      "assisted": 16
+     },
+     {
+      "day": "2026-08-15",
+      "alone": 0,
+      "assisted": 16
+     }
+    ],
+    "alone": 15,
+    "assisted": 232,
+    "active_days": 24,
+    "current_streak": 0,
+    "longest_streak": 20
+   },
+   "report_version": 2,
+   "trend_headline": "Lines an hour is up 142% on last month, which is the way you want it."
+  },
+  "quotes": null
+ },
+ "profile": {
+  "graph": [
+   {
+    "date": "2026-08-11",
+    "active_seconds": 1612
+   },
+   {
+    "date": "2026-08-12",
+    "active_seconds": 12770
+   },
+   {
+    "date": "2026-08-13",
+    "active_seconds": 15317
+   },
+   {
+    "date": "2026-08-14",
+    "active_seconds": 19451
+   },
+   {
+    "date": "2026-08-15",
+    "active_seconds": 13958
+   },
+   {
+    "date": "2026-08-16",
+    "active_seconds": 5505
+   },
+   {
+    "date": "2026-08-17",
+    "active_seconds": 15733
+   },
+   {
+    "date": "2026-08-18",
+    "active_seconds": 34030
+   },
+   {
+    "date": "2026-08-19",
+    "active_seconds": 24343
+   },
+   {
+    "date": "2026-08-20",
+    "active_seconds": 10247
+   },
+   {
+    "date": "2026-08-21",
+    "active_seconds": 11354
+   },
+   {
+    "date": "2026-08-22",
+    "active_seconds": 1319
+   },
+   {
+    "date": "2026-08-23",
+    "active_seconds": 520
+   },
+   {
+    "date": "2026-08-24",
+    "active_seconds": 9520
+   },
+   {
+    "date": "2026-08-25",
+    "active_seconds": 19592
+   },
+   {
+    "date": "2026-08-26",
+    "active_seconds": 28260
+   },
+   {
+    "date": "2026-08-27",
+    "active_seconds": 16588
+   },
+   {
+    "date": "2026-08-28",
+    "active_seconds": 6534
+   },
+   {
+    "date": "2026-08-29",
+    "active_seconds": 984
+   },
+   {
+    "date": "2026-08-30",
+    "active_seconds": 2220
+   },
+   {
+    "date": "2026-08-31",
+    "active_seconds": 2741
+   },
+   {
+    "date": "2026-09-02",
+    "active_seconds": 4080
+   },
+   {
+    "date": "2026-09-04",
+    "active_seconds": 552
+   },
+   {
+    "date": "2026-09-08",
+    "active_seconds": 3618
+   },
+   {
+    "date": "2026-09-09",
+    "active_seconds": 742
+   },
+   {
+    "date": "2026-09-11",
+    "active_seconds": 10878
+   },
+   {
+    "date": "2026-09-12",
+    "active_seconds": 40405
+   },
+   {
+    "date": "2026-09-13",
+    "active_seconds": 3914
+   }
+  ],
+  "totals": {
+   "sessions": 171,
+   "active_seconds": 316787
+  },
+  "longest_session": {
+   "id": "fixture-1",
+   "attended_seconds": 11173,
+   "active_seconds": 11173,
+   "started_at": "2026-08-18T21:23:20.695000-04:00"
+  },
+  "projects": [
+   {
+    "name": null,
+    "key": "b093f92080ab",
+    "sessions": 153,
+    "active_seconds": 291507,
+    "first_at": "2026-08-11T20:44:30.299000-04:00",
+    "last_at": "2026-09-13T03:00:17.068000-04:00"
+   },
+   {
+    "name": null,
+    "key": "03624fb1c6e2",
+    "sessions": 15,
+    "active_seconds": 23904,
+    "first_at": "2026-08-15T21:07:09.396000-04:00",
+    "last_at": "2026-09-13T08:21:03.661000-04:00"
+   },
+   {
+    "name": null,
+    "key": "15d6610a6408",
+    "sessions": 2,
+    "active_seconds": 1085,
+    "first_at": "2026-09-12T20:36:07.142000-04:00",
+    "last_at": "2026-09-12T21:57:25.636000-04:00"
+   }
+  ],
+  "attribution": {
+   "agent_lines": 67167,
+   "human_edit_events": 206,
+   "prompts": 938,
+   "attended_seconds": 273627,
+   "autonomous_seconds": 43160
+  },
+  "live": [],
+  "builder_profile": null
+ }
+}

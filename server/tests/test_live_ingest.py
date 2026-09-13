@@ -257,6 +257,26 @@ def test_gate_rejects_names_without_live_or_with_a_separator(name):
     assert sanity_gate(fine) is None
 
 
+def test_gate_rejects_a_name_for_a_file_the_map_does_not_carry():
+    """A name labels a row of the live map (`live.wire_names` keeps only those). One whose id
+    is on no row labels nothing the phone can show, and it is still a file name on the
+    server, so it is refused like a name sent without the map. So is any name at all when
+    the state has no map."""
+    live = {"state": "live", "end_reason": "still_running"}
+    stray = {"files": [*SAMPLE_LIVE_NAMES["files"], {"id": "0123456789abcdef", "name": "secret.py"}]}
+    reason = sanity_gate(valid_payload(**live, live=SAMPLE_LIVE, live_names=stray))
+    assert reason == "live_names names a file the live map does not carry"
+    assert "secret" not in reason and "0123456789abcdef" not in reason
+
+    no_map = {**copy.deepcopy(SAMPLE_LIVE), "map": None}
+    assert (
+        sanity_gate(valid_payload(**live, live=no_map, live_names=SAMPLE_LIVE_NAMES))
+        == "live_names names a file the live map does not carry"
+    )
+    # An empty list names nothing, so it names nothing outside the map.
+    assert sanity_gate(valid_payload(**live, live=no_map, live_names={"files": []})) is None
+
+
 def test_a_final_payload_with_live_arrives_as_rejected_not_as_a_row(client, paired):
     uid, headers = paired
     bad = _payload(live=SAMPLE_LIVE)

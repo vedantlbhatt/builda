@@ -156,6 +156,14 @@ def sanity_gate(p: SessionUpload) -> str | None:
         sep in n.name for n in p.live_names.files for sep in ("/", "\\", "\x00")
     ):
         return "live_names carries a path separator or NUL (basenames only)"
+    # A name labels a row of the live map (`analysis.live.wire_names` keeps only those). One
+    # whose id is on no row labels nothing the phone can show and is still a file name
+    # stored on the server, the same reason names without the map are refused. Neither id
+    # nor name is echoed back.
+    if p.live_names is not None and p.live is not None:
+        mapped = {f.id for f in p.live.map.files} if p.live.map is not None else set()
+        if any(n.id not in mapped for n in p.live_names.files):
+            return "live_names names a file the live map does not carry"
 
     # A title is its verb and its object, or the reason there is none (v4 `title_ids.reason`,
     # FOUND IN THE ADVERSARIAL REVIEW 2026-09-13). A refusal that also names a verb still

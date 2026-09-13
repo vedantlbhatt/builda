@@ -93,8 +93,9 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
 - FIXED: `api.builderProfile()` sends `?window_days=`; the session detail carries
   `lines_removed_agent`; the explainx and Paxel baselines say where they came from.
 - Still open, for a decision: a finished card that stays up still gets the server's
-  "Session finished" banner (needs a `session_notifications.kind` value, a migration); the
-  server does not check that `live_names` ids are map ids.
+  "Session finished" banner (needs a `session_notifications.kind` value, a migration).
+- FIXED: the server's gate refuses `live_names` whose ids are not on the live map
+  (`test_gate_rejects_a_name_for_a_file_the_map_does_not_carry`; server 345, capture 138).
 - FIXED: `live --wire` on an ENDED sitting printed an ETA the spec cannot hold; it prints
   `"ended": null` now (test in `test_cli`). Checked at 18:30 and already fixed earlier: the
   Now tile's "pr…epo" (f11a167, the repository wraps) and the Lock Screen's "+0 -0"

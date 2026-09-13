@@ -120,6 +120,20 @@ def main() -> int:
     )
     bg.add_argument("path", nargs="?", default="~/.claude/projects")
     bg.add_argument("--all", action="store_true", help="show the ones that scored too low too")
+    bn = sub.add_parser(
+        "burn",
+        help="where the tokens went in one transcript, and whether anything came of it",
+    )
+    bn.add_argument("transcript")
+    bn.add_argument("--start")
+    bn.add_argument("--end")
+    bn.add_argument("--json", action="store_true")
+    bn.add_argument(
+        "--spike",
+        type=float,
+        default=None,
+        help="a segment is a spike at this multiple of the median segment cost",
+    )
     pr = sub.add_parser("probe", help="read-only shape report over a file or directory")
     pr.add_argument(
         "path",
@@ -181,6 +195,21 @@ def main() -> int:
         pb.run(pathlib.Path(a.path).expanduser(), as_json=a.json)
         return 0
 
+    if a.cmd == "burn":
+        from . import burn as bn_mod
+
+        rep = bn_mod.burn_report(
+            pathlib.Path(a.transcript).expanduser(),
+            start=_ts(a.start),
+            end=_ts(a.end),
+            spike_multiple=a.spike or bn_mod.SPIKE_MULTIPLE,
+        )
+        if a.json:
+            print(json.dumps(rep, indent=1, default=str))
+            return 0
+        _print_burn(rep)
+        return 0
+
     path = pathlib.Path(a.transcript).expanduser()
     meta = {"repo": a.repo} if a.repo else {}
 
@@ -206,6 +235,58 @@ def main() -> int:
     else:
         print(text)
     return 0
+
+
+def _print_burn(rep: dict) -> None:
+    """The burn report as a person reads it. Numbers first, sentences last."""
+    from . import burn as bn_mod
+
+    t = rep["totals"]
+    print()
+    if not rep["harness_records_usage"]:
+        print("  This harness writes no token counts to disk. Cost cannot be attributed.")
+    else:
+        print(f"  tokens            {t['tokens']['value']:,}")
+        cr = t["cache_read_share"]["value"]
+        if cr is not None:
+            print(f"  context replay    {cr:.0%} of it")
+        tpl = t["tokens_per_line"]["value"]
+        if tpl is not None:
+            print(f"  tokens per line   {tpl:,.0f}")
+        bs = t["barren_token_share"]["value"]
+        if bs is not None:
+            print(f"  spent on nothing  {bs:.0%}")
+    print(f"  lines             +{t['lines_added']['value']} / -{t['lines_removed']['value']}")
+    print(f"  segments          {rep['sample']['segments']}")
+    for m in rep["sample"]["missing"]:
+        print(f"  refused           {m}")
+
+    if rep["causes"]:
+        print()
+        print("  WHERE IT WENT  (a segment can have several causes, so these overlap)")
+        for c in rep["causes"][:6]:
+            share = f"{c['share_of_session']:.0%}" if c.get("share_of_session") is not None else "  ?"
+            print(f"    {share:>5}  {c['cause']:<18} {c['segments']} segment(s)")
+
+    if rep["spikes"]:
+        print()
+        print("  SPIKES")
+        for row in rep["spikes"][:5]:
+            mult = row["multiple_of_median"]
+            flag = "nothing written" if row["barren"] else f"+{row['lines_added']} lines"
+            print(f"\n    {row['tokens']:>9,} tokens  ({mult}x median)  {flag}")
+            if row["prompt"]:
+                print(f"      you asked: {row['prompt'][:88]}")
+            for c in row["causes"][:3]:
+                print(f"      - {c['detail']}")
+
+    sentences = bn_mod.explain(rep)
+    if sentences:
+        print()
+        print("  IN PLAIN TERMS")
+        for line in sentences:
+            print(f"    {line}")
+    print()
 
 
 def _quality(a) -> int:

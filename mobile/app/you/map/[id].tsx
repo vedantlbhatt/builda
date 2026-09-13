@@ -1,99 +1,128 @@
+/**
+ * `builder://you/map/<id>`: the codebase map (brief D7, docs/approved-roadmap.md 2.7) for one
+ * running session, in the house style (design-refs/HOUSE-STYLE.md; the analysis page is the
+ * reference). `sample` draws the built in sample, `variant` picks which (`src/map/sample.ts`,
+ * `src/session/samples.ts`).
+ *
+ *   the band     full bleed in the session's hue, which is the builder's creature's (the theme
+ *                is your creature's colour): the repository, "42 files, 3 hot" counting up, what
+ *                it is doing now arriving a word at a time, the creature printing itself
+ *   the map      full bleed on the warm ground: the repository drawn as islands of folders, one
+ *                cell per file in its kind's hue, blooming from the top of the repository out;
+ *                read files hollow, changed ones filled; glowing in the working set and cooling as
+ *                it moves on; the last six files joined by its path; the files it keeps rewriting
+ *                pulsing in the session's hue with rings going out from them
+ *   the words    what happened to the file you tapped, the legend, the files changed most as
+ *                lines of print, and the way to the time lapse
+ *
+ * Only a running session has a map (the server deletes the live state when it finalises), so a
+ * finished one says so on its band and offers the session. Refreshes every minute while it runs:
+ * islands glide rather than jump, and a file whose heat changed turns over to show it.
+ */
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { StyleSheet, Text, useWindowDimensions } from 'react-native';
 
 import type { SessionDetail } from '../../../src/data/api';
 import type { LiveFile, LiveState } from '../../../src/generated/live';
+import { GUTTER, type, Words } from '../../../src/insights/kit';
+import { Block, Section } from '../../../src/insights/reveal';
 import { renderLiveSentence } from '../../../src/live/sentence';
+import { headlineParts } from '../../../src/map/figure';
 import { cursorOf, mapLevels } from '../../../src/map/heat';
 import { liveKnot } from '../../../src/map/knot';
 import { layoutMap } from '../../../src/map/layout';
 import { MapCanvas } from '../../../src/map/MapCanvas';
-import { Legend, MapRefusal, MapSkeleton, SampleNote, useOpenSession } from '../../../src/map/MapParts';
+import { MapError, MapLoading, MapMissing, MapPage, MapRefusal, MapSignedOut, SAMPLE_NOTE, StaleNote, useOpenSession } from '../../../src/map/MapParts';
+import { FigureLine, HotLedger, Legend, SessionBand, WordLink } from '../../../src/map/MapWords';
+import { hotCount, recentPath } from '../../../src/map/paint';
 import { useSessionMap } from '../../../src/map/useSessionMap';
-import { cellCaption, cutNote, hotRows, legend, mapContent, mapMeta, mapSummary, sentenceInput } from '../../../src/map/view';
-import { SessionError, SessionMissing, SessionSignedOut, StaleLine } from '../../../src/session/SessionStates';
-import { colors, layout, space } from '../../../src/theme';
-import { Button, Row, Section, Surface, T, useReduceMotion } from '../../../src/ui';
+import {
+  asSentence,
+  cellCaption,
+  cutNote,
+  hotLedger,
+  legend,
+  mapContent,
+  mapHeadline,
+  mapSummary,
+  rolesOnMap,
+  sentenceInput,
+  TAP_HINT,
+  updatedSentence,
+} from '../../../src/map/view';
+import { useAccent, type AccentState } from '../../../src/theme/accent';
+import { select } from '../../../src/ui/haptics';
+import { useReduceMotion } from '../../../src/ui/motion';
 
-const c = colors('dark');
-
-/** The hint under the map until a cell is picked. */
-const TAP_HINT = 'Tap a square for what happened to that file.';
-
-/**
- * The codebase map (brief D7, docs/approved-roadmap.md 2.7) for one session: the repository
- * drawn as islands of folders, one cell per file, amber where the agent changed things and dim
- * where it only read, hot where it works now and cooling as it moves on, the files it keeps
- * rewriting pulsing. `id` is the session id `session/[id]` takes; `sample` draws the built in
- * sample, `variant` picks which (`src/map/sample.ts`, `src/session/samples.ts`).
- *
- * Only a running session has a map (the server deletes the live state when it finalises), so a
- * finished one says so in a sentence and offers the session. Refreshes every minute while it
- * runs; the islands glide rather than jump when a refresh moves them.
- */
 export default function MapScreen() {
   const { id, variant } = useLocalSearchParams<{ id: string; variant?: string }>();
   const { width, height } = useWindowDimensions();
   const router = useRouter();
+  const accent = useAccent();
   const { load, refresh, refreshing, now } = useSessionMap(id, variant, { poll: true });
   const openSession = useOpenSession(id ?? 'sample', variant);
-  const column = width - layout.gutter * 2;
-  const maxHeight = Math.min(Math.round(height * 0.56), Math.round(column * 1.15));
+  const retry = useCallback(() => void refresh(), [refresh]);
+  const back = useCallback(() => (router.canGoBack() ? router.back() : router.replace('/sessions')), [router]);
+  const openLapse = useCallback(
+    () => router.push({ pathname: '/you/timelapse/[id]', params: variant ? { id: id ?? 'sample', variant } : { id: id ?? 'sample' } }),
+    [router, id, variant],
+  );
+  // A band painted in the accent waits for the saved creature to be read once, so it never
+  // prints in the default creature's hue and then changes colour under the reader.
+  const ready = load.kind === 'ready' && accent.ready;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingTop: space.md, paddingBottom: space.xxl, gap: layout.sectionGap }}
-      refreshControl={
-        load.kind === 'signedOut' ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={c.accent} />
-      }
-    >
-      {load.kind === 'loading' && <MapSkeleton width={column} />}
-      {load.kind === 'signedOut' && <SessionSignedOut onSignIn={() => router.push('/settings')} />}
-      {load.kind === 'missing' && <SessionMissing onBack={() => (router.canGoBack() ? router.back() : router.replace('/sessions'))} />}
-      {load.kind === 'error' && <SessionError message={load.message} onRetry={() => void refresh()} />}
-      {load.kind === 'ready' && (
-        <>
-          {load.stale ? <StaleLine text={load.stale} /> : null}
-          <MapBody
-            session={load.session}
-            now={now}
-            column={column}
-            maxHeight={maxHeight}
-            onSession={openSession}
-            onRetry={() => void refresh()}
-            onTimelapse={() =>
-              router.push({ pathname: '/you/timelapse/[id]', params: variant ? { id: id ?? 'sample', variant } : { id: id ?? 'sample' } })
-            }
-          />
-        </>
-      )}
-    </ScrollView>
+    <MapPage title="Codebase map" refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : retry}>
+      {load.kind === 'loading' || (load.kind === 'ready' && !accent.ready) ? <MapLoading sentence="Drawing the map." /> : null}
+      {load.kind === 'signedOut' ? <MapSignedOut what="map" accent={accent.ink} onSignIn={() => router.push('/settings')} /> : null}
+      {load.kind === 'missing' ? <MapMissing accent={accent.ink} onBack={back} /> : null}
+      {load.kind === 'error' ? <MapError message={load.message} accent={accent.ink} onRetry={retry} /> : null}
+      {ready && load.stale ? <StaleNote text={load.stale} /> : null}
+      {ready ? (
+        <MapBody session={load.session} now={now} width={width} height={height} accent={accent} onSession={openSession} onRetry={retry} onTimelapse={openLapse} />
+      ) : null}
+    </MapPage>
   );
 }
 
 function MapBody({
   session,
   now,
-  column,
-  maxHeight,
+  width,
+  height,
+  accent,
   onSession,
   onRetry,
   onTimelapse,
 }: {
   session: SessionDetail;
   now: number;
-  column: number;
-  maxHeight: number;
+  width: number;
+  height: number;
+  accent: AccentState;
   onSession: () => void;
   onRetry: () => void;
   onTimelapse: () => void;
 }) {
   const content = useMemo(() => mapContent(session), [session]);
+  const title = session.repo_name ?? 'This session';
   if (content.kind !== 'ready') {
-    return <MapRefusal kind={content.kind} screen="map" session={session} now={now} onSession={onSession} onRetry={onRetry} />;
+    return (
+      <MapRefusal
+        kind={content.kind}
+        screen="map"
+        session={session}
+        now={now}
+        onSession={onSession}
+        onRetry={onRetry}
+        hue={accent}
+        animal={accent.animal}
+        title={title}
+        width={width}
+        accent={accent.ink}
+      />
+    );
   }
   return (
     <ReadyMap
@@ -102,8 +131,10 @@ function MapBody({
       files={content.files}
       names={content.names}
       now={now}
-      column={column}
-      maxHeight={maxHeight}
+      width={width}
+      height={height}
+      title={title}
+      accent={accent}
       onTimelapse={onTimelapse}
     />
   );
@@ -115,8 +146,10 @@ function ReadyMap({
   files,
   names,
   now,
-  column,
-  maxHeight,
+  width,
+  height,
+  title,
+  accent,
   onTimelapse,
 }: {
   session: SessionDetail;
@@ -124,8 +157,10 @@ function ReadyMap({
   files: LiveFile[];
   names: Record<string, string> | null;
   now: number;
-  column: number;
-  maxHeight: number;
+  width: number;
+  height: number;
+  title: string;
+  accent: AccentState;
   onTimelapse: () => void;
 }) {
   const reduce = useReduceMotion();
@@ -137,70 +172,103 @@ function ReadyMap({
   );
   const cursorId = useMemo(() => cursorOf(files, state.activity?.file_id), [files, state]);
   const cursor = cursorId ? (lay.index[cursorId] ?? null) : null;
+  const path = useMemo(() => recentPath(files, lay.index), [files, lay]);
   // Picked by file id, so a refresh that moves the islands keeps the same file picked.
   const [pickedId, setPickedId] = useState<string | null>(null);
   const picked = pickedId !== null ? (lay.index[pickedId] ?? null) : null;
   const pickedFile = picked !== null ? files.find((f) => f.id === pickedId) : undefined;
-  const hot = useMemo(() => hotRows(files, names, now), [files, names, now]);
+
+  const head = mapHeadline(state, hotCount(levels));
+  const parts = useMemo(() => headlineParts(head.files, head.hot), [head.files, head.hot]);
+  const ledger = useMemo(() => hotLedger(files, names, now), [files, names, now]);
+  const roles = useMemo(() => rolesOnMap(files), [files]);
+  const items = useMemo(() => legend('map', { knot: knot.length > 0, reduceMotion: reduce, path: path.length >= 2 }), [knot.length, reduce, path.length]);
   const cut = cutNote(state);
   const hasFrames = (state.timelapse?.length ?? 0) > 0;
+  const maxHeight = Math.min(Math.round(height * 0.62), Math.round(width * 1.2));
+
+  const onSelect = useCallback((i: number | null) => setPickedId(i === null ? null : (lay.cells[i]?.id ?? null)), [lay]);
+  const onPick = useCallback(
+    (id: string) => {
+      select();
+      setPickedId((p) => (p === id ? null : id));
+    },
+    [],
+  );
 
   return (
     <>
-      <View style={{ gap: space.xs }}>
-        <T role="headline">{renderLiveSentence(sentenceInput(state))}</T>
-        <T role="meta" tone="dim">
-          {mapMeta(session, state, now)}
-        </T>
-        {session.id === 'sample' ? <SampleNote /> : null}
-      </View>
-
-      <View style={{ gap: space.sm }}>
-        <MapCanvas
-          layout={lay}
-          width={column}
-          maxHeight={maxHeight}
-          levels={levels}
-          knot={knot}
-          cursor={cursor}
-          selected={picked}
-          onSelect={(i) => setPickedId(i === null ? null : lay.cells[i]!.id)}
-          accessibilityLabel={mapSummary(files, lay.folders.length)}
-          accessibilityHint={TAP_HINT}
+      <Section>
+        <SessionBand
+          hue={accent}
+          animal={accent.animal}
+          title={title}
+          width={width}
+          figure={(inner) => <FigureLine parts={parts} width={inner} said={head.said} />}
+          sentence={asSentence(renderLiveSentence(sentenceInput(state)))}
+          note={updatedSentence(state.computed_at, now)}
         />
-        <T role="meta" tone={pickedFile ? 'text' : 'dim'} accessibilityLiveRegion="polite">
-          {pickedFile ? cellCaption(pickedFile, names?.[pickedFile.id], now) : TAP_HINT}
-        </T>
-        {cut ? (
-          <T role="meta" tone="dim">
-            {cut}
-          </T>
-        ) : null}
-      </View>
+      </Section>
 
-      <Legend items={legend('map', knot.length > 0, reduce)} />
+      <Section style={styles.map}>
+        <Block enter={false}>
+          <MapCanvas
+            layout={lay}
+            width={width}
+            maxHeight={maxHeight}
+            hue={accent}
+            levels={levels}
+            knot={knot}
+            cursor={cursor}
+            path={path}
+            selected={picked}
+            onSelect={onSelect}
+            accessibilityLabel={mapSummary(files, lay.folders.length)}
+            accessibilityHint={TAP_HINT}
+          />
+        </Block>
+        <Block style={styles.gutter}>
+          <Text accessibilityLiveRegion="polite" maxFontSizeMultiplier={1.6} style={pickedFile ? type.body : type.dim}>
+            {pickedFile ? cellCaption(pickedFile, names?.[pickedFile.id], now) : TAP_HINT}
+          </Text>
+          {cut ? <Words style={[type.meta, styles.after]}>{cut}</Words> : null}
+          {session.id === 'sample' ? <Words style={[type.meta, styles.after]}>{SAMPLE_NOTE}</Words> : null}
+        </Block>
+      </Section>
 
-      {hot.rows.length ? (
-        <Section label={hot.label}>
-          <Surface padding={0}>
-            {hot.rows.map((r, i) => (
-              <Row
-                key={r.id}
-                title={r.title}
-                monoTitle={Boolean(names?.[r.id])}
-                meta={r.meta}
-                value={r.value ?? undefined}
-                selected={r.id === pickedId}
-                haptic="select"
-                onPress={() => setPickedId(r.id === pickedId ? null : r.id)}
-                hairline={i < hot.rows.length - 1}
-              />
-            ))}
-          </Surface>
+      <Section style={[styles.gutter, styles.chapter]}>
+        <Block>
+          <Legend items={items} roles={roles} accent={accent.ink} />
+        </Block>
+      </Section>
+
+      {ledger.rows.length ? (
+        <Section style={[styles.gutter, styles.chapter]}>
+          <Block>
+            <HotLedger label={ledger.label} rows={ledger.rows} picked={pickedId} onPick={onPick} />
+          </Block>
         </Section>
       ) : null}
 
-      {hasFrames ? <Button label="Watch the time lapse" onPress={onTimelapse} /> : null}
+      {hasFrames ? (
+        <Section style={[styles.gutter, styles.chapter]}>
+          <Block>
+            <WordLink
+              title="Watch the time lapse"
+              line="This session replayed in fifteen seconds: the map lighting up, where it got stuck, the burst at the end."
+              color={accent.ink}
+              onPress={onTimelapse}
+            />
+          </Block>
+        </Section>
+      ) : null}
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  map: { marginTop: 4 },
+  gutter: { paddingHorizontal: GUTTER },
+  chapter: { marginTop: 30 },
+  after: { marginTop: 8 },
+});

@@ -20,22 +20,31 @@ import {
   cutNote,
   elapsedLabel,
   hotRows,
+  asSentence,
+  hotLedger,
   ISLANDS_NOTE,
   knotSentence,
   legend,
+  mapHeadline,
   mapContent,
   mapMeta,
   mapSummary,
   namesOf,
   offMapNote,
   refusalCopy,
+  replayNote,
+  roleWord,
+  ROLES_NOTE,
+  rolesOnMap,
   sentenceInput,
+  TAP_HINT,
   thinnedNote,
   timelapseContent,
   timelapseMeta,
   timelapseTitle,
   times,
   updatedLine,
+  updatedSentence,
   whenOf,
   type Refusal,
 } from '../src/map/view';
@@ -65,9 +74,16 @@ function allCopy(s: SessionDetail): string[] {
   const hot = hotRows(files, names, NOW);
   out.push(hot.label, ...hot.rows.flatMap((r) => [r.title, r.meta, r.value ?? '']));
   for (const screen of ['map', 'timelapse'] as const) {
-    for (const knot of [true, false]) for (const reduce of [true, false]) out.push(...legend(screen, knot, reduce).map((i) => i.text));
+    for (const knot of [true, false])
+      for (const reduceMotion of [true, false])
+        for (const path of [true, false]) out.push(...legend(screen, { knot, reduceMotion, path }).map((i) => i.text));
   }
-  out.push(ISLANDS_NOTE);
+  out.push(ISLANDS_NOTE, ROLES_NOTE, TAP_HINT);
+  const lapse = files.map((f) => f.role);
+  for (const r of new Set(lapse)) out.push(roleWord(r));
+  const ledger = hotLedger(files, names, NOW);
+  out.push(ledger.label, ...ledger.rows.flatMap((r) => [r.what, r.note ?? '']));
+  out.push(mapHeadline(state, 3).said, mapHeadline(state, 0).said, updatedSentence(state.computed_at, NOW) ?? '');
   const frames = cleanFrames(state.timelapse) ?? [];
   if (frames.length) {
     out.push(timelapseTitle(frames), timelapseMeta(s, state, frames, NOW));
@@ -76,6 +92,7 @@ function allCopy(s: SessionDetail): string[] {
     if (knot) out.push(knotSentence(knot, files, names));
     if (burst) out.push(burstSentence(burst, frames[frames.length - 1]!.t, knot !== null));
     for (const n of [thinnedNote(frames, files), offMapNote(frames, layoutMap(files).index)]) if (n) out.push(n);
+    out.push(replayNote(state, frames, NOW));
   }
   return out.filter((x) => x !== '');
 }
@@ -277,5 +294,58 @@ describe('names are the opt in basenames, and only for files on the map', () => 
     const named = hotRows(files, { ['b'.repeat(16)]: 'store.test.ts' }, NOW);
     expect(named.rows[0]).toMatchObject({ title: 'store.test.ts', meta: 'a test file, changed 5 times' });
     expect(hotRows([f('c'.repeat(16), 0, 4)], null, NOW).label).toBe('most read');
+  });
+});
+
+describe('the band, the legend and the ledger say what the map draws', () => {
+  const s = sample('map');
+  const state = s.live_state!;
+  const files = state.map!.files;
+
+  test('the figure counts files touched and hot ones; a zero hot drops the clause rather than shouting "0 hot"', () => {
+    expect(mapHeadline(state, 3)).toEqual({ files: files.length, hot: 3, said: `${files.length} files touched, 3 of them hot.` });
+    expect(mapHeadline(state, 0).said).toBe(`${files.length} files touched.`);
+    // A cut map counts what the session touched, not the 400 it keeps; the note under it says so.
+    const cut = sample('cut').live_state!;
+    expect(mapHeadline(cut, 1).files).toBe(cut.map!.files_total);
+    expect(mapHeadline(cut, 1).files).toBeGreaterThan(cut.map!.files.length);
+  });
+
+  test('the legend: the knot only when there is one, still under Reduce Motion, the path only when drawn, red only on the replay', () => {
+    const none = legend('map', { knot: false, reduceMotion: false, path: false }).map((i) => i.swatch);
+    expect(none).toEqual(['changed', 'read', 'hot', 'cursor']);
+    const all = legend('timelapse', { knot: true, reduceMotion: false, path: true });
+    expect(all.map((i) => i.swatch)).toEqual(['changed', 'read', 'hot', 'path', 'cursor', 'fail', 'knot']);
+    expect(all.find((i) => i.swatch === 'knot')!.text).toMatch(/^Pulsing in your colour/);
+    expect(legend('map', { knot: true, reduceMotion: true, path: true }).find((i) => i.swatch === 'knot')!.text).toMatch(/^Outlined in your colour/);
+    for (const it of all) expect(it.text).toMatch(/\.$/);
+  });
+
+  test('the colour key: the kinds of file on the map, most files first, each a word', () => {
+    const roles = rolesOnMap(files);
+    expect(roles[0]).toBe('source');
+    expect(new Set(roles).size).toBe(roles.length);
+    expect(roleWord('test')).toBe('test suite');
+    expect(roleWord('source')).toBe('source code');
+  });
+
+  test('the ledger: the count as a figure, what it counts in words; names only when opted in', () => {
+    const plain = hotLedger(files, null, NOW);
+    expect(plain.label).toBe('most changed');
+    expect(plain.rows[0]!.what).toMatch(/^changes? to (a|an|the) /);
+    expect(plain.rows.every((r) => r.count > 0)).toBe(true);
+    for (const r of plain.rows) expect(r.note ?? '').not.toMatch(/\.ts|\.py|\.md/);
+    const named = sample('names');
+    const withNames = hotLedger(named.live_state!.map!.files, namesOf(named, named.live_state!.map!.files), NOW);
+    expect(withNames.rows.some((r) => /\.(ts|tsx|py|md|json|sql|yml)$/.test(r.what))).toBe(true);
+  });
+
+  test('sentences end once', () => {
+    expect(asSentence('Going back and forth on a source file, 4th pass')).toBe('Going back and forth on a source file, 4th pass.');
+    expect(asSentence('Done.')).toBe('Done.');
+    expect(updatedSentence(new Date(NOW - 20_000).toISOString(), NOW)).toBe('Updated just now.');
+    expect(updatedSentence('garbage', NOW)).toBeNull();
+    const frames = cleanFrames(state.timelapse)!;
+    expect(replayNote(state, frames, NOW)).toMatch(/^\d+ reads, changes and failures\. Updated just now\.$/);
   });
 });

@@ -194,6 +194,18 @@ export function updatedLine(computedAt: string, now: number): string | null {
   return age < 60 ? 'updated just now' : `updated ${mins(age)} ago`;
 }
 
+/** "Updated just now." as a sentence for a band's quiet line. Null for a time that does not parse. */
+export function updatedSentence(computedAt: string, now: number): string | null {
+  const line = updatedLine(computedAt, now);
+  return line ? `${capital(line)}.` : null;
+}
+
+/** A line as a sentence: one full stop at the end, never two. */
+export function asSentence(line: string): string {
+  const t = line.trim();
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
 /** What a file is called on screen: its opt in name, else its role ("a source file"). */
 export function fileLabel(f: Pick<LiveFile, 'role'>, name: string | null | undefined): string {
   return name ?? ROLE_NOUN[f.role][0];
@@ -317,24 +329,76 @@ export function hotRows(
   return { label: changed.length ? 'most changed' : 'most read', rows };
 }
 
+// ------------------------------------------------------------------ the headline
+
+/** A role's word on the map and in the legend: the engine's collective noun without its article ("test suite"). */
+export function roleWord(role: PlainRole): string {
+  return ROLE_NOUN[role][2].replace(/^(the|your) /, '');
+}
+
+export interface MapHeadline {
+  /** Files the session touched (`files_total`: a cut map keeps fewer and says so under it). */
+  files: number;
+  /** Changed, and one of the last three files it touched (`paint.isHot`). */
+  hot: number;
+  /** The whole figure said as words, for VoiceOver: "42 files touched, 3 of them hot". */
+  said: string;
+}
+
+/**
+ * The map's one big figure: "42 files, 3 hot". `hot` is measured, so a zero is a count and not a
+ * refusal, but a band that shouts "0 hot" says nothing a reader can use: the figure then drops
+ * the clause and the sentence under it says what it is doing.
+ */
+export function mapHeadline(state: LiveState, hot: number): MapHeadline {
+  const files = state.map?.files_total ?? state.map?.files.length ?? 0;
+  const said = hot > 0 ? `${count(files, 'file')} touched, ${hot} of them hot.` : `${count(files, 'file')} touched.`;
+  return { files, hot, said };
+}
+
 // ------------------------------------------------------------------ the legend
 
+export type LegendSwatch = 'changed' | 'read' | 'hot' | 'path' | 'cursor' | 'fail' | 'knot';
+
 export interface LegendItem {
-  /** Which swatch: a cell at a level, the cursor's outline, a failing cell, a knot cell. */
-  swatch: 'changed' | 'read' | 'cursor' | 'fail' | 'knot';
+  /** Which swatch: a filled cell, a hollow one, a glowing one, the path, the cursor, a failing cell, the knot. */
+  swatch: LegendSwatch;
   text: string;
 }
 
-/** The legend in words. `knot` only when there is one to point at. */
-export function legend(screen: 'map' | 'timelapse', knot: boolean, reduceMotion: boolean): LegendItem[] {
+export interface LegendOptions {
+  /** There is a knot to point at. */
+  knot: boolean;
+  /** Reduce Motion: the knot holds still and outlined instead of pulsing. */
+  reduceMotion: boolean;
+  /** There is a path of two files or more on screen. */
+  path: boolean;
+}
+
+/** The legend in words, in the order the eye meets the marks. */
+export function legend(screen: 'map' | 'timelapse', o: LegendOptions): LegendItem[] {
+  const now = screen === 'map' ? 'now' : 'at that moment';
   const items: LegendItem[] = [
-    { swatch: 'changed', text: 'Changed. Brightest where it is working, cooling as it moves on to other files.' },
-    { swatch: 'read', text: 'Only read.' },
-    { swatch: 'cursor', text: screen === 'map' ? 'Outlined: the file it is on now.' : 'Outlined: the file it is on at that moment.' },
+    { swatch: 'changed', text: 'Filled: changed.' },
+    { swatch: 'read', text: 'Hollow: only read.' },
+    {
+      swatch: 'hot',
+      text: 'Glowing: one of the last three files it touched, brightest where it changed them. The rest cool as it moves on.',
+    },
   ];
+  if (o.path) {
+    items.push({
+      swatch: 'path',
+      text:
+        screen === 'map'
+          ? 'The line: the last six files it touched, in the order it last touched them.'
+          : 'The line: the last six files it touched up to that moment, in order.',
+    });
+  }
+  items.push({ swatch: 'cursor', text: `Outlined: the file it is on ${now}.` });
   if (screen === 'timelapse') items.push({ swatch: 'fail', text: 'Red: its last call on that file failed.' });
-  if (knot) {
-    const how = reduceMotion ? 'Bright and outlined' : 'Pulsing';
+  if (o.knot) {
+    const how = o.reduceMotion ? 'Outlined in your colour' : 'Pulsing in your colour';
     items.push({
       swatch: 'knot',
       text: screen === 'map' ? `${how}: the files it keeps rewriting.` : `${how}: the files it was stuck on, while it was stuck.`,
@@ -343,8 +407,58 @@ export function legend(screen: 'map' | 'timelapse', knot: boolean, reduceMotion:
   return items;
 }
 
+/** The roles on the map, most files first, ties in `plain.ROLES` order: the colour key. */
+export function rolesOnMap(files: readonly LiveFile[]): PlainRole[] {
+  const counts = new Map<PlainRole, number>();
+  for (const f of files) counts.set(f.role, (counts.get(f.role) ?? 0) + 1);
+  return [...counts.keys()].sort((a, b) => counts.get(b)! - counts.get(a)! || ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b));
+}
+
+const ROLE_ORDER: readonly PlainRole[] = ['source', 'test', 'config', 'docs', 'migration', 'style', 'build', 'dependency', 'unknown'];
+
+/** The line before the colour key. */
+export const ROLES_NOTE = 'Each colour is a kind of file:';
+
 /** The one line that says what an island is. */
 export const ISLANDS_NOTE = 'Each island is a folder. The top of the repository sits in the middle and deeper folders further out.';
+
+/** Under the map until a cell is picked. */
+export const TAP_HINT = 'Tap a square for what happened to that file.';
+
+// ------------------------------------------------------------------ the ledger under the map
+
+export interface LedgerRow {
+  id: string;
+  role: PlainRole;
+  /** The figure: changes, or reads when nothing was changed. */
+  count: number;
+  /** What the figure counts, and on what: "changes to store.ts", "reads of a doc". */
+  what: string;
+  /** The quiet line under it: the other count and when, "read 3 times, last touched at 14:02". */
+  note: string | null;
+}
+
+/**
+ * The files changed most, else read most, as lines of print: the count set large and what it
+ * counts beside it. The same order `hotRows` gives. Names only when the builder opted in.
+ */
+export function hotLedger(files: readonly LiveFile[], names: Record<string, string> | null, now: number): { label: string; rows: LedgerRow[] } {
+  const hot = hotRows(files, names, now);
+  const changed = hot.label === 'most changed';
+  const byId = new Map(files.map((f) => [f.id, f]));
+  const rows = hot.rows.map((r) => {
+    const f = byId.get(r.id)!;
+    const n = changed ? f.edits : f.reads;
+    const label = fileLabel(f, names?.[f.id]);
+    const what = changed ? `${n === 1 ? 'change' : 'changes'} to ${label}` : `${n === 1 ? 'read' : 'reads'} of ${label}`;
+    const other = changed && f.reads > 0 ? `read ${times(f.reads)}` : null;
+    const at = [f.last_read_ts, f.last_edit_ts].filter((t): t is number => typeof t === 'number' && Number.isFinite(t));
+    const when = at.length ? whenOf(new Date(Math.max(...at) * 1000).toISOString(), now) : null;
+    const note = [other, when ? `last touched ${when}` : null].filter(Boolean).join(', ');
+    return { id: f.id, role: f.role, count: n, what, note: note ? `${capital(note)}.` : null };
+  });
+  return { label: hot.label, rows };
+}
 
 // ------------------------------------------------------------------ the time lapse
 
@@ -370,6 +484,12 @@ export function timelapseMeta(s: SessionDetail, state: LiveState, frames: readon
   const updated = updatedLine(state.computed_at, now);
   if (updated) parts.push(updated);
   return parts.join(' · ');
+}
+
+/** The time lapse band's quiet line: "214 reads, changes and failures. Updated just now." */
+export function replayNote(state: LiveState, frames: readonly LiveFrame[], now: number): string {
+  const updated = updatedSentence(state.computed_at, now);
+  return [`${capital(framesPhrase(frames.length))}.`, updated].filter(Boolean).join(' ');
 }
 
 /** The files a knot or a burst names: "store.ts", "a source file", "three files". */

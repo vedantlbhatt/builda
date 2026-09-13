@@ -1,122 +1,131 @@
+/**
+ * `builder://you/timelapse/<id>`: the time lapse (brief D8, docs/approved-roadmap.md 2.8), the
+ * session replayed in fifteen seconds on its own codebase map, in the house style: "When a
+ * session ends, replay it in fifteen seconds: the map lighting up, the knot where it got stuck,
+ * the burst at the end."
+ *
+ *   the band     in the session's hue: the repository, and the figure is the replay's own clock,
+ *                counting up from 0s as it plays; the whole in a sentence; the creature printed
+ *   the map      the same islands, blooming in as empty slots, then lit as the frames play: each
+ *                file turns over the first time it is touched (the braille flipwave), glows while
+ *                it is in the working set, and leaves a thinning trail of the last six files
+ *                (ShapeGrid's trail, PixelTrail's age, Strava's route). Inside the knot, its files
+ *                pulse in the session's hue with rings going out (MagicRings). When the replay
+ *                lands, a ripple crosses the map from the burst (PixelBlast) and the burst's files
+ *                throw sparks (ClickSpark). A tap on a file sparks it and says what happened to it.
+ *   the controls one round key to play and pause, where the replay is, Replay as a word, and the
+ *                scrubber: a selection tick when a finger drags across a spike, the knot or the
+ *                burst
+ *
+ * Plays once, on its own, as soon as the map has drawn itself; under Reduce Motion it opens on
+ * the last frame and waits for Play. Only a running session has frames (the server deletes the
+ * live state when it finalises), so a finished one says so and offers the session.
+ */
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
-import Animated, {
-  runOnJS,
-  useAnimatedProps,
-  useAnimatedReaction,
-  useSharedValue,
-  withSequence,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Easing, runOnJS, useAnimatedReaction, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import type { SessionDetail } from '../../../src/data/api';
 import type { LiveFile, LiveFrame, LiveState } from '../../../src/generated/live';
+import { GUTTER, type, Words } from '../../../src/insights/kit';
+import { GROUND } from '../../../src/insights/palette';
+import { Block, Section, useClock } from '../../../src/insights/reveal';
+import { widestLabel } from '../../../src/map/figure';
 import { spanOf, spikeBins, trackBins } from '../../../src/map/frames';
 import { buildReplay } from '../../../src/map/heat';
 import { findBurst, findKnot } from '../../../src/map/knot';
 import { layoutMap } from '../../../src/map/layout';
-import { MapCanvas } from '../../../src/map/MapCanvas';
-import { Legend, MapRefusal, SampleNote, TimelapseSkeleton, useOpenSession } from '../../../src/map/MapParts';
+import { BLOOM_AT, MapCanvas, POP_MS } from '../../../src/map/MapCanvas';
+import { MapError, MapLoading, MapMissing, MapPage, MapRefusal, MapSignedOut, SAMPLE_NOTE, StaleNote, useOpenSession } from '../../../src/map/MapParts';
+import { Legend, ReplayControls, ReplayFigure, SessionBand } from '../../../src/map/MapWords';
+import { bloomDelays, bloomEnd, bloomWaves } from '../../../src/map/paint';
 import { Scrubber } from '../../../src/map/Scrubber';
 import { usePlayback } from '../../../src/map/usePlayback';
 import { useSessionMap } from '../../../src/map/useSessionMap';
 import {
   burstSentence,
+  cellCaption,
   elapsedLabel,
   knotSentence,
   legend,
   mapSummary,
   offMapNote,
+  replayNote,
+  rolesOnMap,
+  TAP_HINT,
   thinnedNote,
   timelapseContent,
-  timelapseMeta,
   timelapseTitle,
 } from '../../../src/map/view';
-import { SessionError, SessionMissing, SessionSignedOut, StaleLine } from '../../../src/session/SessionStates';
-import { colors, layout, space } from '../../../src/theme';
-import {
-  Button,
-  exitMs,
-  PressableScale,
-  roleScaling,
-  roleStyle,
-  SHAPE,
-  SymbolIcon,
-  T,
-  timing,
-  useColors,
-  useReduceMotion,
-} from '../../../src/ui';
-// The kit's barrel exports the Text component as `T`; the duration table is `motionSpec`'s.
-import { T as DUR } from '../../../src/ui/motionSpec';
-
-const c = colors('dark');
+import { useAccent, type AccentState } from '../../../src/theme/accent';
+import { snap } from '../../../src/ui/haptics';
+import { useReduceMotion } from '../../../src/ui/motion';
 
 /** One empty knot, so a render outside the knot hands the canvas the same array. */
 const NO_CELLS: readonly number[] = [];
 
-/**
- * The time lapse (brief D8, docs/approved-roadmap.md 2.8): the session replayed in fifteen
- * seconds on its own codebase map. Cells light as the frames play and cool as the agent moves
- * on; the knot where it got stuck pulses while the playhead is inside it; the burst at the end
- * pops once when the replay lands. A scrubber to drag, play and pause, and Replay.
- *
- * Plays once on arrival; under Reduce Motion it opens on the last frame and waits for Play.
- * Only a running session has frames (the server deletes the live state when it finalises), so
- * a finished one says so and offers the session. Exporting a video is out of scope.
- */
+/** How long after the last cell lands the replay starts on its own. */
+const AUTOPLAY_AFTER_MS = 260;
+
 export default function TimelapseScreen() {
   const { id, variant } = useLocalSearchParams<{ id: string; variant?: string }>();
   const { width, height } = useWindowDimensions();
   const router = useRouter();
+  const accent = useAccent();
   const { load, refresh, refreshing, now } = useSessionMap(id, variant, { poll: false });
   const openSession = useOpenSession(id ?? 'sample', variant);
-  const column = width - layout.gutter * 2;
-  const maxHeight = Math.min(Math.round(height * 0.5), Math.round(column * 1.1));
+  const retry = useCallback(() => void refresh(), [refresh]);
+  const back = useCallback(() => (router.canGoBack() ? router.back() : router.replace('/sessions')), [router]);
+  const ready = load.kind === 'ready' && accent.ready;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingTop: space.md, paddingBottom: space.xxl, gap: layout.sectionGap }}
-      refreshControl={
-        load.kind === 'signedOut' ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={c.accent} />
-      }
-    >
-      {load.kind === 'loading' && <TimelapseSkeleton width={column} />}
-      {load.kind === 'signedOut' && <SessionSignedOut onSignIn={() => router.push('/settings')} />}
-      {load.kind === 'missing' && <SessionMissing onBack={() => (router.canGoBack() ? router.back() : router.replace('/sessions'))} />}
-      {load.kind === 'error' && <SessionError message={load.message} onRetry={() => void refresh()} />}
-      {load.kind === 'ready' && (
-        <>
-          {load.stale ? <StaleLine text={load.stale} /> : null}
-          <TimelapseBody session={load.session} now={now} column={column} maxHeight={maxHeight} onSession={openSession} onRetry={() => void refresh()} />
-        </>
-      )}
-    </ScrollView>
+    <MapPage title="Time lapse" refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : retry}>
+      {load.kind === 'loading' || (load.kind === 'ready' && !accent.ready) ? <MapLoading sentence="Getting the replay ready." /> : null}
+      {load.kind === 'signedOut' ? <MapSignedOut what="time lapse" accent={accent.ink} onSignIn={() => router.push('/settings')} /> : null}
+      {load.kind === 'missing' ? <MapMissing accent={accent.ink} onBack={back} /> : null}
+      {load.kind === 'error' ? <MapError message={load.message} accent={accent.ink} onRetry={retry} /> : null}
+      {ready && load.stale ? <StaleNote text={load.stale} /> : null}
+      {ready ? <TimelapseBody session={load.session} now={now} width={width} height={height} accent={accent} onSession={openSession} onRetry={retry} /> : null}
+    </MapPage>
   );
 }
 
 function TimelapseBody({
   session,
   now,
-  column,
-  maxHeight,
+  width,
+  height,
+  accent,
   onSession,
   onRetry,
 }: {
   session: SessionDetail;
   now: number;
-  column: number;
-  maxHeight: number;
+  width: number;
+  height: number;
+  accent: AccentState;
   onSession: () => void;
   onRetry: () => void;
 }) {
   const content = useMemo(() => timelapseContent(session), [session]);
+  const title = session.repo_name ?? 'This session';
   if (content.kind !== 'ready') {
-    return <MapRefusal kind={content.kind} screen="timelapse" session={session} now={now} onSession={onSession} onRetry={onRetry} />;
+    return (
+      <MapRefusal
+        kind={content.kind}
+        screen="timelapse"
+        session={session}
+        now={now}
+        onSession={onSession}
+        onRetry={onRetry}
+        hue={accent}
+        animal={accent.animal}
+        title={title}
+        width={width}
+        accent={accent.ink}
+      />
+    );
   }
   return (
     <Replayer
@@ -126,14 +135,29 @@ function TimelapseBody({
       frames={content.frames}
       names={content.names}
       now={now}
-      column={column}
-      maxHeight={maxHeight}
+      width={width}
+      height={height}
+      title={title}
+      accent={accent}
     />
   );
 }
 
 function cellsOf(ids: readonly string[], index: Readonly<Record<string, number>>): number[] {
   return ids.map((i) => index[i]).filter((i): i is number => i !== undefined);
+}
+
+/** Starts the replay once its block's clock passes `at`: the map has drawn itself by then. */
+function AutoPlay({ at, onReady }: { at: number; onReady: () => void }) {
+  const clock = useClock();
+  useAnimatedReaction(
+    () => clock.value >= at,
+    (on, was) => {
+      if (on && !was) runOnJS(onReady)();
+    },
+    [at],
+  );
+  return null;
 }
 
 function Replayer({
@@ -143,8 +167,10 @@ function Replayer({
   frames,
   names,
   now,
-  column,
-  maxHeight,
+  width,
+  height,
+  title,
+  accent,
 }: {
   session: SessionDetail;
   state: LiveState;
@@ -152,8 +178,10 @@ function Replayer({
   frames: LiveFrame[];
   names: Record<string, string> | null;
   now: number;
-  column: number;
-  maxHeight: number;
+  width: number;
+  height: number;
+  title: string;
+  accent: AccentState;
 }) {
   const reduce = useReduceMotion();
   const lay = useMemo(() => layoutMap(files), [files]);
@@ -165,27 +193,34 @@ function Replayer({
   const burstCells = useMemo(() => cellsOf(burst?.files ?? [], lay.index), [burst, lay]);
   const bins = useMemo(() => trackBins(frames, span), [frames, span]);
   const spikes = useMemo(() => spikeBins(bins), [bins]);
+  const roles = useMemo(() => rolesOnMap(files), [files]);
+  const landed = useMemo(() => bloomEnd(bloomDelays(bloomWaves(lay), BLOOM_AT)), [lay]);
+  const total = elapsedLabel(span);
+  const widest = widestLabel(total, span);
 
-  // The burst pops once when a replay lands on the last frame.
+  // The end: the ripple, the sparks and the pop run once when a replay lands on the last frame.
   const pop = useSharedValue(0);
   const onEnd = useCallback(() => {
     if (reduce || burstCells.length === 0) return;
-    pop.value = withSequence(withTiming(1, timing(DUR.micro)), withTiming(0, timing(exitMs(DUR.enter))));
+    pop.value = 0;
+    pop.value = withTiming(1, { duration: POP_MS, easing: Easing.linear });
   }, [reduce, burstCells.length, pop]);
   const pb = usePlayback(span, reduce, onEnd);
-  // The latest controls in refs, so the two effects below run on arrival and on leaving only,
-  // never again because a render made new callbacks (a re-run would cancel the autoplay, and a
-  // focus cleanup on every render would pause the replay it just started).
+
+  // The latest controls in refs, so the arrival and the leaving run once each, never again
+  // because a render made new callbacks (a re-run would cancel the autoplay, and a focus cleanup
+  // on every render would pause the replay it just started).
   const replayRef = useRef(pb.replay);
   replayRef.current = pb.replay;
   const pauseRef = useRef(pb.pause);
   pauseRef.current = pb.pause;
+  const started = useRef(false);
 
-  // Plays once on arrival, after the map has drawn; Reduce Motion opens on the last frame.
-  useEffect(() => {
-    if (reduce) return;
-    const t = setTimeout(() => replayRef.current(), 400);
-    return () => clearTimeout(t);
+  // Plays once on its own when the map has drawn itself; Reduce Motion opens on the last frame.
+  const autoplay = useCallback(() => {
+    if (reduce || started.current) return;
+    started.current = true;
+    replayRef.current();
   }, [reduce]);
   // Leaving the screen stops the clock.
   useFocusEffect(
@@ -193,6 +228,27 @@ function Replayer({
       return () => pauseRef.current();
     }, []),
   );
+
+  const toggle = useCallback(() => {
+    started.current = true;
+    if (pb.playing) {
+      pb.pause();
+      return;
+    }
+    if (pb.ended) pop.value = 0;
+    pb.play();
+  }, [pb, pop]);
+  const again = useCallback(() => {
+    started.current = true;
+    snap();
+    pop.value = 0;
+    pb.replay();
+  }, [pb, pop]);
+  const scrubStart = useCallback(() => {
+    started.current = true;
+    pop.value = 0;
+    pb.scrubStart();
+  }, [pb, pop]);
 
   const knotWindow = useMemo(() => (knot ? { from: knot.startT, to: knot.endT } : null), [knot]);
   const burstWindow = useMemo(() => (burst ? { from: burst.startT, to: span } : null), [burst, span]);
@@ -207,136 +263,121 @@ function Replayer({
     [knot],
   );
 
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const picked = pickedId !== null ? (lay.index[pickedId] ?? null) : null;
+  const pickedFile = picked !== null ? files.find((f) => f.id === pickedId) : undefined;
+  const onSelect = useCallback((i: number | null) => setPickedId(i === null ? null : (lay.cells[i]?.id ?? null)), [lay]);
+
   const knotLine = knot ? knotSentence(knot, files, names) : null;
   const burstLine = burst ? burstSentence(burst, span, knot !== null) : null;
   const notes = [thinnedNote(frames, files), offMapNote(frames, lay.index)].filter((n): n is string => n !== null);
+  const items = useMemo(() => legend('timelapse', { knot: knot !== null, reduceMotion: reduce, path: true }), [knot, reduce]);
+  const maxHeight = Math.min(Math.round(height * 0.56), Math.round(width * 1.1));
+  const column = width - GUTTER * 2;
 
   return (
     <>
-      <View style={{ gap: space.xs }}>
-        <T role="headline">{timelapseTitle(frames)}</T>
-        <T role="meta" tone="dim">
-          {timelapseMeta(session, state, frames, now)}
-        </T>
-        {session.id === 'sample' ? <SampleNote /> : null}
-      </View>
-
-      <View style={{ gap: space.md }}>
-        <MapCanvas
-          layout={lay}
-          width={column}
-          maxHeight={maxHeight}
-          replay={replay}
-          playhead={pb.playhead}
-          knot={inKnot ? knotCells : NO_CELLS}
-          knotWindow={knotWindow}
-          burst={burstCells}
-          pop={pop}
-          accessibilityLabel={`${mapSummary(files, lay.folders.length)} Replayed as the session went.`}
+      <Section>
+        <SessionBand
+          hue={accent}
+          animal={accent.animal}
+          title={title}
+          width={width}
+          figure={(inner) => <ReplayFigure playhead={pb.playhead} widest={widest} width={inner} />}
+          sentence={timelapseTitle(frames)}
+          note={replayNote(state, frames, now)}
         />
+      </Section>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile }}>
-          <PressableScale
-            onPress={pb.playing ? pb.pause : pb.play}
-            accessibilityLabel={pb.playing ? 'Pause' : pb.ended ? 'Play from the start' : 'Play'}
-            style={styles.play}
-          >
-            <SymbolIcon name={pb.playing ? 'pause.fill' : 'play.fill'} size={17} weight="semibold" tone="onAccent" />
-          </PressableScale>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.xs, flex: 1 }}>
-            <Readout playhead={pb.playhead} longest={elapsedLabel(span)} />
-            <T role="meta" tone="dim">
-              of {elapsedLabel(span)}
-            </T>
+      <Section style={styles.map}>
+        <Block enter={false}>
+          <MapCanvas
+            layout={lay}
+            width={width}
+            maxHeight={maxHeight}
+            hue={accent}
+            replay={replay}
+            playhead={pb.playhead}
+            span={span}
+            knot={inKnot ? knotCells : NO_CELLS}
+            knotWindow={knotWindow}
+            burst={burstCells}
+            pop={pop}
+            selected={picked}
+            onSelect={onSelect}
+            accessibilityLabel={`${mapSummary(files, lay.folders.length)} Replayed as the session went.`}
+            accessibilityHint={TAP_HINT}
+          />
+          <AutoPlay at={landed + AUTOPLAY_AFTER_MS} onReady={autoplay} />
+        </Block>
+        <Block style={styles.gutter}>
+          <Text accessibilityLiveRegion="polite" maxFontSizeMultiplier={1.6} style={pickedFile ? type.body : type.dim}>
+            {pickedFile ? cellCaption(pickedFile, names?.[pickedFile.id], now) : TAP_HINT}
+          </Text>
+          {session.id === 'sample' ? <Words style={[type.meta, styles.after]}>{SAMPLE_NOTE}</Words> : null}
+        </Block>
+        <Block style={styles.controls}>
+          <ReplayControls
+            playing={pb.playing}
+            ended={pb.ended}
+            onToggle={toggle}
+            onReplay={again}
+            playhead={pb.playhead}
+            widest={widest}
+            total={total}
+            accent={{ fill: accent.fill, onFill: accent.onFill, text: accent.text }}
+          />
+          <View style={styles.scrubber}>
+            <Scrubber
+              width={column}
+              bins={bins}
+              spikes={spikes}
+              span={span}
+              playhead={pb.playhead}
+              knot={knotWindow}
+              burst={burstWindow}
+              ink={accent.ink}
+              partner={accent.partner}
+              onScrubStart={scrubStart}
+              onScrubEnd={pb.scrubEnd}
+              valueText={`${elapsedLabel(pb.position)} of ${total}`}
+              onStep={pb.step}
+            />
           </View>
-          <Button kind="secondary" size="compact" block={false} label="Replay" haptic="snap" onPress={pb.replay} />
-        </View>
-
-        <Scrubber
-          width={column}
-          bins={bins}
-          spikes={spikes}
-          span={span}
-          playhead={pb.playhead}
-          knot={knotWindow}
-          burst={burstWindow}
-          onScrubStart={pb.scrubStart}
-          onScrubEnd={pb.scrubEnd}
-          valueText={`${elapsedLabel(pb.position)} of ${elapsedLabel(span)}`}
-          onStep={pb.step}
-        />
-      </View>
+        </Block>
+      </Section>
 
       {knotLine || burstLine || notes.length ? (
-        <View style={{ gap: space.sm }}>
-          {knotLine ? (
-            <T role="body" tone={inKnot ? 'text' : 'dim'}>
-              {knotLine}
-            </T>
-          ) : null}
-          {burstLine ? (
-            <T role="body" tone={pb.ended ? 'text' : 'dim'}>
-              {burstLine}
-            </T>
-          ) : null}
-          {notes.map((n) => (
-            <T key={n} role="meta" tone="dim">
-              {n}
-            </T>
-          ))}
-        </View>
+        <Section style={[styles.gutter, styles.chapter]}>
+          <Block style={styles.sentences}>
+            {knotLine ? (
+              <Words style={[type.body, { color: inKnot ? accent.text : GROUND.dim }]}>{knotLine}</Words>
+            ) : null}
+            {burstLine ? <Words style={[type.body, { color: pb.ended ? GROUND.text : GROUND.dim }]}>{burstLine}</Words> : null}
+            {notes.map((n) => (
+              <Words key={n} style={type.meta}>
+                {n}
+              </Words>
+            ))}
+          </Block>
+        </Section>
       ) : null}
 
-      <Legend items={legend('timelapse', knot !== null, reduce)} />
+      <Section style={[styles.gutter, styles.chapter]}>
+        <Block>
+          <Legend items={items} roles={roles} accent={accent.ink} />
+        </Block>
+      </Section>
     </>
   );
 }
 
-// On Fabric a prop on neither of Reanimated's allowlists is bounced to the JS thread every
-// frame; `text` goes on the native list, as the kit's CountUp does.
-Animated.addWhitelistedNativeProps({ text: true });
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
-
-/**
- * Where the replay is, in session time, redrawn on the UI thread every frame without a React
- * render. A hidden copy of the longest label holds the width, so nothing beside it moves.
- */
-function Readout({ playhead, longest }: { playhead: SharedValue<number>; longest: string }) {
-  const colorsNow = useColors();
-  const props = useAnimatedProps(() => {
-    const text = elapsedLabel(playhead.value);
-    return { text } as unknown as Partial<React.ComponentProps<typeof TextInput>>;
-  });
-  const font = roleStyle('row');
-  return (
-    <View accessible={false}>
-      <T role="row" style={styles.hidden} importantForAccessibility="no">
-        {longest}
-      </T>
-      <AnimatedTextInput
-        editable={false}
-        pointerEvents="none"
-        underlineColorAndroid="transparent"
-        importantForAccessibility="no"
-        accessibilityElementsHidden
-        defaultValue={elapsedLabel(playhead.value)}
-        animatedProps={props}
-        {...roleScaling('row')}
-        style={[StyleSheet.absoluteFill, font, { color: colorsNow.text, padding: 0, margin: 0 }]}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  play: {
-    width: 44,
-    height: 44,
-    borderRadius: SHAPE.action,
-    borderCurve: 'continuous',
-    backgroundColor: c.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hidden: { opacity: 0 },
+  map: { marginTop: 4 },
+  gutter: { paddingHorizontal: GUTTER },
+  chapter: { marginTop: 30 },
+  after: { marginTop: 8 },
+  controls: { marginTop: 18 },
+  scrubber: { paddingHorizontal: GUTTER, marginTop: 14 },
+  sentences: { gap: 10 },
 });

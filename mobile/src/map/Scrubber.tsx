@@ -1,8 +1,12 @@
 /**
- * The time lapse's scrubber: the session as TRACK_BINS bars of activity, each stacked by what
- * happened (changes in amber, failures in red, reads in the map's dim warm, the map's own
- * meanings), what has played in those colours and what has not in `border`, a bracket over the
- * knot and one over the burst, a tick under each spike, and the playhead.
+ * The time lapse's scrubber: the session as TRACK_BINS bars of activity on the warm ground, each
+ * stacked by what happened (changes in the session's ink, failures in the one red, reads in the
+ * session's partner tone: the map's own meanings), what has played in those colours and what has
+ * not in `border`, a bracket over the knot and one over the burst, a tick under each spike, and
+ * the playhead.
+ *
+ * It draws on when its block arrives: the bars grow from the baseline left to right on the
+ * page's spring, a bar every 8 ms, then stand still; the playhead and the brackets land last.
  *
  * A finger drags it (Gesture Handler: a horizontal pan, so a vertical drag still scrolls the
  * page) or taps it to jump. Crossing a spike, the knot or the burst under the finger ticks
@@ -12,11 +16,15 @@
  */
 import { Canvas, createPicture, Picture, Skia } from '@shopify/react-native-skia';
 import React, { useMemo } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
-import { select, T, useColors } from '../ui';
+import { type } from '../insights/kit';
+import { ease, phase, spring } from '../insights/motion';
+import { DATA, GROUND } from '../insights/palette';
+import { useClock } from '../insights/reveal';
+import { select } from '../ui/haptics';
 import type { TrackBin } from './frames';
 
 /**
@@ -29,6 +37,10 @@ const BRACKET_Y = 20;
 const BARS_TOP = 25;
 const BARS_H = 27;
 const TICK_Y = 55;
+/** When the bars start growing on the block's clock, how far apart, and how long each takes. */
+const BARS_AT = 200;
+const BAR_STEP = 8;
+const BAR_MS = 520;
 
 export interface Stretch {
   from: number;
@@ -45,6 +57,9 @@ export interface ScrubberProps {
   playhead: SharedValue<number>;
   knot: Stretch | null;
   burst: Stretch | null;
+  /** The session's hue: changes in its ink, reads in its partner. */
+  ink: string;
+  partner: string;
   onScrubStart: () => void;
   onScrubEnd: () => void;
   /** VoiceOver's value and its two steps. */
@@ -52,8 +67,8 @@ export interface ScrubberProps {
   onStep: (direction: 1 | -1) => void;
 }
 
-export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, onScrubStart, onScrubEnd, valueText, onStep }: ScrubberProps) {
-  const c = useColors();
+export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink, partner, onScrubStart, onScrubEnd, valueText, onStep }: ScrubberProps) {
+  const clock = useClock();
   const n = bins.length;
   const barW = width / Math.max(1, n);
   // Each bar stacked from the bottom: changes, failures, reads, in whole points, the bar's
@@ -68,11 +83,12 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, onS
       return [edit, fail, total - edit - fail];
     });
   }, [bins]);
-  const inks = [c.accent, c.data.del, c.graph[2]!];
-  const unplayed = c.border;
-  const text = c.text;
-  const dim = c.textDim;
+  const inks = useMemo(() => [ink, DATA.del, partner], [ink, partner]);
+  const unplayed = GROUND.border;
+  const text = GROUND.text;
+  const dim = GROUND.dim;
   const spikeX = useMemo(() => spikes.map((i) => (i + 0.5) * barW), [spikes, barW]);
+  const landed = BARS_AT + n * BAR_STEP + BAR_MS;
 
   // The moments a finger crossing them should feel: every spike's middle, the knot's start
   // and the burst's start, in seconds.
@@ -90,40 +106,46 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, onS
   }, [knot, burst, span, width]);
 
   const picture = useDerivedValue(() => {
+    const t = clock.value;
     const head = span > 0 ? Math.min(1, Math.max(0, playhead.value / span)) * width : 0;
     const colors = inks.map((h) => Skia.Color(h));
     const off = Skia.Color(unplayed);
     const on = Skia.Color(text);
     const tickColor = Skia.Color(dim);
+    const last = ease(phase(t, landed - 200, 300));
     return createPicture(
       (canvas) => {
         const paint = Skia.Paint();
         for (let i = 0; i < stacks.length; i++) {
+          const grow = spring(phase(t, BARS_AT + i * BAR_STEP, BAR_MS));
+          if (grow <= 0) continue;
           const x = i * barW;
           const played = x + barW / 2 <= head;
           let bottom = BARS_TOP + BARS_H;
           for (let j = 0; j < 3; j++) {
-            const h = stacks[i]![j]!;
-            if (h === 0) continue;
+            const h = stacks[i]![j]! * grow;
+            if (h <= 0) continue;
             paint.setColor(played ? colors[j]! : off);
             canvas.drawRect(Skia.XYWHRect(x + 0.5, bottom - h, Math.max(1, barW - 1), h), paint);
             bottom -= h;
           }
         }
+        if (last <= 0) return;
         paint.setColor(on);
-        if (knotX) canvas.drawRect(Skia.XYWHRect(knotX[0]!, BRACKET_Y, knotX[1]! - knotX[0]!, 2), paint);
-        if (burstX) canvas.drawRect(Skia.XYWHRect(burstX[0]!, BRACKET_Y, burstX[1]! - burstX[0]!, 2), paint);
+        if (knotX) canvas.drawRect(Skia.XYWHRect(knotX[0]!, BRACKET_Y, (knotX[1]! - knotX[0]!) * last, 2), paint);
+        if (burstX) canvas.drawRect(Skia.XYWHRect(burstX[0]!, BRACKET_Y, (burstX[1]! - burstX[0]!) * last, 2), paint);
         paint.setColor(tickColor);
-        for (const x of spikeX) canvas.drawRect(Skia.XYWHRect(x - 1, TICK_Y, 2, 4), paint);
+        for (const x of spikeX) canvas.drawRect(Skia.XYWHRect(x - 1, TICK_Y + 4 * (1 - last), 2, 4 * last), paint);
         // The playhead: a 2pt line through the bars, a 6pt square on top.
         paint.setColor(on);
         const px = Math.min(width - 1, Math.max(1, head));
-        canvas.drawRect(Skia.XYWHRect(px - 1, BRACKET_Y - 1, 2, BARS_TOP + BARS_H - BRACKET_Y + 3), paint);
-        canvas.drawRect(Skia.XYWHRect(px - 3, BRACKET_Y - 4, 6, 6), paint);
+        const tall = (BARS_TOP + BARS_H - BRACKET_Y + 3) * last;
+        canvas.drawRect(Skia.XYWHRect(px - 1, BARS_TOP + BARS_H + 2 - tall, 2, tall), paint);
+        canvas.drawRect(Skia.XYWHRect(px - 3, BRACKET_Y - 4, 6, 6 * last), paint);
       },
       { width, height: SCRUBBER_HEIGHT },
     );
-  }, [width, span, stacks, barW, knotX, burstX, spikeX]);
+  }, [width, span, stacks, barW, knotX, burstX, spikeX, inks, landed]);
 
   // ---------------------------------------------------------------- the finger
   const seek = (x: number, feel: boolean) => {
@@ -165,15 +187,14 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, onS
   const gesture = Gesture.Exclusive(pan, tap);
 
   const label = (x: number, word: string, key: string) => (
-    <T
+    <Text
       key={key}
-      role="label"
-      tone="dim"
+      allowFontScaling={false}
       numberOfLines={1}
-      style={{ position: 'absolute', top: LABEL_Y, left: Math.max(0, Math.min(width - 48, x)), width: 48 }}
+      style={[type.label, styles.label, { left: Math.max(0, Math.min(width - 48, x)) }]}
     >
       {word}
-    </T>
+    </Text>
   );
 
   return (
@@ -196,3 +217,7 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, onS
     </GestureDetector>
   );
 }
+
+const styles = StyleSheet.create({
+  label: { position: 'absolute', top: LABEL_Y, width: 48 },
+});

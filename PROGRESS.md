@@ -37,19 +37,18 @@ section.
 
 ## In progress
 
-- Workflow `builder-integrate-and-screens`: contract v4 + live spec, report v2, server
-  (migrations 0020 to 0022, live state, spend fix), capture (tool bucketing fix, `capture
-  live`), phone data and copy, and the screens: Wrapped deck, You pages (dimensions, money,
-  glossary, stack), session burn + summary + title, mission control + LiveBar, codebase map
-  + timelapse. End to end with this session live: done (see Done). Left: three critics,
-  polish, adversarial review. Design: `docs/overnight-integration.md` + addendum (per
-  session burn and title_ids).
-- Workflow `builder-native-capture`: real simulator captures of the island, Lock Screen,
-  widgets, banners, and this session live (`shots/native/`), critics, polish.
-- Workflow `builder-onboarding`: the six step flow on the second simulator
-  (`Builder Screens`, C3F41B44), video + stills in `shots/onboarding/`.
-- Workflow `builder-identity-art`: simplified creature family + harness glyphs
-  (`shots/identity/`), finalize stage.
+- Owner feedback at 09:22 and after: more colour, react-bits used visibly, "basic ai ui",
+  the full analysis with numbers counting up and charts drawing on, rename to Builda (done,
+  3665e85). The $2,951 is API list price value, not a bill (said in the money copy).
+- Workflow `builder-colour-motion`: the v2 spectrum (nine hues: amber, brass, ember, rose,
+  orchid, heather, iris, cobalt, tide; `design-refs/DESIGN-V2-COLOUR-MOTION.md`,
+  `shots/v2/design/palette.png`), then react-bits ports into `mobile/src/ui/bits/`, every
+  screen rebuilt with them, simulator video + critics + polish, native recolour.
+- Agent: the full analysis page `builder://analysis` (`mobile/app/analysis.tsx`,
+  `mobile/src/insights/`), eleven chapters, count ups per section, draw on charts, on both
+  simulators. Needs an entry row from the You tab when the redesign releases that file.
+- Artifact: https://claude.ai/code/artifact/542a2582-7538-475f-b9fc-796cfdb22a0a, built by
+  `scratchpad/artifact/build.py` from `manifest.json`; republish as screens land.
 
 ## Reference material
 

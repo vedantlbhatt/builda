@@ -311,6 +311,7 @@ export function activeSlide(position: number, current: number): number {
 
 /** The slots drawn around `centre`: every one for a looping stage, the real ones otherwise. */
 export function windowSlots(centre: number, count: number, loop: boolean, reach: number = CAROUSEL.reach): number[] {
+  'worklet';
   const out: number[] = [];
   if (count <= 0) return out;
   for (let k = centre - reach; k <= centre + reach; k++) {

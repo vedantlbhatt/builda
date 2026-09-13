@@ -41,10 +41,15 @@ export const DECRYPT_TICK_MS = 40;
 export const PRESS_SCALE = 0.97;
 
 export function exitMs(entranceMs: number): number {
+  // A worklet, because gesture release handlers call it on the UI thread (TiltedCard,
+  // MagicBento, PixelCard). As a plain function it crashed the app on the first scroll past the
+  // You tab's profile card: "Tried to synchronously call a non-worklet function exitMs".
+  'worklet';
   return Math.round(entranceMs * EXIT_FACTOR);
 }
 
 /** Delay for the `index`th item of a staggered entrance. */
 export function staggerDelay(index: number): number {
+  'worklet';
   return Math.min(Math.max(0, Math.floor(index)), STAGGER_CAP) * STAGGER;
 }

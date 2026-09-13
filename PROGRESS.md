@@ -103,6 +103,10 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   `"ended": null` now (test in `test_cli`). Checked at 18:30 and already fixed earlier: the
   Now tile's "pr…epo" (f11a167, the repository wraps) and the Lock Screen's "+0 -0"
   (`FinishedLine` shows each count only above zero, unknown says nothing).
+- FIXED 19:35: `languages.split` could send two "other" rows (an unmapped extension is the
+  language `other`, ranked in the top eight and then listed again as the tail's rollup;
+  found by the Projects screen, which merges them). Unmapped files now join the tail, and the
+  one "other" row is last.
 - For a decision: the per-session archetype enum (`spec/analysis.v1.json`: architect,
   velocity_machine, quality_guardian, night_owl, explorer, firefighter) and the corpus rules
   (`spec/report.v1.json`: the same four, then director, skeptic) name two different sets.

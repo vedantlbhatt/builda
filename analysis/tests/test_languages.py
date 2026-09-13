@@ -131,6 +131,29 @@ class Refusals(unittest.TestCase):
         self.assertAlmostEqual(sum(x["share"] for x in out["languages"]), 1.0, places=2)
         self.assertEqual(sum(x["lines"] for x in out["languages"]), out["lines"])
 
+    def test_unmapped_files_and_the_long_tail_are_one_other_row_and_it_is_last(self):
+        """FOUND BY THE PROJECTS SCREEN (2026-09-13): an unmapped extension is the language
+        `other`, which could rank in the top eight and then be listed again as the tail's
+        rollup, so one project showed two rows called "other". The phone merged them; the
+        split should never have sent them. Unmapped files ARE part of the rest, and they
+        must not take a place a named language could hold."""
+        exts = ["py", "ts", "go", "rs", "rb", "java", "kt", "swift", "lua", "dart", "hs"]
+        events = [wrote(i, f"/r/f{i}.{ext}", 100 - i) for i, ext in enumerate(exts)]
+        events.append(wrote(50, "/r/big.wat", 500))  # unmapped, and the biggest of all
+        out = lg.split([sess(events)])
+        names = [x["name"] for x in out["languages"]]
+        self.assertEqual(names.count("other"), 1)
+        self.assertEqual(names[-1], "other")
+        self.assertEqual(names[:-1], [lg.language_of(f"/r/x.{e}") for e in exts[: lg.TOP_N]])
+        other = by(out, "other")
+        self.assertEqual(other["lines"], 500 + sum(100 - i for i in range(lg.TOP_N, len(exts))))
+        self.assertEqual(other["files"], 1 + len(exts) - lg.TOP_N)
+        self.assertEqual(sum(x["lines"] for x in out["languages"]), out["lines"])
+
+    def test_unmapped_files_alone_are_other_with_no_tail(self):
+        out = lg.split([sess([wrote(1, "/r/x.wat", 300), wrote(2, "/r/a.py", 200)])])
+        self.assertEqual([x["name"] for x in out["languages"]], ["Python", "other"])
+
 
 class OneDefinitionOfAWrite(unittest.TestCase):
     def test_only_events_the_line_total_already_counts_are_read(self):

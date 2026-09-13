@@ -209,8 +209,15 @@ def split(sessions: Sequence) -> dict:
             "reason": f"{total} attributable line(s), {MIN_LINES} needed",
         }
 
-    ranked = sorted(by_lang.items(), key=lambda kv: (-kv[1], kv[0]))
+    # Unmapped files ARE the rest: `language_of` calls them "other", and ranking that name
+    # beside the named languages listed it twice (once in the top, once as the tail's
+    # rollup: FOUND BY THE PROJECTS SCREEN, 2026-09-13) and let it take a place a named
+    # language could hold. So it joins the tail, and the one "other" row is always last.
+    named = ((n, v) for n, v in by_lang.items() if n != "other")
+    ranked = sorted(named, key=lambda kv: (-kv[1], kv[0]))
     head, tail = ranked[:TOP_N], ranked[TOP_N:]
+    if "other" in by_lang:
+        tail.append(("other", by_lang["other"]))
     out = [
         {"name": n, "lines": v, "files": len(files[n]), "share": round(v / total, 3)}
         for n, v in head

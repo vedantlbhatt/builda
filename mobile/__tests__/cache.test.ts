@@ -178,6 +178,137 @@ describe('cache live sessions', () => {
   });
 });
 
+/** A live state computed at `at`: `full` is the detail's body, else the live list's slim one. */
+function liveState(at: string, full: boolean): NonNullable<SessionDetail['live_state']> {
+  return {
+    live_version: 1,
+    computed_at: at,
+    activity: { kind: 'editing', role: 'source', attempt: 2, since_s: 40, files: 1, calls: 3, file_id: 'aaaaaaaaaaaaaaaa' },
+    verdict: {
+      state: null, basis: null, reason: 'no_rule_fired', file_id: null,
+      evidence: {
+        window_calls: 8, errors_now: 0, errors_before: 0, new_files: 1, checkpoints: 2, repeats: 0, churn_writes: 1,
+        fail_run: 0, blind_edits: 0, stuck_s: 0, files_changed: 3, commits: 0, background: 0,
+      },
+    },
+    eta: { n: null, needed: 10, unattended: false, basis: 'finished_sessions_same_repo_that_ran_at_least_this_long', reason: 'repo_unresolved' },
+    decisions: [],
+    needs_you: { score: 5, reason: 'running_fine' },
+    map: full
+      ? {
+          files: [
+            { id: 'aaaaaaaaaaaaaaaa', role: 'source', reads: 1, edits: 2 },
+            { id: 'bbbbbbbbbbbbbbbb', role: 'test', reads: 3, edits: 0 },
+          ],
+          files_total: 2,
+        }
+      : { files: [{ id: 'aaaaaaaaaaaaaaaa', role: 'source', reads: 1, edits: 2 }], files_total: 2 },
+    timelapse: full ? [{ t: 0, file_id: 'aaaaaaaaaaaaaaaa', kind: 'read' }] : null,
+    sample: { events: 30, tool_calls: 12, segments: 2, tokens: null },
+  };
+}
+
+const NAMES = { files: [{ id: 'aaaaaaaaaaaaaaaa', name: 'auth.py' }] };
+const BURN = {
+  tokens: 120000, cache_read_share: 0.8, barren_share: 0, unreadable_share: 0, segments: 2,
+  lines_added: 40, lines_removed: 2, files_changed: 1, commits: 0, reason: null, spikes: null, spikes_needed: 5,
+} as SessionDetail['burn'];
+
+describe('contract v4 in the cache', () => {
+  test('the live list\'s slim state never replaces a full one computed at the same instant', async () => {
+    const full = liveState('2026-09-13T07:41:05Z', true);
+    await cache.putDetail(session('v1', { state: 'live', updated_at: 'u1', live_state: full, live_names: NAMES }));
+    // The same state, slim, and spelled with an offset: one instant, so the fuller body stays.
+    const slim = { ...liveState('2026-09-13T07:41:05+00:00', false) };
+    const run = fakeApi({ finals: [], live: [session('v1', { state: 'live', updated_at: 'u1', live_state: slim })], detail: (id) => session(id, { strip: null }) });
+    await cache.sync(run.api);
+    expect(run.detailCalls).not.toContain('v1');
+
+    const d = await cache.getDetail('v1');
+    expect(d?.live_state?.timelapse).toHaveLength(1);
+    expect(d?.live_state?.map?.files).toHaveLength(2);
+    // The list never carries names; a row without the key keeps the ones the detail brought.
+    expect(d?.live_names).toEqual(NAMES);
+  });
+
+  test('a newer slim state replaces an older full one: what the session is doing now wins', async () => {
+    await cache.putDetail(session('v2', { state: 'live', updated_at: 'u1', live_state: liveState('2026-09-13T07:41:05Z', true) }));
+    const newer = liveState('2026-09-13T07:42:05Z', false);
+    const run = fakeApi({ finals: [], live: [session('v2', { state: 'live', updated_at: 'u1', live_state: newer })], detail: (id) => session(id, { strip: null }) });
+    await cache.sync(run.api);
+    expect(run.detailCalls).not.toContain('v2');
+
+    const d = await cache.getDetail('v2');
+    expect(d?.live_state?.computed_at).toBe('2026-09-13T07:42:05Z');
+    expect(d?.live_state?.timelapse).toBeNull();
+  });
+
+  test('an older detail cannot roll back a newer state the list brought', async () => {
+    await cache.putDetail(session('v3', { state: 'live', live_state: liveState('2026-09-13T08:00:00Z', false) }));
+    await cache.putDetail(session('v3', { state: 'live', live_state: liveState('2026-09-13T07:59:00Z', true) }));
+    expect((await cache.getDetail('v3'))?.live_state?.computed_at).toBe('2026-09-13T08:00:00Z');
+  });
+
+  test('a session that finalises drops its live state and file names, even from a list row', async () => {
+    await cache.putDetail(session('v4', { state: 'live', live_state: liveState('2026-09-13T07:41:05Z', true), live_names: NAMES }));
+    // The finals list: `state: final`, and no live keys at all.
+    await cache.sync(fakeApi({ finals: [session('v4', { state: 'final', strip: null })], live: [], detail: (id) => session(id, { state: 'final', strip: null }) }).api);
+
+    const d = await cache.getDetail('v4');
+    expect(d?.state).toBe('final');
+    expect(d?.live_state ?? null).toBeNull();
+    expect(d?.live_names ?? null).toBeNull();
+  });
+
+  test('the detail is the authority for burn and title_ids; a list row without them keeps them', async () => {
+    const titled = { verb: 'shipped', object: 'source', n: 3, modules: 2 } as SessionDetail['title_ids'];
+    await cache.putDetail(session('v5', { burn: BURN, title_ids: titled, strip: null }));
+    const run = fakeApi({ finals: [session('v5')], live: [], detail: (id) => session(id, { strip: null }) });
+    await cache.sync(run.api);
+    expect(run.detailCalls).not.toContain('v5');
+    let d = await cache.getDetail('v5');
+    expect(d?.burn).toEqual(BURN);
+    expect(d?.title_ids).toEqual(titled);
+
+    // A re-read detail that no longer carries them: the stale block must not outlive it.
+    await cache.putDetail(session('v5', { strip: null, title_ids: null }));
+    d = await cache.getDetail('v5');
+    expect(d?.burn).toBeUndefined();
+    expect(d?.title_ids).toBeNull();
+  });
+
+  test('forgetLiveNames clears every cached file name and says how many sessions had one', async () => {
+    await cache.clear();
+    await cache.putDetail(session('n1', { state: 'live', live_state: liveState('2026-09-13T07:41:05Z', true), live_names: NAMES }));
+    await cache.putDetail(session('n2', { state: 'live', live_state: liveState('2026-09-13T07:41:05Z', true), live_names: NAMES }));
+    await cache.putDetail(session('n3', { state: 'live', live_state: liveState('2026-09-13T07:41:05Z', true) }));
+
+    expect(await cache.forgetLiveNames()).toBe(2);
+    for (const id of ['n1', 'n2', 'n3']) {
+      const d = await cache.getDetail(id);
+      expect(d?.live_names ?? null).toBeNull();
+      expect(d?.live_state?.map?.files).toHaveLength(2);
+    }
+    expect(await cache.forgetLiveNames()).toBe(0);
+  });
+
+  test('Show details on Lock Screen is on until turned off, and outlives sign out', async () => {
+    sqlite.query('DELETE FROM kv WHERE k = ?').run(cache.LOCK_SCREEN_DETAILS_KEY);
+    expect(await cache.getLockScreenDetails()).toBe(cache.LOCK_SCREEN_DETAILS_DEFAULT);
+    expect(cache.LOCK_SCREEN_DETAILS_DEFAULT).toBe(true);
+
+    await cache.setLockScreenDetails(false);
+    expect(await cache.getLockScreenDetails()).toBe(false);
+    // A property of this phone's screen, not of the person: sign out keeps it.
+    await cache.clear();
+    expect(await cache.getLockScreenDetails()).toBe(false);
+    expect(cache.LOCK_SCREEN_DETAILS_KEY.startsWith(cache.DEVICE_KEY_PREFIX)).toBe(true);
+
+    await cache.setLockScreenDetails(true);
+    expect(await cache.getLockScreenDetails()).toBe(true);
+  });
+});
+
 describe('sign-out keeps what describes the install', () => {
   test('clear() drops the person\'s kv and sessions and keeps device.* keys', async () => {
     await cache.setKv('device.onboarded.v1', '1');
@@ -236,5 +367,21 @@ describe('an install whose kv predates this cache', () => {
     expect(db.query('SELECT * FROM kv').all()).toEqual([]);
     const cols = (db.query('PRAGMA table_info(kv)').all() as { name: string }[]).map((c) => c.name);
     expect(cols).toEqual(['k', 'v']);
+  });
+});
+
+describe('one sync at a time', () => {
+  test('two passes asked for at once share one: every detail is fetched once, not twice', async () => {
+    await cache.clear();
+    const { api, detailCalls } = fakeApi({
+      finals: [],
+      live: [session('one-pass', { state: 'live', updated_at: '2026-09-05T10:00:00Z' })],
+      detail: (id) => session(id, { state: 'live', updated_at: '2026-09-05T10:00:00Z', strip: null, stats: null }),
+    });
+    await Promise.all([cache.sync(api), cache.sync(api)]);
+    expect(detailCalls.filter((id) => id === 'one-pass')).toHaveLength(1);
+    // and a pass asked for after it finished is a pass of its own
+    await cache.sync(api);
+    expect(detailCalls.filter((id) => id === 'one-pass').length).toBeGreaterThanOrEqual(1);
   });
 });

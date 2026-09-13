@@ -29,6 +29,16 @@ Mac's final payload arrives. Four rules, in the order they are checked:
 The decision and its record happen inside the upload transaction; the send happens after
 it commits (routes/sync.py). A push failure can therefore never roll back an upload, and
 a crash between commit and send loses a banner rather than doubling one.
+
+A THIRD KIND, `needs_you` (docs/overnight-integration.md 3.6): a running session whose
+agent handed the turn back to you. It is decided by `live_push.plan`, not here, because it
+is a fact about the live state rather than about a finish, and it obeys two rules this
+module states once: backfill must be silent (`is_news`, the same horizon), and NEVER BOTH.
+While a Live Activity runs for the session, the activity's own alert says it; this banner
+is only for a session with none, once per entry into needs you. Its words are the phone's
+own fallback notification's (`mobile/src/push/localCopy.ts needsYouNotification`), and its
+collapse id is that notification's identifier, so the two replace each other rather than
+stacking when both arrive.
 """
 
 from __future__ import annotations
@@ -76,10 +86,20 @@ NOTIFYING_END_REASONS = frozenset({"idle_gap", "cleared", "switched_repo"})
 #: of a share sheet, so `mobile/app/+native-intent.ts` has exactly one shape to route.
 APP_SCHEME = "builder"
 
-#: The two kinds a push can carry, keyed by what `PendingPush.unattended` says. The phone's
-#: `routeForNotification` opens both on the recap; the names only decide the headline.
+#: The two finish kinds a push can carry, keyed by what `PendingPush.unattended` says. The
+#: phone's `routeForNotification` opens both on the recap; the names only decide the headline.
 KIND_SESSION_FINISHED = "session_finished"
 KIND_AGENT_RUN_FINISHED = "agent_run_finished"
+#: A running session that needs you (`live_push.plan`). Not a recap kind, so a tap opens the
+#: session itself; the same string as `mobile/src/push/localCopy.ts KIND_NEEDS_YOU`.
+KIND_NEEDS_YOU = "needs_you"
+
+#: Who needs you when the session names no public repo: the phone's own fallback words
+#: (`needsYouNotification`: `s.repo_name ?? 'A session'`), so the two banners read alike.
+NEEDS_YOU_NO_REPO = "A session"
+#: The body when the engine said nothing, which it never does; the words the engine uses
+#: for a turn just handed back (`live.sentence` of a waiting activity with no minutes).
+NEEDS_YOU_FALLBACK_BODY = "Waiting on you"
 
 
 def recap_url(session_id: str) -> str:
@@ -87,7 +107,14 @@ def recap_url(session_id: str) -> str:
     return f"{APP_SCHEME}://session/{session_id}?recap=1"
 
 
-def push_data(session_id: str, *, unattended: bool) -> dict[str, str]:
+def session_url(session_id: str) -> str:
+    """`builder://session/<id>` — the session itself, where a running one is watched."""
+    return f"{APP_SCHEME}://session/{session_id}"
+
+
+def push_data(
+    session_id: str, *, unattended: bool = False, kind: str | None = None
+) -> dict[str, str]:
     """The silent half of a push: what the phone opens when the banner is tapped.
 
     Lives beside the alert text rather than in it because APNs shows `aps.alert` and
@@ -96,9 +123,37 @@ def push_data(session_id: str, *, unattended: bool) -> dict[str, str]:
     router needs; `url` is the same destination as a deep link, for a client that would
     rather open a URL than build a route. All three are strings — APNs custom keys survive
     the round trip as JSON, and a bare string is the one shape every client decodes alike.
+
+    With no `kind`, a finish, named off `unattended`. `KIND_NEEDS_YOU` opens the session
+    rather than a recap: it has not finished, and there is nothing to recap yet.
     """
-    kind = KIND_AGENT_RUN_FINISHED if unattended else KIND_SESSION_FINISHED
-    return {"kind": kind, "session_id": session_id, "url": recap_url(session_id)}
+    kind = kind or (KIND_AGENT_RUN_FINISHED if unattended else KIND_SESSION_FINISHED)
+    url = session_url(session_id) if kind == KIND_NEEDS_YOU else recap_url(session_id)
+    return {"kind": kind, "session_id": session_id, "url": url}
+
+
+def is_news(age_seconds: float) -> bool:
+    """Backfill must be silent: anything that happened more than `NOTIFY_HORIZON_SEC` ago
+    is recorded, never announced. THE ONE READING of the horizon, for a finished session
+    (its age from `ended_at`) and for a needs you entry (its age from when the wait began,
+    `live_push.entry_age`)."""
+    return age_seconds <= NOTIFY_HORIZON_SEC
+
+
+def compose_needs_you(repo_name: str | None, sentence: str | None) -> tuple[str, str]:
+    """The banner: `{repo} needs you` over the engine's sentence as it stands ("Waiting on
+    you for four minutes"). The phone's `needsYouNotification`, word for word, so a banner
+    the server sends reads like one the phone posts. The repo is named only when the row
+    names it."""
+    who = repo_name if repo_name is not None else NEEDS_YOU_NO_REPO
+    body = (sentence or "").strip() or NEEDS_YOU_FALLBACK_BODY
+    return f"{who} needs you", body
+
+
+def needs_you_collapse_id(session_id: str) -> str:
+    """The phone's own identifier for its needs you notification (`needs-you-<id>`, cut to
+    APNs' 64 byte collapse id), so whichever arrives second replaces the first."""
+    return f"needs-you-{session_id}"[:63]
 
 
 @dataclass(frozen=True)
@@ -112,8 +167,8 @@ class PendingPush:
     @property
     def data(self) -> dict[str, str]:
         """`push_data` for this push. `kind` here and in the data agree by construction:
-        both are read off `unattended`, which `plan` set from the kind it chose."""
-        return push_data(self.session_id, unattended=self.unattended)
+        the data is written from this push's own `kind`."""
+        return push_data(self.session_id, unattended=self.unattended, kind=self.kind)
 
 
 def plan(db, session_id, p: SessionUpload, existing, now: datetime | None = None):
@@ -151,7 +206,7 @@ def plan(db, session_id, p: SessionUpload, existing, now: datetime | None = None
     # a shipped client (see the module docstring), so it cannot tell a backfill from a
     # transition; `ended_at` can, and it is the same clock the Mac's lifecycle uses.
     age = ((now or datetime.now(UTC)) - p.ended_at).total_seconds()
-    if age > NOTIFY_HORIZON_SEC:
+    if not is_news(age):
         _record(db, session_id, "suppressed_stale")
         return None
 

@@ -4,13 +4,15 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from sqlalchemy import text
 
-from ..auth import CurrentDevice, current_device
+from .. import live_store, quotes
+from ..auth import CurrentDevice, current_device, current_uploader
 from ..contract import ANONYMOUS_FIELDS, CONTRACT_VERSION, PUBLIC_FIELDS
 from ..db import db_session
+from ..quotes_spec import QuotesUpload
 
 router = APIRouter(prefix="/v1", tags=["privacy"])
 
@@ -54,6 +56,100 @@ def privacy_fields_text():
         f"Public-repo-only fields: {sorted(set(PUBLIC_FIELDS) - set(ANONYMOUS_FIELDS))}",
     ]
     return "\n".join(lines)
+
+
+class PrefsUpdate(BaseModel):
+    """`PUT /v1/privacy/prefs`: either switch, or both. Strict booleans: `"yes"` or `1` is a
+    422, never read as a yes to sending a person's words."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    quotes: StrictBool | None = None
+    live_names: StrictBool | None = None
+
+    @model_validator(mode="after")
+    def _one(self):
+        if self.quotes is None and self.live_names is None:
+            raise ValueError("send quotes, live_names or both")
+        return self
+
+
+@router.get("/privacy/prefs")
+def get_prefs(device: CurrentDevice = Depends(current_device)):
+    """The account's two opt in switches, both off until the person turns one on:
+    `quotes` (contract v4's second exception) and `live_names` (its third). The map salt
+    stored beside them is never returned by this or any route: a salt a viewer holds makes
+    every file id a dictionary lookup away from its path."""
+    uid = str(device.user_id)
+    with db_session(viewer_id=uid) as db:
+        p = live_store.prefs(db, uid)
+    return {"quotes": p.quotes, "live_names": p.live_names}
+
+
+@router.put("/privacy/prefs")
+def put_prefs(body: PrefsUpdate, device: CurrentDevice = Depends(current_device)):
+    """Flip one switch or both. `current_device`: only the phone flips a switch, never a
+    capture key, so a machine cannot opt its own account into sending more.
+
+    OFF DELETES, IN THIS TRANSACTION: quotes off deletes every stored quote and answers how
+    many (`quotes_deleted`, a measured count, 0 included); File names off forgets every
+    stored basename (`live_store.set_live_names`). If either write fails, neither switch
+    moves. A key that was not sent is not touched."""
+    uid = str(device.user_id)
+    out: dict = {}
+    with db_session(viewer_id=uid) as db:
+        if body.quotes is not None:
+            deleted = quotes.set_quotes(db, uid, body.quotes)
+            if not body.quotes:
+                out["quotes_deleted"] = deleted
+        if body.live_names is not None:
+            live_store.set_live_names(db, uid, body.live_names)
+        p = live_store.prefs(db, uid)
+    return {"quotes": p.quotes, "live_names": p.live_names, **out}
+
+
+@router.put("/profile/quotes")
+def put_profile_quotes(doc: QuotesUpload, device: CurrentDevice = Depends(current_uploader)):
+    """Store the quotes this account's machine picked (`capture report --quotes`).
+
+    `current_uploader`: the machine holds a capture key or a device token, as for the
+    report. Refused with 409 while the account's switch is off (the machine alone can never
+    opt in), 503 when this server cannot run the machine's filters, and 422 when a quote
+    fails them or names a session this account has not uploaded (`quotes.py`)."""
+    uid = str(device.user_id)
+    with db_session(viewer_id=uid) as db:
+        if not quotes.quotes_on_for_update(db, uid):
+            return JSONResponse({"reason": quotes.QUOTES_OFF}, status_code=409)
+        try:
+            refusal = quotes.quotes_gate(doc)
+        except quotes.EngineUnavailable:
+            return JSONResponse({"reason": quotes.ENGINE_MISSING}, status_code=503)
+        if refusal is None:
+            unheld = quotes.sessions_not_held(db, uid, doc)
+            if unheld:
+                refusal = (
+                    "quote "
+                    + ", ".join(map(str, unheld))
+                    + (
+                        " names a session this account has not uploaded"
+                        if len(unheld) == 1
+                        else " name sessions this account has not uploaded"
+                    )
+                )
+        if refusal is not None:
+            return JSONResponse({"reason": refusal}, status_code=422)
+        quotes.put_quotes(db, uid, doc.model_dump(mode="json"))
+    return {"ok": True, "quotes_version": doc.quotes_version, "quotes": len(doc.quotes)}
+
+
+@router.delete("/profile/quotes", status_code=204)
+def delete_profile_quotes(device: CurrentDevice = Depends(current_uploader)):
+    """Forget every stored quote now, whatever the switch says (`capture quotes --delete`,
+    or the phone). 204 whether or not any were stored."""
+    uid = str(device.user_id)
+    with db_session(viewer_id=uid) as db:
+        quotes.delete_quotes(db, uid)
+    return Response(status_code=204)
 
 
 class VisibilityUpdate(BaseModel):

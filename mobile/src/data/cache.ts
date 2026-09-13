@@ -181,6 +181,36 @@ export async function putDetail(s: SessionDetail): Promise<void> {
   await upsert(s, true);
 }
 
+/**
+ * The fields the DETAIL endpoint is the authority for (contract v4). A detail that omits
+ * one, or sends null, means the server has none for this session now, so a value cached
+ * from an earlier read must not outlive it: a burn block from a re-cut that no longer
+ * produces one, file names the person has since turned off.
+ */
+const DETAIL_AUTHORITATIVE = ['burn', 'title_ids', 'live_state', 'live_names'] as const;
+
+/**
+ * Which of two live states to keep. The live list serves a SLIM body (no time lapse, the map
+ * cut to the rows the sentence needs) and the detail the full one, so a sync that stores the
+ * list row after the session screen fetched the detail would throw the map away and keep
+ * nothing newer. The one that was computed later wins; at the same instant, the fuller one.
+ * `computed_at` is ISO 8601 UTC from one server clock, so the strings compare as instants
+ * only after parsing: a stored `+00:00` and a `Z` are the same moment.
+ */
+export function newerLiveState(
+  old: SessionDetail['live_state'],
+  next: SessionDetail['live_state']
+): SessionDetail['live_state'] {
+  if (next === undefined) return old;
+  if (!old || !next) return next;
+  const a = Date.parse(old.computed_at);
+  const b = Date.parse(next.computed_at);
+  if (Number.isNaN(a) || Number.isNaN(b) || a !== b) return Number.isNaN(b) || a > b ? old : next;
+  const fuller = (s: NonNullable<SessionDetail['live_state']>) =>
+    (s.timelapse ? 1 : 0) * 1e6 + (s.map?.files.length ?? 0);
+  return fuller(next) >= fuller(old) ? next : old;
+}
+
 async function upsert(s: SessionDetail, isDetail: boolean): Promise<void> {
   await guarded('putDetail', undefined, async (d) => {
     const existing = await d.getFirstAsync<Row>('SELECT json FROM sessions WHERE id = ?', s.id);
@@ -198,6 +228,25 @@ async function upsert(s: SessionDetail, isDetail: boolean): Promise<void> {
       // a checkpoint; once the final detail arrives without one, the checkpoint must not
       // outlive the session it was a snapshot of.
       merged.analysis = s.analysis ?? null;
+      for (const k of DETAIL_AUTHORITATIVE) {
+        if (s[k] === undefined) delete merged[k];
+      }
+      // Present on both sides: still the later computation, so a detail the session
+      // screen fetched a minute ago cannot roll back a newer state the list brought.
+      if (s.live_state && old?.live_state) merged.live_state = newerLiveState(old.live_state, s.live_state);
+    } else {
+      // A list row: its slim live state replaces a cached one only when it is newer.
+      const kept = newerLiveState(old?.live_state, s.live_state);
+      if (kept === undefined) delete merged.live_state;
+      else merged.live_state = kept;
+    }
+    // A session that is not live has no live state: the server deletes the row when the
+    // session finalises (docs/overnight-integration.md 3.3). A final LIST row does not
+    // carry the key, so without this the last "Waiting on you" would ride on a finished
+    // session forever, and so would its file names.
+    if (merged.state !== 'live') {
+      if (merged.live_state !== undefined) merged.live_state = null;
+      if (merged.live_names !== undefined) merged.live_names = null;
     }
     // The server keeps one row per session and flips `state` when it finalizes, so the id
     // is stable: the same upsert that stored the live snapshot clears the flag.
@@ -230,7 +279,21 @@ const DETAIL_CAP_PER_SYNC = 30;
  * row that was live last time and is missing from the live list now is re-read by id, so
  * its cached copy flips to final (or is dropped on a 404) instead of pulsing forever.
  */
-export async function sync(api: Api): Promise<void> {
+export function sync(api: Api): Promise<void> {
+  // One pass at a time: the root's live surface poll and a focused tab's poll can fire in the
+  // same second (FOUND IN INTEGRATION, 2026-09-13: the simulator's first launch fetched every
+  // live detail twice). A caller that arrives mid-pass waits for that pass and reads its rows.
+  if (!syncing) {
+    syncing = runSync(api).finally(() => {
+      syncing = null;
+    });
+  }
+  return syncing;
+}
+
+let syncing: Promise<void> | null = null;
+
+async function runSync(api: Api): Promise<void> {
   let failure: unknown = null;
 
   // Which rows were live BEFORE this pass touches anything: a live session that arrives
@@ -364,6 +427,55 @@ export async function lastSyncAt(): Promise<string | null> {
  * flag, `src/nav/rules.ts`), and survive `clear()`. Nothing about a person may use it.
  */
 export const DEVICE_KEY_PREFIX = 'device.';
+
+// ------------------------------------------------------------------ privacy on the phone
+
+/**
+ * Settings > Show details on Lock Screen (DESIGN-DIRECTION 7.2). The Lock Screen and the
+ * Dynamic Island are public: anyone near the phone reads them. On, they carry the repository
+ * (public repositories only; otherwise "private repo") and the one sentence; off, only
+ * "Builder" and how many sessions are running. A property of THIS phone's screen, not of the
+ * account, so it is a device key and survives sign out.
+ */
+export const LOCK_SCREEN_DETAILS_KEY = `${DEVICE_KEY_PREFIX}lock_screen_details`;
+
+/**
+ * On unless turned off. UNMEASURED JUDGEMENT CALL, with the reason: every field the Lock
+ * Screen can show is safe by construction (docs/overnight-integration.md 2.5: role nouns,
+ * counts and minutes, a repository name only when the repository is public), so the switch
+ * hides what a person may not want seen, not what may not leave.
+ */
+export const LOCK_SCREEN_DETAILS_DEFAULT = true;
+
+/** Whether the Lock Screen shows the repository and the sentence. */
+export async function getLockScreenDetails(): Promise<boolean> {
+  const v = await getKv(LOCK_SCREEN_DETAILS_KEY);
+  return v === null ? LOCK_SCREEN_DETAILS_DEFAULT : v === '1';
+}
+
+export async function setLockScreenDetails(on: boolean): Promise<void> {
+  await setKv(LOCK_SCREEN_DETAILS_KEY, on ? '1' : '0');
+}
+
+/**
+ * Settings > File names went off: the server clears every stored name in the same request,
+ * and this clears the phone's copy of them, so turning it off deletes them everywhere they
+ * were. Returns how many cached sessions carried names.
+ */
+export async function forgetLiveNames(): Promise<number> {
+  return guarded('forgetLiveNames', 0, async (d) => {
+    const rows = await d.getAllAsync<{ id: string; json: string }>('SELECT id, json FROM sessions');
+    let n = 0;
+    for (const r of rows) {
+      const s = parse(r.json);
+      if (!s || s.live_names === undefined || s.live_names === null) continue;
+      s.live_names = null;
+      await d.runAsync('UPDATE sessions SET json = ? WHERE id = ?', JSON.stringify(s), r.id);
+      n += 1;
+    }
+    return n;
+  });
+}
 
 /** Sign-out: the cached sessions are the user's data, not ours to keep. */
 export async function clear(): Promise<void> {

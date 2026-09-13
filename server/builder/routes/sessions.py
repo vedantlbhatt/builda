@@ -3,6 +3,7 @@ import base64
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
+from .. import live_store
 from ..auth import CurrentDevice, current_device, current_uploader
 from ..builder_profile import (
     DEFAULT_WINDOW_DAYS,
@@ -10,6 +11,7 @@ from ..builder_profile import (
     MIN_SESSIONS,
     builder_narrative,
     builder_profile,
+    builder_quotes,
     builder_report,
     corpus_metrics,
     put_builder_narrative,
@@ -47,6 +49,11 @@ def _row_to_session(r) -> dict:
         "local_date": r.local_date.isoformat(),
         "title": r.title,
         "title_source": r.title_source,
+        # Contract v4 (0023): the engineer voice title as ids, `{verb, object, n, modules}`,
+        # or null when no title rule fired or the producer does not compute one. On every
+        # row, not only the detail, because a title is what a list shows; the phone renders
+        # the words from the ids, so no word of it is stored.
+        "title_ids": r.title_ids,
         "notable": r.notable,
         "unattended": r.unattended,
         "timeline_fidelity": r.timeline_fidelity,
@@ -68,21 +75,34 @@ def _live_rows(db, user_id: str) -> list[dict]:
     pull-to-refresh agree on what "right now" means. `updated_at` is included because a
     live row's `ended_at` is the last record the Mac had seen, and the phone wants to say
     "as of 40 s ago" rather than pretend the snapshot is the present.
+
+    `live_state` is the SLIM state (`live_store.slim`: no time lapse, only the map rows
+    the activity and the verdict name) or null when no producer has computed one. Mission
+    control, the widget and ActivityKit read this list, and `live_names` is never on it:
+    a basename that reached this route could reach a Lock Screen.
     """
     rows = db.execute(
         text(
             """
-            SELECT s.*, r.public_name, p.id AS post_id
+            SELECT s.*, r.public_name, p.id AS post_id, sl.body AS live_body
             FROM sessions s
             LEFT JOIN repos r ON r.id = s.repo_id
             LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
+            LEFT JOIN session_live sl ON sl.session_id = s.id
             WHERE s.user_id = :u AND s.state = 'live'
             ORDER BY s.updated_at DESC LIMIT :limit
             """
         ),
         {"u": user_id, "limit": LIVE_LIMIT},
     ).all()
-    return [{**_row_to_session(r), "updated_at": r.updated_at.isoformat()} for r in rows]
+    return [
+        {
+            **_row_to_session(r),
+            "updated_at": r.updated_at.isoformat(),
+            "live_state": live_store.slim(r.live_body),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/sessions")
@@ -185,6 +205,20 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
         analysis = db.execute(
             text("SELECT body FROM session_analysis WHERE session_id = :id"), {"id": session_id}
         ).first()
+        # Owner only (0020): a stranger reading a shared session gets no row from either
+        # query, whatever this code does with the result.
+        live = db.execute(
+            text("SELECT body, names FROM session_live WHERE session_id = :id"),
+            {"id": session_id},
+        ).first()
+        names_on = bool(
+            live is not None
+            and live.names is not None
+            and db.execute(
+                text("SELECT live_names FROM privacy_prefs WHERE user_id = :u"),
+                {"u": str(row.user_id)},
+            ).scalar()
+        )
 
     out = _row_to_session(row)
     if strip:
@@ -210,6 +244,9 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
             "prompt_count_basis": stats.prompt_count_basis,
             "files_touched": stats.files_touched,
             "lines_added_agent": stats.lines_added_agent,
+            # Stored since 0002 and never served: the Live Activity's `linesRemoved` and
+            # the money view read it (docs/overnight-integration.md 5.4).
+            "lines_removed_agent": stats.lines_removed_agent,
             "commit_count": stats.commit_count,
             "agent_line_bucket": stats.agent_line_bucket,
             "attrib_confidence": stats.attrib_confidence,
@@ -222,6 +259,16 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
     # Null, never absent: the phone distinguishes "no analysis for this session" from an
     # older server that does not know the key.
     out["analysis"] = analysis.body if analysis else None
+    # Contract v4 (0023). Where this sitting's tokens went, as numbers and enums; the
+    # session screen writes the sentences. Null when no producer computed it, and a
+    # refusal is the document's own `reason`, never a missing key or a zero.
+    out["burn"] = stats.burn if stats else None
+    # The FULL live state, time lapse and whole map included, while the session runs;
+    # null once it is final (the row is deleted then; the state check is the second lock).
+    out["live_state"] = live.body if live is not None and row.state == "live" else None
+    # Opt in basenames for the session screen, and only here: null unless the account
+    # has File names on AND names are stored. Never on the live list, a push or a share.
+    out["live_names"] = live.names if names_on and row.state == "live" else None
     return out
 
 
@@ -386,6 +433,11 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
       sidecar transcripts, shell command text, prompt text and commit times, none of which
       the contract puts on the wire. Null until that machine has run `capture report`,
       which is the normal state for somebody who has only ever used the phone.
+
+    Beside them, `quotes`: the opt-in prompts the Wrapped cards quote (contract v4, 0021).
+    Null unless the account has Quote my prompts on and its machine sent them with
+    `capture report --quotes`; this route is the only reader, and it only ever reads the
+    viewer's own.
     """
     uid = str(device.user_id)
     with db_session(viewer_id=uid) as db:
@@ -393,6 +445,7 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
         corpus = corpus_metrics(db, uid, window_days)
         narrative = builder_narrative(db, uid)
         report = builder_report(db, uid)
+        quotes = builder_quotes(db, uid)
     return {
         "builder_profile": builder,
         "sessions_analysed": analysed,
@@ -401,6 +454,7 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
         "corpus": corpus,
         "narrative": narrative,
         "report": report,
+        "quotes": quotes,
     }
 
 

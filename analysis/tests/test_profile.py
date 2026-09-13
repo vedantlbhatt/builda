@@ -1070,8 +1070,10 @@ class UnreadableTokens(unittest.TestCase):
 
 
 class Baselines(unittest.TestCase):
-    """Five BASELINES were Paxel's landing page example copy (docs/approved-roadmap.md
-    1.3). Two now carry measurements from this repository; three say they have none."""
+    """Five BASELINES were once credited to Paxel (docs/approved-roadmap.md 1.3). Two now
+    carry measurements from this repository; three say they have none, and say where they
+    did come from: Paxel's own copy for the heavy steerer, an explainx.ai mock for the rest
+    (docs/overnight-integration.md 5.5)."""
 
     #: Sources that state the arithmetic they came from instead of a MEASURED prefix.
     DERIVED = {"night_share", "night_commit_share", "iteration_depth"}
@@ -1092,8 +1094,41 @@ class Baselines(unittest.TestCase):
             (b["steer_rate"]["value"], b["autonomy_score"]["value"], b["avg_prompt_chars"]["value"]),
             (0.4, 0.82, 156.0),
         )
-        for key in ("steer_rate", "autonomy_score", "avg_prompt_chars"):
-            self.assertTrue(b[key]["source"].startswith(pf.PAXEL_UNMEASURED), key)
+        self.assertTrue(b["steer_rate"]["source"].startswith(pf.PAXEL_HEAVY_STEERER))
+        for key in ("autonomy_score", "avg_prompt_chars"):
+            self.assertTrue(b[key]["source"].startswith(pf.EXPLAINX_MOCK), key)
+
+    def test_only_steer_rate_and_skeptic_cite_paxel(self):
+        """design-refs/research/paxel.md section 6: of the five figures once credited to
+        Paxel, only `steer_rate 0.4` is Paxel's copy (landing card 10), and it describes a
+        heavy steerer. Every other source that names Paxel names it as the subject of the
+        explainx.ai mock, never as the place a number came from."""
+        cites = {
+            key for key, b in pf.BASELINES.items() if b["source"].startswith(pf.PAXEL_HEAVY_STEERER)
+        } | {r["name"] for r in pf.ARCHETYPE_RULES if r["source"].startswith(pf.PAXEL_HEAVY_STEERER)}
+        self.assertEqual(cites, {"steer_rate", "skeptic"})
+        for source in [b["source"] for b in pf.BASELINES.values()] + [
+            r["source"] for r in pf.ARCHETYPE_RULES
+        ]:
+            if "Paxel" in source:
+                self.assertTrue(
+                    source.startswith((pf.PAXEL_HEAVY_STEERER, pf.EXPLAINX_MOCK)), source
+                )
+        self.assertFalse(hasattr(pf, "PAXEL_UNMEASURED"), "the wrong source is gone")
+
+    def test_the_explainx_numbers_say_where_they_came_from(self):
+        """The four: the architect (2.4) and velocity machine (487) thresholds, and the
+        autonomy (0.82) and prompt length (156) baselines. No value moved."""
+        rules = {r["name"]: r for r in pf.ARCHETYPE_RULES}
+        four = [
+            (rules["architect"], 2.4),
+            (rules["velocity_machine"], 487.0),
+            (pf.BASELINES["autonomy_score"], 0.82),
+            (pf.BASELINES["avg_prompt_chars"], 156.0),
+        ]
+        for row, value in four:
+            self.assertIn("explainx.ai", row["source"])
+            self.assertEqual(row.get("threshold", row.get("value")), value)
 
     def test_the_scales_did_not_move(self):
         want = {
@@ -1117,8 +1152,9 @@ class Baselines(unittest.TestCase):
         rules = {r["name"]: r for r in pf.ARCHETYPE_RULES}
         self.assertEqual(rules["architect"]["threshold"], 2.4)
         self.assertEqual(rules["velocity_machine"]["threshold"], 487.0)
-        for name in ("architect", "velocity_machine", "skeptic"):
-            self.assertTrue(rules[name]["source"].startswith(pf.PAXEL_UNMEASURED), name)
+        for name in ("architect", "velocity_machine"):
+            self.assertTrue(rules[name]["source"].startswith(pf.EXPLAINX_MOCK), name)
+        self.assertTrue(rules["skeptic"]["source"].startswith(pf.PAXEL_HEAVY_STEERER))
         for name, r in rules.items():
             self.assertFalse(r["source"].startswith("Paxel"), name)
             self.assertTrue(
@@ -1132,6 +1168,121 @@ class Baselines(unittest.TestCase):
         for r in pf.ARCHETYPE_RULES:
             self.assertFalse(has_dash(r["source"]), r["source"])
             self.assertFalse(has_dash(r["rule"]), r["rule"])
+
+
+
+class IntegrationFixes(unittest.TestCase):
+    """docs/overnight-integration.md 5.1, 5.2 and 1.3: the profile half of the report's
+    money and burn blocks."""
+
+    def test_top_tools_never_names_a_bucket(self):
+        """The contract buckets every tool outside its allowlist into `other` and every MCP
+        tool into `mcp_other`. They are calls, so they count toward the denominator; they are
+        not tools anybody chose, so "other is 60% of every tool call" is never a fact."""
+        f = dataclasses.replace(
+            session([], session_id="t"),
+            tool_calls={"other": 60, "mcp_other": 10, "Bash": 20, "Read": 10},
+            tool_basis=pf.TOOLS_ALLOWLIST,
+        )
+        p = pf.corpus_profile([f])
+        tools = [t["tool"] for t in p["top_tools"]]
+        self.assertEqual(tools, ["Bash", "Read"])
+        self.assertEqual(p["top_tools"][0]["share"], 0.2)  # 20 of all 100 calls
+        self.assertNotIn("top_tool", [x["id"] for x in p["facts"]])  # 20% is under the bar
+
+    def test_lines_removed_are_summed_like_lines_added(self):
+        events = [
+            Ev(0, T0, "prompt", "trim it"),
+            Ev(1, T0 + 1, "tool", "/r/a.py", tool="Edit", path="/r/a.py", added=5, removed=9),
+            Ev(2, T0 + 2, "tool", "", tool="Edit", path="/Users/me/.claude/projects/-r/memory/MEMORY.md", added=1, removed=4),
+            Ev(3, T0 + 3, "tool", "sed -i 's/a/b/' /r/b.py", tool="Bash", path="/r/b.py", removed=None),
+        ]
+        f = session(events)
+        # Project writes only, as the added lines are counted (`patterns.project_write`).
+        self.assertEqual((f.lines_added_agent, f.lines_removed_agent), (5, 9))
+        totals = pf.corpus_profile([f, dataclasses.replace(f, session_id="t", lines_removed_agent=3)])["totals"]
+        self.assertEqual((totals["total_lines_added"], totals["total_lines_removed"]), (10, 12))
+
+    def test_model_costs_carry_the_price_table_key(self):
+        f = dataclasses.replace(
+            session([], session_id="m"),
+            output_tokens_by_model={"claude-opus-4-8[1m]": 1_000_000},
+            tokens=pf.pricing.Tokens(output=1_000_000),
+        )
+        rows = pf.corpus_profile([f])["model_costs"]
+        self.assertEqual([(r["model"], r["model_id"]) for r in rows], [("Opus 4.8", "claude-opus-4-8")])
+        self.assertIn(rows[0]["model_id"], pf.pricing.PRICES)
+        self.assertEqual(rows[0]["usd"], 25.0)
+
+    def test_an_unpriced_refusal_still_says_how_many_sessions(self):
+        f = dataclasses.replace(
+            session([], session_id="u"),
+            output_tokens_by_model={"gpt-99": 10},
+            tokens=pf.pricing.Tokens(output=10),
+        )
+        m = pf.corpus_profile([f])["metrics"]["spend_usd"]
+        self.assertEqual((m["value"], m["basis"], m["unpriced_sessions"]), (None, pf.pricing.BASIS_UNKNOWN_MODEL, 1))
+        self.assertEqual(m["reason"], "1 session used a model with no published price here")
+
+    def test_every_barren_refusal_carries_its_code_and_the_template_it_is_worded_from(self):
+        cases = [
+            ([], pf.BARREN_NO_COUNTS, None),
+            ([BarrenTokenShare._fact(0, 100, 10)], pf.BARREN_BELOW_FLOOR, pf.MIN_SESSIONS),
+            ([BarrenTokenShare._fact(i, 0, 0) for i in range(3)], pf.BARREN_NOTHING_INSIDE, None),
+            (
+                [dataclasses.replace(session([], session_id="x"), output_tokens_by_model={"claude-opus-5": 5})],
+                pf.BARREN_NOT_SEGMENTED,
+                None,
+            ),
+        ]
+        for facts, code, needed in cases:
+            with self.subTest(code=code):
+                m = pf.corpus_profile(facts)["metrics"]["barren_token_share"]
+                self.assertIsNone(m["value"])
+                self.assertEqual((m["code"], m["needed"], m["by_cause"]), (code, needed, None))
+                self.assertEqual(
+                    m["reason"], pf.fill(pf.BARREN_REFUSALS[code], n=m["n"], needed=pf.MIN_SESSIONS)
+                )
+        self.assertEqual(
+            pf.corpus_profile(cases[1][0])["metrics"]["barren_token_share"]["reason"],
+            "1 session with token counts, 3 needed",
+        )
+
+    def test_barren_causes_sum_across_sessions_and_share_the_barren_tokens(self):
+        facts = [
+            dataclasses.replace(
+                BarrenTokenShare._fact(i, 1_000, 400),
+                barren_causes={"context_replay": (300, 1), "investigated": (100 * i, 1)} if i else {"context_replay": (300, 2)},
+            )
+            for i in range(3)
+        ]
+        m = pf.corpus_profile(facts)["metrics"]["barren_token_share"]
+        self.assertEqual((m["value"], m["code"]), (0.4, None))
+        self.assertEqual(
+            m["by_cause"],
+            [
+                {"cause": "context_replay", "tokens": 900, "share": 0.75, "segments": 4},
+                {"cause": "investigated", "tokens": 300, "share": 0.25, "segments": 2},
+            ],
+        )
+        # One fact without causes and the corpus says nothing about causes, never a part.
+        partial = facts[:2] + [BarrenTokenShare._fact(2, 1_000, 400)]
+        self.assertIsNone(pf.corpus_profile(partial)["metrics"]["barren_token_share"]["by_cause"])
+
+    def test_a_cause_that_claims_more_than_the_barren_tokens_is_refused_at_the_door(self):
+        with self.assertRaises(ValueError):
+            dataclasses.replace(BarrenTokenShare._fact(0, 1_000, 100), barren_causes={"error_loop": (101, 1)})
+        with self.assertRaises(ValueError):
+            dataclasses.replace(BarrenTokenShare._fact(0, 1_000, 100), barren_causes={"error_loop": (50, 0)})
+
+    def test_fill_is_the_one_template_rule(self):
+        self.assertEqual(pf.fill("{n:session}, {needed} needed", n=1, needed=3), "1 session, 3 needed")
+        self.assertEqual(pf.fill("{n:session}", n=1234), "1,234 sessions")
+        self.assertEqual(pf.fill({"zero": "none", "one": "one", "other": "{n} of them"}, n=0), "none")
+        self.assertEqual(pf.fill({"other": "{n} of them"}, n=1), "1 of them")
+        self.assertEqual(pf.fill("{a}; {b:line}", a="said", b=2), "said; 2 lines")
+        with self.assertRaises(KeyError):
+            pf.fill("{n} of {total}", n=1)
 
 
 class EveryStringThePersonReads(unittest.TestCase):

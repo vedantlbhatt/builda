@@ -1,12 +1,13 @@
 import base64
 import json
 import logging
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from .. import notify
+from .. import live_push, live_store, notify
 from ..auth import CurrentDevice, current_uploader
 from ..contract import SessionUpload
 from ..db import db_session
@@ -26,6 +27,20 @@ NOTABLE_MIN_ACTIVE_SEC = 1200
 #: a session that has done one thing so far is mostly one bucket; the 25% tolerance is
 #: calibrated for finished sessions and rejects nearly every honest first snapshot.
 LIVE_STRIP_GRACE_SEC = 300
+
+#: The prompt gate (`sanity_gate`) compares typed prompts to tool calls only from this many
+#: calls up. MEASURED 2026-09-13 on `~/.builder-overnight/corpus` (158 counted sessions,
+#: after capture bucketed every tool call, docs/overnight-integration.md 5.1): four sessions
+#: had more typed prompts than tool calls, and all four are real short conversations read
+#: against the raw JSONL (6 prompts to 2 calls, 5 to 2, 4 to 2, 2 to 1), which the gate
+#: rejected as a broken prompt filter. The bug it exists for counts every tool result as a
+#: prompt, so it lifts EVERY session with a typed prompt above its tool count: from 3 calls up
+#: the gate still catches it on 110 of the corpus's 115 sessions with a typed prompt, so a
+#: regressed client is as loud as before, and the sittings under 3 calls (6 of 158) are the
+#: ones whose prompts could honestly outnumber their calls. UNMEASURED JUDGEMENT CALL beyond
+#: that: a broken client's 1 and 2 call sessions pass with a prompt count off by at most the
+#: calls they made.
+PROMPT_GATE_MIN_TOOL_CALLS = 3
 
 
 class BatchRequest(BaseModel):
@@ -81,9 +96,12 @@ def sanity_gate(p: SessionUpload) -> str | None:
 
     # MEASURED ratio is roughly 16 tool calls per typed prompt. More prompts than tool
     # calls means the prompt filter broke — most likely counting every `type: "user"`
-    # record, which inflates by ~13x.
+    # record, which inflates by ~13x. That bug counts every tool RESULT as a prompt, so it
+    # puts the prompt count above the tool count on every session with a typed prompt in it;
+    # the gate reads that only from PROMPT_GATE_MIN_TOOL_CALLS up, where a real sitting almost
+    # never has more prompts than calls (see the constant for the measurement).
     total_tools = sum(p.tool_calls.values()) if p.tool_calls else 0
-    if p.human_prompt_count > max(total_tools, 0) and total_tools > 0:
+    if p.human_prompt_count > total_tools >= PROMPT_GATE_MIN_TOOL_CALLS:
         return f"human_prompt_count {p.human_prompt_count} exceeds tool_calls {total_tools}"
 
     # The 1.878x content-block overcount, arriving without a deduplication basis.
@@ -123,7 +141,36 @@ def sanity_gate(p: SessionUpload) -> str | None:
     if p.repo_name is None and p.title is not None:
         return "title present without repo_name (anonymous sessions carry neither)"
 
+    # v4 `live` describes a RUNNING session (docs/overnight-integration.md 2.3). On a final
+    # payload it is a client that forgot to drop it, and storing it would bring back the
+    # row the final exists to delete: a finished session reading "Running your tests".
+    if p.live is not None and p.state != "live":
+        return f"live present on a {p.state} payload (a live state exists only while it runs)"
+    # Names label the files of a live map; without the map they label nothing the phone
+    # can show, and they are still file names on the server.
+    if p.live_names is not None and p.live is None:
+        return "live_names present without live"
+    # A basename, never a path: the spec caps the length (120) and this is the rest of
+    # the promise. The name itself is not echoed back; a rejection reason is logged.
+    if p.live_names is not None and any(
+        sep in n.name for n in p.live_names.files for sep in ("/", "\\", "\x00")
+    ):
+        return "live_names carries a path separator or NUL (basenames only)"
+
     return None
+
+
+class Stored(NamedTuple):
+    """What `store_payloads` did, for the route that called it."""
+
+    accepted: int
+    unchanged: int
+    rejected: list[dict]
+    #: Completion banners, decided and recorded inside the transaction (notify.plan).
+    pending: list[notify.PendingPush]
+    #: Live Activity pushes for every session whose live row was written or deleted
+    #: (live_push.plan). Sent after commit with `live_push.send_after_commit`.
+    live_pushes: list[live_push.LivePush]
 
 
 @router.post("/sessions:batch", response_model=BatchResponse)
@@ -151,37 +198,60 @@ def upload_batch(body: BatchRequest, device: CurrentDevice = Depends(current_upl
     if len(body.sessions) > 250:
         raise HTTPException(413, "at most 250 sessions per batch")
 
-    accepted = 0
-    unchanged = 0
-    rejected: list[dict] = []
-    pending: list[notify.PendingPush] = []
-
     with db_session(viewer_id=str(device.user_id)) as db:
-        accepted, unchanged, rejected, pending = store_payloads(db, device, body.sessions)
+        stored = store_payloads(db, device, body.sessions)
         db.execute(
             text("UPDATE devices SET last_seen_at = now() WHERE id = :d"),
             {"d": str(device.device_id)},
         )
 
-    send_pending(device, pending)
-    return BatchResponse(accepted=accepted, unchanged=unchanged, rejected=rejected)
+    send_pending(device, stored.pending)
+    send_live_pushes(stored.live_pushes)
+    return BatchResponse(
+        accepted=stored.accepted, unchanged=stored.unchanged, rejected=stored.rejected
+    )
 
 
-def store_payloads(
-    db, device: CurrentDevice, payloads: list[SessionUpload]
-) -> tuple[int, int, list[dict], list[notify.PendingPush]]:
+#: The rejection when a payload carries basenames the account has not allowed
+#: (docs/overnight-integration.md 2.3). The client that sent them is told why, so a
+#: `capture sync --live --live-names` against an account with File names off says so.
+LIVE_NAMES_OFF = "live_names sent while file names are off for this account"
+
+
+def store_payloads(db, device: CurrentDevice, payloads: list[SessionUpload]) -> Stored:
     """The per-session upsert, shared by the batch route and the hook channel
     (routes/ingest.py) so a session reaches the same tables by the same rules whichever
-    way its transcript arrived. Runs inside the caller's transaction; returns
-    (accepted, unchanged, rejected, pending pushes)."""
+    way its transcript arrived. Runs inside the caller's transaction.
+
+    The live row (session_live, 0020) follows the session: written when a live payload
+    carries a `live` block, deleted when the session arrives final, left alone by a live
+    payload without one. It is refreshed even when the content hash is unchanged, because
+    the hash is taken WITHOUT `live`: the block moves with the clock (idle minutes, the
+    ETA's elapsed time), not with the transcript's bytes.
+    """
+    user_id = str(device.user_id)
     accepted = 0
     unchanged = 0
     rejected: list[dict] = []
     pending: list[notify.PendingPush] = []
+    live_changed: list[str] = []
+    prefs: live_store.Prefs | None = None  # read once, and only if a payload needs it
     for p in payloads:
         if (reason := sanity_gate(p)) is not None:
             rejected.append({"client_session_id": p.client_session_id, "reason": reason})
             continue
+        if p.live_names is not None:
+            # Read under a share lock: the phone's "off" (routes/privacy.py) updates this row
+            # and clears every stored name in one transaction, so a store racing it either
+            # waits for it and sees off, or holds it off until the names are written and then
+            # cleared. Unlocked, a store that read "on" just before could write names after
+            # the clear (recorded by the push package; the quotes route locks the same way).
+            prefs = prefs or live_store.prefs(db, user_id, lock=True)
+            if not prefs.live_names:
+                rejected.append(
+                    {"client_session_id": p.client_session_id, "reason": LIVE_NAMES_OFF}
+                )
+                continue
 
         # `state` rides along so the notification decision can tell a live row
         # becoming final (news) from a final row being refreshed (not news).
@@ -190,10 +260,12 @@ def store_payloads(
                 "SELECT id, content_hash, state FROM sessions "
                 "WHERE user_id = :u AND client_session_id = :c"
             ),
-            {"u": str(device.user_id), "c": p.client_session_id},
+            {"u": user_id, "c": p.client_session_id},
         ).first()
 
         if existing and existing.content_hash == p.content_hash:
+            if _store_live(db, existing.id, user_id, p) or _went_final(existing, p):
+                live_changed.append(str(existing.id))
             unchanged += 1
             continue
 
@@ -202,10 +274,56 @@ def store_payloads(
         _upsert_strip(db, session_id, p)
         _upsert_stats(db, session_id, p)
         _upsert_analysis(db, session_id, p)
+        if _store_live(db, session_id, user_id, p) or _went_final(existing, p):
+            live_changed.append(str(session_id))
         if (push_plan := notify.plan(db, session_id, p, existing)) is not None:
             pending.append(push_plan)
         accepted += 1
-    return accepted, unchanged, rejected, pending
+    live_pushes = live_push.plan(db, user_id, live_changed) if live_changed else []
+    return Stored(accepted, unchanged, rejected, pending, live_pushes)
+
+
+def _went_final(existing, p: SessionUpload) -> bool:
+    """A running session arriving final. Its Live Activity is owed an `end` on THIS upload,
+    whether or not a producer ever gave it a live row: the Mac app sends none, so its final
+    deletes nothing and, before this, the end waited for some other live row of the account
+    to move (FOUND IN INTEGRATION, recorded by the push package, 2026-09-13)."""
+    return p.state == "final" and existing is not None and existing.state == "live"
+
+
+def _store_live(db, session_id, user_id: str, p: SessionUpload) -> bool:
+    """Keep session_live in step with the session. True when its row was written or
+    deleted, which is what `live_push.plan` needs to hear about.
+
+    Final: the row goes (the gate has already refused `live` on a final payload). Live
+    with a block: the row is replaced. Live without one, which is the Mac app and any
+    producer that does not compute it: the row is left alone, as `analysis` is, because
+    nothing must not mean "delete what another producer measured".
+    """
+    if p.state == "final":
+        return live_store.delete(db, session_id)
+    if p.live is None:
+        return False
+    live_store.upsert(
+        db,
+        session_id=session_id,
+        user_id=user_id,
+        body=p.live.model_dump(mode="json"),
+        names=p.live_names.model_dump(mode="json") if p.live_names is not None else None,
+        source=live_store.source_for(p.client_version),
+    )
+    return True
+
+
+def send_live_pushes(pushes: list[live_push.LivePush]) -> None:
+    """After commit, best effort, exactly as `send_pending`: an APNs failure can never roll
+    back an upload. Called through the module attribute so a test can replace it."""
+    if not pushes:
+        return
+    try:
+        live_push.send_after_commit(pushes)
+    except Exception:
+        log.exception("%d live activity pushes failed; not retried", len(pushes))
 
 
 def send_pending(device: CurrentDevice, pending: list[notify.PendingPush]) -> None:
@@ -272,7 +390,7 @@ def _upsert_session(db, device: CurrentDevice, p: SessionUpload, repo_id, existi
               attended_seconds, autonomous_seconds, presence_count, end_reason,
               local_date, local_hour, local_dow,
               state, visible, notable, unattended, time_quality, timeline_fidelity,
-              title, title_source, agent_observed_at
+              title, title_source, title_ids, agent_observed_at
             ) VALUES (
               :user_id, :device_id, :csid, :chash,
               :sv, :acv, :harness, :repo_id,
@@ -287,7 +405,7 @@ def _upsert_session(db, device: CurrentDevice, p: SessionUpload, repo_id, existi
                 ((:started AT TIME ZONE 'UTC' + make_interval(mins => :tz))
                    - interval '4 hours'))::smallint - 1,
               :state, :visible, :notable, :unattended, :tq, :fidelity,
-              :title, :title_source, :observed
+              :title, :title_source, CAST(:title_ids AS jsonb), :observed
             )
             ON CONFLICT (user_id, client_session_id) DO UPDATE SET
               content_hash = EXCLUDED.content_hash,
@@ -315,6 +433,9 @@ def _upsert_session(db, device: CurrentDevice, p: SessionUpload, repo_id, existi
               timeline_fidelity = EXCLUDED.timeline_fidelity,
               title = EXCLUDED.title,
               title_source = EXCLUDED.title_source,
+              -- COALESCE, as `feedback` and `analysis` (0023): a client that does not
+              -- compute a title (the Mac) must not erase the one another client did.
+              title_ids = COALESCE(EXCLUDED.title_ids, sessions.title_ids),
               agent_observed_at = EXCLUDED.agent_observed_at,
               updated_at = now()
             RETURNING id
@@ -348,6 +469,9 @@ def _upsert_session(db, device: CurrentDevice, p: SessionUpload, repo_id, existi
             "fidelity": p.timeline_fidelity,
             "title": p.title,
             "title_source": p.title_source,
+            "title_ids": (
+                json.dumps(p.title_ids.model_dump(mode="json")) if p.title_ids is not None else None
+            ),
             "observed": p.agent_observed_at,
         },
     ).one()
@@ -387,14 +511,14 @@ def _upsert_stats(db, session_id, p: SessionUpload):
               human_prompt_count, prompt_count_basis, files_touched, files_created,
               lines_added_agent, lines_removed_agent, commit_count, commit_insertions,
               commit_deletions, human_edit_events, agent_line_bucket, attrib_confidence,
-              feedback
+              feedback, burn
             ) VALUES (
               :sid, :reported, :tin, :tout, :tcr, :tw5, :tw1, :abandoned,
               :dedupe, :scope, :coverage, CAST(:models AS jsonb), :model_state,
               CAST(:tools AS jsonb),
               :prompts, :basis, :files, :created, :added, :removed,
               :commits, :ins, :del, :human_edits, :bucket, :confidence,
-              CAST(:feedback AS jsonb)
+              CAST(:feedback AS jsonb), CAST(:burn AS jsonb)
             )
             ON CONFLICT (session_id) DO UPDATE SET
               tokens_reported = EXCLUDED.tokens_reported,
@@ -420,7 +544,11 @@ def _upsert_stats(db, session_id, p: SessionUpload):
               -- does not compute feedback sends nothing, and nothing must not mean
               -- "delete what another client measured". A final session's events do not
               -- change, so a stored note is still true.
-              feedback = COALESCE(EXCLUDED.feedback, session_stats.feedback)
+              feedback = COALESCE(EXCLUDED.feedback, session_stats.feedback),
+              -- The same rule for `burn` (0023). Null on the wire means the producer
+              -- did not compute it; a refusal is a document with `reason` set, and it
+              -- does replace what was stored.
+              burn = COALESCE(EXCLUDED.burn, session_stats.burn)
             """
         ),
         {
@@ -451,6 +579,7 @@ def _upsert_stats(db, session_id, p: SessionUpload):
             "bucket": p.agent_line_bucket,
             "confidence": p.attrib_confidence,
             "feedback": (json.dumps([n.model_dump() for n in p.feedback]) if p.feedback else None),
+            "burn": json.dumps(p.burn.model_dump(mode="json")) if p.burn is not None else None,
         },
     )
 

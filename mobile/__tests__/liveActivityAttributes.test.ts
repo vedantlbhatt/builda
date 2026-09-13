@@ -12,6 +12,9 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { CreatureId, Phase as BridgePhase, Trajectory as BridgeTrajectory } from '../modules/builder-live/src/BuilderLive.types';
+import { LIVE_ENUMS, type Creature, type Phase, type Trajectory } from '../src/generated/live';
+
 const ROOT = join(import.meta.dir, '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
@@ -53,10 +56,15 @@ describe('BuilderSessionAttributes', () => {
   test('ContentState has the kit fields and the layout fields, nothing else', () => {
     expect([...contentState.keys()].sort()).toEqual(
       [
-        'phase', 'sentence', 'progress', 'filesTouched', 'etaEpoch', 'trajectory',
+        'phase', 'sentence', 'progress', 'filesChanged', 'etaEpoch', 'sinceEpoch', 'endedEpoch', 'trajectory',
         'creature', 'linesAdded', 'linesRemoved', 'commits', 'runningCount', 'updatedEpoch',
       ].sort()
     );
+  });
+
+  test('no duration is baked into the state: the moments are dates, so a surface can draw clocks and timers', () => {
+    for (const name of ['sinceEpoch', 'endedEpoch', 'etaEpoch']) expect(contentState.get(name)).toBe('Double?');
+    expect(attributes.get('startedEpoch')).toBe('Double');
   });
 
   test('the JS SessionState keys are exactly the Swift ContentState fields', () => {
@@ -113,3 +121,39 @@ describe('the Expo module bridge', () => {
     expect(mod).toContain('NSSelectorFromString("renderAllInto:")');
   });
 });
+
+/** `export type X = 'a' | 'b';` as its members, in order. */
+function tsUnion(src: string, type: string): string[] {
+  const m = new RegExp(`export type ${type} = ([^;]+);`).exec(src);
+  return m ? [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!) : [];
+}
+
+/**
+ * Compile time, both ways: the spec's enums (spec/live.v1.json, which the server's pushes are
+ * validated against) and the bridge's types the app builds a card from are one set each. A
+ * value on one side only stops `bunx tsc --noEmit`.
+ */
+const phaseBoth = (p: Phase): BridgePhase => p;
+const phaseBack = (p: BridgePhase): Phase => p;
+const trajectoryBoth = (t: Trajectory): BridgeTrajectory => t;
+const trajectoryBack = (t: BridgeTrajectory): Trajectory => t;
+const creatureBoth = (c: Creature): CreatureId => c;
+const creatureBack = (c: CreatureId): Creature => c;
+
+describe('the live spec and the bridge (docs/overnight-integration.md section 7)', () => {
+  const bridge = read(TS);
+
+  test('the generated Phase, Trajectory and Creature are the bridge types, value for value and in order', () => {
+    expect(tsUnion(bridge, 'Phase')).toEqual([...LIVE_ENUMS.phase]);
+    expect(tsUnion(bridge, 'Trajectory')).toEqual([...LIVE_ENUMS.trajectory]);
+    expect(tsUnion(bridge, 'CreatureId')).toEqual([...LIVE_ENUMS.creature]);
+    for (const f of [phaseBoth, phaseBack, trajectoryBoth, trajectoryBack, creatureBoth, creatureBack]) expect(typeof f).toBe('function');
+  });
+
+  test('the Swift ContentState phase and trajectory strings are the same values', () => {
+    const display = read('targets/widget/_shared/LiveDisplay.swift');
+    const phases = /enum Phase: String \{\s*case ([^\n]+)/.exec(display)![1]!.split(',').map((x) => x.trim());
+    expect(phases).toEqual([...LIVE_ENUMS.phase]);
+  });
+});
+

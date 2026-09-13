@@ -319,6 +319,38 @@ feed query both INNER JOIN `sessions`, so a build post (0017) matched nothing: i
 everyone including its author, and absent from every feed, with no error. The exclusion
 sweep had the same shape, deleting sessions and never reaching a post that has none.
 
+**A clock anchored on the wrong row ages every number by how long the transcript was quiet.**
+The phone put "waiting since" and the ETA on the Lock Screen from the SESSION row's
+`updated_at`. A heartbeat re-cut of an unchanged transcript refreshes the live state and
+leaves the session row alone (the content hash does not move), so both clocks drifted by
+the length of every quiet stretch while the server's push for the same state said
+something else. Every clock counts from `live_state.computed_at` (`surface.anchorOf`,
+`live_push.anchor_of`); `spec/fixtures/live/content_state.json` holds its rows 90 s older
+than their states so an anchor on the wrong one fails 12 cases.
+
+**A dash rule copied three times is three rules.** `plain.py` counts four characters (em,
+en, the horizontal bar, the U+2212 minus sign); `src/live/sentence.ts` and the phone's copy
+scan each held two, and the Lock Screen drew U+2212 before a removed line count, which the
+widget string scan passed because it read the Swift escape `\u{2212}` as six letters. One
+rule on the phone now (`src/copy/plain.ts`, which the others import), the scan decodes
+escapes, and a removed count is `-88` on every surface.
+
+**A debug build's API address is baked in at build time, not served by Metro.** The
+simulator ran JavaScript from a Metro started with `BUILDER_API_URL=http://127.0.0.1:8787`
+and still called `localhost:8000` for everything: this is not a dev client build, and
+`expo-constants` reads the `app.config` embedded when Xcode built it. Build with the
+variable set (`BUILDER_API_URL=... npx expo run:ios --device <udid> --no-bundler`) and
+check `Builder.app/EXConstants.bundle/app.config`, not Metro's manifest.
+
+**A gate written for a 13x bug refused four honest conversations.** `sanity_gate` rejects
+more typed prompts than tool calls, because counting every `type: "user"` record puts
+every tool RESULT in the prompt count. After capture bucketed every tool call, MEASURED:
+four real sittings still had more prompts than calls (6 to 2, 5 to 2, 4 to 2, 2 to 1),
+each checked against the raw JSONL. The bug lifts EVERY session with a typed prompt above
+its tool count, so the gate reads the comparison only from `PROMPT_GATE_MIN_TOOL_CALLS` (3)
+calls up, where it still catches a broken client on 110 of the corpus's 115 sessions with a
+prompt; 6 of 158 sittings have fewer calls than that.
+
 ## Commands
 
 ```bash
@@ -347,10 +379,16 @@ python -m analysis wrapped      the fifteen cards: how you build, each one answe
 python -m analysis live         mission control: what each running session is doing, who needs you first (--watch N)
 python -m analysis vocab        the words your sessions earned, what the project is made of, engineer titles
 make capture-test              the cloud uploader against the boundary fixtures and the contract
+make check-gen                 make gen, then fail if any generated file moved (the first CI gate)
 python -m analysis report          the whole builder report, printed: trends, agents, commits, green
 python -m capture report --dry-run what would be uploaded to the profile, without sending
+python -m capture report --quotes  also up to three quoted prompts, only while Settings > Quote my prompts is on
+python -m capture quotes --delete  delete every quote the server holds
 python -m capture sync --dry-run   what a cloud container would upload, without sending
+python -m capture sync --live      a running session's upload carries its live state (--live-names: basenames, opt in)
+python -m capture live --transcript T  the hook's route with no hook installed: tail a running transcript to the server
 curl $SERVER/v1/ingest/hook.sh   the Claude Code hook: nothing installed, sessions on the phone (docs/hooks-capture.md)
+scripts/overnight_stack.sh up|sync|live T|token|phone|test|status   the local end to end stack, API on 127.0.0.1:8787
 ```
 
 Design notes worth reading before touching the corresponding code: `docs/session-boundaries.md`
@@ -358,17 +396,21 @@ Design notes worth reading before touching the corresponding code: `docs/session
 prompt), `docs/integrations.md` (where every tool keeps its transcripts), `docs/social.md`
 (the layer that is deliberately small), `docs/analysis-complete.md` (the two kinds of
 analysis, every metric, and the nine things this codebase refuses to compute), `docs/approved-roadmap.md` (what is being built, and what was
-rejected with the evidence), `brief.md` and `PROGRESS.md` (the overnight brief and where it stands).
+rejected with the evidence), `brief.md` and `PROGRESS.md` (the overnight brief and where it stands),
+`docs/overnight-engine.md` (the fifteen wrapped cards, the live engine, vocabulary, the burn and profile
+fixes, each deviation with its measurement), `docs/overnight-integration.md` (how the engine reaches the
+phone: report v2, contract v4, the live spec, pushes, the opt in quotes and file names, and every
+deviation), `docs/hooks-capture.md` (the hook channel and the live watcher).
 
 ## What each suite is actually for
 
 | suite | n | protects |
 |---|---|---|
 | `swift test` | 138 | the measured ground truth, that a shell-written file reaches the card, the strip fixtures, the boundary fixtures (v3: lineage pooling, the threshold fitter against the Python fit), the Codex and Gemini fixtures, the live-path fixtures, digest parity with the Python reference, the analysis scheduler's retry rules |
-| `bun test` | 473 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the pixel family's rules, Bit and the eight animals held to the same ones (one ink, the shared eye holes, the 12x12 live area and row-13 baseline, mass within 15% of the mean, no one-cell-thin parts, outlines 24 cells apart, all facing forward, idle as rest, a drawn breath and one gesture with no drift or scale); the profile screen's archetype wording and its closest-rule fallback; that no refused block of the report renders as a zero; that every feedback note the contract declares has a sentence on the phone, and that an id this build does not know renders nothing rather than a debug string; that a machine covering the whole window stays silent rather than caveating nothing |
-| `pytest` | 163 | that undeclared fields cannot be stored, that RLS is real (as builder_app, through the routes), auth bootstrap, contract v2/v3, social, capture keys and their scope, the notification horizon, the hook channel's parity with capture, the corpus profile's server-side refusals, the report's door (nested extras, enums, string bounds) and that a null block survives the round trip; that a session's feedback round trips, is not wiped by a client that does not compute it, and cannot carry an undeclared note id or a word of prose |
-| `unittest` (analysis/) | 1101 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules; that the report's keys ARE the spec's keys at every level and that no field in it can carry free text; that a session note refuses to call a parser blind spot "nothing happened", that neither the failing command nor the file name reaches the wire, that a heredoc body is never read as a command, and that a lockfile is never the language you chose, and that a report always says how much of the window it could actually answer; burn forensics (usage deduplicated on message.id, the refusal when a harness writes no counts, the refusal to name a spike below five segments, cause attribution, no dashes); the fifteen wrapped cards (one shape, refusals with reasons, attended time decides records, quotes only when asked, nothing LOCAL on the wire); live verdicts, ETA refusals, decisions and the needs you order; the vocab catalog, titles and stack; `plain`'s role rules and the one definition of a dash; that the digest text does not move with the two new `Ev` fields; and that the CLI printers print no dash and no zero nobody measured |
-| `make capture-test` | 74 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth, and that every other harness discovers, dedupes and uploads |
+| `bun test` | 1463 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the pixel family's rules, Bit and the eight animals held to the same ones (one ink, the shared eye holes, the 12x12 live area and row-13 baseline, mass within 15% of the mean, no one-cell-thin parts, outlines 24 cells apart, all facing forward, idle as rest, a drawn breath and one gesture with no drift or scale); the profile screen's archetype wording and its closest-rule fallback; that no refused block of the report renders as a zero; that every feedback note the contract declares has a sentence on the phone, and that an id this build does not know renders nothing rather than a debug string; that a machine covering the whole window stays silent rather than caveating nothing; the Live Activity card `toState` builds equals the server's `live_push.content_state` key for key on every `content_state.json` case, and the live sentence equals `live.sentence` over 45,000 states; activity tokens go to the server only with Lock Screen details on and are forgotten when a card ends; details off says only "Builder · N running"; every Wrapped card and every session burn sentence renders exactly what Python renders; the one dash rule, U+2015 and U+2212 included |
+| `pytest` | 309 | that undeclared fields cannot be stored, that RLS is real (as builder_app, through the routes), auth bootstrap, contract v2/v3, social, capture keys and their scope, the notification horizon, the hook channel's parity with capture, the corpus profile's server-side refusals, the report's door (nested extras, enums, string bounds) and that a null block survives the round trip; that a session's feedback round trips, is not wiped by a client that does not compute it, and cannot carry an undeclared note id or a word of prose; contract v4 (tool map keys, live, live names, burn, title ids, quotes) and its enums pinned to the engine's tables both ways; the live state's ingest, slim list body, RLS and deletion at finalise; ActivityKit pushes only on a phase or trajectory change, an end on every live to final move; quotes and file names off by default and deleted when turned off, a racing store included; report v2's five blocks; spend priced from the stored token buckets |
+| `unittest` (analysis/) | 1196 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules; that the report's keys ARE the spec's keys at every level and that no field in it can carry free text; that a session note refuses to call a parser blind spot "nothing happened", that neither the failing command nor the file name reaches the wire, that a heredoc body is never read as a command, and that a lockfile is never the language you chose, and that a report always says how much of the window it could actually answer; burn forensics (usage deduplicated on message.id, the refusal when a harness writes no counts, the refusal to name a spike below five segments, cause attribution, no dashes); the fifteen wrapped cards (one shape, refusals with reasons, attended time decides records, quotes only when asked, nothing LOCAL on the wire); live verdicts, ETA refusals, decisions and the needs you order; the vocab catalog, titles and stack; `plain`'s role rules and the one definition of a dash; that the digest text does not move with the two new `Ev` fields; and that the CLI printers print no dash and no zero nobody measured; report v2's blocks pinned to the spec and its tables; the one corpus cut; eleven scenario transcripts read back through the real parser, the capture cut and `live.session_state` |
+| `make capture-test` | 120 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth, and that every other harness discovers, dedupes and uploads; every tool call bucketed; burn and title ids on the wire; the live watcher sends only complete lines, resumes on a 409 and heartbeats; `report --quotes` |
 | CI `reference` job | — | the boundary fixtures are what `scripts/measure_boundaries.py` produces |
 
 CI runs on `main`, on `claude/**` branches and on demand. The macOS job is the only Swift

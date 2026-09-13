@@ -5,6 +5,7 @@
 #   scripts/overnight_stack.sh up        create DBs if missing, migrate, start the API, wait for /health
 #   scripts/overnight_stack.sh pair      mint the phone device (device.json) and capture's credentials
 #   scripts/overnight_stack.sh sync      capture sync + capture report over the corpus, other harnesses off
+#   scripts/overnight_stack.sh live [T]  tail transcript T (default: every one written in the last hour) into the hook route
 #   scripts/overnight_stack.sh status    API, migration head, row counts
 #   scripts/overnight_stack.sh phone     GET the phone's endpoints with device.json's token
 #   scripts/overnight_stack.sh token     print a valid access token for device.json (refreshing it)
@@ -275,6 +276,24 @@ cmd_sync() {
   [ "$rc" -eq 0 ] && [ "$rrc" -eq 0 ]
 }
 
+cmd_live() { # tail a running Claude Code transcript into the hook's route, as the hook would
+  # `python -m capture live` (docs/overnight-integration.md section 4): nothing goes into
+  # ~/.claude/settings.json. Every 5 s it posts the transcript's new COMPLETE lines to
+  # /v1/ingest/transcript with the hook's headers, and after 30 s with nothing new an empty
+  # heartbeat, so the server re-cuts on its own clock and the live state keeps moving. The
+  # offsets live beside capture's credentials, never in hook.sh's ~/.builder/offsets.
+  require_api
+  [ -s "$CAPTURE_CREDS" ] || die "no capture credentials at $CAPTURE_CREDS; run '$0 pair' first"
+  local args=(--server "$API" --every 5 --heartbeat 30)
+  if [ -n "${1:-}" ] && [ "${1#-}" = "$1" ]; then
+    [ -f "$1" ] || die "no transcript at $1"
+    args+=(--transcript "$1")
+    shift
+  fi
+  say "capture live ${args[*]} $* (Ctrl+C to stop)"
+  (cd "$REPO" && capture_env "$PY" -m capture live "${args[@]}" "$@")
+}
+
 cmd_status() {
   local pid h
   pid="$(api_pid)"
@@ -407,11 +426,12 @@ case "${1:-}" in
   restart) shift; cmd_down; cmd_up "$@" ;;
   pair) shift; cmd_pair "$@" ;;
   sync) shift; cmd_sync "$@" ;;
+  live) shift; cmd_live "$@" ;;
   status) shift; cmd_status "$@" ;;
   token) shift; cmd_token "$@" ;;
   phone) shift; cmd_phone "$@" ;;
   test) shift; cmd_test "$@" ;;
   logs) shift; cmd_logs "$@" ;;
   reset) shift; cmd_reset "$@" ;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

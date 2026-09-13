@@ -7,9 +7,13 @@ this already: the document is computed by `analysis/report.py`, so a field it gr
 without the spec growing it is caught HERE, at the door, as a 422 rather than as a column
 of nulls on somebody's phone.
 
-The server does NOT compute this document and cannot. Three of its five blocks rest on
-subagent sidecar transcripts, shell command text and prompt text, none of which leave the
+The server does NOT compute this document and cannot: its blocks rest on subagent sidecar
+transcripts, shell command text, prompt text and git history, none of which leave the
 machine (privacy/upload-contract.json). It validates and stores.
+
+Inside the five version 2 blocks (wrapped, money, burn, vocab, stack) there is no string
+field at all. Every value the door accepts there is an enum from the tables below, a
+number or a clock, so a sentence, a quote or a path in one of them is a 422.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 
 #: Character caps by size class; the spec's `max` on a string field names one of these.
 REPORT_MAX_LENGTHS: dict[str, int] = {
@@ -32,6 +36,29 @@ REPORT_MAX_LENGTHS: dict[str, int] = {
 #: renaming either here is a NameError at import, not a lint warning.
 ANALYSIS_ENUM_VALUES: dict[str, list[str]] = {
     "trend_direction": ["up", "down", "steady"],
+    "wrapped_card": ["builder_type", "shipped", "work_style", "longest_session", "agents_at_once", "go_to_prompt", "streak", "change_course", "crash_out", "prompt_length", "deep_sessions", "time_put_in", "cryptic_prompt", "prompts_per_session", "kind_of_work"],
+    "wrapped_unit": ["archetype", "lines", "style", "seconds", "sessions", "sends", "days", "share", "score", "words", "hours", "prompts_per_session", "kind"],
+    "wrapped_basis": ["archetype_rules", "project_edit_tools_and_credited_shell_writes", "edit_tools_only", "uploaded_agent_lines", "absent", "autonomy_then_prompts_then_steer", "attended_seconds_rank", "sweep_over_first_to_last_event", "normalized_prompt_text_across_sessions", "days_with_a_commit_and_an_attended_session", "interrupts_and_correction_markers", "profanity_caps_punctuation_markers", "words_per_prompt", "attended_sessions_over_an_hour", "active_seconds", "vowelless_runs", "prompts_over_attended_sessions", "commit_subject_labels", "lines_by_file_role", "commit_subject_labels_then_lines_by_file_role"],
+    "wrapped_value": ["architect", "velocity_machine", "quality_guardian", "night_owl", "director", "skeptic", "generalist", "hand_off", "dialogue", "steering", "one_shot", "feature", "fix", "refactor", "docs", "test", "chore", "perf", "style", "build", "revert", "source", "config", "migration", "dependency", "unknown"],
+    "wrapped_refusal": ["no_sessions", "below_session_floor", "below_attended_floor", "below_prompt_floor", "below_own_words_floor", "no_prompt_text", "no_archetype_metric", "no_line_counts", "no_lines_attributed", "no_presence", "no_events", "no_repeated_prompt", "no_commit_history", "no_crash_out", "no_cryptic_prompt", "neither_kind_basis"],
+    "archetype": ["architect", "velocity_machine", "quality_guardian", "night_owl", "director", "skeptic"],
+    "archetype_metric": ["planning_ratio", "code_velocity", "test_runs_per_hour", "night_share", "autonomy_score", "steer_rate"],
+    "commits_basis": ["git_log_distinct_commits"],
+    "kind_refusal": ["no_subjects", "too_few_labelled", "low_label_coverage"],
+    "commit_kind": ["feature", "fix", "refactor", "docs", "test", "chore", "perf", "style", "build", "revert"],
+    "plain_role": ["test", "source", "config", "docs", "migration", "style", "build", "dependency", "unknown"],
+    "money_basis": ["anthropic_api_list_price", "stale_prices"],
+    "money_refusal": ["tokens_not_reported", "model_not_in_price_table"],
+    "priced_model": ["claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
+    "lines_basis": ["project_edit_tools_and_credited_shell_writes", "edit_tools_only", "uploaded_agent_lines", "absent"],
+    "burn_cause": ["context_replay", "subagent_fanout", "error_loop", "repeated_call", "file_churn", "compaction", "investigated"],
+    "burn_refusal": ["no_token_counts", "below_session_floor", "nothing_inside_segments", "not_segmented"],
+    "vocab_term": ["commit", "branch", "merge", "rebase", "diff", "stash", "revert", "cherry_pick", "worktree", "pull_request", "force_push", "git_hook", "test_suite", "unit_test", "fixture", "snapshot_test", "end_to_end_test", "mock", "coverage", "type_check", "linter", "formatter", "ci", "dependency", "lockfile", "package_manager", "build", "bundler", "monorepo", "virtualenv", "env_var", "secret", "module", "api", "endpoint", "schema", "migration", "database", "query", "rls", "orm", "cache", "queue", "webhook", "cron_job", "auth", "jwt", "cors", "rate_limit", "container", "deploy", "server", "port", "process", "log", "stack_trace", "ssh", "shell_script", "makefile", "simulator", "subagent", "mcp", "web_search", "regex", "glob", "compaction", "heredoc", "patch", "symlink", "permissions", "feature_flag", "type_definitions", "monitoring", "routing_engine"],
+    "vocab_refusal": ["no_events"],
+    "stack_item": ["python", "typescript", "javascript", "swift", "kotlin", "go", "rust", "ruby", "java", "sql", "shell", "dart", "cpp", "csharp", "php", "html", "css", "react", "react_native", "expo", "nextjs", "fastapi", "django", "flask", "express", "tailwind", "vue", "svelte", "reanimated", "swiftui", "sqlalchemy", "react_native_maps", "postgres", "sqlite", "redis", "mongodb", "mysql", "docker", "railway", "vercel", "cloudflare", "aws", "github_actions", "eas", "fly", "prometheus", "grafana", "google_cloud", "pytest", "jest", "vitest", "bun_test", "playwright", "xctest", "cypress", "maestro", "locust", "git", "bun", "npm", "uv", "ruff", "eslint", "prettier", "make", "xcode", "android_sdk", "cocoapods", "alembic", "posthog", "stripe", "sentry", "openai", "anthropic", "supabase", "firebase", "mapbox", "google_maps", "valhalla", "transloc"],
+    "stack_refusal": ["no_evidence"],
+    "stack_category": ["language", "framework", "database", "infra", "testing", "tooling", "service"],
+    "stack_evidence": ["manifest", "language", "command", "path", "tool"],
 }
 
 #: Which fields of which model carry which enum, read by the validators below.
@@ -47,6 +74,21 @@ ENUM_FIELDS: dict[str, dict[str, str]] = {
     "ReportLanguage": {},
     "ReportLanguages": {},
     "ReportCoverage": {},
+    "ReportArchetypeScore": {"name": "archetype", "metric": "archetype_metric"},
+    "ReportKindCount": {"kind": "commit_kind"},
+    "ReportRoleLines": {"role": "plain_role"},
+    "ReportWrappedExtras": {"metric": "archetype_metric", "commits_basis": "commits_basis", "commit_refusal": "kind_refusal"},
+    "ReportWrappedCard": {"id": "wrapped_card", "value_id": "wrapped_value", "unit": "wrapped_unit", "basis": "wrapped_basis", "reason": "wrapped_refusal"},
+    "ReportWrapped": {},
+    "ReportTokens": {},
+    "ReportModelCost": {"model": "priced_model"},
+    "ReportMoney": {"basis": "money_basis", "reason": "money_refusal", "lines_basis": "lines_basis"},
+    "ReportBurnCause": {"cause": "burn_cause"},
+    "ReportBurn": {"reason": "burn_refusal"},
+    "ReportTerm": {"id": "vocab_term"},
+    "ReportVocab": {"reason": "vocab_refusal"},
+    "ReportStackItem": {"id": "stack_item", "category": "stack_category", "evidence": "stack_evidence"},
+    "ReportStack": {"reason": "stack_refusal"},
     "BuilderReport": {},
 }
 
@@ -173,6 +215,330 @@ class ReportCoverage(BaseModel):
     last_at: datetime | None = None
 
 
+class ReportArchetypeScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    metric: str
+    value: float | None = None
+    threshold: float | None = None
+    score: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("name", "metric")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportKindCount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    commits: int
+
+    @field_validator("kind")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportRoleLines(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    lines: int
+
+    @field_validator("role")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportWrappedExtras(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    metric: str | None = None
+    metric_value: float | None = None
+    metric_lower_bound: bool | None = None
+    closest: ReportArchetypeScore | None = None
+    runners_up: list[ReportArchetypeScore] | None = Field(default=None, max_length=2)
+    commits: int | None = None
+    assisted: int | None = None
+    alone: int | None = None
+    commits_basis: str | None = None
+    autonomy: float | None = Field(default=None, ge=0.0, le=1.0)
+    median_prompts: float | None = None
+    steer_rate: float | None = None
+    active_seconds: int | None = None
+    started_at: datetime | None = None
+    subagents_peak: int | None = None
+    subagents: int | None = None
+    sessions: int | None = None
+    words: int | None = None
+    commit_days: int | None = None
+    attended_days: int | None = None
+    both_days: int | None = None
+    interrupts: int | None = None
+    corrective_prompts: int | None = None
+    median: float | None = None
+    avg_minutes: int | None = None
+    longest_minutes: int | None = None
+    attended_hours: float | None = None
+    attended_overlap_hours: float | None = None
+    tool_calls_per_prompt: float | None = None
+    kinds: list[ReportKindCount] | None = Field(default=None, max_length=10)
+    classified: int | None = None
+    coverage: float | None = Field(default=None, ge=0.0, le=1.0)
+    role_lines: list[ReportRoleLines] | None = Field(default=None, max_length=9)
+    commit_refusal: str | None = None
+    lines: int | None = None
+    lines_needed: int | None = None
+
+    @field_validator("metric", "commits_basis", "commit_refusal")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportWrappedCard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    value: float | None = None
+    value_id: str | None = None
+    unit: str
+    basis: str
+    n: int
+    needed: int | None = None
+    reason: str | None = None
+    extras: ReportWrappedExtras
+
+    @field_validator("id", "value_id", "unit", "basis", "reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportWrapped(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cards: list[ReportWrappedCard] = Field(max_length=15)
+    prompts_with_text: int
+    attended_sessions: int
+
+
+class ReportTokens(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input: int
+    output: int
+    cache_read: int
+    cache_w5m: int
+    cache_w1h: int
+
+
+class ReportModelCost(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str
+    usd: float
+    output_tokens: int
+    sessions: int
+    sessions_dominated: int
+    commits: int
+    usd_per_commit: float | None = None
+
+    @field_validator("model")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportMoney(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    usd: float | None = None
+    basis: str | None = None
+    reason: str | None = None
+    prices_read_on: datetime
+    priced_sessions: int
+    unpriced_sessions: int
+    usd_per_active_hour: float | None = None
+    usd_without_a_commit: float | None = None
+    share_without_a_commit: float | None = Field(default=None, ge=0.0, le=1.0)
+    tokens: ReportTokens | None = None
+    token_sessions: int
+    lines_added: int | None = None
+    lines_removed: int | None = None
+    lines_basis: str
+    by_model: list[ReportModelCost] = Field(max_length=10)
+
+    @field_validator("basis", "reason", "lines_basis")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportBurnCause(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cause: str
+    tokens: int
+    share: float = Field(ge=0.0, le=1.0)
+    segments: int
+
+    @field_validator("cause")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportBurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    share: float | None = Field(default=None, ge=0.0, le=1.0)
+    barren_tokens: int | None = None
+    tokens: int | None = None
+    unreadable_tokens: int | None = None
+    sessions: int
+    needed: int | None = None
+    reason: str | None = None
+    causes: list[ReportBurnCause] | None = Field(default=None, max_length=7)
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportTerm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    count: int
+    sessions: int
+    first_seen: datetime
+
+    @field_validator("id")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportVocab(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    terms: list[ReportTerm] = Field(max_length=80)
+    locked: int | None = None
+    catalog_size: int
+    sessions: int
+    shell_calls: int
+    shell_calls_cut: int
+    reason: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportStackItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    category: str
+    evidence: str
+    sessions: int
+    first_seen: datetime | None = None
+
+    @field_validator("id", "category", "evidence")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
+class ReportStack(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ReportStackItem] = Field(max_length=120)
+    sessions: int
+    manifests: int
+    shell_calls: int
+    shell_calls_cut: int
+    reason: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = ANALYSIS_ENUM_VALUES[ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
 class BuilderReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -187,3 +553,8 @@ class BuilderReport(BaseModel):
     quality: ReportQuality | None = None
     prompting: ReportPrompting | None = None
     languages: ReportLanguages | None = None
+    wrapped: ReportWrapped | None = None
+    money: ReportMoney | None = None
+    burn: ReportBurn | None = None
+    vocab: ReportVocab | None = None
+    stack: ReportStack | None = None

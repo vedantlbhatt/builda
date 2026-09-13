@@ -18,16 +18,20 @@ import re
 import unittest
 import zoneinfo
 
-from capture import sessions, strip
+from capture import identity, sessions, strip
 from capture.discover import Transcript
+from capture.tests import spec_walk
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONTRACT = json.loads((ROOT / "privacy" / "upload-contract.json").read_text())
 FIELDS = {f["name"]: f for f in CONTRACT["fields"]}
 ANALYSIS_SCHEMA = json.loads((ROOT / "analysis" / "schema.json").read_text())
+LIVE_SPEC = json.loads((ROOT / "spec" / "live.v1.json").read_text())
 FIX = ROOT / "spec" / "fixtures" / "boundaries"
 TZ = zoneinfo.ZoneInfo("America/New_York")
 SHA = re.compile(r"^[0-9a-f]{64}$")
+#: `analysis.live.SALT_MIN_CHARS` or longer; the value is a test's, never a machine's.
+SALT = "contract-test-salt-0123456789abcdef-0123456789"
 
 #: The insides of the four structured field types, as `server/builder/contract.py`
 #: declares them (TokenBucketsWire, StripMarkWire, ModelShareWire, FeedbackNoteWire).
@@ -40,13 +44,43 @@ NESTED = {
 
 
 def _all_payloads() -> list[dict]:
+    """Every boundary fixture cut one second after its last record, so each one's last
+    sitting is LIVE, and every live payload carries its live state and names the way
+    `capture sync --live --live-names` builds them: every v4 field reaches the walk."""
+    from analysis import live as lv
+
     out = []
     for jsonl in sorted(FIX.glob("*.jsonl")):
         src = sessions.load_source(Transcript("fixture", jsonl))
         last = max(r["ts"] for r in src.records)
-        for s in sessions.sessionize_sources([src], TZ, now=last + 1):
-            out.append(sessions.build_payload(s, TZ, "1" * 64, "test", observed_at=last))
+        cut = sessions.sessionize_sources([src], TZ, now=last + 1)
+        history = lv.eta_history(cut)
+        for s in cut:
+            p = sessions.build_payload(s, TZ, "1" * 64, "test", observed_at=last)
+            if s.state == "live":
+                sessions.attach_live(p, s, now=last + 1, history=history, salt=SALT, names=True)
+            out.append(p)
     return out
+
+
+def _walk(name: str, value) -> list[str]:
+    """The nested shape of one v4 structured field, against the spec its `type` names."""
+    f = FIELDS[name]
+    if f["type"] == "object":
+        return spec_walk.errors(
+            value, CONTRACT["objects"][f["item"]], objects=CONTRACT["objects"], enums=CONTRACT["enums"], where=name
+        )
+    if f["type"] in ("live", "live_names"):
+        fields = LIVE_SPEC["fields"] if f["type"] == "live" else LIVE_SPEC["objects"]["LiveNames"]
+        return spec_walk.errors(
+            value,
+            fields,
+            objects=LIVE_SPEC["objects"],
+            enums=LIVE_SPEC["enums"],
+            max_lengths=LIVE_SPEC["max_lengths"],
+            where=name,
+        )
+    raise AssertionError(f"{name} is not a structured v4 field")
 
 
 class ContractConformance(unittest.TestCase):
@@ -55,8 +89,13 @@ class ContractConformance(unittest.TestCase):
         cls.payloads = _all_payloads()
         assert cls.payloads
 
-    def test_contract_is_v3(self):
-        self.assertEqual(CONTRACT["version"], 3)
+    def test_contract_is_v4(self):
+        self.assertEqual(CONTRACT["version"], 4)
+
+    def test_the_fixtures_reach_every_v4_field(self):
+        """A walk over payloads that never carry a field proves nothing about it."""
+        for name in ("burn", "title_ids", "live", "live_names"):
+            self.assertTrue(any(name in p for p in self.payloads), name)
 
     def test_every_key_is_declared_nested_fields_included(self):
         for p in self.payloads:
@@ -78,10 +117,56 @@ class ContractConformance(unittest.TestCase):
                     for n in value:
                         self.assertEqual(set(n) - NESTED["feedback"], set())
                         self.assertIn(n["id"], FIELDS["feedback"]["values"])
-                elif typ in ("toolmap",):
+                elif typ == "toolmap":
                     self.assertTrue(all(isinstance(v, int) for v in value.values()))
+                    self.assertEqual(set(value) - set(FIELDS["tool_calls"]["values"]), set(), value)
+                elif typ in ("object", "live", "live_names") and value is not None:
+                    self.assertEqual(_walk(name, value), [], name)
                 else:
                     self.assertNotIsInstance(value, dict, f"{name} is an undeclared object")
+
+    def test_the_generated_door_accepts_every_payload(self):
+        """`server/builder/contract.py SessionUpload`, extra forbidden at every level, where
+        pydantic is installed (the walk above is the check CI runs)."""
+        door = spec_walk.pydantic_door("contract")
+        if door is None:
+            self.skipTest("pydantic is not installed here; the walk covers the shape")
+        for p in self.payloads:
+            door.SessionUpload(**p)
+
+    def test_tool_call_keys_are_the_contracts(self):
+        self.assertEqual(list(sessions.TOOL_CALL_KEYS), FIELDS["tool_calls"]["values"])
+        self.assertEqual(list(sessions.UPLOADED_TOOLS) + list(sessions.TOOL_BUCKETS), FIELDS["tool_calls"]["values"])
+        for aliases in sessions.TOOL_ALIASES.values():
+            self.assertTrue(set(aliases.values()) <= set(sessions.UPLOADED_TOOLS))
+
+    def test_the_live_block_is_not_in_the_hash(self):
+        """docs/overnight-integration.md 3.2: the block moves with the clock, not the bytes,
+        so a payload's hash is the hash WITHOUT it, and one computed after it was attached
+        agrees."""
+        live = [p for p in self.payloads if "live" in p]
+        self.assertTrue(live)
+        for p in live:
+            bare = {k: v for k, v in p.items() if k not in ("live", "live_names")}
+            self.assertEqual(sessions.content_hash(bare), p["content_hash"])
+            self.assertEqual(sessions.content_hash(p), p["content_hash"])
+        final = next(p for p in self.payloads if p["state"] == "final")
+        self.assertNotEqual(sessions.content_hash(dict(final, burn=None)), final["content_hash"])
+
+    def test_the_salt_never_travels(self):
+        blob = json.dumps(self.payloads)
+        self.assertNotIn(SALT, blob)
+        self.assertEqual(identity.MAP_SALT_MIN_CHARS, __import__("analysis.live", fromlist=["x"]).SALT_MIN_CHARS)
+
+    def test_a_live_block_only_on_a_live_payload(self):
+        """The server's gate refuses `live` on a final payload, so `attach_live` does too."""
+        src = sessions.load_source(Transcript("fixture", FIX / "remote_sdk_prompts.jsonl"))
+        last = max(r["ts"] for r in src.records)
+        final = next(s for s in sessions.sessionize_sources([src], TZ, now=last + 7200) if s.state == "final")
+        p = sessions.build_payload(final, TZ, "1" * 64, "test")
+        with self.assertRaises(ValueError):
+            sessions.attach_live(p, final, now=last + 7200, history=[], salt=SALT)
+        self.assertNotIn("live", p)
 
     def test_anonymous_mode_carries_no_public_only_field(self):
         public_only = {n for n, f in FIELDS.items() if f["modes"] == ["public"]}

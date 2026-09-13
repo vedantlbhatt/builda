@@ -24,7 +24,8 @@ import pathlib
 import tempfile
 import unittest
 
-from analysis import burn, live, digest, gemini
+from analysis import burn, digest, gemini, live
+from analysis.tests import burn_fixture
 from analysis.digest import Ev
 
 #: 2026-09-01 09:00:00 UTC. Every timestamp below is an offset from it.
@@ -1279,8 +1280,86 @@ class TurnsForWindowAndSessionBurn(unittest.TestCase):
         turns = [turn(1, 1000, ids=["w"]), turn(11, 3000), turn(21, 5000, ids=["p"])]
         self.assertEqual(
             burn.session_burn_detail(events, turns),
-            {"tokens": 9000, "barren": 3000, "unreadable": 5000},
+            {"tokens": 9000, "barren": 3000, "unreadable": 5000, "causes": {}},
         )
+
+
+    def test_session_burn_detail_attributes_barren_tokens_to_causes(self):
+        """The report's burn block names what the barren tokens went on, so the detail sums
+        `Segment.attribution` over the BARREN segments and nothing else: a cause in a
+        segment that wrote something is not spend that changed nothing."""
+        events = [
+            Ev(0, 0, "prompt", "write it"),
+            Ev(1, 1, "tool", "cat > a.py <<'EOF'", tool="Bash", path="a.py", added=10, tool_id="w"),
+            Ev(2, 10, "prompt", "how does auth work"),
+            *[Ev(3 + i, 11 + i, "tool", f"f{i}.py", tool="Read", path=f"f{i}.py", tool_id=f"r{i}") for i in range(8)],
+            Ev(20, 30, "prompt", "and again"),
+            Ev(21, 31, "assistant", "It checks the cookie."),
+        ]
+        turns = [
+            turn(1, 1000, cache=9000, ids=["w"]),
+            turn(11, 3000, cache=500, ids=[f"r{i}" for i in range(8)]),
+            turn(31, 200, cache=4000),
+        ]
+        d = burn.session_burn_detail(events, turns)
+        self.assertEqual((d["tokens"], d["barren"]), (17_700, 7_700))
+        # The written segment's context replay (9,000) is not barren spend; the reading
+        # segment's reads (3,000 fresh) and the last segment's replay (4,000) are.
+        self.assertEqual(d["causes"], {"investigated": (3_000, 1), "context_replay": (4_000, 1)})
+        for tokens, _segments in d["causes"].values():
+            self.assertLessEqual(tokens, d["barren"])
+
+
+class SessionWire(unittest.TestCase):
+    """The session upload's `burn` block (contract v4 `SessionBurn`), from `session_report`."""
+
+    def test_the_report_over_a_file_is_the_report_over_its_events_and_turns(self):
+        recs = [user_prompt(0, "go"), assistant(1, "m1", usage=USAGE)]
+        path = write_transcript(recs)
+        from_file = burn.burn_report(path)
+        from_parts = burn.session_report(
+            digest.load_events(path), burn.load_turns(path), harness="claude_code"
+        )
+        self.assertEqual(from_file, from_parts)
+
+    def test_absent_is_null_and_every_share_is_unrounded(self):
+        s = next(x for x in burn_fixture.scenarios() if x.name == "replay")
+        w = burn.session_wire(s.report())
+        self.assertEqual(w["cache_read_share"], 9_723_000 / 10_600_000)
+        self.assertIsNone(w["reason"])
+        self.assertEqual(w["spikes_needed"], burn.MIN_SEGMENTS_FOR_SPIKES)
+        top = w["spikes"][0]
+        self.assertEqual(top["causes"][0]["cause"], "context_replay")  # the dominant cause first
+        self.assertEqual([c["cause"] for c in top["causes"]], ["context_replay", "subagent_fanout", "error_loop"])
+        for name, reason, spikes in (("empty", "not_segmented", None), ("no_counts", "no_token_counts", None)):
+            w = burn.session_wire(next(x for x in burn_fixture.scenarios() if x.name == name).report())
+            self.assertEqual((w["reason"], w["tokens"], w["cache_read_share"], w["spikes"]), (reason, None, None, spikes))
+        empty = burn.session_wire(next(x for x in burn_fixture.scenarios() if x.name == "empty").report())
+        self.assertEqual((empty["lines_added"], empty["commits"], empty["segments"]), (None, None, 0))
+
+    def test_too_few_segments_is_null_and_enough_with_no_spike_is_empty(self):
+        short = burn.session_wire(next(x for x in burn_fixture.scenarios() if x.name == "short").report())
+        self.assertIsNone(short["spikes"])
+        even = burn_fixture.Burnable("even")
+        for i in range(6):
+            even.prompt(100 * i).turn(100 * i + 1, fresh=1_000).say(100 * i + 2)
+        w = burn.session_wire(even.report())
+        self.assertEqual((w["segments"], w["spikes"]), (6, []))
+
+    def test_a_repeat_is_said_by_what_repeated_and_nothing_else_carries_a_tool(self):
+        churn = burn.session_wire(next(x for x in burn_fixture.scenarios() if x.name == "churn").report())
+        causes = churn["spikes"][0]["causes"]
+        self.assertEqual([(c["cause"], c["repeat"]) for c in causes], [("repeated_call", "edit"), ("file_churn", None)])
+        text = json.dumps(churn)
+        for leaked in ("Button.tsx", "/repo", "Edit", "pytest"):
+            self.assertNotIn(leaked, text)
+
+    def test_every_fixture_summary_is_explain_over_the_same_report(self):
+        for s in burn_fixture.scenarios():
+            rep = s.report()
+            self.assertTrue(burn.explain(rep), s.name)
+            for line in burn.explain(rep):
+                self.assertFalse(has_dash(line), line)
 
 
 def _shell(text: str, tid: str = "s", path=None, added=None) -> Ev:

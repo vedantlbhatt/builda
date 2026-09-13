@@ -287,6 +287,9 @@ def test_the_corpus_metrics_are_computed_from_the_sessions_not_from_any_analysis
         "total_hours": 4.0,
         "total_prompts": 40,
         "total_lines_added": 800,
+        # 10 a session, from the stored `lines_removed_agent` (5.2): summed like the added
+        # lines, so the money view can put red beside green.
+        "total_lines_removed": 40,
         "total_commits": 8,
         "commit_basis": "git_log_window",
         "total_tool_calls": 400,
@@ -404,3 +407,147 @@ def test_another_users_sessions_never_enter_the_corpus(client, created_users):
     a = client.get("/v1/profile/builder", headers=headers_a).json()["corpus"]
     assert a["totals"]["total_sessions"] == 0
     assert a["archetype"]["name"] is None
+
+
+# ------------------------------------------------------------ spend from the stored buckets
+#: Big enough that a rounding to cents cannot hide a missing bucket: 1.2M input, 300k
+#: output, 40M cache reads and 1M of cache writes split across the two TTLs.
+BUCKETS = {
+    "input": 1_200_000,
+    "output": 300_000,
+    "cache_read": 40_000_000,
+    "cache_w5m": 900_000,
+    "cache_w1h": 100_000,
+}
+
+
+def _priced(days_ago: int, **overrides) -> dict:
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(days=days_ago)
+    return _payload(
+        **{"started_at": started, "ended_at": started + timedelta(hours=1), "tokens": BUCKETS}
+        | overrides
+    )
+
+
+def test_spend_is_priced_from_the_stored_token_buckets(client, paired):
+    """docs/overnight-integration.md 5.2. The server passed the output split and no
+    buckets, so pricing skipped every session and `spend_usd` said "no session reported
+    token counts" about sessions that all had. Two sessions, one model, and the dollars
+    worked out here by hand from the price table's own rates."""
+    from builder.builder_profile import _profile_module
+
+    pricing = _profile_module().pricing
+    uid, headers = paired
+    _upload(client, headers, _priced(3), _priced(2))
+
+    m = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["metrics"]
+    p = pricing.PRICES["claude-opus-5"]  # the sample payload's claude-opus-5[1m]
+    one = (
+        BUCKETS["input"] * p.input
+        + BUCKETS["output"] * p.output
+        + BUCKETS["cache_read"] * p.cache_read
+        + BUCKETS["cache_w5m"] * p.cache_write_5m
+        + BUCKETS["cache_w1h"] * p.cache_write_1h
+    ) / 1_000_000
+    spend = m["spend_usd"]
+    assert spend["value"] == round(2 * one, 2), spend
+    assert spend["n"] == 2 and spend["reason"] is None
+    assert spend["basis"] in (pricing.BASIS_LIST_PRICE, "stale_prices")
+    assert spend["prices_read_on"] == str(pricing.PRICES_READ_ON)
+    assert m["spend_per_hour_usd"]["value"] == round(2 * one / 2, 2)
+
+
+def test_a_corpus_with_no_token_buckets_refuses_as_not_reported(client, paired):
+    """Absent is not zero: sessions whose harness reported no counts are refused by basis,
+    never priced at $0."""
+    uid, headers = paired
+    _upload(
+        client,
+        headers,
+        *[_priced(d, tokens_reported=False, tokens=None) for d in (3, 2, 1)],
+    )
+    spend = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["metrics"][
+        "spend_usd"
+    ]
+    assert spend["value"] is None
+    assert spend["basis"] == "tokens_not_reported"
+    assert spend["reason"]
+
+
+def test_model_costs_carry_the_price_table_key(client, paired):
+    """The report's `by_model` names a model by its price table key (`priced_model`); the
+    server's rows carry the same key beside the display name, from the same function."""
+    from builder.builder_profile import _profile_module
+
+    pricing = _profile_module().pricing
+    uid, headers = paired
+    _upload(client, headers, _priced(3), _priced(2))
+    rows = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["model_costs"]
+    assert [r["model_id"] for r in rows] == ["claude-opus-5"]
+    assert rows[0]["model_id"] in pricing.PRICES
+    assert rows[0]["model"] == pricing.family("claude-opus-5")
+    assert rows[0]["sessions"] == 2
+
+
+def test_window_days_is_the_query_the_phone_sends(client, paired):
+    """docs/overnight-integration.md 5.3: the phone sent `?days=119`, which this route does
+    not read, so it always got 90 and nothing said so. `window_days` is the name, it is
+    echoed back, and an unknown name changes nothing."""
+    uid, headers = paired
+    assert (
+        client.get("/v1/profile/builder?window_days=30", headers=headers).json()["window_days"]
+        == 30
+    )
+    assert client.get("/v1/profile/builder?days=30", headers=headers).json()["window_days"] == 90
+
+
+# ------------------------------------------------------------------------ quotes (0021)
+QUOTES_DOC = {
+    "quotes_version": 1,
+    "generated_at": "2026-09-13T08:00:00Z",
+    "quotes": [
+        {
+            "card": "go_to_prompt",
+            "text": "run the tests again",
+            "client_session_id": "a" * 64,
+            "sent_at": "2026-09-12T21:00:00Z",
+            "seconds_in": 640,
+            "tool_calls_after": None,
+            "corrected": None,
+        }
+    ],
+}
+
+
+def test_quotes_are_served_to_their_owner_only_while_the_switch_is_on(client, created_users):
+    """The second opt-in exception, read side. Null by default; a stored document shows
+    only while Quote my prompts is on (off deletes it, and the read checks the switch too);
+    and another person's profile never carries it. The document is seeded as the owner
+    because writing it is `PUT /v1/profile/quotes`'s job, not this route's."""
+    import json
+
+    from sqlalchemy import text
+    from test_sync import owner_engine
+
+    uid_a, headers_a = _pair(client, created_users)
+    uid_b, headers_b = _pair(client, created_users)
+    assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] is None
+
+    with owner_engine().begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO builder_quotes (user_id, quotes_version, generated_at, body) "
+                "VALUES (:u, 1, now(), CAST(:b AS jsonb))"
+            ),
+            {"u": uid_a, "b": json.dumps(QUOTES_DOC)},
+        )
+    assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] is None
+
+    with owner_engine().begin() as c:
+        c.execute(
+            text("INSERT INTO privacy_prefs (user_id, quotes) VALUES (:u, true)"), {"u": uid_a}
+        )
+    assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] == QUOTES_DOC
+    assert client.get("/v1/profile/builder", headers=headers_b).json()["quotes"] is None
+    # The profile tab's own request never carries them.
+    assert "run the tests again" not in client.get("/v1/profile", headers=headers_a).text

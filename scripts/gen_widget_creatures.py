@@ -234,8 +234,15 @@ def creatures() -> dict[str, list[str]]:
         frames = literal(ANIMALS_TS, ref.name)
         if not isinstance(frames, list) or not frames:
             raise ParseError(f"animals.ts: {ref.name} has no frames")
-        # The first frame is the base pose every loop starts from (animals.ts, rule 1).
-        out[animal] = frame(frames[0], f"animals.ts {ref.name}[0]", ANIMAL_GLYPHS)
+        # The first frame is the rest pose every loop starts from (animals.ts). A loop lists
+        # its frames by name (`[CRAB_REST, CRAB_BREATH, CRAB_REST, CRAB_SNIP]`), so follow
+        # the name to its own literal.
+        first = frames[0]
+        where = f"animals.ts {ref.name}[0]"
+        if isinstance(first, Ident):
+            where = f"animals.ts {first.name}"
+            first = literal(ANIMALS_TS, first.name)
+        out[animal] = frame(first, where, ANIMAL_GLYPHS)
 
     sprites = literal(SPRITES_TS, "SPRITES")
     for key, pick, name in (("idle", 0, "bit"), ("sleeping", -1, "bit-sleeping")):

@@ -7,6 +7,8 @@
     "  server/builder/contract.py            (Pydantic, extra='forbid')",
     "  mobile/src/generated/contract.ts",
     "  web/public/upload-fields.json         (publicly served; what the verification curl fetches)",
+    "  server/builder/quotes_spec.py         (v4: the quotes document, Pydantic, extra='forbid')",
+    "  mobile/src/generated/quotes.ts",
     "  PRIVACY.md                            (the prose claim, from the same source)",
     "",
     "THE STRUCTURAL GUARANTEE IS THE SERIALIZER, NOT THE TEST.",
@@ -56,9 +58,21 @@
     "  2. NO PROMPT OR FILE NAME LEAVES IN ANY MODE. Three designs built a server titling",
     "     endpoint carrying first_prompt/last_prompt/commit_messages/file_basenames. It is",
     "     deleted, not restricted — every harness already writes a title to disk. This is also",
-    "     what makes the falsification command on /privacy safe to publish."
+    "     what makes the falsification command on /privacy safe to publish.",
+    "",
+    "v4 (2026-09-13, docs/overnight-integration.md section 2). Everything below is ids, numbers, enums and clocks unless it says OPT-IN.",
+    "  * `tool_calls` names its allowlist as data (`values`), and the server rejects a key outside it: the doc always promised that",
+    "    unknown and MCP names bucket to mcp_other and other, and now the door keeps the promise.",
+    "  * `live`: what a RUNNING session is doing, shaped by spec/live.v1.json. Enums, integers, clocks and 16 hex salted file ids. No",
+    "    path, file name, command, prompt or sentence. Deleted when the session is final.",
+    "  * `live_names`: THE THIRD OPT-IN EXCEPTION. The basename of each file in the live map, off by default, sent only with",
+    "    `capture sync --live --live-names`, stored only while the account has File names on, shown only on the session screen.",
+    "  * `burn` and `title_ids`: where a sitting's tokens went, and its engineer voice title, as numbers and ids (`objects` below).",
+    "    The sentences are written on the phone; no word, path or command travels.",
+    "  * `quotes`: THE SECOND OPT-IN EXCEPTION, a document of its own with its own route, modelled on `analysis`: up to three prompts",
+    "    verbatim, for the Wrapped cards that quote you. Off unless the phone's setting AND the machine's --quotes flag both say yes."
   ],
-  "version": 3,
+  "version": 4,
   "modes": [
     "public",
     "anonymous"
@@ -309,7 +323,7 @@
         "public",
         "anonymous"
       ],
-      "doc": "[{ms, k}] where k is prompt|commit|compact"
+      "doc": "[{ms, k}] where k is prompt, commit or compact"
     },
     {
       "name": "timeline_fidelity",
@@ -352,7 +366,15 @@
         "public",
         "anonymous"
       ],
-      "doc": "allowlisted tool names only; unknown and MCP names bucket to mcp_other / other"
+      "doc": "allowlisted tool names only; unknown and MCP names bucket to mcp_other / other",
+      "values": [
+        "Read",
+        "Edit",
+        "Write",
+        "Bash",
+        "mcp_other",
+        "other"
+      ]
     },
     {
       "name": "files_touched",
@@ -418,7 +440,7 @@
         "public",
         "anonymous"
       ],
-      "doc": "count of edited_text_file / humanChanges signals. Existence only — these carry no line counts"
+      "doc": "count of edited_text_file / humanChanges signals. Existence only: these carry no line counts"
     },
     {
       "name": "agent_line_bucket",
@@ -458,7 +480,7 @@
         "public",
         "anonymous"
       ],
-      "doc": "false for EVERY Cursor session, forever — Cursor never writes token counts locally"
+      "doc": "false for EVERY Cursor session, forever: Cursor never writes token counts locally"
     },
     {
       "name": "tokens",
@@ -504,7 +526,7 @@
         "parent_aggregated",
         "mixed"
       ],
-      "doc": "'flat' is NOT a legal value — it would let the ~3x subagent glob overcount in wearing a legitimate label"
+      "doc": "'flat' is NOT a legal value: it would let the ~3x subagent glob overcount in wearing a legitimate label"
     },
     {
       "name": "token_coverage",
@@ -526,7 +548,7 @@
         "public",
         "anonymous"
       ],
-      "doc": "[{model_id, output_token_share}] — labels only. The [1m] suffix is preserved verbatim"
+      "doc": "[{model_id, output_token_share}], labels only. The [1m] suffix is preserved verbatim"
     },
     {
       "name": "model_state",
@@ -630,12 +652,373 @@
         "public",
         "anonymous"
       ],
-      "doc": "what this one sitting cost that you would not have chosen: [{id, seconds, count}] where id is one of three fixed notes. Numbers only — no command, no file name, no prose. Computed on the machine (analysis/feedback.py); the sentence is rendered on the phone. Null, never [], when the sitting had nothing worth saying",
+      "doc": "what this one sitting cost that you would not have chosen: [{id, seconds, count}] where id is one of three fixed notes. Numbers only: no command, no file name, no prose. Computed on the machine (analysis/feedback.py); the sentence is rendered on the phone. Null, never [], when the sitting had nothing worth saying",
       "values": [
         "went_nowhere",
         "failed_in_a_row",
         "one_file_over_and_over"
       ]
+    },
+    {
+      "name": "live",
+      "type": "live",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "what a RUNNING session is doing now (spec/live.v1.json): enums, integers, clocks and 16 hex salted file ids. No path, file name, command, prompt or sentence. Only on state=live payloads; deleted when the session is final."
+    },
+    {
+      "name": "live_names",
+      "type": "live_names",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "OPT-IN, OFF BY DEFAULT: the basename of each file in live.map, keyed by its id. Sent only with `capture sync --live --live-names` and stored only while the account has File names on. Owner only; shown on the session screen, never on the Lock Screen, the widget, a push or a share."
+    },
+    {
+      "name": "burn",
+      "type": "object",
+      "item": "SessionBurn",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "where this sitting's tokens went and whether anything came of it (analysis/burn.py over the session window): counts, shares, enums and at most three costly stretches. No prompt, path, command, file name or tool name. Computed on the machine or by the hook channel; the phone writes every sentence. Null when the producer does not compute it; a refusal is burn.reason, never a zero."
+    },
+    {
+      "name": "title_ids",
+      "type": "object",
+      "item": "SessionTitleIds",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. Null when no title rule fired, or the producer does not compute it."
     }
-  ]
+  ],
+  "_objects_note": [
+    "The shapes of the two structured session fields added in v4, `burn` and `title_ids`, in the notation of spec/*.json",
+    "(scripts/gen_analysis.py's emitters read it). Numbers, bools and enums only: server/tests/test_contract.py fails on any",
+    "string field here. Every enum copies a Python table and is pinned to it both ways by that test: burn_cause to",
+    "analysis/burn.py _CAUSE_SENTENCES and the causes Segment detects, burn_repeat to burn._REPEAT_SENTENCES, title_verb and",
+    "title_object to analysis/vocab.py VERBS and OBJECTS; burn_refusal equals spec/report.v1.json's burn_refusal, one list of codes",
+    "for one module's refusals. A double is a 0 to 1 share. The sentences are written on the phone from these (burn.explain is the",
+    "reference; spec/fixtures/burn/session.json pins the port), so nothing here carries a word."
+  ],
+  "enums": {
+    "burn_cause": [
+      "context_replay",
+      "subagent_fanout",
+      "error_loop",
+      "repeated_call",
+      "file_churn",
+      "compaction",
+      "investigated"
+    ],
+    "burn_refusal": [
+      "no_token_counts",
+      "below_session_floor",
+      "nothing_inside_segments",
+      "not_segmented"
+    ],
+    "burn_repeat": [
+      "shell",
+      "edit",
+      "read",
+      "other"
+    ],
+    "title_verb": [
+      "debugged",
+      "wired",
+      "refactored",
+      "shipped",
+      "committed",
+      "tested",
+      "built",
+      "explored",
+      "worked_through",
+      "edited",
+      "looked_around"
+    ],
+    "title_object": [
+      "test",
+      "source",
+      "config",
+      "docs",
+      "migration",
+      "style",
+      "build",
+      "dependency",
+      "unknown",
+      "test_suite",
+      "commit",
+      "failure",
+      "codebase"
+    ]
+  },
+  "objects": {
+    "SessionBurnCause": [
+      {
+        "name": "cause",
+        "type": "enum",
+        "values": "burn_cause"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "doc": "the count behind the cause: helpers dispatched, failing results, copies of one call, rewrites of one file, cache read tokens for context_replay, compactions, reads"
+      },
+      {
+        "name": "tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "the tokens this cause can claim out of the segment (burn.Segment.attribution). Claims overlap, so they never sum. Null when the segment carries no token counts"
+      },
+      {
+        "name": "repeat",
+        "type": "enum",
+        "values": "burn_repeat",
+        "nullable": true,
+        "doc": "repeated_call only: what repeated (burn._repeat_kind), so the phrase says a command only when one was. Null for every other cause"
+      }
+    ],
+    "SessionBurnSpike": [
+      {
+        "name": "tokens",
+        "type": "int",
+        "doc": "tokens in this segment"
+      },
+      {
+        "name": "multiple",
+        "type": "number",
+        "doc": "its tokens over the session's median segment, 1 dp"
+      },
+      {
+        "name": "barren",
+        "type": "bool",
+        "doc": "it spent tokens and provably changed nothing (burn.Segment.barren)"
+      },
+      {
+        "name": "lines_added",
+        "type": "int"
+      },
+      {
+        "name": "lines_removed",
+        "type": "int"
+      },
+      {
+        "name": "seconds",
+        "type": "int",
+        "doc": "from its prompt to its last event"
+      },
+      {
+        "name": "causes",
+        "type": "list",
+        "item": "SessionBurnCause",
+        "max_items": 3,
+        "doc": "why it cost what it did: the causes claiming the most tokens, most first, ties in burn's order, so causes[0] is burn's dominant cause whenever one claims a token. [] when no cause was detected"
+      },
+      {
+        "name": "files_changed",
+        "type": "int",
+        "nullable": true,
+        "doc": "files it changed, less the calls an error answered (burn.Segment.files_touched); the stretch's verdict reads it"
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "nullable": true,
+        "doc": "commit calls in it no error answered (burn.Segment.commits)"
+      },
+      {
+        "name": "unreadable",
+        "type": "bool",
+        "nullable": true,
+        "doc": "no visible work, but it ran something that could have changed a file the transcript does not show (burn.Segment.unreadable), so its verdict says it cannot be read rather than that nothing was written"
+      }
+    ],
+    "SessionBurn": [
+      {
+        "name": "tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "tokens inside this session's segments over its window, every assistant message counted once (burn.segments over burn.turns_for_window, deduplicated on message id). Null when refused, never 0 standing in for not counted"
+      },
+      {
+        "name": "cache_read_share",
+        "type": "double",
+        "nullable": true,
+        "doc": "share of tokens served from cache, the conversation re-reading itself. Not rounded: the phone rounds once, as burn._unrounded does. Null exactly when tokens is"
+      },
+      {
+        "name": "barren_share",
+        "type": "double",
+        "nullable": true,
+        "doc": "share of tokens spent in segments that provably changed nothing (burn.Segment.barren). Not rounded. Null exactly when tokens is"
+      },
+      {
+        "name": "unreadable_share",
+        "type": "double",
+        "nullable": true,
+        "doc": "share of tokens spent in segments with no visible work whose scripts, builds or helper agents could have changed files the transcript does not show (burn.Segment.unreadable): neither barren nor productive. Not rounded. Null exactly when tokens is"
+      },
+      {
+        "name": "segments",
+        "type": "int",
+        "doc": "segments the window was cut into, one human prompt to the next (burn.segments); 0 only with reason not_segmented"
+      },
+      {
+        "name": "lines_added",
+        "type": "int",
+        "nullable": true,
+        "doc": "lines added across the segments (burn.Segment.lines_added: edit tools plus credited shell writes), the count the summary's first sentence reads. Null when the window held no events"
+      },
+      {
+        "name": "lines_removed",
+        "type": "int",
+        "nullable": true,
+        "doc": "lines removed across the segments (burn.Segment.lines_removed). Null when the window held no events"
+      },
+      {
+        "name": "files_changed",
+        "type": "int",
+        "nullable": true,
+        "doc": "distinct files a call changed and no error answered, over the window (burn's rule, the one live's files_changed reads). Not files_touched, which counts every file named. Null when the window held no events"
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "nullable": true,
+        "doc": "commit calls no error answered, summed over the segments (burn.Segment.commits). Not commit_count, which is git log. Null when the window held no events"
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "burn_refusal",
+        "nullable": true,
+        "doc": "why tokens and the shares are null: no_token_counts (the transcript records no usage), not_segmented (no events to cut into segments), nothing_inside_segments (usage recorded, but no token fell inside a segment). below_session_floor is the corpus block's and never appears on a session. Null when answered"
+      },
+      {
+        "name": "spikes",
+        "type": "list",
+        "item": "SessionBurnSpike",
+        "max_items": 3,
+        "nullable": true,
+        "doc": "the costliest segments that cost at least burn.SPIKE_MULTIPLE times the median segment, most expensive first. Null when no spike can be named: reason is set, or segments is under spikes_needed, where a median would be an accident. [] only when enough segments were measured and none cleared the bar"
+      },
+      {
+        "name": "spikes_needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "burn.MIN_SEGMENTS_FOR_SPIKES, the segments a median needs before any segment is called a spike, so the phone can say why spikes is null"
+      }
+    ],
+    "SessionTitleIds": [
+      {
+        "name": "verb",
+        "type": "enum",
+        "values": "title_verb",
+        "doc": "the first title rule the session satisfied (vocab.VERBS, in the order they are tried)"
+      },
+      {
+        "name": "object",
+        "type": "enum",
+        "values": "title_object",
+        "doc": "what the title is about: a file role, or test_suite, commit, failure, codebase (vocab.OBJECTS)"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "nullable": true,
+        "doc": "the number the title says (vocab session_title count): files of that role, migrations, commits, recoveries, or failures in a row. Null only for looked_around"
+      },
+      {
+        "name": "modules",
+        "type": "int",
+        "nullable": true,
+        "doc": "distinct directories the project files were written in, the refactor title's second number (vocab session_title modules). Null when no project file was written"
+      }
+    ]
+  },
+  "quotes": {
+    "doc": [
+      "THE SECOND OPT-IN EXCEPTION (v4). Up to three prompts, verbatim, for the Wrapped cards that quote you. Off until BOTH Settings on the phone",
+      "and --quotes on the machine say yes. Masked, identifier filtered twice. Owner only; never in a post, feed, share, push or activity. Off deletes."
+    ],
+    "route": "PUT /v1/profile/quotes",
+    "default": "off",
+    "max_lengths": {
+      "quote": 160
+    },
+    "enums": {
+      "quote_card": [
+        "go_to_prompt",
+        "crash_out",
+        "cryptic_prompt"
+      ]
+    },
+    "objects": {
+      "QuoteWire": [
+        {
+          "name": "card",
+          "type": "enum",
+          "values": "quote_card"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "max": "quote",
+          "doc": "wrapped._quote: whitespace collapsed, cut at the last space inside 160"
+        },
+        {
+          "name": "client_session_id",
+          "type": "sha256hex",
+          "doc": "the session it was sent in, already on the server"
+        },
+        {
+          "name": "sent_at",
+          "type": "datetime"
+        },
+        {
+          "name": "seconds_in",
+          "type": "int",
+          "doc": "from that session's start to this prompt (the crash out sentence)"
+        },
+        {
+          "name": "tool_calls_after",
+          "type": "int",
+          "nullable": true,
+          "doc": "cryptic_prompt only"
+        },
+        {
+          "name": "corrected",
+          "type": "bool",
+          "nullable": true,
+          "doc": "cryptic_prompt only"
+        }
+      ]
+    },
+    "fields": [
+      {
+        "name": "quotes_version",
+        "type": "int"
+      },
+      {
+        "name": "generated_at",
+        "type": "datetime"
+      },
+      {
+        "name": "quotes",
+        "type": "list",
+        "item": "QuoteWire",
+        "max_items": 3
+      }
+    ]
+  }
 }

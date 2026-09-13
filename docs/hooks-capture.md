@@ -60,7 +60,44 @@ from there. The script always exits 0: an upload failure can never block Claude 
 
 A session whose process was killed with no `SessionEnd` still finishes: the next hook from
 any of your sessions re-cuts transcripts whose newest chunk is older than 30 minutes, and
-the idle rule makes them final.
+the idle rule makes them final. Only transcripts that still hold bytes are re-cut, five
+at a time, oldest first; a retired conversation's offset marker is never one of the five.
+
+An **empty body** at the current offset is a heartbeat (`python -m capture live` sends one
+after 30 seconds with no new bytes). Nothing is appended and nothing is replaced, the
+marker of a retired conversation included; the transcript is cut again at the server's
+clock, so a live session's "idle for N minutes" and "waiting on you" keep moving, and a
+session that has gone quiet past the idle threshold finalises without another prompt.
+`next_offset` is always the FILE's offset: after a conversation is retired and the person
+comes back to it, the held bytes begin where the retired ones ended, not at 0.
+
+## What a running session looks like (contract v4 `live`)
+
+For every session a cut leaves **live**, the server also computes its live state with
+`analysis.live.session_state`, the same function `capture sync --live` runs on a machine
+without hooks, from the same bytes: what it is doing now, whether it is converging,
+circling or lost, the ETA against your own finished sessions on the same repository
+(keyed by `repo_hash`; a hook whose `cwd` does not exist on the server refuses it as
+`repo_unresolved` rather than guessing), the decisions that are hard to undo, how much it
+needs you, and a map of the files it touched as salted 16 hex ids. The document is
+`spec/live.v1.json`, checked by the same door as a machine's upload, and stored in
+`session_live` (owner only) until the same session arrives final, when the row is deleted.
+The salt lives in `privacy_prefs.map_salt`, one per account, and no route returns it.
+
+The response carries one line per live session for the uploader's terminal:
+`"live": [{"client_session_id", "sentence", "needs_you": {"score", "reason"}}]`, where
+`sentence` is the names-free sentence. The phone reads the state from
+`GET /v1/sessions/live` (slim: no time lapse, only the map rows the sentence names) and
+`GET /v1/sessions/{id}` (whole).
+
+File NAMES are the third opt-in exception (`live_names`): computed on this channel only
+while the account has File names on (`privacy_prefs.live_names`), stored beside the state,
+shown only on the session screen, and never on the live list, a push, the widget or a
+share. Turning the switch off deletes every stored name in the same transaction.
+
+Every payload the hook channel builds also carries what `build_payload` computes for any
+channel: `feedback`, and contract v4's `burn` (where the sitting's tokens went) and
+`title_ids` (its engineer voice title as ids). Neither holds a word, a path or a command.
 
 ## Server side
 
@@ -88,7 +125,9 @@ not the contract's summary fields. `privacy/upload-contract.json` still describe
 installing it. The server keeps only what the contract describes plus the analysis
 digest, and deletes the raw bytes as soon as the session is final (a zero-length marker
 keeps the byte offset so a later tail still lands), or after 7 days for a session that
-never finalises. `DELETE /v1/ingest/transcript/<id>` drops them now. Revoke the key in
+never finalises. The live state it computes while a session runs is ids, counts, enums
+and clocks, the same fields a machine may upload; no path, file name, command or prompt
+is in it unless you turned File names on, and then only basenames. `DELETE /v1/ingest/transcript/<id>` drops them now. Revoke the key in
 Settings and the channel is closed the same second.
 
 Not yet: server-side analysis. The Claude-powered analysis runs `claude -p` on the

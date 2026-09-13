@@ -1137,9 +1137,12 @@ def segments(events: Sequence[digest.Ev], turns: Sequence[Turn]) -> list[Segment
 
 
 def session_burn_detail(events: Sequence[digest.Ev], turns: Sequence[Turn]) -> dict | None:
-    """`{tokens, barren, unreadable}` for one session: tokens inside segments, the part in
-    barren segments, and the part in unreadable ones (`Segment.unreadable`), which is
-    neither barren nor productive.
+    """`{tokens, barren, unreadable, causes}` for one session: tokens inside segments, the
+    part in barren segments, the part in unreadable ones (`Segment.unreadable`), which is
+    neither barren nor productive, and `causes`, `{cause: (tokens, segments)}` summed from
+    `Segment.attribution` over the BARREN segments only: what each cause can claim of the
+    tokens that changed nothing, and in how many of those segments it appeared. Claims
+    overlap (rule 4), so the causes' tokens never sum to `barren`, and each is at most it.
 
     None unless the turns carry usage (`records_usage`): a session whose harness wrote no
     counts has no share to contribute, and zeros would pull a corpus share toward zero.
@@ -1150,10 +1153,18 @@ def session_burn_detail(events: Sequence[digest.Ev], turns: Sequence[Turn]) -> d
     if not events or not records_usage(turns):
         return None
     segs = segments(events, turns)
+    causes: dict[str, tuple[int, int]] = {}
+    for s in segs:
+        if not s.barren:
+            continue
+        for cause, claimed in s.attribution().items():
+            tokens, n = causes.get(cause, (0, 0))
+            causes[cause] = (tokens + claimed, n + 1)
     return {
         "tokens": sum(s.tokens for s in segs),
         "barren": sum(s.tokens for s in segs if s.barren),
         "unreadable": sum(s.tokens for s in segs if s.unreadable),
+        "causes": causes,
     }
 
 
@@ -1210,6 +1221,22 @@ def burn_report(
         for t in load_turns(path)
         if (start is None or t.ts >= start) and (end is None or t.ts <= end)
     ]
+    return session_report(events, turns, harness=harness, spike_multiple=spike_multiple)
+
+
+def session_report(
+    events: Sequence[digest.Ev],
+    turns: Sequence[Turn],
+    *,
+    harness: str,
+    spike_multiple: float = SPIKE_MULTIPLE,
+) -> dict:
+    """`burn_report` over events and turns already in hand: one sitting of a pooled corpus,
+    whose records came from several files (`turns_for_window` over every one of them), or
+    the hook channel's in memory cut. The same report, so `explain` and `session_wire` read
+    one shape whichever way the session was loaded. `harness` is what wrote the session
+    (`digest.detect_harness`, or the capture pool's): it decides which refusal is true.
+    """
     has_usage = bool(events) and records_usage(turns)
     segs = segments(events, turns) if events else []
     missing: list[str] = []
@@ -1365,6 +1392,123 @@ def burn_report(
         "barren": barren,
         "segments": [_segment_row(s, median_cost, has_usage) for s in segs],
         "median_segment_tokens": median_cost if has_usage else None,
+    }
+
+
+# --------------------------------------------------------------------------
+# the wire: one session's burn as numbers and enums
+# --------------------------------------------------------------------------
+
+#: Why a session's burn is refused, as the code the upload carries
+#: (privacy/upload-contract.json `burn.reason`, the `burn_refusal` enum). Three facts, three
+#: codes: nothing to cut segments at (no events); a transcript that records no usage (a
+#: harness this module does not read yet is the same code, and the phone names the tool
+#: from the session's `harness`, as `explain` does); usage recorded, and none of it inside
+#: a segment. The fourth value of the enum, `below_session_floor`, is the corpus block's
+#: (`profile.BARREN_CODES`) and never a session's. Pinned to the spec enum by
+#: `analysis/tests/test_report_blocks.py`.
+REFUSE_NOT_SEGMENTED = "not_segmented"
+REFUSE_NO_COUNTS = "no_token_counts"
+REFUSE_NOTHING_INSIDE = "nothing_inside_segments"
+SESSION_REFUSALS: tuple[str, ...] = (REFUSE_NO_COUNTS, REFUSE_NOTHING_INSIDE, REFUSE_NOT_SEGMENTED)
+
+#: At most this many costly stretches and this many causes a stretch travel on the wire
+#: (the contract's `max_items`): the summary names one stretch and one cause, and the
+#: session screen lists a few. Pinned to the contract by the test that pins the enums.
+WIRE_MAX_SPIKES = 3
+WIRE_MAX_CAUSES = 3
+
+
+def session_refusal(report: Mapping) -> str | None:
+    """The code for why `report` (`session_report`, `burn_report`) has no tokens, or None."""
+    if not report["sample"]["events"]:
+        return REFUSE_NOT_SEGMENTED
+    if not report["harness_records_usage"]:
+        return REFUSE_NO_COUNTS
+    if not report["totals"]["tokens"]["value"]:
+        return REFUSE_NOTHING_INSIDE
+    return None
+
+
+def _share_of(tokens: int | None, total: int) -> float | None:
+    """A share left UNROUNDED, so whoever says it rounds once (`_unrounded`)."""
+    return tokens / total if isinstance(tokens, int) and total else None
+
+
+def _wire_cause(c: Mapping) -> dict:
+    return {
+        "cause": c["cause"],
+        "n": int(c["n"]),
+        "tokens": c.get("tokens"),
+        # Only a repeat is said by what repeated: "the same command" is true of a shell
+        # call alone (`_repeat_kind`, `_REPEAT_SENTENCES`).
+        "repeat": _repeat_kind(c.get("tool")) if c["cause"] == "repeated_call" else None,
+    }
+
+
+def _wire_causes(causes: Sequence[Mapping]) -> list[dict]:
+    """The causes claiming the most tokens, most first, ties in burn's own order (a stable
+    sort), so `[0]` is `_dominant` whenever any cause claims a token."""
+    ranked = sorted(causes, key=lambda c: -(c.get("tokens") or 0))
+    return [_wire_cause(c) for c in ranked[:WIRE_MAX_CAUSES]]
+
+
+def session_wire(report: Mapping) -> dict:
+    """One session's burn as the upload carries it (privacy/upload-contract.json `burn`,
+    `SessionBurn`): counts, shares, enums and at most three costly stretches. No prompt, no
+    path, no command, no file name and no tool name: the phone writes every sentence, and
+    `spec/fixtures/burn/session.json` pins its sentences to `explain` over the same report.
+
+    Absent is null, never 0 (CLAUDE.md): the token fields and the shares are null exactly
+    when `reason` is set; the work counts are null only when the window held no events;
+    `spikes` is null when no stretch can be named (a refusal, or fewer than
+    `MIN_SEGMENTS_FOR_SPIKES` segments, where a median would be an accident) and `[]` only
+    when enough segments were measured and none cleared the bar.
+    """
+    reason = session_refusal(report)
+    t = report["totals"]
+    total = t["tokens"]["value"] if reason is None else None
+    segs = report.get("segments") or []
+    has_events = bool(report["sample"]["events"])
+    enough = report["sample"]["segments"] >= MIN_SEGMENTS_FOR_SPIKES
+    spikes = None
+    if reason is None and enough:
+        spikes = [
+            {
+                "tokens": row["tokens"],
+                "multiple": row["multiple_of_median"],
+                "barren": row["barren"],
+                "lines_added": row["lines_added"],
+                "lines_removed": row["lines_removed"],
+                "seconds": int(row["seconds"] or 0),
+                "causes": _wire_causes(row["causes"]),
+                "files_changed": row["files_touched"],
+                "commits": row["commits"],
+                "unreadable": row["unreadable"],
+            }
+            for row in (report.get("spikes") or [])[:WIRE_MAX_SPIKES]
+        ]
+    return {
+        "tokens": total,
+        "cache_read_share": _share_of(t["cache_read_share"].get("cache_read_tokens"), total)
+        if total
+        else None,
+        "barren_share": _share_of(t["barren_token_share"].get("barren_tokens"), total)
+        if total
+        else None,
+        "unreadable_share": _share_of(
+            (t.get("unreadable_token_share") or {}).get("unreadable_tokens"), total
+        )
+        if total
+        else None,
+        "segments": report["sample"]["segments"],
+        "lines_added": t["lines_added"]["value"] if has_events else None,
+        "lines_removed": t["lines_removed"]["value"] if has_events else None,
+        "files_changed": t["files_touched"]["value"] if has_events else None,
+        "commits": sum(r.get("commits") or 0 for r in segs) if has_events else None,
+        "reason": reason,
+        "spikes": spikes,
+        "spikes_needed": MIN_SEGMENTS_FOR_SPIKES,
     }
 
 

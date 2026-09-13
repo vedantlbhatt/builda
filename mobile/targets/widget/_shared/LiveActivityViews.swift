@@ -185,8 +185,8 @@ struct CaptionLine: View {
   }
 }
 
-/// "+420 −88 · 3 commits · 12 files changed": green added, red removed (the only colours
-/// besides amber), each part only when MORE THAN NONE. The first build drew "+0 −0 · 0
+/// "+420 -88 · 3 commits · 12 files changed": green added, red removed (the only colours
+/// besides amber), each part only when MORE THAN NONE. The first build drew "+0 -0 · 0
 /// commits" in green and red for a session that wrote nothing (it tested nil, and 0 is not
 /// nil). Nothing landed, and counted as nothing, is one quiet line; unknown counts are none.
 @available(iOS 17.0, *)

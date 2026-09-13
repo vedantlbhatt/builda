@@ -32,6 +32,10 @@ import uuid
 from analysis import burn, digest, live, plain
 from analysis.digest import Ev
 from analysis.profile import SessionFact
+from capture.tests import spec_walk
+
+LIVE_SPEC = json.loads((spec_walk.ROOT / "spec" / "live.v1.json").read_text())
+HEX = __import__("re").compile(r"^[0-9a-f]{16}$")
 
 #: 2026-09-01 09:00:00 UTC. Every offset below is seconds from it.
 T0 = dt.datetime(2026, 9, 1, 9, 0, tzinfo=dt.UTC).timestamp()
@@ -151,7 +155,7 @@ def run(sess: Sess, now: float, history=(), *, until: float | None = None, **kw)
     kw.setdefault("active_seconds", 600.0)
     kw.setdefault("session_id", "sess-1")
     events = sess.events(until=now if until is None else until)
-    return live.live_state(events, [], T0 + now, list(history), **kw)
+    return live.live_state(events, [], T0 + now, None if history is None else list(history), **kw)
 
 
 # ------------------------------------------------------------------------------ scenarios
@@ -322,6 +326,7 @@ def scenario_states(names: bool = False) -> dict[str, dict]:
 class Shape(unittest.TestCase):
     KEYS = {
         "session_id",
+        "computed_at",
         "activity",
         "sentence",
         "verdict",
@@ -973,8 +978,11 @@ class Eta(unittest.TestCase):
                 "p75_s": 585,
                 "remaining_s": 300,
                 "n": 10,
+                "needed": live.ETA_MIN_SESSIONS,
+                "unattended": False,
                 "basis": live.ETA_BASIS,
                 "reason": None,
+                "code": None,
             },
         )
 
@@ -1350,7 +1358,9 @@ class Map(unittest.TestCase):
             },
         )
         readme = rows[fid("README.md")]
-        self.assertEqual((readme["depth"], readme["dir_id"], readme["role"]), (0, fid(""), "docs"))
+        # At the base the directory has no id: spec/live.v1.json says null, and a hash of
+        # the empty string would be an id naming no directory.
+        self.assertEqual((readme["depth"], readme["dir_id"], readme["role"]), (0, None, "docs"))
         self.assertEqual(len(rows), 3)
 
     def test_timelapse_by_hand(self):
@@ -1438,12 +1448,221 @@ class Wire(unittest.TestCase):
 
     def test_wire_drops_names_sentence_and_detail_and_keeps_the_rest(self):
         st = run(self.session(), 55, names=True)
+        before = json.dumps(st, sort_keys=True)
         w = live.wire(st)
-        self.assertEqual(set(w), set(st) - {"names", "sentence"})
+        self.assertEqual(
+            set(w), (set(st) - {"names", "sentence", "session_id"}) | {"live_version"}
+        )
         self.assertTrue(all("detail" not in d for d in w["decisions"]))
-        self.assertEqual(w["verdict"], st["verdict"])
+        self.assertEqual(w["verdict"]["evidence"], st["verdict"]["evidence"])
         self.assertEqual(live.sentence(w), live.sentence(st))  # the phone can render it
         self.assertIn("detail", st["decisions"][0])  # wire never mutates the local state
+        self.assertEqual(json.dumps(st, sort_keys=True), before)
+
+    # -- the spec shape (docs/overnight-integration.md 2.6, spec/live.v1.json) ------------
+
+    def spec_errors(self, doc: dict, fields=None) -> list[str]:
+        return spec_walk.errors(
+            doc,
+            LIVE_SPEC["fields"] if fields is None else fields,
+            objects=LIVE_SPEC["objects"],
+            enums=LIVE_SPEC["enums"],
+            max_lengths=LIVE_SPEC["max_lengths"],
+        )
+
+    def every_state(self) -> dict[str, dict]:
+        """Every scenario, the named variant, a session with no events, and one with
+        no history, so each refusal and each answered branch reaches the walker."""
+        out = {n: st for n, st in scenario_states().items()}
+        out |= {f"{n}+names": st for n, st in scenario_states(names=True).items()}
+        out["no_events"] = live.live_state([], [], T0, [], salt=SALT, repo=REPO, active_seconds=0.0)
+        s, now = converging()
+        out["no_history"] = run(s, now, None)
+        out["eta_answered"] = run(s, now, [fact(i, 60.0 * (i + 1)) for i in range(12)], active_seconds=150.0)
+        return out
+
+    def test_wire_keys_are_the_spec_keys_at_every_level(self):
+        for name, st in self.every_state().items():
+            w = live.wire(st)
+            self.assertEqual(self.spec_errors(w), [], name)
+            self.assertEqual(list(w), [f["name"] for f in LIVE_SPEC["fields"]], name)
+
+    def test_the_generated_door_accepts_every_wire_state(self):
+        """The server's own model (`server/builder/live_spec.py`, extra forbidden at every
+        level), where pydantic is installed. The walker above is the check CI runs."""
+        door = spec_walk.pydantic_door("live_spec")
+        if door is None:
+            self.skipTest("pydantic is not installed here; the stdlib walker covers the shape")
+        for name, st in self.every_state().items():
+            door.LiveState.model_validate(live.wire(st))
+            names = live.wire_names(st)
+            if names is not None:
+                door.LiveNames.model_validate(names)
+
+    def test_the_caps_and_tables_are_the_specs(self):
+        objs = {o: {f["name"]: f for f in fs} for o, fs in LIVE_SPEC["objects"].items()}
+        top = {f["name"]: f for f in LIVE_SPEC["fields"]}
+        self.assertEqual(live.LIVE_VERSION, LIVE_SPEC["version"])
+        self.assertEqual(live.MAX_MAP_FILES, objs["LiveMap"]["files"]["max_items"])
+        self.assertEqual(live.MAX_MAP_FILES, objs["LiveNames"]["files"]["max_items"])
+        self.assertEqual(live.MAX_NAME_CHARS, LIVE_SPEC["max_lengths"]["name"])
+        self.assertEqual(live.MAX_FRAMES, top["timelapse"]["max_items"])
+        self.assertEqual(live.MAX_DECISIONS, top["decisions"]["max_items"])
+        self.assertEqual(list(live.ETA_REFUSALS), LIVE_SPEC["enums"]["eta_refusal"])
+        self.assertEqual(list(live.VERDICT_REFUSALS), LIVE_SPEC["enums"]["verdict_refusal"])
+        self.assertEqual(list(live.EVIDENCE_KEYS), list(objs["LiveEvidence"]))
+        self.assertEqual([live.ETA_BASIS], LIVE_SPEC["enums"]["eta_basis"])
+
+    def test_wire_carries_no_path_basename_or_command(self):
+        st = run(self.session(), 55, names=True)
+        blob = json.dumps(live.wire(st))
+        for local in ("sentinel", "SENTINEL", "auth.py", "/repo", "src/", "npm", "install", SALT):
+            self.assertNotIn(local, blob)
+        # Every string on the wire is an enum value, a 16 hex id, or the ISO clock.
+        enum_values = {v for vs in LIVE_SPEC["enums"].values() for v in vs}
+
+        def strings(x):
+            if isinstance(x, dict):
+                for v in x.values():
+                    yield from strings(v)
+            elif isinstance(x, list):
+                for v in x:
+                    yield from strings(v)
+            elif isinstance(x, str):
+                yield x
+
+        w = live.wire(st)
+        for text in strings(w):
+            self.assertTrue(
+                text in enum_values or HEX.match(text) or text == w["computed_at"], text
+            )
+
+    def test_file_ids_are_16_hex(self):
+        for name, st in self.every_state().items():
+            w = live.wire(st)
+            ids = [w["activity"]["file_id"]] if w["activity"] else []
+            ids.append(w["verdict"]["file_id"])
+            for row in (w["map"] or {}).get("files", []):
+                ids += [row["id"], row["dir_id"]]
+            ids += [f["file_id"] for f in w["timelapse"] or []]
+            for i in ids:
+                self.assertTrue(i is None or HEX.match(i), (name, i))
+        # A file at the base has no directory id; one below it has one.
+        rows = {r["id"]: r for r in live.wire(run(Map().session(), 45))["map"]["files"]}
+        self.assertIsNone(rows[fid("README.md")]["dir_id"])
+        self.assertEqual(rows[fid("src/a.py")]["dir_id"], fid("src"))
+
+    def test_frames_are_objects_and_capped_at_600(self):
+        s = Sess()
+        for i in range(1200):
+            s.read(i, f"/repo/src/f{i}.py")
+        st = run(s, 1300)
+        w = live.wire(st)["timelapse"]
+        self.assertLessEqual(len(w), live.MAX_FRAMES)
+        self.assertEqual(w, [{"t": t, "file_id": f, "kind": k} for t, f, k in st["timelapse"]])
+        self.assertTrue(all(set(f) == {"t", "file_id", "kind"} for f in w))
+
+    def test_map_keeps_the_400_most_recent_and_counts_all(self):
+        s = Sess()
+        s.prompt(0)
+        for i in range(450):
+            s.read(1 + i, f"/repo/src/f{i:03d}.py")
+        st = run(s, 460, names=True)
+        self.assertEqual(len(st["map"]["files"]), 450)  # the local state keeps every row
+        m = live.wire(st)["map"]
+        self.assertEqual((len(m["files"]), m["files_total"]), (live.MAX_MAP_FILES, 450))
+        # f000 to f049 were read first: they are the fifty cut.
+        self.assertEqual(
+            [r["id"] for r in m["files"]], [fid(f"src/f{i:03d}.py") for i in range(50, 450)]
+        )
+        names = live.wire_names(st)["files"]
+        self.assertEqual([n["id"] for n in names], [r["id"] for r in m["files"]])
+        # Under the cap nothing is cut and the total is the row count.
+        small = live.wire(run(Map().session(), 45))["map"]
+        self.assertEqual((len(small["files"]), small["files_total"]), (3, 3))
+
+    def test_refusals_carry_codes_and_needed(self):
+        states = self.every_state()
+        self.assertEqual(live.wire(states["no_events"])["verdict"]["reason"], "no_events")
+        rule = next(st for st in states.values() if st["verdict"]["code"] == "no_rule_fired")
+        self.assertEqual(live.wire(rule)["verdict"]["reason"], "no_rule_fired")
+        # Every verdict has a code exactly when it has no state, and a prose reason beside it.
+        for name, st in states.items():
+            v = st["verdict"]
+            self.assertEqual(v["code"] is None, v["state"] is not None, name)
+            self.assertEqual(v["reason"] is None, v["code"] is None, name)
+        s, now = converging()
+        twelve = [fact(i, 60.0 * (i + 1)) for i in range(12)]
+        codes = {
+            "no_active_time": run(s, now, twelve, active_seconds=None),
+            "repo_unresolved": run(s, now, twelve, repo=None),
+            "no_history": run(s, now, None),
+            "too_few_sessions": run(s, now, twelve[:9], active_seconds=150.0),
+            "too_few_survivors": run(s, now, twelve, active_seconds=200.0),
+        }
+        self.assertEqual(list(codes), list(live.ETA_REFUSALS))
+        for code, st in codes.items():
+            eta = live.wire(st)["eta"]
+            self.assertEqual(eta["reason"], code)
+            self.assertEqual(eta["needed"], live.ETA_MIN_SESSIONS)
+            self.assertIs(eta["unattended"], False)
+            self.assertIsNone(eta["remaining_s"])
+            self.assertTrue(st["eta"]["reason"], "the prose reason stays in the local state")
+        answered = live.wire(states["eta_answered"])["eta"]
+        self.assertIsNone(answered["reason"])
+        self.assertEqual((answered["n"], answered["needed"]), (10, 10))
+        unattended = live.wire(run(s, now, twelve, unattended=True))["eta"]
+        self.assertIs(unattended["unattended"], True)
+
+    def test_eta_refuses_without_history_rather_than_counting_zero(self):
+        s, now = converging()
+        none = run(s, now, None)["eta"]
+        self.assertEqual((none["code"], none["n"]), ("no_history", None))
+        self.assertEqual(none["reason"], "no finished sessions were supplied to compare this one against")
+        # An EMPTY history is a measurement: zero sessions were found on this repository.
+        empty = run(s, now, [])["eta"]
+        self.assertEqual((empty["code"], empty["n"]), ("too_few_sessions", 0))
+
+    def test_repo_key_matches_history_by_key_not_by_path(self):
+        """The server keys stored sessions by `repo_hash`; the map's paths stay relative to
+        the checkout (`repo`). The ETA reads the key, the map reads the path."""
+        s, now = converging()
+        hashed = [fact(i, 60.0 * (i + 1), repo="a" * 64) for i in range(12)]
+        by_key = run(s, now, hashed, repo=REPO, repo_key="a" * 64, active_seconds=150.0)
+        self.assertEqual((by_key["eta"]["code"], by_key["eta"]["typical_s"]), (None, 450))
+        by_path = run(s, now, hashed, repo=REPO, active_seconds=150.0)
+        self.assertEqual((by_path["eta"]["code"], by_path["eta"]["n"]), ("too_few_sessions", 0))
+        # The map is placed under `repo` either way: the key never touches a path.
+        self.assertEqual(by_key["map"], by_path["map"])
+        # A key and no path still answers: the server that cannot resolve a cwd can match.
+        self.assertIsNone(run(s, now, hashed, repo=None, repo_key="a" * 64, active_seconds=150.0)["eta"]["code"])
+
+    def test_wire_names_are_basenames_only(self):
+        s = Sess()
+        s.prompt(0)
+        s.read(10, "/repo/src/deep/er/auth.py")
+        s.edit(20, "/repo/src/deep/er/auth.py")
+        s.read(30, "/repo/README.md")
+        s.write(40, f"{SCRATCH}/probe.py")
+        long_name = "x" * (live.MAX_NAME_CHARS - 2) + ".py"
+        s.read(50, f"/repo/{long_name}")
+        st = run(s, 60, names=True)
+        got = live.wire_names(st)
+        self.assertEqual(
+            got,
+            {"files": [{"id": fid("src/deep/er/auth.py"), "name": "auth.py"}, {"id": fid("README.md"), "name": "README.md"}]},
+        )
+        self.assertEqual(self.spec_errors(got, LIVE_SPEC["objects"]["LiveNames"]), [])
+        self.assertNotIn("probe.py", json.dumps(got), "Claude Code's own files are on neither")
+        self.assertNotIn("/", "".join(n["name"] for n in got["files"]))
+        self.assertIsNone(live.wire_names(run(s, 60)), "no names were computed, so none travel")
+        self.assertNotIn("names", live.wire(st))
+
+    def test_sentence_from_the_wire_is_the_sentence(self):
+        for name, st in self.every_state().items():
+            if name.endswith("+names"):
+                continue
+            self.assertEqual(live.sentence(live.wire(st)), st["sentence"], name)
 
 
 # ------------------------------------------------------------------------------ ground truth
@@ -2067,6 +2286,132 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(st["activity"]["kind"], "waiting_on_you")
         self.assertEqual(st["eta"]["reason"], "the repository this session runs in could not be resolved")
         self.assertIsNone(live.current_session(tr, T0 + 10 + 7200, tz))
+
+    # -- the producer half (docs/overnight-integration.md 3.1 and 3.2) ---------------------
+
+    def sittings(self, now: float):
+        """Two transcripts cut by the capture pipeline at `now`: one finished long ago in a
+        real git repository (four meaningful events, so it counts), one still running."""
+        import subprocess
+
+        from capture import discover
+        from capture import sessions as cap
+
+        repo = self.root / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "origin", "https://github.com/me/app.git"],
+            check=True,
+        )
+        projects = self.root / "projects"
+        old = Transcript(cwd=str(repo))
+        old.prompt(0, "fix it")
+        for i in range(3):
+            old.calls(10 + 10 * i, f"o{i}", [(f"toolu_o{i}", "Read", {"file_path": f"{repo}/a{i}.py"})])
+            old.result(11 + 10 * i, f"toolu_o{i}", "x")
+        old.say(60, "o9", "Done.")
+        old.write(projects, "-old")
+        running = Transcript(cwd=str(repo))
+        running.prompt(now - T0 - 50, "and now this")
+        running.calls(now - T0 - 40, "r1", [("toolu_r1", "Read", {"file_path": f"{repo}/b.py"})])
+        running.result(now - T0 - 39, "toolu_r1", "y")
+        for r in running.records:
+            r["sessionId"] = "8f7c2a4e-0000-4000-8000-000000000002"
+        running.write(projects, "-running")
+        sources = [cap.load_source(t) for t in discover.iter_root_transcripts(projects)]
+        return cap.sessionize_sources(sources, dt.UTC, now=now), repo
+
+    def test_eta_history_is_the_final_counted_sessions_and_nothing_else(self):
+        now = T0 + 5 * 86_400
+        cut, repo = self.sittings(now)
+        self.assertEqual(sorted(s.state for s in cut), ["final", "live"])
+        [fact] = live.eta_history(cut)
+        old = next(s for s in cut if s.state == "final")
+        self.assertEqual(fact.session_id, old.client_session_id)
+        self.assertEqual(os.path.realpath(fact.repo), os.path.realpath(repo))
+        self.assertEqual(fact.repo, old.repo.common_root)
+        self.assertEqual(fact.active_seconds, old.attended + old.autonomous)
+        self.assertIs(fact.unattended, old.presence == 0)
+        # A sitting below the counted floor is not one the phone shows, so not history.
+        import dataclasses as dc
+
+        tiny = dc.replace(old, events=old.events[:1], attended=10.0, autonomous=0.0)
+        self.assertEqual(live.eta_history([tiny]), [])
+
+    def test_session_state_is_the_one_computation_the_cli_makes(self):
+        """`session_state` is what capture sync, the hook channel and `python -m analysis
+        live` all call. Until the CLI calls it too, this pins the two to one answer."""
+        from analysis import __main__ as cli
+        from capture import discover
+
+        now = T0 + 5 * 86_400
+        cut, _ = self.sittings(now)
+        live_one = next(s for s in cut if s.state == "live")
+        history = live.eta_history(cut)
+        st = live.session_state(live_one, now=now, history=history, salt=SALT)
+        t = discover.Transcript(project_dir="-running", path=pathlib.Path(live_one.records[0]["path"]))
+        self.assertEqual(st, cli._live_entry(t, live_one, history, SALT, now, names=False)["state"])
+        self.assertEqual(st["eta"]["code"], "too_few_sessions")
+        self.assertEqual(st["eta"]["n"], 1)
+        self.assertEqual(st["computed_at"], now)
+        self.assertEqual(Wire().spec_errors(live.wire(st)), [])
+        # The server's key: history keyed by a hash the paths know nothing about.
+        keyed = [dataclasses.replace(f, repo="b" * 64) for f in history]
+        by_key = live.session_state(live_one, now=now, history=keyed, salt=SALT, repo_key="b" * 64)
+        self.assertEqual((by_key["eta"]["code"], by_key["eta"]["n"]), ("too_few_sessions", 1))
+        self.assertEqual(by_key["map"], st["map"])
+
+
+class FromBytes(unittest.TestCase):
+    """`tests/transcripts.py`: each scenario written as a Claude Code transcript and read
+    back through the parser, the capture cut and `live.session_state`, the path the hook
+    channel and `capture sync --live` take. The in memory twins above work the numbers out
+    by hand; these prove the bytes reach the same verdicts."""
+
+    def test_every_scenario_reaches_its_verdict_through_the_parser(self):
+        from analysis.tests import transcripts as tr
+
+        for name, build in tr.SCENARIOS.items():
+            sc = build()
+            st = sc.state()
+            self.assertEqual(st["verdict"]["state"], sc.verdict, name)
+            self.assertEqual(st["activity"]["kind"], sc.activity, name)
+            self.assertIsNotNone(st["sample"]["tokens"], f"{name}: every message carries usage")
+            self.assertEqual(Wire().spec_errors(live.wire(st)), [], name)
+            self.assertEqual(st["eta"]["code"], "repo_unresolved", name)
+
+    def test_every_scenario_is_one_the_fixture_generator_names(self):
+        import importlib.util
+
+        from analysis.tests import transcripts as tr
+
+        spec = importlib.util.spec_from_file_location("gen_live_fixtures", spec_walk.ROOT / "scripts" / "gen_live_fixtures.py")
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        self.assertEqual(sorted(gen.SCENARIOS), sorted(tr.SCENARIOS))
+
+    def test_decisions_all_makes_every_decision_and_the_wire_keeps_the_hardest_four(self):
+        from analysis.tests import transcripts as tr
+
+        st = tr.decisions_all().state()
+        self.assertEqual([d["kind"] for d in st["decisions"]], list(live.DECISION_KINDS[: live.MAX_DECISIONS]))
+        saved = live.MAX_DECISIONS
+        try:
+            live.MAX_DECISIONS = len(live.DECISION_KINDS)
+            every = tr.decisions_all().state()
+        finally:
+            live.MAX_DECISIONS = saved
+        self.assertEqual([d["kind"] for d in every["decisions"]], list(live.DECISION_KINDS))
+
+    def test_a_scenario_is_byte_stable(self):
+        from analysis.tests import transcripts as tr
+
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            one = tr.converging().write(pathlib.Path(a)).read_bytes()
+            two = tr.converging().write(pathlib.Path(b)).read_bytes()
+        self.assertEqual(one, two)
+        self.assertEqual(live.wire(tr.converging().state()), live.wire(tr.converging().state()))
 
 
 if __name__ == "__main__":

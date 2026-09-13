@@ -99,6 +99,27 @@ class Shape(unittest.TestCase):
         claiming rules they were not built by."""
         self.assertEqual(rp.REPORT_VERSION, SPEC["version"])
 
+    def test_the_v2_blocks_are_appended_nullable_objects_so_a_v1_document_still_validates(self):
+        """A report an older capture sent has none of the five, and it must still be
+        stored: every one is nullable, and they come after every v1 field."""
+        fields = SPEC["fields"]
+        names = [f["name"] for f in fields]
+        self.assertEqual(tuple(names[-len(rp.V2_BLOCKS) :]), rp.V2_BLOCKS)
+        self.assertEqual(names[-len(rp.V2_BLOCKS) - 1], "languages")
+        for f in fields[-len(rp.V2_BLOCKS) :]:
+            self.assertEqual(f["type"], "object", f["name"])
+            self.assertTrue(f.get("nullable"), f"{f['name']} must be nullable")
+
+    def test_a_block_this_machine_does_not_compute_is_null_and_never_zeroes(self):
+        """A null block means "not computed here" and nothing else. An empty wrapped deck
+        or a money block of zeroes would say this person built nothing and spent
+        nothing, which is a claim nobody measured."""
+        fo = ag.fanout([span(0, 100), span(50, 150, "b")], 200)
+        for doc in (rp.build(), rp.build(trends=[trend()], fanout=fo)):
+            for block in rp.V2_BLOCKS:
+                self.assertIn(block, doc)
+                self.assertIsNone(doc[block], block)
+
     def test_generated_at_is_utc_and_ends_in_z(self):
         self.assertTrue(rp.build()["generated_at"].endswith("Z"))
 
@@ -237,6 +258,27 @@ class WhatMayTravel(unittest.TestCase):
             # are a restatement of what the server has rather than anything new.
             "first_at",
             "last_at",
+            # Version 2 (docs/overnight-integration.md 1.6). Every one of these is an ENUM
+            # whose values are a fixed table in this repository, which the door checks:
+            "id",  # a Wrapped card, a glossary term, a stack item (CARD_IDS, CATALOG, STACK)
+            "value_id",  # a Wrapped answer that is an id: an archetype, a work style, a kind
+            "unit",  # what a card's value counts, an identifier that is never rendered
+            "basis",  # the rule a card or a price came from
+            "commits_basis",  # how the shipped card counted commits
+            "commit_refusal",  # why commit labels could not decide the kind of work card
+            "lines_basis",  # what the money block's line counts were read from
+            "kind",  # a commit kind, from wrapped.KINDS
+            "role",  # a file role, from plain.ROLES: a path's shape, never the path
+            "model",  # a row of pricing.PRICES
+            "cause",  # a burn cause, from analysis/burn.py
+            "category",  # a stack category
+            "evidence",  # which kind of evidence put a stack item there
+            # `metric` and `name` above are enums inside ReportArchetypeScore: an
+            # archetype metric and an archetype, both from profile.ARCHETYPE_RULES.
+            # And three CLOCKS, which cannot carry a word anybody typed:
+            "started_at",  # when the longest session started; already on the wire per session
+            "first_seen",  # when a glossary term or a stack item was first met
+            "prices_read_on",  # the day the price table was read, from pricing.PRICES_READ_ON
         }
         strings = {
             f["name"]
@@ -245,6 +287,38 @@ class WhatMayTravel(unittest.TestCase):
             if f["type"] in ("string", "enum", "datetime")
         }
         self.assertEqual(strings - allowed, set())
+
+    def test_the_v2_blocks_carry_only_enums_numbers_and_clocks(self):
+        """Inside wrapped, money, burn, vocab and stack there is no string field at all.
+
+        The v1 blocks carry a few bounded strings a module wrote (a refusal in words, a
+        trend label). Version 2 carries none: the phone renders every question, answer,
+        sentence and refusal from ids and numbers (docs/overnight-engine.md rule 5), so a
+        `string` here could only be a sentence, a quote or a path on its way off the
+        machine, and the door would store it. Every `reason` is an enum code.
+        """
+        seen: set[str] = set()
+        todo = [f["item"] for f in SPEC["fields"] if f["name"] in rp.V2_BLOCKS]
+        while todo:
+            name = todo.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            for f in SPEC["objects"][name]:
+                where = f"{name}.{f['name']}"
+                self.assertNotEqual(f["type"], "string", f"{where} is free text")
+                if f["type"] == "list":
+                    # A list of strings would be free text by the back door.
+                    self.assertIn(f["item"], SPEC["objects"], f"{where} is a list of scalars")
+                if f["name"] == "reason":
+                    self.assertEqual(f["type"], "enum", f"{where} is a refusal in words")
+                if f["type"] in ("object", "list"):
+                    todo.append(f["item"])
+        # The walk reached every block and what they hold, not a subset of it.
+        self.assertIn("ReportWrappedExtras", seen)
+        self.assertIn("ReportArchetypeScore", seen)
+        self.assertIn("ReportStackItem", seen)
+        self.assertEqual(len(seen), 15)
 
 
 class Caps(unittest.TestCase):

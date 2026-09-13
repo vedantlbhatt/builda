@@ -19,6 +19,7 @@ from __future__ import annotations
 import gzip
 import logging
 import re
+import time
 import zlib
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -26,11 +27,11 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import ValidationError
 from sqlalchemy import text
 
-from .. import hook_ingest
+from .. import builder_profile, hook_ingest, live_store
 from ..auth import CurrentDevice, current_uploader
 from ..contract import SessionUpload
 from ..db import db_session
-from .sync import send_pending, store_payloads
+from .sync import send_live_pushes, send_pending, store_payloads
 
 router = APIRouter(prefix="/v1/ingest", tags=["ingest"])
 log = logging.getLogger("builder.ingest")
@@ -125,6 +126,26 @@ def _drop(db, user_id: str, sid: str, from_offset: int = 0) -> None:
     )
 
 
+def _clock() -> float:
+    """The server's clock for every cut in a request. The live state is computed at it, so
+    an empty heartbeat tail, which changes no byte, still moves "idle" and "waiting on you
+    for N minutes" forward. One function so a test can move it."""
+    return time.time()
+
+
+def _live_context(db, user_id: str) -> hook_ingest.LiveContext | None:
+    """Built once per request and handed to every cut in it, the stale re-cuts included:
+    the account's salt and File names switch (`live_store.prefs` creates the row on first
+    use) and the stored history the ETA compares against. None when the deployed engine
+    cannot compute a live state, so no query is spent on one."""
+    if hook_ingest.live_engine() is None:
+        return None
+    p = live_store.prefs(db, user_id)
+    return hook_ingest.LiveContext(
+        history=builder_profile.eta_history(db, user_id), salt=p.map_salt, names=p.live_names
+    )
+
+
 def _cut_and_store(
     db,
     device: CurrentDevice,
@@ -133,29 +154,58 @@ def _cut_and_store(
     raw: bytes,
     tz_offset_minutes: int,
     finalize: bool,
+    live_ctx: hook_ingest.LiveContext | None = None,
+    now: float | None = None,
 ) -> dict:
     """Sessionize one transcript's bytes and upsert the sessions through the batch path.
-    Deletes the raw chunks once every session in them is final."""
+    Deletes the raw chunks once every session in them is final.
+
+    `live` in the result is one entry per live session, `{client_session_id, sentence,
+    needs_you}`, for the uploader's terminal (`capture live` prints it); the sentence and
+    needs you are null when no live state was computed."""
     if not raw:
-        return {"accepted": 0, "unchanged": 0, "rejected": [], "live": 0, "final": 0}
-    payloads = hook_ingest.payloads_for(
+        return {
+            "accepted": 0,
+            "unchanged": 0,
+            "rejected": [],
+            "live": [],
+            "final": 0,
+            "pending": [],
+            "live_pushes": [],
+        }
+    cuts = hook_ingest.cut(
         raw,
         native_session_id=sid,
         project_dir=project_dir,
         tz_offset_minutes=tz_offset_minutes,
         finalize=finalize,
         device_id=str(device.device_id),
+        now=now,
+        live=live_ctx,
     )
     uploads: list[SessionUpload] = []
     rejected: list[dict] = []
-    for p in payloads:
+    live_lines: list[dict] = []
+    for c in cuts:
+        p = c.payload
         try:
+            # The generated door checks the server's own output too: a live block the
+            # engine got wrong is refused here, loudly, like any client's.
             uploads.append(SessionUpload(**p))
         except ValidationError as e:
             rejected.append(
                 {"client_session_id": p.get("client_session_id"), "reason": str(e)[:200]}
             )
-    accepted, unchanged, rej2, pending = store_payloads(db, device, uploads)
+            continue
+        if p["state"] == "live":
+            live_lines.append(
+                {
+                    "client_session_id": p["client_session_id"],
+                    "sentence": c.sentence,
+                    "needs_you": c.needs_you,
+                }
+            )
+    stored = store_payloads(db, device, uploads)
     live = sum(1 for u in uploads if u.state == "live")
     final = len(uploads) - live
     if live == 0 and (uploads or finalize) and raw.endswith(b"\n"):
@@ -164,6 +214,10 @@ def _cut_and_store(
         # a new session by definition) still lands at the byte the script expects, and
         # only the new records are cut. Not while the last line is half-written: its
         # first bytes would be lost and the rest would arrive as a malformed line.
+        # At the FILE's end offset, not at len(raw): after an earlier retirement the held
+        # bytes begin where that one ended, and a marker at their length would send the
+        # next tail back to a byte the file passed long ago.
+        end = _end_offset(db, str(device.user_id), sid)
         _drop(db, str(device.user_id), sid)
         db.execute(
             text(
@@ -175,17 +229,18 @@ def _cut_and_store(
                 "d": str(device.device_id),
                 "s": sid,
                 "p": project_dir,
-                "o": len(raw),
+                "o": end,
                 "b": b"",
             },
         )
     return {
-        "accepted": accepted,
-        "unchanged": unchanged,
-        "rejected": rejected + rej2,
-        "live": live,
+        "accepted": stored.accepted,
+        "unchanged": stored.unchanged,
+        "rejected": rejected + stored.rejected,
+        "live": live_lines,
         "final": final,
-        "pending": pending,
+        "pending": stored.pending,
+        "live_pushes": stored.live_pushes,
     }
 
 
@@ -206,6 +261,12 @@ async def ingest_transcript(
     its view wins, everything from that offset is replaced; greater → 409 with
     `next_offset`, and the script resends from there. The response always carries
     `next_offset`, which the script stores for the next hook.
+
+    A session the cut leaves live gets its live state (contract v4 `live`), computed here
+    at the server's clock and stored in session_live; the response's `live` lists each
+    one as `{client_session_id, sentence, needs_you}` for the uploader's terminal. An
+    EMPTY body at the current offset is a heartbeat: no byte changes, the cut runs again
+    at a later clock, and idle time advances.
     """
     sid, pdir = x_builder_session_id, x_builder_project_dir
     if not _SAFE.match(sid) or not _SAFE.match(pdir):
@@ -229,10 +290,13 @@ async def ingest_transcript(
             return JSONResponse(
                 {"next_offset": end, "reason": "gap: resend from next_offset"}, status_code=409
             )
-        if x_builder_offset <= end:
+        if x_builder_offset < end or body:
             # Below the end: the client has the file and its view wins, everything from
-            # here is replaced. AT the end: this clears only a retired zero-length chunk
-            # sitting exactly there (a real chunk starts below the end it contributes to).
+            # here is replaced. AT the end with new bytes: this clears only a retired
+            # zero-length chunk sitting exactly there (a real chunk starts below the end
+            # it contributes to). AT the end with NO bytes (a heartbeat) nothing is
+            # replaced: dropping the retired marker there would lose the offset, answer
+            # next_offset 0, and bring the whole file back on the next tick, forever.
             _drop(db, user_id, sid, x_builder_offset)
         if body:
             db.execute(
@@ -251,18 +315,31 @@ async def ingest_transcript(
                 },
             )
         raw = _raw(db, user_id, sid)
-        next_offset = len(raw)
-        result = _cut_and_store(db, device, sid, pdir, raw, x_builder_tz_offset_minutes, finalize)
+        # The FILE's offset, which is len(raw) only until the first retirement: after it
+        # the held bytes begin at the retired end, not at 0.
+        next_offset = _end_offset(db, user_id, sid)
+        now = _clock()
+        live_ctx = _live_context(db, user_id)
+        result = _cut_and_store(
+            db, device, sid, pdir, raw, x_builder_tz_offset_minutes, finalize, live_ctx, now
+        )
         pending = list(result.pop("pending", []))
+        live_pushes = list(result.pop("live_pushes", []))
 
         # Sessions whose process died without a SessionEnd: re-cut the stale ones so the
         # idle rule can finish them, then the retention sweep.
+        # Only transcripts that still HOLD bytes: a retired conversation keeps a
+        # zero-length marker for its offset and has nothing left to cut. Counted among
+        # the five, markers from finished conversations crowd out the one session whose
+        # process died, which then never finishes and reads as running forever.
         stale = db.execute(
             text(
                 "SELECT native_session_id, project_dir, MAX(received_at) AS last "
                 "FROM transcript_chunks WHERE user_id = :u AND native_session_id != :s "
+                "AND octet_length(bytes) > 0 "
                 "GROUP BY native_session_id, project_dir "
-                "HAVING MAX(received_at) < now() - make_interval(mins => :m) LIMIT 5"
+                "HAVING MAX(received_at) < now() - make_interval(mins => :m) "
+                "ORDER BY last LIMIT 5"
             ),
             {"u": user_id, "s": sid, "m": STALE_RECUT_MINUTES},
         ).all()
@@ -276,8 +353,11 @@ async def ingest_transcript(
                 _raw(db, user_id, row[0]),
                 x_builder_tz_offset_minutes,
                 False,
+                live_ctx,
+                now,
             )
             pending.extend(r.get("pending", []))
+            live_pushes.extend(r.get("live_pushes", []))
             recut += 1
         db.execute(
             text(
@@ -292,6 +372,7 @@ async def ingest_transcript(
         )
 
     send_pending(device, pending)
+    send_live_pushes(live_pushes)
     return {"next_offset": next_offset, "recut_stale": recut, **result}
 
 

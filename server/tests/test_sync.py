@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
-from test_contract import SAMPLE_ANALYSIS, valid_payload
+from test_contract import SAMPLE_ANALYSIS, SAMPLE_BURN, SAMPLE_TITLE_IDS, valid_payload
 
 TEST_DB = os.environ.get("BUILDER_TEST_DB")
 pytestmark = pytest.mark.skipif(not TEST_DB, reason="set BUILDER_TEST_DB to run")
@@ -456,3 +456,104 @@ def test_analysis_is_invisible_to_another_viewer(client, created_users):
     assert as_a == 1, "the owner must see their own analysis, or the table is over-locked"
     assert as_b == 0
     assert as_nobody == 0, "an unshared analysis must not be public"
+
+
+# ------------------------------------------------------------ contract v4: burn, title_ids
+
+
+def test_session_detail_carries_lines_removed_agent(client, paired):
+    """Stored since 0002 and never served, while the Live Activity's `linesRemoved` and the
+    money view read it (docs/overnight-integration.md 5.4)."""
+    uid, headers = paired
+    _upload(client, headers, _payload(lines_added_agent=412, lines_removed_agent=37))
+    sid = _owner_rows(uid)[0].id
+    stats = client.get(f"/v1/sessions/{sid}", headers=headers).json()["stats"]
+    assert (stats["lines_added_agent"], stats["lines_removed_agent"]) == (412, 37)
+
+
+def test_burn_and_title_ids_round_trip_and_are_not_wiped_by_a_client_that_does_not_compute_them(
+    client, paired
+):
+    """The addendum's two session objects: stored and returned exactly, and, like
+    `feedback`, left alone by a resync from a client that computes neither (the Mac)."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    first = _payload(client_session_id=csid, burn=SAMPLE_BURN, title_ids=SAMPLE_TITLE_IDS)
+    assert _upload(client, headers, first)["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert detail["burn"] == SAMPLE_BURN
+    assert detail["title_ids"] == SAMPLE_TITLE_IDS
+    # A title belongs to every place a session is listed, not only to its detail.
+    listed = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert [s["title_ids"] for s in listed] == [SAMPLE_TITLE_IDS]
+
+    # The same sitting from a client that computes neither: only the hash differs.
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert detail["burn"] == SAMPLE_BURN
+    assert detail["title_ids"] == SAMPLE_TITLE_IDS
+
+
+def test_a_burn_refusal_replaces_a_stored_answer(client, paired):
+    """Null on the wire means "not computed" and keeps what is stored; a REFUSAL is a
+    document, and it is the newer fact: a transcript whose counts could not be read this
+    time must not keep showing numbers from a cut that could."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    _upload(client, headers, _payload(client_session_id=csid, burn=SAMPLE_BURN))
+    refused = {
+        "tokens": None,
+        "cache_read_share": None,
+        "barren_share": None,
+        "unreadable_share": None,
+        "segments": 9,
+        "lines_added": 412,
+        "lines_removed": 38,
+        "files_changed": 6,
+        "commits": 2,
+        "reason": "no_token_counts",
+        "spikes": None,
+        "spikes_needed": 5,
+    }
+    assert _upload(client, headers, _payload(client_session_id=csid, burn=refused))["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["burn"] == refused
+
+
+def test_burn_and_title_ids_read_back_null_never_missing(client, paired):
+    """Null, never absent: the phone tells "not computed" from an older server by whether
+    the key is there, and never reads a missing block as a zero."""
+    uid, headers = paired
+    _upload(client, headers, _payload())
+    sid = _owner_rows(uid)[0].id
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert "burn" in detail and detail["burn"] is None
+    assert "title_ids" in detail and detail["title_ids"] is None
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=20)
+    _upload(client, headers, _live(started, 15, title_ids=SAMPLE_TITLE_IDS))
+    (live,) = client.get("/v1/sessions/live", headers=headers).json()["sessions"]
+    assert live["title_ids"] == SAMPLE_TITLE_IDS
+
+
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("burn", {**SAMPLE_BURN, "sentence": "The most expensive stretch cost 9.1M tokens."}),
+        ("burn", {**SAMPLE_BURN, "reason": "no token counts were recorded"}),
+        ("title_ids", {**SAMPLE_TITLE_IDS, "title": "Refactored three files across two modules"}),
+        ("title_ids", {**SAMPLE_TITLE_IDS, "object": "zqx_sentinel_dir"}),
+    ],
+)
+def test_prose_or_an_undeclared_id_in_burn_or_title_ids_is_refused_at_the_route(
+    client, paired, field, bad
+):
+    """The words are the phone's. A sentence, a refusal written out, or an id outside its
+    table is a 422 at the route, and nothing is stored."""
+    uid, headers = paired
+    p = _payload()
+    p[field] = bad
+    r = client.post("/v1/sync/sessions:batch", json={"sessions": [p]}, headers=headers)
+    assert r.status_code == 422, r.text
+    assert _owner_rows(uid) == []

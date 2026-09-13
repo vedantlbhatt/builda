@@ -85,6 +85,18 @@ def assert_policies_present() -> None:
         # 0018. Numbers about the PERSON, from transcripts the server never sees. Same
         # shape as 0016 and for the same reason: sharing a session shares a session.
         "builder_report",
+        # 0020. A running session's live state (and, opt in, its file basenames), and the
+        # two privacy switches with the salt the hook channel hashes paths under. Owner
+        # only: a deployment without the migration must not serve another person's live
+        # map, or hand out a salt.
+        "session_live",
+        "privacy_prefs",
+        # 0021. Prompts, VERBATIM, for the Wrapped cards: the second opt-in exception.
+        # With RLS off every quote would be readable by every viewer.
+        "builder_quotes",
+        # 0022. Where a Live Activity's pushes go. Another viewer's token is another
+        # person's Lock Screen.
+        "live_activity_tokens",
     }
     with engine().connect() as conn:
         rows = conn.execute(

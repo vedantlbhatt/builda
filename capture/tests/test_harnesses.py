@@ -202,4 +202,7 @@ class AiderHasNoDefaultRoot(unittest.TestCase):
         self.assertNotIn("real", {p for s in found for p in s.path.parts})
 
     def test_a_repository_with_no_chat_file_contributes_nothing(self):
-        self.assertEqual(harnesses.discover(repo_roots=[str(ROOT)]), [])
+        # Aider only: the other harnesses' default stores are the machine's, and a Mac
+        # with real Codex rollouts made this assertion about them instead.
+        found = harnesses.discover(repo_roots=[str(ROOT)])
+        self.assertEqual([s for s in found if s.harness == "aider"], [])

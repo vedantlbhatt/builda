@@ -118,7 +118,10 @@ QUESTIONS: dict[str, str] = {
     "kind_of_work": "What kind of work is it?",
 }
 
-#: Every card carries exactly these, in this order, answered or refused.
+#: Every card carries exactly these, in this order, answered or refused. `needed` is the
+#: floor a refusal names (None on an answer and on a refusal that names none) and `code`
+#: the refusal as an id (`REFUSALS`), beside `reason`, the same refusal in words: the words
+#: stay on this machine and the code travels, so the phone words it the same way.
 CARD_KEYS: tuple[str, ...] = (
     "id",
     "question",
@@ -128,22 +131,35 @@ CARD_KEYS: tuple[str, ...] = (
     "sentence",
     "basis",
     "n",
+    "needed",
     "reason",
+    "code",
     "extras",
 )
 
 #: What `wire()` keeps of a card. `question`, `display` and `sentence` are rendered from
 #: ids and numbers, so the phone writes its own (the `feedback.wire` rule).
-WIRE_KEYS: tuple[str, ...] = ("id", "value", "unit", "basis", "n", "reason", "extras")
+WIRE_KEYS: tuple[str, ...] = (
+    "id",
+    "value",
+    "unit",
+    "basis",
+    "n",
+    "needed",
+    "reason",
+    "code",
+    "extras",
+)
 
-#: Cards whose every number is a function of which words were typed. Only `{id, n,
-#: reason}` of them leaves the machine: a crash out score is a reading of somebody's
-#: prompt, and so is a gibberish share.
+#: Cards whose every number is a function of which words were typed. Only what says WHICH
+#: card and WHETHER it was answered leaves the machine: a crash out score is a reading of
+#: somebody's prompt, and so is a gibberish share. The unit and basis are the card's own
+#: constants, never a reading of a prompt, and the report spec requires them on every card.
 LOCAL_CARDS = frozenset({"crash_out", "cryptic_prompt"})
 
 #: The cards that can quote a prompt (`quotes`), in card order.
 QUOTE_CARDS: tuple[str, ...] = ("go_to_prompt", "crash_out", "cryptic_prompt")
-LOCAL_CARD_KEYS: tuple[str, ...] = ("id", "n", "reason")
+LOCAL_CARD_KEYS: tuple[str, ...] = ("id", "unit", "basis", "n", "needed", "reason", "code")
 
 #: The profile sample fields a wrapped reader needs to know what the cards rest on.
 SAMPLE_KEYS: tuple[str, ...] = (
@@ -307,7 +323,7 @@ def _pasted(text: str) -> bool:
     return codey > len(lines) / 2
 
 
-def _quotable(text: str | None) -> bool:
+def quotable(text: str | None) -> bool:
     """Is this the person's own words, fit to quote and to measure as a prompt.
 
     False for an empty text, a slash command, a prompt the digest had to mask a secret in,
@@ -364,7 +380,7 @@ _DISTRESS = re.compile(
 def _private(text: str) -> bool:
     """Would quoting this print a secret, a path on this machine, credentials in a URL,
     an error the person pasted, or somebody else's words? Such a prompt is still the
-    person's own and still MEASURED (`_quotable`); it is only never quoted, so the three
+    person's own and still MEASURED (`quotable`); it is only never quoted, so the three
     quote cards never pick it. A prompt wrongly left unquoted costs a quote, never a claim.
     """
     return bool(
@@ -391,8 +407,21 @@ def _quote(text: str) -> str:
     return head[:cut].rstrip() + ELLIPSIS
 
 
-def _quote_of(p: _Prompt) -> dict:
-    return {"text": _quote(p.text), "session_id": p.session.session_id, "ts": p.ts}
+def _seconds_in(p: _Prompt) -> int:
+    """Whole seconds from the prompt's session start to the prompt, never negative."""
+    return int(max(0.0, p.ts - p.session.started_at))
+
+
+def _quote_of(p: _Prompt, **extra) -> dict:
+    """A quote as `quotes` holds it: the text as quoted, where it was sent, and the numbers
+    the quotes document carries beside it (`quotes_upload`)."""
+    return {
+        "text": _quote(p.text),
+        "session_id": p.session.session_id,
+        "ts": p.ts,
+        "seconds_in": _seconds_in(p),
+        **extra,
+    }
 
 
 def _norm(text: str) -> str:
@@ -424,7 +453,18 @@ def _floor_mins(seconds: float) -> str:
 
 
 def _card(
-    card_id: str, value, unit: str, display, sentence, basis: str, n: int, reason, extras
+    card_id: str,
+    value,
+    unit: str,
+    display,
+    sentence,
+    basis: str,
+    n: int,
+    reason,
+    extras,
+    *,
+    needed: int | None = None,
+    code: str | None = None,
 ) -> dict:
     card = {
         "id": card_id,
@@ -435,7 +475,9 @@ def _card(
         "sentence": sentence,
         "basis": basis,
         "n": int(n),
+        "needed": needed,
         "reason": reason,
+        "code": code,
         "extras": dict(extras),
     }
     assert tuple(card) == CARD_KEYS
@@ -448,10 +490,16 @@ def _answer(
     return _card(card_id, value, unit, display, sentence, basis, n, None, extras)
 
 
-def _refuse(card_id: str, unit: str, basis: str, n: int, reason: str, extras) -> dict:
-    if not reason:
-        raise ValueError(f"{card_id}: a refusal must say why")
-    return _card(card_id, None, unit, None, None, basis, n, reason, extras)
+def _refuse(
+    card_id: str, unit: str, basis: str, n: int, code: str, extras, *, needed: int | None = None
+) -> dict:
+    """A refusal, worded from its code (`refusal_text`) so the words here and the words the
+    phone writes from the wire are one template. An unknown code is a KeyError: a refusal
+    must say why, and only a code with a template can."""
+    if code not in REFUSALS:
+        raise KeyError(f"{card_id}: {code!r} is not a refusal code with a template")
+    reason = refusal_text(code, n=int(n), needed=needed, extras=extras)
+    return _card(card_id, None, unit, None, None, basis, n, reason, extras, needed=needed, code=code)
 
 
 #: The one phrase every card says attended time in. FOUND IN REVIEW: one screen said it
@@ -461,13 +509,94 @@ def _refuse(card_id: str, unit: str, basis: str, n: int, reason: str, extras) ->
 WITH_YOU = "with you there"
 
 
+# ------------------------------------------------------------------------- refusals
+#: Every reason a card can be refused, as a code and the template it is worded from
+#: (`profile.fill`: `{n}` and `{needed}` are the card's own; `{name:noun}` agrees the noun;
+#: a mapping picks a form by `n`). ONE template per code, so a code means one fact: the
+#: two prompt floors are two codes because they count two different things (every prompt
+#: with text, against the prompts in your own words that `quotable` keeps). The phone
+#: renders the refusal from the same table (`scripts/gen_copy.py` writes it to
+#: `mobile/src/generated/copy.ts`), and `spec/report.v1.json` `wrapped_refusal` is these
+#: keys, pinned both ways by `analysis/tests/test_report_blocks.py`.
+REFUSALS: dict[str, str | dict[str, str]] = {
+    "no_sessions": "no sessions",
+    # The archetype's own refusal (`profile.archetype`), worded the same way.
+    "below_session_floor": "fewer than {needed} sessions",
+    "below_attended_floor": "{n:session} " + WITH_YOU + ", {needed} needed",
+    # Every prompt counts here (`change_course`'s sample is the profile's whole prompt list).
+    "below_prompt_floor": "{n:prompt} with text, {needed} needed",
+    # Only the prompts `quotable` keeps count here (`prompt_length`).
+    "below_own_words_floor": "{n:prompt} typed in your own words, {needed} needed",
+    # The steer rate's own "not stored server side" is false on the machine that read
+    # every prompt (FOUND IN REVIEW); this is true wherever the profile was computed.
+    "no_prompt_text": "no prompt carried text or an interrupt count to read",
+    "no_archetype_metric": (
+        f"none of the {plain.spoken(len(pf.ARCHETYPE_RULES))} archetype metrics could be "
+        "computed"
+    ),
+    "no_line_counts": "no session carries a line count",
+    # `profile.no_lines_reason`, the one wording, shared with the velocity metric.
+    "no_lines_attributed": pf.NO_LINES_TEMPLATE,
+    "no_presence": "no session had you present, and an unattended run cannot hold a record",
+    "no_events": "no session recorded an event",
+    "no_repeated_prompt": "no prompt was sent in more than one session",
+    "no_commit_history": (
+        "no commit history could be read for the repositories these sessions ran in"
+    ),
+    "no_crash_out": "no prompt read as a crash out",
+    # What was checked and the bar it failed, never "not cryptic enough".
+    "no_cryptic_prompt": {
+        "zero": "no short prompt of {min_tokens} or more words to read ({min_chars} to "
+        "{max_chars} characters, no path, link or hash)",
+        "one": "the 1 short prompt was not mostly keyboard mash (five letters in a row with "
+        "no vowel)",
+        "other": "none of the {n:short prompt} was mostly keyboard mash (five letters in a "
+        "row with no vowel)",
+    },
+    # Both kinds of work refused: the commit subjects' reason (`KIND_REFUSALS`, by
+    # `extras.commit_code`) and the file roles'.
+    "neither_kind_basis": "{commit_refusal}; {lines:attributable line}, {lines_needed} needed",
+}
+
+#: Why the commit subject labels could not say what kind of work it was
+#: (`spec/report.v1.json` `kind_refusal`, the card's `extras.commit_refusal` on the wire).
+#: `{needed}` is the card's own: `KIND_MIN_SUBJECTS`, or the coverage in percent.
+KIND_REFUSALS: dict[str, str] = {
+    "no_subjects": "no commit subjects were read",
+    "too_few_labelled": (
+        "{classified} of {commits} commit subjects say what kind of change they are, "
+        "{needed} needed"
+    ),
+    "low_label_coverage": (
+        "{classified} of {commits} commit subjects say what kind of change they are, "
+        "{needed}% needed"
+    ),
+}
+
+def refusal_text(code: str, *, n: int, needed: int | None, extras: Mapping) -> str:
+    """The words for refusal `code`, from the numbers a card carries and nothing else: `n`,
+    `needed`, its numeric `extras`, and `REFUSAL_CONSTANTS`. The kind of work card's
+    commit half is its own template (`KIND_REFUSALS`), filled from the same numbers."""
+    values = {
+        k: v
+        for k, v in extras.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
+    values.update(REFUSAL_CONSTANTS)
+    values.update(n=n, needed=needed)
+    commit_code = extras.get("commit_code")
+    if commit_code:
+        values["commit_refusal"] = pf.fill(KIND_REFUSALS[commit_code], **values)
+    return pf.fill(REFUSALS[code], **values)
+
+
 def _attended(facts: Sequence[pf.SessionFact]) -> list[pf.SessionFact]:
     return [f for f in facts if pf.is_attended(f)]
 
 
-def _attended_floor(k: int) -> str:
+def _attended_floor(card_id: str, unit: str, basis: str, k: int, extras) -> dict:
     """The one refusal for every card that needs `MIN_SESSIONS` sessions with you there."""
-    return f"{_count(k, 'session')} {WITH_YOU}, {pf.MIN_SESSIONS} needed"
+    return _refuse(card_id, unit, basis, k, "below_attended_floor", extras, needed=pf.MIN_SESSIONS)
 
 
 def _rule_threshold(name: str) -> float:
@@ -545,14 +674,25 @@ def _archetype_sentence(name: str, v: float, at_least: bool = False) -> str:
     return f"At least {sentence}" if at_least else sentence
 
 
+#: What an archetype score carries on a card: the rule's name and metric, the metric's
+#: value, the threshold it is scored against, and the score (`profile.archetype`).
+SCORE_KEYS: tuple[str, ...] = ("name", "metric", "value", "threshold", "score")
+
+
 def _builder_type(P: Mapping) -> dict:
     arch = P["archetype"]
     sample = P["sample"]
     n = int(sample["sessions"])
+    # The runners up with their thresholds, read from the scores by name: the profile's
+    # runner up rows leave the threshold out, and the phone needs it to say how close.
+    by_name = {s["name"]: s for s in arch.get("scores") or []}
     extras = {
         "confidence": arch.get("confidence"),
         "closest": None,
-        "runners_up": list(arch.get("runners_up") or []),
+        "runners_up": [
+            {k: {**by_name.get(r["name"], {}), **r}.get(k) for k in SCORE_KEYS}
+            for r in arch.get("runners_up") or []
+        ],
         "metric": None,
         "metric_value": None,
         # The basis of the metric whose number the sentence says, so the phone can say
@@ -561,22 +701,17 @@ def _builder_type(P: Mapping) -> dict:
     }
     cid, unit, basis = "builder_type", "archetype", "archetype_rules"
     if not sample.get("enough_sessions"):
-        # The archetype's own reason ("fewer than 3 sessions"), not a second wording of it.
-        return _refuse(cid, unit, basis, n, arch["reason"], extras)
+        # The archetype's own refusal ("fewer than 3 sessions"), from the same floor.
+        return _refuse(
+            cid, unit, basis, n, "below_session_floor", extras,
+            needed=int(sample.get("min_sessions", pf.MIN_SESSIONS)),
+        )  # fmt: skip
     scored = [s for s in arch["scores"] if s["score"] is not None]
     if not scored:
-        return _refuse(
-            cid,
-            unit,
-            basis,
-            n,
-            f"none of the {plain.spoken(len(pf.ARCHETYPE_RULES))} archetype metrics could "
-            "be computed",
-            extras,
-        )
+        return _refuse(cid, unit, basis, n, "no_archetype_metric", extras)
     if arch["name"] is None:
         closest = min(scored, key=lambda s: (-s["score"], s["name"]))
-        extras["closest"] = {k: closest[k] for k in ("name", "value", "threshold", "score")}
+        extras["closest"] = {k: closest[k] for k in SCORE_KEYS}
         extras["metric_basis"] = _metric_basis(P, closest.get("metric"))
         # Capped at 99: no rule met its threshold, and 99.6% rounding to "100% of the way
         # there" on a card that says nothing dominates would contradict itself. Not a floor,
@@ -633,14 +768,14 @@ def _shipped(
     }
     cid, unit = "shipped", "lines"
     if not facts:
-        return _refuse(cid, unit, basis, 0, "no sessions", extras)
+        return _refuse(cid, unit, basis, 0, "no_sessions", extras)
     if not known:
-        return _refuse(cid, unit, basis, 0, "no session carries a line count", extras)
+        return _refuse(cid, unit, basis, 0, "no_line_counts", extras)
     lines = int(P["totals"]["total_lines_added"])
     if lines == 0:
         # The profile's own words (`profile.no_lines_reason`): what was counted, never a
         # cause nobody measured.
-        return _refuse(cid, unit, basis, len(known), pf.no_lines_reason(len(known)), extras)
+        return _refuse(cid, unit, basis, len(known), "no_lines_attributed", extras)
     if c is not None:
         # Two measurements side by side, never "lines ACROSS commits": the lines come from
         # the transcripts and the commits from `git log`, and some commits hold none of
@@ -682,7 +817,7 @@ def _work_style(facts: Sequence[pf.SessionFact], P: Mapping) -> dict:
     extras = {"autonomy": autonomy, "median_prompts": median, "steer_rate": steer}
     cid, unit, basis = "work_style", "style", "autonomy_then_prompts_then_steer"
     if len(attended) < pf.MIN_SESSIONS:
-        return _refuse(cid, unit, basis, len(attended), _attended_floor(len(attended)), extras)
+        return _attended_floor(cid, unit, basis, len(attended), extras)
 
     # First match wins; a rule whose metric is None is skipped, never read as zero.
     if autonomy is not None and autonomy >= _rule_threshold("director"):
@@ -707,12 +842,7 @@ def _longest_session(P: Mapping) -> dict:
     cid, unit, basis = "longest_session", "seconds", "attended_seconds_rank"
     if ranked == 0 or not P["session_rank"]:
         return _refuse(
-            cid,
-            unit,
-            basis,
-            0,
-            "no session had you present, and an unattended run cannot hold a record",
-            {"active_seconds": None, "started_at": None},
+            cid, unit, basis, 0, "no_presence", {"active_seconds": None, "started_at": None}
         )
     # The profile's own ranking, by ATTENDED seconds (CLAUDE.md: a kickoff prompt plus
     # eight autonomous hours scores its attended minutes).
@@ -744,14 +874,7 @@ def _agents_at_once(sessions: Sequence[pat.SessionEvents], fanout: ag.Fanout | N
     cid, unit, basis = "agents_at_once", "sessions", "sweep_over_first_to_last_event"
     with_events = [s for s in sessions if s.events]
     if not with_events:
-        return _refuse(
-            cid,
-            unit,
-            basis,
-            0,
-            "no sessions" if not sessions else "no session recorded an event",
-            extras,
-        )
+        return _refuse(cid, unit, basis, 0, "no_sessions" if not sessions else "no_events", extras)
     # First to last EVENT, never started_at to ended_at: `ended_at` carries the trailing
     # idle credit, and silence after the agent stopped is not the agent running (the
     # `patterns._runs_with_nothing_to_show` fix).
@@ -806,12 +929,7 @@ def _go_to_prompt(quotable: Sequence[_Prompt]) -> tuple[dict, dict | None]:
     if not ranked:
         return (
             _refuse(
-                cid,
-                unit,
-                basis,
-                len(quotable),
-                "no prompt was sent in more than one session",
-                {"sessions": None, "words": None},
+                cid, unit, basis, len(quotable), "no_repeated_prompt", {"sessions": None, "words": None}
             ),
             None,
         )
@@ -838,7 +956,7 @@ def _streak(facts: Sequence[pf.SessionFact], contributions: co.Contributions | N
             unit,
             basis,
             0,
-            "no commit history could be read for the repositories these sessions ran in",
+            "no_commit_history",
             {"commit_days": None, "attended_days": None, "both_days": None},
         )
     commit_days = {d.day for d in contributions.days if d.total}
@@ -875,14 +993,16 @@ def _change_course(P: Mapping) -> dict:
     if sr["value"] is None:
         # Said from the counts this machine has. The profile's reason is written for the
         # server too ("not stored server side", false on the Mac that read every prompt),
-        # and printed "1 prompts" (FOUND IN REVIEW).
+        # and printed "1 prompts" (FOUND IN REVIEW). At or past the floor the only way the
+        # profile refuses is that no prompt carried text or no interrupt was counted.
         n = int(sr["n"])
-        reason = (
-            f"{_count(n, 'prompt')} with text, {pf.MIN_PROMPTS} needed"
-            if n < pf.MIN_PROMPTS
-            else sr["reason"]
-        )
-        return _refuse(cid, unit, basis, n, reason, extras)
+        if not sr.get("reason"):
+            # A metric refused with no reason is a caller bug: the card would have to
+            # guess why, and a guessed reason is a plausible wrong sentence.
+            raise ValueError("change_course: the steer rate was refused without a reason")
+        if n < pf.MIN_PROMPTS:
+            return _refuse(cid, unit, basis, n, "below_prompt_floor", extras, needed=pf.MIN_PROMPTS)
+        return _refuse(cid, unit, basis, n, "no_prompt_text", extras)
     return _answer(
         cid,
         sr["value"],
@@ -956,16 +1076,11 @@ def _crash_out(quotable: Sequence[_Prompt]) -> tuple[dict, dict | None]:
             best = (score, p.ts, p, parts)
     if best is None:
         return (
-            _refuse(
-                cid, unit, basis, len(quotable), "no prompt read as a crash out", {"parts": None}
-            ),
+            _refuse(cid, unit, basis, len(quotable), "no_crash_out", {"parts": None}),
             None,
         )
     score, _ts, p, parts = best
-    into = fb._mins(max(0.0, p.ts - p.session.started_at))
-    if into == fb._mins(0):
-        # `_mins` says "under a minute", which has no digit and reads oddly after "Sent".
-        into = "less than 1 minute"
+    into = crash_out_into(_seconds_in(p))
     # A fact, not a label: when it was sent, on the person's own clock. "Your angriest
     # prompt" repeated the question, carried no number and called the person angry
     # (FOUND IN REVIEW). The card is LOCAL whole, so the day and time never leave.
@@ -980,6 +1095,15 @@ def _crash_out(quotable: Sequence[_Prompt]) -> tuple[dict, dict | None]:
         {"parts": parts},
     )
     return card, _quote_of(p)
+
+
+def crash_out_into(seconds_in: int) -> str:
+    """How far into its session the crash out was sent, from the WHOLE seconds the quotes
+    document carries (`QuoteWire.seconds_in`), so the phone says the same minutes from the
+    wire. `feedback._mins` says "under a minute" there, which has no digit and reads oddly
+    after "Sent"."""
+    into = fb._mins(seconds_in)
+    return "less than 1 minute" if into == fb._mins(0) else into
 
 
 def _when(ts: float, tz_offset_minutes: int) -> str:
@@ -998,13 +1122,9 @@ def _prompt_length(quotable: Sequence[_Prompt]) -> dict:
     words = [len(p.text.split()) for p in quotable]
     if len(words) < pf.MIN_PROMPTS:
         return _refuse(
-            cid,
-            unit,
-            basis,
-            len(words),
-            f"{_count(len(words), 'prompt')} typed in your own words, {pf.MIN_PROMPTS} needed",
-            {"median": None},
-        )
+            cid, unit, basis, len(words), "below_own_words_floor", {"median": None},
+            needed=pf.MIN_PROMPTS,
+        )  # fmt: skip
     mean = round(sum(words) / len(words), 1)
     median = pf._median(words)
     if median < pf.SHORT_PROMPT_WORDS:
@@ -1033,13 +1153,8 @@ def _deep_sessions(facts: Sequence[pf.SessionFact]) -> dict:
     # minutes, not "60 minutes" beside "No session past an hour yet".
     longest = int(max(f.attended_seconds for f in attended) // 60) if attended else None
     if len(attended) < pf.MIN_SESSIONS:
-        return _refuse(
-            cid,
-            unit,
-            basis,
-            len(attended),
-            _attended_floor(len(attended)),
-            {"avg_minutes": None, "longest_minutes": longest},
+        return _attended_floor(
+            cid, unit, basis, len(attended), {"avg_minutes": None, "longest_minutes": longest}
         )
     deep = [f for f in attended if f.attended_seconds >= DEEP_MIN_ATTENDED_SEC]
     if not deep:
@@ -1077,7 +1192,10 @@ def _time_put_in(facts: Sequence[pf.SessionFact], P: Mapping) -> dict:
     t = P["totals"]
     n = int(t["total_sessions"])
     if not n:
-        return _refuse(cid, unit, basis, 0, "no sessions", {"attended_hours": None})
+        return _refuse(
+            cid, unit, basis, 0, "no_sessions",
+            {"attended_hours": None, "attended_overlap_hours": None},
+        )  # fmt: skip
     hours = t["total_hours"]
     attended = round(sum(f.attended_seconds for f in facts) / 3600, 1)
     overlap = round(_attended_overlap_seconds(facts) / 3600, 1)
@@ -1141,6 +1259,14 @@ CRYPTIC_MIN_CHARS, CRYPTIC_MAX_CHARS = 4, 80
 CRYPTIC_MIN_TOKENS = 2
 CRYPTIC_BASIS = "vowelless_runs"
 
+#: Constants a refusal template names (`refusal_text`), so the wire need not carry them
+#: on every card: the cryptic bar's own numbers. The phone gets the same table.
+REFUSAL_CONSTANTS: dict[str, int] = {
+    "min_tokens": CRYPTIC_MIN_TOKENS,
+    "min_chars": CRYPTIC_MIN_CHARS,
+    "max_chars": CRYPTIC_MAX_CHARS,
+}
+
 
 def _cryptic_candidate(text: str) -> bool:
     s = text.strip()
@@ -1180,19 +1306,6 @@ def _cryptic_share(text: str) -> float:
     return sum(len(t) for t in tokens if _gibberish(t)) / total
 
 
-def _not_cryptic(n: int) -> str:
-    """What was checked and the bar it failed, never "not cryptic enough"."""
-    if not n:
-        return (
-            f"no short prompt of {CRYPTIC_MIN_TOKENS} or more words to read "
-            f"({CRYPTIC_MIN_CHARS} to {CRYPTIC_MAX_CHARS} characters, no path, link or hash)"
-        )
-    bar = "mostly keyboard mash (five letters in a row with no vowel)"
-    if n == 1:
-        return f"the 1 short prompt was not {bar}"
-    return f"none of the {_count(n, 'short prompt')} was {bar}"
-
-
 def _tool_calls_after(p: _Prompt) -> int:
     k = 0
     for e in p.session.events[p.event_index + 1 :]:
@@ -1217,39 +1330,47 @@ def _cryptic_prompt(quotable: Sequence[_Prompt]) -> tuple[dict, dict | None]:
     empty = {"length": None, "tool_calls_after": None, "corrected": None}
     if best is None:
         return (
-            _refuse(cid, unit, basis, len(candidates), _not_cryptic(len(candidates)), empty),
+            _refuse(cid, unit, basis, len(candidates), "no_cryptic_prompt", empty),
             None,
         )
     _, share, p = best
-    length = len(p.text.strip())
+    # The length of the text AS QUOTED (whitespace collapsed; a candidate is never long
+    # enough to be cut), so the number beside the quote counts the characters shown and the
+    # phone can say it from the quotes document alone.
+    length = len(_quote(p.text))
     corrected = pat._was_corrected(p.session, p.event_index)
     after = _tool_calls_after(p)
-    sentence = (
-        f"{length} characters, and it had a go anyway."
-        if corrected
-        else f"Somehow the agent knew. {_count(after, 'tool call')} followed."
-    )
     card = _answer(
         cid,
         round(share, 2),
         unit,
-        # Never "A 11 character prompt": the article is right for every length this way.
-        f"A prompt of {_count(length, 'character')}",
-        sentence,
+        cryptic_display(length),
+        cryptic_sentence(length, after, corrected),
         basis,
         len(candidates),
         {"length": length, "tool_calls_after": after, "corrected": corrected},
     )
-    return card, _quote_of(p)
+    return card, _quote_of(p, tool_calls_after=after, corrected=corrected)
+
+
+def cryptic_display(length: int) -> str:
+    """Never "A 11 character prompt": the article is right for every length this way."""
+    return f"A prompt of {_count(length, 'character')}"
+
+
+def cryptic_sentence(length: int, tool_calls_after: int, corrected: bool) -> str:
+    return (
+        f"{length} characters, and it had a go anyway."
+        if corrected
+        else f"Somehow the agent knew. {_count(tool_calls_after, 'tool call')} followed."
+    )
 
 
 # ----------------------------------------------------------- 14 prompts_per_session
 def _prompts_per_session(facts: Sequence[pf.SessionFact]) -> dict:
-    cid, unit, basis = (
-        "prompts_per_session",
-        "prompts per session",
-        "prompts_over_attended_sessions",
-    )
+    # The unit is an identifier (`spec/report.v1.json` `wrapped_unit`), never rendered, so
+    # it carries no space (it was "prompts per session").
+    cid, unit, basis = "prompts_per_session", "prompts_per_session", "prompts_over_attended_sessions"
     # A session nobody was at is not a conversation.
     attended = _attended(facts)
     counts = [f.prompt_count for f in attended]
@@ -1266,10 +1387,10 @@ def _prompts_per_session(facts: Sequence[pf.SessionFact]) -> dict:
     depth = round(tools / prompts, 1) if prompts >= pf.MIN_PROMPTS and known else None
     extras = {"median": median, "tool_calls_per_prompt": depth}
     if len(attended) < pf.MIN_SESSIONS:
-        return _refuse(cid, unit, basis, len(attended), _attended_floor(len(attended)), extras)
+        return _attended_floor(cid, unit, basis, len(attended), extras)
     mean = round(sum(counts) / len(counts), 1)
     sentence = (
-        f"{pf._n(depth)} tool calls for every prompt you send."
+        f"{_count(depth, 'tool call')} for every prompt you send."
         if depth is not None
         else f"Half your sessions have {pf._n(median)} or fewer."
     )
@@ -1434,20 +1555,16 @@ def _kind_of_work(sessions: Sequence[pat.SessionEvents], commit_subjects: Sequen
     counts = collections.Counter(k for k in map(classify_subject, commit_subjects) if k)
     classified = sum(counts.values())
     coverage = round(classified / total, 3) if total else None
+    # Which gate the commit labels failed (`KIND_REFUSALS`), and the floor it names: the
+    # labelled count, or the coverage in percent.
     if not total:
-        commit_reason = "no commit subjects were read"
+        commit_code, commit_needed = "no_subjects", None
     elif classified < KIND_MIN_SUBJECTS:
-        commit_reason = (
-            f"{classified} of {total} commit subjects say what kind of change they are, "
-            f"{KIND_MIN_SUBJECTS} needed"
-        )
+        commit_code, commit_needed = "too_few_labelled", KIND_MIN_SUBJECTS
     elif classified / total < KIND_MIN_COVERAGE:
-        commit_reason = (
-            f"{classified} of {total} commit subjects say what kind of change they are, "
-            f"{round(KIND_MIN_COVERAGE * 100)}% needed"
-        )
+        commit_code, commit_needed = "low_label_coverage", round(KIND_MIN_COVERAGE * 100)
     else:
-        commit_reason = None
+        commit_code, commit_needed = None, None
 
     roles = _role_lines(sessions)
     lines = sum(roles.values())
@@ -1457,10 +1574,19 @@ def _kind_of_work(sessions: Sequence[pat.SessionEvents], commit_subjects: Sequen
         "commits": total,
         "coverage": coverage,
         "role_lines": {r: roles[r] for r in plain.ROLES if roles[r]},
-        "commit_reason": commit_reason,
+        "commit_code": commit_code,
+        "commit_reason": None,
+        # The file role basis's own numbers, so its half of a refusal is worded from the
+        # wire: the attributable lines, and the floor they fell short of.
+        "lines": lines,
+        "lines_needed": lang.MIN_LINES,
     }
+    if commit_code is not None:
+        extras["commit_reason"] = pf.fill(
+            KIND_REFUSALS[commit_code], classified=classified, commits=total, needed=commit_needed
+        )
 
-    if commit_reason is None:
+    if commit_code is None:
         top = sorted(counts, key=lambda k: (-counts[k], KINDS.index(k)))
         k1 = top[0]
         said = _kind_noun(k1, counts[k1])
@@ -1485,8 +1611,7 @@ def _kind_of_work(sessions: Sequence[pat.SessionEvents], commit_subjects: Sequen
             said += f", {round(100 * roles[top[1]] / lines)}% to {ROLE_WORD[top[1]]} files"
         return _answer(cid, r1, unit, ROLE_DISPLAY[r1], said + ".", KIND_BASIS_LINES, lines, extras)
 
-    lines_reason = f"{_count(lines, 'attributable line')}, {lang.MIN_LINES} needed"
-    return _refuse(cid, unit, KIND_BASIS_NEITHER, total, f"{commit_reason}; {lines_reason}", extras)
+    return _refuse(cid, unit, KIND_BASIS_NEITHER, total, "neither_kind_basis", extras, needed=commit_needed)
 
 
 # ------------------------------------------------------------------------ assembled
@@ -1516,9 +1641,9 @@ def wrapped(
             )
     P = profile if profile is not None else pf.corpus_profile(facts)
 
-    quotable = [p for p in _prompts(sessions) if _quotable(p.text)]
+    own = [p for p in _prompts(sessions) if quotable(p.text)]
     # The three cards that quote pick only from prompts that are safe to show (`_private`).
-    showable = [p for p in quotable if not _private(p.text)]
+    showable = [p for p in own if not _private(p.text)]
     go_to, go_to_quote = _go_to_prompt(showable)
     crash, crash_quote = _crash_out(showable)
     cryptic, cryptic_quote = _cryptic_prompt(showable)
@@ -1533,7 +1658,7 @@ def wrapped(
         _streak(facts, contributions),
         _change_course(P),
         crash,
-        _prompt_length(quotable),
+        _prompt_length(own),
         _deep_sessions(facts),
         _time_put_in(facts, P),
         cryptic,
@@ -1557,13 +1682,55 @@ def wire(result: Mapping) -> dict:
 
     Dropped: every `question`, `display` and `sentence` (the phone renders its own words
     from the id and the numbers, as `feedback.wire` does), every quote, and everything but
-    `{id, n, reason}` of the two cards whose numbers are readings of what somebody typed.
+    `LOCAL_CARD_KEYS` of the two cards whose numbers are readings of what somebody typed.
+    `reason` is still the words here; the report carries the `code` in its place
+    (`report_blocks.wrapped_block`).
     """
     cards = []
     for c in result["cards"]:
         keys = LOCAL_CARD_KEYS if c["id"] in LOCAL_CARDS else WIRE_KEYS
         cards.append({k: copy.deepcopy(c[k]) for k in keys})
     return {"cards": cards, "sample": copy.deepcopy(dict(result["sample"]))}
+
+
+#: The quotes document's version (privacy/upload-contract.json `quotes.quotes_version`).
+QUOTES_VERSION = 1
+
+
+def quotes_upload(result: Mapping, *, generated_at: float) -> dict:
+    """The quotes document (privacy/upload-contract.json `quotes`, `QuotesUpload`): THE
+    SECOND OPT-IN EXCEPTION, the one place a prompt's words leave the machine, and only
+    when both the phone's setting and `--quotes` said yes. Empty unless `wrapped` was run
+    with `quotes=True`, so a caller that forgot to ask sends nothing.
+
+    Every quote is checked again here, on the text as it would be sent: the digest's mask
+    must leave it as it is (a secret shape it knows is not in it) and `quotable` must still
+    pass (no slash command, no identifier, no paste). A quote that fails is dropped, never
+    rewritten. `server/builder/quotes.py` runs the same two functions a third time.
+    """
+    from . import digest
+
+    out = []
+    for card in QUOTE_CARDS:
+        q = (result.get("quotes") or {}).get(card)
+        if not q:
+            continue
+        text = q["text"]
+        if len(text) > QUOTE_MAX or digest.mask(text) != text or not quotable(text):
+            continue
+        out.append(
+            {
+                "card": card,
+                "text": text,
+                "client_session_id": q["session_id"],
+                "sent_at": pf._iso(q["ts"]),
+                "seconds_in": int(q["seconds_in"]),
+                # The cryptic prompt's sentence reads both; every other card's are null.
+                "tool_calls_after": q.get("tool_calls_after") if card == "cryptic_prompt" else None,
+                "corrected": q.get("corrected") if card == "cryptic_prompt" else None,
+            }
+        )
+    return {"quotes_version": QUOTES_VERSION, "generated_at": pf._iso(generated_at), "quotes": out}
 
 
 __all__ = [
@@ -1579,15 +1746,25 @@ __all__ = [
     "KINDS",
     "KIND_MIN_COVERAGE",
     "KIND_MIN_SUBJECTS",
+    "KIND_REFUSALS",
     "LOCAL_CARDS",
+    "LOCAL_CARD_KEYS",
     "PROMPT_BRIEF_WORDS",
+    "QUOTES_VERSION",
     "QUOTE_CARDS",
     "QUESTIONS",
     "QUOTE_MAX",
+    "REFUSALS",
+    "REFUSAL_CONSTANTS",
     "ROLE_DISPLAY",
+    "ROLE_WORD",
     "WIRE_KEYS",
     "WORK_STYLES",
+    "WORK_STYLE_DISPLAY",
     "classify_subject",
+    "quotable",
+    "quotes_upload",
+    "refusal_text",
     "wire",
     "wrapped",
 ]

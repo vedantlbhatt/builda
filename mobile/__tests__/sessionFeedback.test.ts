@@ -101,9 +101,15 @@ describe('minutes, the way a person says them', () => {
     expect(minutes(60)).toBe('1 minute');
   });
 
-  test('an hour reads as an hour', () => {
-    expect(minutes(3600)).toBe('1h');
+  test('an hour reads as an hour, the way feedback._mins says it', () => {
+    expect(minutes(3600)).toBe('1h 00m');
     expect(minutes(4500)).toBe('1h 15m');
+  });
+
+  test('a tie rounds to even, as Python rounds it, so the phone and the Mac say one duration', () => {
+    // 150 seconds is 2.5 minutes: Python's round() says 2, Math.round said 3.
+    expect(minutes(150)).toBe('2 minutes');
+    expect(minutes(210)).toBe('4 minutes');
   });
 });
 

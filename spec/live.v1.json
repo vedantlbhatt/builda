@@ -1,0 +1,168 @@
+{
+  "_comment": [
+    "THE LIVE WIRE. The only definition of what a RUNNING session's `live` block and the opt in `live_names` block may carry.",
+    "Named by privacy/upload-contract.json (v4 fields `live` and `live_names`); scripts/gen_live.py emits server/builder/live_spec.py",
+    "(Pydantic, extra forbid at every level) and mobile/src/generated/live.ts. Never hand edit the output.",
+    "",
+    "What is here: enums, integers, clocks, and 16 hex salted file ids (HMAC of the path relative to the checkout, under a salt that never",
+    "leaves the machine or the server's privacy_prefs row). What is NOT here, and cannot be added without editing this file: a path, a",
+    "file or directory name (except inside LiveNames, the third opt in exception), a command, a prompt, a tool name, a sentence.",
+    "Every sentence about a live session is rendered by the reader from these ids and numbers (analysis.live.sentence on the server,",
+    "src/live/sentence.ts on the phone), so rewording one is a client change, never a re upload.",
+    "",
+    "Python is the reference. Every enum below copies a table in analysis/live.py or analysis/plain.py, and server/tests/test_contract.py",
+    "pins each copy to its table both ways; the three Live Activity enums copy mobile/modules/builder-live/src/BuilderLive.types.ts and",
+    "are pinned to it the same way. A refusal is an enum code plus the numbers it rests on, never prose.",
+    "",
+    "Measured beside the caps: 400 map rows is 2.8x the largest number of distinct tool paths in one transcript of the corpus (141, of",
+    "57 root transcripts, 2026-09-13), UNMEASURED JUDGEMENT CALL beyond that; 600 frames is analysis.live.MAX_FRAMES; 4 decisions is",
+    "analysis.live.MAX_DECISIONS; 120 characters for a basename is the contract's own cap."
+  ],
+  "version": 1,
+  "max_lengths": {
+    "name": 120
+  },
+  "enums": {
+    "activity_kind": ["reading", "editing", "testing", "running", "searching", "delegating", "waiting_on_you", "thinking", "idle"],
+    "plain_role": ["test", "source", "config", "docs", "migration", "style", "build", "dependency", "unknown"],
+    "verdict_state": ["starting", "converging", "circling", "lost", "waiting", "done"],
+    "verdict_basis": [
+      "turn_ended",
+      "turn_ended_background_out",
+      "segment_tool_calls",
+      "causes:repeated_call",
+      "causes:file_churn_with_failures",
+      "consecutive_failures",
+      "edits_to_unread_files",
+      "error_rate_down_and_new_files"
+    ],
+    "verdict_refusal": ["no_events", "no_rule_fired"],
+    "eta_basis": ["finished_sessions_same_repo_that_ran_at_least_this_long"],
+    "eta_refusal": ["no_active_time", "repo_unresolved", "no_history", "too_few_sessions", "too_few_survivors"],
+    "decision_kind": [
+      "force_pushed",
+      "deleted_test",
+      "weakened_test",
+      "skipped_hook",
+      "reverted_changes",
+      "abandoned_plan",
+      "changed_schema",
+      "removed_dependency",
+      "added_dependency",
+      "switched_approach"
+    ],
+    "needs_you_reason": [
+      "waiting_for_input",
+      "circling",
+      "lost",
+      "error_loop",
+      "idle",
+      "finished_unreviewed",
+      "waiting_on_background",
+      "running_fine"
+    ],
+    "frame_kind": ["read", "edit", "fail"],
+    "phase": ["working", "needsYou", "done", "stalled"],
+    "trajectory": ["converging", "circling", "lost", "none"],
+    "creature": ["crab", "octopus", "dog", "cat", "owl", "fox", "whale", "bee", "bit"]
+  },
+  "objects": {
+    "LiveActivity": [
+      {"name": "kind", "type": "enum", "values": "activity_kind", "doc": "what the agent is doing at computed_at (analysis.live.ACTIVITY_KINDS)"},
+      {"name": "role", "type": "enum", "values": "plain_role", "doc": "the role of the file the activity is about, by path shape only (plain.role_of); unknown when it names none"},
+      {"name": "attempt", "type": "int", "doc": "editing only: writes to one file since it was last read or tested; 0 otherwise"},
+      {"name": "since_s", "type": "int", "doc": "seconds the current activity had run at computed_at; the reader adds the seconds since computed_at, for display only"},
+      {"name": "files", "type": "int", "doc": "distinct files in the current run of this activity"},
+      {"name": "calls", "type": "int", "doc": "tool calls in the current run of this activity"},
+      {"name": "file_id", "type": "hex16", "nullable": true, "doc": "the last call's file, as a salted id; null when it named none"}
+    ],
+    "LiveEvidence": [
+      {"name": "window_calls", "type": "int", "doc": "tool calls in the window the verdict read"},
+      {"name": "errors_now", "type": "int", "doc": "failing results in the window"},
+      {"name": "errors_before", "type": "int", "doc": "failing results in the window before it"},
+      {"name": "new_files", "type": "int", "doc": "files entering the window that nothing earlier in the segment touched"},
+      {"name": "checkpoints", "type": "int", "doc": "writes, test runs and commits in the window"},
+      {"name": "repeats", "type": "int", "doc": "copies of the most repeated comparable call in the window"},
+      {"name": "churn_writes", "type": "int", "doc": "writes to the most rewritten file in the window"},
+      {"name": "fail_run", "type": "int", "doc": "the longest run of failing results in a row in the window"},
+      {"name": "blind_edits", "type": "int", "doc": "files modified in the window that nothing in the session read or wrote first"},
+      {"name": "stuck_s", "type": "int", "doc": "seconds since the circling run began; 0 unless circling"},
+      {"name": "files_changed", "type": "int", "doc": "files the segment changed, less the calls an error answered"},
+      {"name": "commits", "type": "int", "doc": "commit calls in the segment no error answered"},
+      {"name": "background", "type": "int", "doc": "background tasks the session started that had not reported back when the turn ended; 0 while it runs"}
+    ],
+    "LiveVerdict": [
+      {"name": "state", "type": "enum", "values": "verdict_state", "nullable": true, "doc": "converging, circling or lost, or where the turn stands; null when no rule fired (reason says which refusal)"},
+      {"name": "basis", "type": "enum", "values": "verdict_basis", "nullable": true, "doc": "the rule that fired; null exactly when state is"},
+      {"name": "reason", "type": "enum", "values": "verdict_refusal", "nullable": true, "doc": "why there is no verdict; null exactly when state is set"},
+      {"name": "file_id", "type": "hex16", "nullable": true, "doc": "the churned file when the basis is causes:file_churn_with_failures"},
+      {"name": "evidence", "type": "object", "item": "LiveEvidence", "doc": "every count the rules read, always all present"}
+    ],
+    "LiveEta": [
+      {"name": "elapsed_s", "type": "int", "nullable": true, "doc": "attended plus autonomous seconds so far; null when the producer could not supply them"},
+      {"name": "typical_s", "type": "int", "nullable": true, "doc": "the median active seconds of similar finished sessions that ran at least this long"},
+      {"name": "p25_s", "type": "int", "nullable": true, "doc": "their lower quartile"},
+      {"name": "p75_s", "type": "int", "nullable": true, "doc": "their upper quartile"},
+      {"name": "remaining_s", "type": "int", "nullable": true, "doc": "typical_s less elapsed_s, never below 0"},
+      {"name": "n", "type": "int", "nullable": true, "doc": "the sessions the refusal or the quartiles rest on; null when nothing was counted (the repository is unresolved)"},
+      {"name": "needed", "type": "int", "doc": "analysis.live.ETA_MIN_SESSIONS, the sessions a quartile needs"},
+      {"name": "unattended", "type": "bool", "doc": "the similar set is unattended runs, not sittings with you there"},
+      {"name": "basis", "type": "enum", "values": "eta_basis"},
+      {"name": "reason", "type": "enum", "values": "eta_refusal", "nullable": true, "doc": "why there is no ETA; the numbers above are null when this is set, except n"}
+    ],
+    "LiveDecision": [
+      {"name": "kind", "type": "enum", "values": "decision_kind", "doc": "a hard to undo thing the agent did (analysis.live.DECISION_KINDS), first occurrence per kind"},
+      {"name": "ts", "type": "number", "doc": "Unix seconds of the first occurrence"},
+      {"name": "event_n", "type": "int", "doc": "its position among the session's events"},
+      {"name": "count", "type": "int", "doc": "occurrences of this kind in the session"}
+    ],
+    "LiveNeedsYou": [
+      {"name": "score", "type": "int", "doc": "0-100: how much this session needs you now; mission control sorts by it"},
+      {"name": "reason", "type": "enum", "values": "needs_you_reason", "doc": "the first rule that matched"}
+    ],
+    "LiveFile": [
+      {"name": "id", "type": "hex16", "doc": "salted id of the path relative to the checkout"},
+      {"name": "dir_id", "type": "hex16", "nullable": true, "doc": "salted id of its directory; null at the base"},
+      {"name": "role", "type": "enum", "values": "plain_role", "doc": "by path shape only (plain.role_of)"},
+      {"name": "depth", "type": "int", "nullable": true, "doc": "directories between the base and the file; null outside the base"},
+      {"name": "reads", "type": "int"},
+      {"name": "edits", "type": "int"},
+      {"name": "last_read_ts", "type": "number", "nullable": true, "doc": "Unix seconds; null when never read"},
+      {"name": "last_edit_ts", "type": "number", "nullable": true, "doc": "Unix seconds; null when never edited"}
+    ],
+    "LiveMap": [
+      {"name": "files", "type": "list", "item": "LiveFile", "max_items": 400, "doc": "the rows touched most recently; the slim body keeps only the rows activity and verdict name"},
+      {"name": "files_total", "type": "int", "doc": "every file the session touched, so a cut map says how much it cut"}
+    ],
+    "LiveFrame": [
+      {"name": "t", "type": "int", "doc": "seconds from the session's first event"},
+      {"name": "file_id", "type": "hex16"},
+      {"name": "kind", "type": "enum", "values": "frame_kind"}
+    ],
+    "LiveSample": [
+      {"name": "events", "type": "int"},
+      {"name": "tool_calls", "type": "int"},
+      {"name": "segments", "type": "int"},
+      {"name": "tokens", "type": "int", "nullable": true, "doc": "every token the session's turns moved; null when the transcript records no usage, never 0"}
+    ],
+    "LiveName": [
+      {"name": "id", "type": "hex16", "doc": "a LiveFile id"},
+      {"name": "name", "type": "string", "max": "name", "doc": "the file's basename and nothing else: no directory, never a separator"}
+    ],
+    "LiveNames": [
+      {"name": "files", "type": "list", "item": "LiveName", "max_items": 400, "doc": "one basename per map row, keyed by its id"}
+    ]
+  },
+  "fields": [
+    {"name": "live_version", "type": "int", "doc": "the version of this spec that produced the document"},
+    {"name": "computed_at", "type": "datetime", "doc": "when this state was computed; the reader ages since_s and anchors the ETA on it"},
+    {"name": "activity", "type": "object", "item": "LiveActivity", "nullable": true, "doc": "null before the session's first event"},
+    {"name": "verdict", "type": "object", "item": "LiveVerdict"},
+    {"name": "eta", "type": "object", "item": "LiveEta"},
+    {"name": "decisions", "type": "list", "item": "LiveDecision", "max_items": 4, "doc": "one per kind, hardest to undo first"},
+    {"name": "needs_you", "type": "object", "item": "LiveNeedsYou"},
+    {"name": "map", "type": "object", "item": "LiveMap", "nullable": true, "doc": "the files the session touched, as salted ids"},
+    {"name": "timelapse", "type": "list", "item": "LiveFrame", "max_items": 600, "nullable": true, "doc": "reads, edits and failures over time; null in the slim body the live list serves"},
+    {"name": "sample", "type": "object", "item": "LiveSample"}
+  ]
+}

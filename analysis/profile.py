@@ -127,6 +127,55 @@ LINES_ABSENT = "absent"
 #: could have changed a file the transcript does not show (`burn.Segment.barren`).
 BARREN_BASIS = "burn_segments_that_changed_nothing"
 
+#: Why `barren_token_share` is refused, as the code the report carries beside the words
+#: (`spec/report.v1.json` `burn_refusal`; the phone writes the sentence from the code). Four
+#: different facts, so four codes: the harness recorded no counts at all; it did, but the
+#: facts could not be cut into segments (the server's shape, which never has transcripts);
+#: fewer sessions than `MIN_SESSIONS` carried counts; or they did and none of their tokens
+#: fell inside a segment. Pinned to the spec enum, with `burn.SESSION_REFUSALS`, by
+#: `analysis/tests/test_report_blocks.py`.
+BARREN_NO_COUNTS = "no_token_counts"
+BARREN_NOT_SEGMENTED = "not_segmented"
+BARREN_BELOW_FLOOR = "below_session_floor"
+BARREN_NOTHING_INSIDE = "nothing_inside_segments"
+BARREN_CODES: tuple[str, ...] = (
+    BARREN_NO_COUNTS,
+    BARREN_BELOW_FLOOR,
+    BARREN_NOTHING_INSIDE,
+    BARREN_NOT_SEGMENTED,
+)
+#: The words for each, filled by `fill` with `n` (the sessions that carried counts) and
+#: `needed` (`MIN_SESSIONS`). One template per code, generated into the phone's copy.
+BARREN_REFUSALS: dict[str, str] = {
+    BARREN_NO_COUNTS: "no session reported token counts",
+    BARREN_BELOW_FLOOR: "{n:session} with token counts, {needed} needed",
+    BARREN_NOTHING_INSIDE: (
+        "the sessions with token counts spent none inside a segment, so there is nothing to "
+        "divide"
+    ),
+    # "No session reported token counts" is false on the server, where every Claude Code
+    # session reports them and none can be split into segments (that needs the transcript).
+    BARREN_NOT_SEGMENTED: (
+        "sessions reported token counts, but none was split into segments, which needs the "
+        "transcripts"
+    ),
+}
+
+#: Why the list price dollars are refused, keyed by the refusal's basis, which IS its code
+#: (`pricing.BASIS_TOKENS_ABSENT`, `pricing.BASIS_UNKNOWN_MODEL`; the report's
+#: `money_refusal`). `{unpriced_sessions}` is the metric's own extra.
+SPEND_REFUSALS: dict[str, str] = {
+    pricing.BASIS_TOKENS_ABSENT: "no session reported token counts",
+    pricing.BASIS_UNKNOWN_MODEL: "{unpriced_sessions:session} used a model with no published price here",
+}
+
+#: The two keys `capture/sessions.uploaded_tool_counts` buckets every other tool into
+#: (privacy/upload-contract.json `tool_calls`: `mcp__*` to `mcp_other`, anything outside the
+#: allowlist to `other`). They are calls and count toward every total, but a bucket is not
+#: a tool anybody chose, so "other is 40% of every tool call you make" is never a fact
+#: (docs/overnight-integration.md 5.1).
+TOOL_BUCKETS: tuple[str, ...] = ("mcp_other", "other")
+
 # ------------------------------------------------------------------- sample floors
 #: Below these a metric is None. They are judgement calls, not measurements, and are
 #: written here rather than inline so that raising one is a single visible edit.
@@ -191,6 +240,11 @@ class SessionFact:
     tool_calls: Mapping[str, int] = dataclasses.field(default_factory=dict)
     tool_basis: str = TOOLS_ABSENT
     lines_added_agent: int = 0
+    #: Lines the agent took OUT of project files, counted by the same rule and over the
+    #: same writes as `lines_added_agent` (`lines_basis` names both). The server stores it
+    #: (`session_stats.lines_removed_agent`) and the money view puts it beside the added
+    #: lines, red beside green; 0 on a fact built without it, like `lines_added_agent`.
+    lines_removed_agent: int = 0
     lines_basis: str = LINES_ABSENT
     #: How many tool calls actually WROTE a file (edit tools, plus credited shell writes
     #: where they are visible). A line rate over almost no writes is not a rate.
@@ -224,6 +278,12 @@ class SessionFact:
     #: file). Optional beside the pair, from `burn.session_burn_detail`; None means "not
     #: supplied", and the corpus then says so rather than summing a partial count.
     unreadable_tokens: int | None = None
+    #: Per cause, `(tokens it can claim, barren segments it appeared in)` over this
+    #: session's BARREN segments only (`burn.session_burn_detail`'s `causes`, summed from
+    #: `Segment.attribution`). Claims overlap, so the tokens never sum to `barren_tokens`
+    #: and never exceed it one by one. None when not supplied, and then the corpus says
+    #: nothing about causes rather than summing a partial set.
+    barren_causes: Mapping[str, tuple[int, int]] | None = None
 
     def __post_init__(self) -> None:
         # One of the pair without the other is a share with half its inputs, and a barren
@@ -243,6 +303,18 @@ class SessionFact:
                     f"unreadable_tokens {self.unreadable_tokens} is outside 0.."
                     f"{self.burn_tokens - self.barren_tokens} (burn_tokens less barren_tokens)"
                 )
+        if self.barren_causes is not None:
+            if self.burn_tokens is None:
+                raise ValueError("barren_causes needs burn_tokens beside it")
+            for cause, (tokens, segments) in self.barren_causes.items():
+                # A claim is a set of one barren segment's own turns, so no cause can claim
+                # more than the barren total; a claim with no segment behind it is a claim
+                # about nothing.
+                if not (0 <= tokens <= self.barren_tokens) or segments < 1:
+                    raise ValueError(
+                        f"barren_causes[{cause!r}] = ({tokens}, {segments}) is outside "
+                        f"0..{self.barren_tokens} tokens over at least one segment"
+                    )
 
     @property
     def local_day(self) -> dt.date:
@@ -344,6 +416,7 @@ def session_fact_from_events(
     burn_tokens: int | None = None,
     barren_tokens: int | None = None,
     unreadable_tokens: int | None = None,
+    barren_causes: Mapping[str, tuple[int, int]] | None = None,
 ) -> SessionFact:
     """A `SessionFact` from one session's digest events (`analysis.digest.Ev`).
 
@@ -355,7 +428,8 @@ def session_fact_from_events(
     PATHS as well as the events, and the caller that has the paths is the one that memoises
     `burn.load_turns` across a whole corpus. `unreadable_tokens` is the third number of
     `burn.session_burn_detail`, for a caller that wants the corpus to say how much of the
-    spend it could not judge.
+    spend it could not judge, and `barren_causes` its fourth (what each cause claimed of
+    the barren segments), for the report's burn block.
     """
     from . import digest as dg
     from . import patterns as pat
@@ -363,6 +437,7 @@ def session_fact_from_events(
     prompts: list[PromptFact] = []
     tools: Counter[str] = Counter()
     lines = 0
+    removed = 0
     writes = 0
     commits = 0
     commit_times: list[float] = []
@@ -379,6 +454,7 @@ def session_fact_from_events(
             # own files is the agent's scratch, never work that shipped.
             if pat.project_write(e):
                 lines += e.added or 0
+                removed += e.removed or 0
                 writes += 1
             if e.tool in dg.COMMIT_TOOLS or (
                 e.tool in dg.SHELL_TOOLS and re.search(r"\bgit commit\b", e.text or "")
@@ -423,6 +499,7 @@ def session_fact_from_events(
         tool_calls=dict(tools),
         tool_basis=TOOLS_ALL if tools else TOOLS_ABSENT,
         lines_added_agent=lines,
+        lines_removed_agent=removed,
         lines_basis=LINES_EDIT_AND_SHELL,
         write_events=writes,
         commit_count=commits,
@@ -436,6 +513,7 @@ def session_fact_from_events(
         burn_tokens=burn_tokens,
         barren_tokens=barren_tokens,
         unreadable_tokens=unreadable_tokens,
+        barren_causes=dict(barren_causes) if barren_causes is not None else None,
     )
 
 
@@ -570,6 +648,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     tool_total = sum(sum(s.tool_calls.values()) for s in ss)
     tool_known = [s for s in ss if s.tool_basis != TOOLS_ABSENT]
     lines_total = sum(s.lines_added_agent for s in ss)
+    lines_removed_total = sum(s.lines_removed_agent for s in ss)
     lines_known = [s for s in ss if s.lines_basis != LINES_ABSENT]
     # Commits cannot simply be summed. Every session asks git what landed in its own
     # window (plus the half-hour attribution lookback), so two sessions running at once in
@@ -581,6 +660,8 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         "total_hours": round(active_hours, 2),
         "total_prompts": prompt_total,
         "total_lines_added": lines_total,
+        # Summed like the added lines, over the same writes (`lines_removed_agent`).
+        "total_lines_removed": lines_removed_total,
         # None, not 0, when the windows overlap: 0 would read as "you committed nothing".
         "total_commits": commits_total,
         "commit_basis": commits_basis,
@@ -771,10 +852,16 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     mix: Counter[str] = Counter()
     for s in ss:
         mix.update(s.tool_calls)
+    # The buckets stay in the denominator, because they are calls; they are never named,
+    # because a bucket is not a tool (`TOOL_BUCKETS`). Before the contract's allowlist was
+    # kept on the machine the server's denominator lacked them, so "Bash is N% of every
+    # tool call" was high by every call the uploader dropped (docs/overnight-integration.md
+    # 5.1).
     top_tools = [
         {"tool": t, "calls": c, "share": round(c / tool_total, 3)}
-        for t, c in sorted(mix.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
-    ]
+        for t, c in sorted(mix.items(), key=lambda kv: (-kv[1], kv[0]))
+        if t not in TOOL_BUCKETS
+    ][:5]
 
     # ---- test runs per active hour (the quality_guardian rule reads this)
     tests_known = [s for s in ss if s.test_runs is not None]
@@ -848,8 +935,11 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             one = pricing.cost_usd(part, model)
             if one is None:
                 continue
+            # Keyed by the PRICE TABLE's key (`pricing.normalize`): a priced model is by
+            # construction a `pricing.PRICES` key, which is the id the report's `by_model`
+            # carries (`priced_model`). The display name is `pricing.family` of it.
             row = per_model.setdefault(
-                pricing.family(model),
+                pricing.normalize(model),
                 {
                     "usd": 0.0,
                     "usd_dominated": 0.0,
@@ -899,14 +989,17 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             else _metric(None, "US dollars per active hour at list prices", 0, "absent", "no active time")
         )
     else:
+        refusal = pricing.BASIS_TOKENS_ABSENT if not unpriced else pricing.BASIS_UNKNOWN_MODEL
         m["spend_usd"] = _metric(
             None,
             "US dollars at API list prices",
             0,
-            pricing.BASIS_TOKENS_ABSENT if not unpriced else pricing.BASIS_UNKNOWN_MODEL,
-            "no session reported token counts"
-            if not unpriced
-            else f"{unpriced} session(s) used a model with no published price here",
+            refusal,
+            fill(SPEND_REFUSALS[refusal], unpriced_sessions=unpriced),
+            # The same extra the answered branch carries, so a refusal still says how many
+            # sessions the price table did not know rather than reading as none.
+            unpriced_sessions=unpriced or None,
+            prices_read_on=str(pricing.PRICES_READ_ON),
         )
         m["spend_per_hour_usd"] = _metric(
             None, "US dollars per active hour at list prices", 0, "absent", "no priced sessions"
@@ -978,29 +1071,34 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             barren_tokens=barren_total,
             tokens=burn_total,
             unreadable_tokens=unreadable_total,
+            code=None,
+            needed=None,
+            by_cause=_barren_by_cause(burned, barren_total),
         )
     else:
+        code = (
+            (BARREN_NOT_SEGMENTED if reported else BARREN_NO_COUNTS)
+            if not burned
+            else BARREN_BELOW_FLOOR
+            if len(burned) < MIN_SESSIONS
+            else BARREN_NOTHING_INSIDE
+        )
         m["barren_token_share"] = _metric(
             None,
             "share",
             len(burned),
             BARREN_BASIS,
-            (
-                "sessions reported token counts, but none was split into segments, which "
-                "needs the transcripts"
-                if reported
-                else "no session reported token counts"
-            )
-            if not burned
-            else f"{len(burned)} sessions with token counts, {MIN_SESSIONS} needed"
-            if len(burned) < MIN_SESSIONS
-            else "the sessions with token counts spent none inside a segment, so there is "
-            "nothing to divide",
+            fill(BARREN_REFUSALS[code], n=len(burned), needed=MIN_SESSIONS),
             # Sums over the sessions that DID report are measured even when the share is
             # refused; with no such session there is nothing to sum, and 0 would be a claim.
             barren_tokens=barren_total if burned else None,
             tokens=burn_total if burned else None,
             unreadable_tokens=unreadable_total,
+            code=code,
+            # The floor the refusal names, beside its code, so the phone can say "2 of 3".
+            needed=MIN_SESSIONS if code == BARREN_BELOW_FLOOR else None,
+            # Null exactly when the share is: the causes are shares OF the barren tokens.
+            by_cause=None,
         )
 
     # ---- night, peak hour
@@ -1161,7 +1259,11 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # test log.
     model_costs = [
         {
-            "model": name,
+            # A name a person says ("Opus 5"), and beside it the price table key the row was
+            # priced from (`claude-opus-5`), which is what the report carries: the phone
+            # renders the name from the key (`pricing.FAMILIES`, generated into copy.ts).
+            "model": pricing.family(model_id),
+            "model_id": model_id,
             "usd": round(row["usd"], 2),
             "output_tokens": row["output_tokens"],
             "sessions": row["sessions"],
@@ -1176,7 +1278,8 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             ),
             "commits_basis": "sittings_this_model_wrote_most_of",
         }
-        for name, row in sorted(per_model.items(), key=lambda kv: -kv[1]["usd"])
+        # Most dollars first; the key breaks a tie, so the order is total.
+        for model_id, row in sorted(per_model.items(), key=lambda kv: (-kv[1]["usd"], kv[0]))
     ]
 
     # ---- where each session stands
@@ -1245,32 +1348,49 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
 
 
 # ------------------------------------------------------------------------ archetype
-#: The label every Paxel anchored number carries. Paxel's landing page shows an EXAMPLE
-#: report; its figures are marketing copy, and this repository's standard is that every
-#: constant carries the measurement it came from or says it has none.
-PAXEL_UNMEASURED = "UNMEASURED: Paxel landing page example copy, not a measurement"
+#: Where four of the numbers once credited to Paxel actually came from. RESEARCHED
+#: 2026-09-13 (`design-refs/research/paxel.md` section 6, confirmed by a second reviewer):
+#: `planning_ratio 2.4`, `code_velocity 487`, `autonomy_score 0.82` and an average prompt
+#: of 156 characters are on no Paxel page and never were (the launch capture of
+#: 2026-06-06 and three later ones were checked). They come from a mock "PAXEL BUILDER
+#: REPORT v1.0" in a speculative explainx.ai blog post whose formulas are its author's
+#: guesses and which measure different quantities from the ones here. So they carry no
+#: measurement at all, and say so.
+EXPLAINX_MOCK = (
+    "UNMEASURED: from an explainx.ai mock of a Paxel report, which Paxel never published; "
+    "not a measurement"
+)
+
+#: The ONE figure that is Paxel's own copy: landing card 10, "You steer, hard ... about 4
+#: prompts in 10". It describes an extreme user, not a norm (the owner's own Paxel card
+#: reads 6%), which is why it may gate `skeptic` and may not stand for a typical person.
+PAXEL_HEAVY_STEERER = (
+    "UNMEASURED: Paxel landing card 10 ('about 4 prompts in 10'), which describes a heavy "
+    "steerer, not a norm"
+)
 
 #: Each archetype is ONE named metric crossing ONE threshold. The rule is written out in
 #: `rule` so the UI can show why, and the threshold's source is written beside it here.
 #: Where a threshold is a judgement call it says so; nothing here is fitted.
 #:
-#: architect and velocity_machine KEEP the Paxel thresholds (2.4, 487) even though the
-#: `BASELINES` below moved to measured figures: moving a threshold moves people's
-#: archetypes, and that is a product decision, not a relabelling.
+#: architect and velocity_machine KEEP their thresholds (2.4, 487) even though the
+#: `BASELINES` below moved to measured figures and the source turned out to be a mock
+#: (`EXPLAINX_MOCK`): moving a threshold moves people's archetypes, and that is a product
+#: decision, not a relabelling. The label is what changed.
 ARCHETYPE_RULES: tuple[dict, ...] = (
     {
         "name": "architect",
         "metric": "planning_ratio",
         "threshold": 2.4,
         "rule": "prose before the first tool on more than twice as many prompts as go straight to work",
-        "source": f"{PAXEL_UNMEASURED}. The published example report shows planning_ratio 2.4 for an Architect",
+        "source": f"{EXPLAINX_MOCK}. The mock shows planning_ratio 2.4, measured another way",
     },
     {
         "name": "velocity_machine",
         "metric": "code_velocity",
         "threshold": 487.0,
         "rule": "agent lines per active hour",
-        "source": f"{PAXEL_UNMEASURED}. The published example report shows code_velocity 487 lines/hour",
+        "source": f"{EXPLAINX_MOCK}. The mock shows code_velocity 487 lines an hour",
     },
     {
         "name": "quality_guardian",
@@ -1298,7 +1418,7 @@ ARCHETYPE_RULES: tuple[dict, ...] = (
         "metric": "steer_rate",
         "threshold": 0.4,
         "rule": "interrupts plus corrective prompts, over prompts",
-        "source": f"{PAXEL_UNMEASURED}. The example copy calls out 'about 4 in 10 prompts' as steering hard",
+        "source": f"{PAXEL_HEAVY_STEERER}. An extreme gate, which is what an archetype is",
     },
 )
 
@@ -1381,6 +1501,38 @@ def _output_share(f: SessionFact) -> dict[str, float]:
     return {m: n / total for m, n in f.output_tokens_by_model.items() if n > 0}
 
 
+def _barren_by_cause(burned: Sequence[SessionFact], barren_total: int) -> list[dict] | None:
+    """What each cause claimed of the corpus's barren tokens: `[{cause, tokens, share,
+    segments}]`, most tokens first, ties in cause name order so the list is total.
+
+    Summed from `SessionFact.barren_causes` (`burn.session_burn_detail`), and only when
+    EVERY session with token counts supplied it: a partial sum would read as the whole
+    corpus's causes. `share` is of the BARREN tokens, 3 dp, and the shares OVERLAP (one turn
+    that dispatched a helper and whose call then failed is claimed by both causes), so they
+    are never summed. `[]` when no barren segment carried a cause burn detects, which
+    includes a corpus whose barren tokens are a measured 0.
+    """
+    if not burned or any(s.barren_causes is None for s in burned):
+        return None
+    if not barren_total:
+        return []  # no barren segment at all, so no cause claimed any of it
+    tokens: Counter[str] = Counter()
+    segments: Counter[str] = Counter()
+    for s in burned:
+        for cause, (claimed, segs) in (s.barren_causes or {}).items():
+            tokens[cause] += claimed
+            segments[cause] += segs
+    return [
+        {
+            "cause": cause,
+            "tokens": tokens[cause],
+            "share": round(tokens[cause] / barren_total, 3),
+            "segments": segments[cause],
+        }
+        for cause in sorted(tokens, key=lambda c: (-tokens[c], c))
+    ]
+
+
 def _rule_value(name: str, metrics: Mapping[str, dict]) -> float | None:
     entry = metrics.get(name)
     return None if entry is None else entry.get("value")
@@ -1391,15 +1543,18 @@ def _rule_value(name: str, metrics: Mapping[str, dict]) -> float | None:
 #: `scale` is the distance at which a difference counts as one unit of unusual, so the
 #: ranking does not simply favour whichever metric happens to have the biggest numbers.
 #:
-#: Five of these were anchored on Paxel's landing page example (docs/approved-roadmap.md
-#: 1.3). Two now carry figures measured in this repository; the other three have no
-#: measurement to replace them and say so. Every `source` starts MEASURED or UNMEASURED,
-#: or states the arithmetic it came from.
+#: Five of these were once said to be anchored on Paxel's example report
+#: (docs/approved-roadmap.md 1.3). Two now carry figures measured in this repository. Of
+#: the other three, which have no measurement to replace them, only `steer_rate` is Paxel's
+#: own copy and it describes a heavy steerer (`PAXEL_HEAVY_STEERER`); `autonomy_score` and
+#: `avg_prompt_chars` come from an explainx.ai mock (`EXPLAINX_MOCK`). No value moved:
+#: a baseline moving reorders the facts somebody is shown. Every `source` starts MEASURED
+#: or UNMEASURED, or states the arithmetic it came from.
 BASELINES: dict[str, dict] = {
     "steer_rate": {
         "value": 0.4,
         "scale": 0.2,
-        "source": f"{PAXEL_UNMEASURED} ('stop and redirect about 4 in 10 prompts')",
+        "source": f"{PAXEL_HEAVY_STEERER}; it ranks how far you are from a heavy steerer",
     },
     "planning_ratio": {
         "value": 2.5,
@@ -1420,12 +1575,12 @@ BASELINES: dict[str, dict] = {
     "autonomy_score": {
         "value": 0.82,
         "scale": 0.25,
-        "source": f"{PAXEL_UNMEASURED} (autonomy_score 0.82)",
+        "source": f"{EXPLAINX_MOCK} (autonomy_score 0.82, a guessed formula)",
     },
     "avg_prompt_chars": {
         "value": 156.0,
         "scale": 100.0,
-        "source": f"{PAXEL_UNMEASURED} (average prompt length 156 characters)",
+        "source": f"{EXPLAINX_MOCK} (156 characters; Paxel itself counts words)",
     },
     "iteration_depth": {
         "value": 16.4,
@@ -1488,13 +1643,51 @@ def in_ten(share: float) -> int:
     return int(share * 10 + 0.5 + 1e-9)
 
 
+#: A template slot: `{name}` is a number said by `_n`; `{name:noun}` is the number and its
+#: noun agreed by `_count` ("1 session", "3 sessions"). A string value is put in as it is
+#: (a sentence already filled). The phone ports exactly this (`mobile/src/copy/numbers.ts`),
+#: so a refusal travels as a code and its numbers and is worded there the same way.
+_SLOT = re.compile(r"\{(\w+)(?::([^{}]+))?\}")
+
+
+def fill(template: str | Mapping[str, str], **values) -> str:
+    """A template with its numbers in. A MAPPING template is a set of forms chosen by `n`:
+    `zero` when `n` is 0, `one` when it is 1 (each only if the template has it), else
+    `other`. A slot naming a value that is absent or None raises: a sentence with a hole
+    in it is a bug, never a sentence."""
+    if isinstance(template, Mapping):
+        n = values.get("n")
+        form = (
+            "zero"
+            if n == 0 and "zero" in template
+            else "one"
+            if n == 1 and "one" in template
+            else "other"
+        )
+        template = template[form]
+
+    def one(m: re.Match) -> str:
+        name, noun = m.group(1), m.group(2)
+        value = values.get(name)
+        if value is None:
+            raise KeyError(f"template slot {name!r} has no value: {template!r}")
+        if isinstance(value, str):
+            return value
+        return _count(value, noun) if noun else _n(value)
+
+    return _SLOT.sub(one, template)
+
+
 #: Why agent lines cannot be shown, for the velocity metric and the wrapped "How much did
 #: you ship?" card alike: said from what was counted, never a cause nobody measured.
+NO_LINES_TEMPLATE = (
+    "none of the {n:session} has a line the agent wrote into a project file that can be "
+    "counted, and 0 would read as nothing written"
+)
+
+
 def no_lines_reason(sessions: int) -> str:
-    return (
-        f"none of the {_count(sessions, 'session')} has a line the agent wrote into a "
-        "project file that can be counted, and 0 would read as nothing written"
-    )
+    return fill(NO_LINES_TEMPLATE, n=sessions)
 
 
 def headline_facts(profile: Mapping) -> list[dict]:

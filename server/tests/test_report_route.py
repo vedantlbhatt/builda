@@ -9,9 +9,15 @@ that one person's numbers are invisible to everybody else.
 The isolation test is a real negative test rather than one that passes for the wrong
 reason (0004, and the write-isolation lesson in CLAUDE.md): the victim's row is seeded as
 the OWNER, and read back, so it is provably there before the attacker fails to see it.
+
+Version 2 (docs/overnight-integration.md section 1) appends five blocks in which no field
+is a string: the door is the last place a rendered sentence, a quote or an id nobody
+declared can be stopped, so each of those has a refusal case here, and a version 1
+document an older capture sends must still be stored.
 """
 
 import copy
+import datetime as dt
 
 import pytest
 from test_sync import (  # noqa: F401 - fixtures are picked up by name
@@ -27,9 +33,10 @@ pytestmark = pytest.mark.skipif(not TEST_DB, reason="set BUILDER_TEST_DB to run"
 
 _SHARED_FIXTURES = (app_env, client, created_users, paired)
 
-#: The real shape, taken from `python -m analysis report` over this container's own
-#: corpus, so the fixture cannot describe a document the builder does not produce.
-REPORT = {
+#: The real version 1 shape, taken from `python -m analysis report` over this container's
+#: own corpus, so the fixture cannot describe a document the builder does not produce. An
+#: older capture still sends exactly this, with no version 2 block in it.
+REPORT_V1 = {
     "report_version": 1,
     "generated_at": "2026-09-06T16:49:55Z",
     "window_days": 7,
@@ -112,6 +119,257 @@ REPORT = {
     },
 }
 
+#: The five version 2 blocks, in the wire shape of docs/overnight-integration.md 1.4,
+#: widened so every object and every kind of nullable field is sent at least once. The burn
+#: numbers are the profile's MEASURED 2.9% on the real corpus; every other number shows
+#: SHAPE ONLY and is not a measurement of anybody. The machine sends only the extras keys a
+#: card sets; the stored dump carries every key, null where unset.
+V2_BLOCKS = {
+    "wrapped": {
+        "prompts_with_text": 926,
+        "attended_sessions": 132,
+        "cards": [
+            {
+                "id": "builder_type",
+                "value": None,
+                "value_id": "quality_guardian",
+                "unit": "archetype",
+                "basis": "archetype_rules",
+                "n": 155,
+                "needed": None,
+                "reason": None,
+                "extras": {
+                    "confidence": 0.44,
+                    "metric": "test_runs_per_hour",
+                    "metric_value": 4.72,
+                    "metric_lower_bound": True,
+                    "runners_up": [
+                        {
+                            "name": "velocity_machine",
+                            "metric": "code_velocity",
+                            "value": 764.1,
+                            "threshold": 487.0,
+                            "score": 0.785,
+                        }
+                    ],
+                },
+            },
+            {
+                "id": "shipped",
+                "value": 50177,
+                "value_id": None,
+                "unit": "lines",
+                "basis": "project_edit_tools_and_credited_shell_writes",
+                "n": 158,
+                "needed": None,
+                "reason": None,
+                "extras": {
+                    "commits": 247,
+                    "assisted": 232,
+                    "alone": 15,
+                    "commits_basis": "git_log_distinct_commits",
+                },
+            },
+            {
+                "id": "longest_session",
+                "value": 11160,
+                "value_id": None,
+                "unit": "seconds",
+                "basis": "attended_seconds_rank",
+                "n": 132,
+                "needed": None,
+                "reason": None,
+                "extras": {"active_seconds": 12040, "started_at": "2026-08-21T14:02:11Z"},
+            },
+            {
+                "id": "prompt_length",
+                "value": None,
+                "value_id": None,
+                "unit": "words",
+                "basis": "words_per_prompt",
+                "n": 3,
+                "needed": 5,
+                "reason": "below_prompt_floor",
+                "extras": {"median": None},
+            },
+            {
+                # LOCAL whole on the machine: only id, unit, basis, n and reason travel.
+                "id": "crash_out",
+                "value": None,
+                "value_id": None,
+                "unit": "score",
+                "basis": "profanity_caps_punctuation_markers",
+                "n": 923,
+                "needed": None,
+                "reason": None,
+                "extras": {},
+            },
+            {
+                "id": "time_put_in",
+                "value": 84.9,
+                "value_id": None,
+                "unit": "hours",
+                "basis": "active_seconds",
+                "n": 158,
+                "needed": None,
+                "reason": None,
+                "extras": {"attended_hours": 74.5, "attended_overlap_hours": 1.2},
+            },
+            {
+                "id": "kind_of_work",
+                "value": None,
+                "value_id": "source",
+                "unit": "kind",
+                "basis": "lines_by_file_role",
+                "n": 50177,
+                "needed": None,
+                "reason": None,
+                "extras": {
+                    "kinds": [{"kind": "fix", "commits": 14}, {"kind": "feature", "commits": 11}],
+                    "classified": 25,
+                    "commits": 247,
+                    "coverage": 0.101,
+                    "role_lines": [
+                        {"role": "source", "lines": 34873},
+                        {"role": "test", "lines": 11089},
+                    ],
+                    "commit_refusal": "low_label_coverage",
+                    "lines": 50177,
+                    "lines_needed": 200,
+                },
+            },
+        ],
+    },
+    "money": {
+        "usd": 1873.42,
+        "basis": "anthropic_api_list_price",
+        "reason": None,
+        "prices_read_on": "2026-09-06T00:00:00Z",
+        "priced_sessions": 152,
+        "unpriced_sessions": 0,
+        "usd_per_active_hour": 22.1,
+        "usd_without_a_commit": 19.8,
+        "share_without_a_commit": 0.011,
+        "tokens": {
+            "input": 812201,
+            "output": 9912330,
+            "cache_read": 3900112034,
+            "cache_w5m": 201334551,
+            "cache_w1h": 0,
+        },
+        "token_sessions": 152,
+        "lines_added": 50177,
+        "lines_removed": 9021,
+        "lines_basis": "project_edit_tools_and_credited_shell_writes",
+        "by_model": [
+            {
+                "model": "claude-opus-4-8",
+                "usd": 1502.2,
+                "output_tokens": 9120433,
+                "sessions": 97,
+                "sessions_dominated": 88,
+                "commits": 201,
+                "usd_per_commit": 6.83,
+            },
+            {
+                "model": "claude-sonnet-4-6",
+                "usd": 371.22,
+                "output_tokens": 791897,
+                "sessions": 60,
+                "sessions_dominated": 55,
+                "commits": 0,
+                "usd_per_commit": None,
+            },
+        ],
+    },
+    "burn": {
+        "share": 0.029,
+        "barren_tokens": 120070737,
+        "tokens": 4168469723,
+        "unreadable_tokens": 1192481138,
+        "sessions": 156,
+        "needed": None,
+        "reason": None,
+        "causes": [
+            {"cause": "context_replay", "tokens": 101000000, "share": 0.841, "segments": 58},
+            {"cause": "error_loop", "tokens": 9100000, "share": 0.076, "segments": 12},
+        ],
+    },
+    "vocab": {
+        "terms": [
+            {"id": "commit", "count": 412, "sessions": 88, "first_seen": "2026-06-02T14:11:07Z"},
+            {
+                "id": "test_suite",
+                "count": 398,
+                "sessions": 71,
+                "first_seen": "2026-06-02T14:20:31Z",
+            },
+            {"id": "migration", "count": 17, "sessions": 6, "first_seen": "2026-06-11T09:02:44Z"},
+        ],
+        "locked": 71,
+        "catalog_size": 74,
+        "sessions": 155,
+        "shell_calls": 9085,
+        "shell_calls_cut": 312,
+        "reason": None,
+    },
+    "stack": {
+        "items": [
+            {
+                "id": "postgres",
+                "category": "database",
+                "evidence": "command",
+                "sessions": 14,
+                "first_seen": "2026-06-11T09:02:44Z",
+            },
+            # Only a manifest names it: no session touched it, so no clock and 0 sessions.
+            {
+                "id": "react_native",
+                "category": "framework",
+                "evidence": "manifest",
+                "sessions": 0,
+                "first_seen": None,
+            },
+        ],
+        "sessions": 155,
+        "manifests": 38,
+        "shell_calls": 9085,
+        "shell_calls_cut": 312,
+        "reason": None,
+    },
+}
+
+#: What the machine sends now: version 2, every block.
+REPORT = {**REPORT_V1, "report_version": 2, **V2_BLOCKS}
+
+
+def _instant(s: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def assert_stored(sent, got, path="report"):
+    """Every value sent comes back as sent, and every key the sender left out comes back
+    null: the stored dump fills the unset nullable keys (a card's extras), and a null
+    must never come back as a zero or an empty list."""
+    if isinstance(sent, dict):
+        assert isinstance(got, dict), f"{path} came back {got!r}"
+        for k, v in sent.items():
+            assert k in got, f"{path}.{k} was dropped"
+            assert_stored(v, got[k], f"{path}.{k}")
+        for k in set(got) - set(sent):
+            assert got[k] is None, f"{path}.{k} was never sent and came back {got[k]!r}"
+    elif isinstance(sent, list):
+        assert isinstance(got, list) and len(got) == len(sent), f"{path} came back {got!r}"
+        for i, (a, b) in enumerate(zip(sent, got, strict=True)):
+            assert_stored(a, b, f"{path}[{i}]")
+    elif isinstance(sent, str) and isinstance(got, str) and sent != got:
+        # A clock can come back as another spelling of the same instant, and only a clock.
+        assert _instant(sent) == _instant(got), f"{path}: {sent!r} came back {got!r}"
+    else:
+        assert sent == got and (sent is None) == (got is None), (
+            f"{path}: {sent!r} came back {got!r}"
+        )
+
 
 def doc(**overrides) -> dict:
     d = copy.deepcopy(REPORT)
@@ -123,7 +381,7 @@ def test_a_report_round_trips_through_the_profile(client, paired):
     _, headers = paired
     r = client.put("/v1/profile/report", json=doc(), headers=headers)
     assert r.status_code == 200, r.text
-    assert r.json()["report_version"] == 1
+    assert r.json()["report_version"] == 2
 
     got = client.get("/v1/profile/builder", headers=headers).json()["report"]
     assert got["agents"]["parallelism"] == 2.93
@@ -177,6 +435,137 @@ def test_a_refused_block_stays_null_rather_than_becoming_a_zero(client, paired):
     assert got["languages"]["generated_lines_excluded"] == 3000
 
 
+def test_a_refused_v2_block_keeps_its_code_and_its_nulls(client, paired):
+    """A version 2 refusal is an enum code with its numbers null. Burn's `causes` is null
+    exactly when its share is, and `[]` would say a measured nothing; spend refused for
+    want of token counts is not a spend of $0."""
+    _, headers = paired
+    refused = doc(
+        wrapped=dict(
+            V2_BLOCKS["wrapped"],
+            cards=[
+                {
+                    "id": "streak",
+                    "value": None,
+                    "value_id": None,
+                    "unit": "days",
+                    "basis": "days_with_a_commit_and_an_attended_session",
+                    "n": 0,
+                    "needed": None,
+                    "reason": "no_commit_history",
+                    "extras": {"commit_days": None, "attended_days": None, "both_days": None},
+                }
+            ],
+        ),
+        money=dict(
+            V2_BLOCKS["money"],
+            usd=None,
+            basis=None,
+            reason="tokens_not_reported",
+            priced_sessions=0,
+            usd_per_active_hour=None,
+            usd_without_a_commit=None,
+            share_without_a_commit=None,
+            tokens=None,
+            token_sessions=0,
+            by_model=[],
+        ),
+        burn={
+            "share": None,
+            "barren_tokens": None,
+            "tokens": None,
+            "unreadable_tokens": None,
+            "sessions": 2,
+            "needed": 3,
+            "reason": "below_session_floor",
+            "causes": None,
+        },
+        vocab=dict(V2_BLOCKS["vocab"], terms=[], locked=None, sessions=0, reason="no_events"),
+    )
+    r = client.put("/v1/profile/report", json=refused, headers=headers)
+    assert r.status_code == 200, r.text
+
+    got = client.get("/v1/profile/builder", headers=headers).json()["report"]
+    assert_stored(refused, got)
+    assert got["burn"]["causes"] is None
+    assert got["burn"]["reason"] == "below_session_floor"
+    assert got["money"]["usd"] is None and got["money"]["reason"] == "tokens_not_reported"
+    assert got["vocab"]["locked"] is None
+    assert got["wrapped"]["cards"][0]["value"] is None
+
+
+def test_a_v2_report_with_every_block_round_trips(client, paired):
+    _, headers = paired
+    r = client.put("/v1/profile/report", json=doc(), headers=headers)
+    assert r.status_code == 200, r.text
+
+    got = client.get("/v1/profile/builder", headers=headers).json()["report"]
+    assert_stored(REPORT, got)
+    # A card sends only its own extras and the stored dump carries every key, null where
+    # unset, so a reader never meets a key that is sometimes missing.
+    extras = got["wrapped"]["cards"][0]["extras"]
+    assert extras["runners_up"][0]["name"] == "velocity_machine"
+    assert extras["commits"] is None and extras["attended_overlap_hours"] is None
+    crash_out = got["wrapped"]["cards"][4]
+    assert crash_out["id"] == "crash_out"
+    assert crash_out["value"] is None
+    assert all(v is None for v in crash_out["extras"].values())
+    assert got["stack"]["items"][1]["first_seen"] is None
+    assert got["money"]["by_model"][1]["usd_per_commit"] is None
+
+
+def _built_by_the_machine() -> dict:
+    """A report built by `analysis.report.from_corpus`, the one builder `capture report`
+    uploads through, over the fixture corpus the engine's own tests use: every block
+    filled from the code, not typed here, so a field the builder grows and the spec does
+    not is a failure in this file before it is a 422 on anybody's machine."""
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    from analysis import report as rp
+    from analysis.tests import corpus_fixture as cf
+
+    built, _ = rp.from_corpus(cf.rich_corpus(), 30)
+    return built
+
+
+def test_a_report_built_by_the_machine_round_trips(client, paired):
+    _, headers = paired
+    built = _built_by_the_machine()
+    for block in V2_BLOCKS:
+        assert built[block] is not None, block
+    r = client.put("/v1/profile/report", json=built, headers=headers)
+    assert r.status_code == 200, r.text
+
+    got = client.get("/v1/profile/builder", headers=headers).json()["report"]
+    assert_stored(built, got)
+    assert [c["id"] for c in got["wrapped"]["cards"]][:2] == ["builder_type", "shipped"]
+    assert got["money"]["by_model"][0]["model"] == "claude-opus-5"
+    assert got["burn"]["causes"][0]["cause"] == "context_replay"
+
+
+def test_a_v1_report_without_the_new_blocks_still_round_trips(client, paired):
+    """An older capture sends version 1, with none of the five. Refusing it would break
+    every machine that has not updated; storing it with the blocks null says exactly
+    what is true, that that machine does not compute them."""
+    _, headers = paired
+    old = copy.deepcopy(REPORT_V1)
+    assert not set(V2_BLOCKS) & set(old)
+    r = client.put("/v1/profile/report", json=old, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["report_version"] == 1
+
+    got = client.get("/v1/profile/builder", headers=headers).json()["report"]
+    assert got["report_version"] == 1
+    for block in V2_BLOCKS:
+        assert got[block] is None, block
+    assert got["agents"]["parallelism"] == 2.93
+    assert got["coverage"]["spans_days"] == 2
+
+
 def test_a_second_report_replaces_the_first(client, paired):
     """One row per person. A report describes a corpus as it stands, and keeping the one
     it replaced would only let a screen show a description of a corpus that is gone."""
@@ -218,6 +607,109 @@ def test_a_label_longer_than_the_spec_allows_is_refused(client, paired):
     _, headers = paired
     bad = doc()
     bad["trends"] = [dict(bad["trends"][0], label="x" * 200)]
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+
+def _with_card(**card_overrides) -> dict:
+    bad = doc()
+    cards = copy.deepcopy(bad["wrapped"]["cards"])
+    cards[0] = dict(cards[0], **card_overrides)
+    bad["wrapped"] = dict(bad["wrapped"], cards=cards)
+    return bad
+
+
+@pytest.mark.parametrize("key", ["question", "display", "sentence"])
+def test_a_wrapped_card_carrying_a_sentence_is_refused(client, paired, key):
+    """The machine's own card has a question, a display and a sentence; `wrapped.wire`
+    drops all three because the phone writes its own words. A card that skipped `wire`
+    is a sentence on its way into Postgres, and this is where it stops."""
+    _, headers = paired
+    bad = _with_card(**{key: "4.7 test runs an hour, about one every 13 minutes."})
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+
+def test_a_quote_inside_the_report_is_refused(client, paired):
+    """Quotes are the second opt-in exception and travel in their own document, owner only
+    (contract v4 `quotes`). Inside the report they are a prompt with no switch."""
+    _, headers = paired
+    bad = doc()
+    bad["wrapped"] = dict(
+        bad["wrapped"],
+        quotes={"go_to_prompt": {"text": "zqx sentinel prompt", "ts": 1757749265.0}},
+    )
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+    # And no field of a card can carry one either: the words are not a declared key.
+    bad = _with_card(quote="zqx sentinel prompt")
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+
+def test_a_local_cards_reading_of_what_was_typed_is_refused(client, paired):
+    """crash_out and cryptic_prompt keep every number but n on the machine: a crash out
+    score's parts and a cryptic prompt's length are readings of the words typed."""
+    _, headers = paired
+    for local in ({"parts": {"profanity": 2, "caps_words": 3}}, {"length": 10}):
+        bad = doc()
+        cards = copy.deepcopy(bad["wrapped"]["cards"])
+        cards[4] = dict(cards[4], extras=local)
+        bad["wrapped"] = dict(bad["wrapped"], cards=cards)
+        assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+
+def test_an_unknown_term_id_is_refused(client, paired):
+    """The phone has copy for every term in the catalog and none for anything else; an id
+    outside it is either a catalog nobody regenerated or a word from a transcript."""
+    _, headers = paired
+    bad = doc()
+    terms = copy.deepcopy(bad["vocab"]["terms"])
+    terms[0]["id"] = "zqx_sentinel_term"
+    bad["vocab"] = dict(bad["vocab"], terms=terms)
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+    # The same door on the other catalogs: a stack item and a price row.
+    bad = doc()
+    bad["stack"] = dict(bad["stack"], items=[dict(bad["stack"]["items"][0], id="zqx_sentinel")])
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+    bad = doc()
+    by_model = [dict(bad["money"]["by_model"][0], model="gpt-zqx")]
+    bad["money"] = dict(bad["money"], by_model=by_model)
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+
+def test_a_v2_refusal_in_words_is_refused(client, paired):
+    """In version 2 a refusal is a code and the phone writes the sentence. The profile's
+    own wording, sent where the code belongs, is a string the phone would print as a
+    debug id, so the door refuses it rather than storing it."""
+    _, headers = paired
+    bad = doc()
+    bad["burn"] = dict(
+        bad["burn"], share=None, causes=None, reason="no session reported token counts"
+    )
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+    bad = _with_card(value=None, value_id=None, reason="fewer than 3 sessions")
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+
+def test_a_share_above_one_is_refused_and_a_rate_is_not(client, paired):
+    """Shares are bounded 0 to 1 at the door. The steer rate is not a share, because
+    interrupts can outnumber prompts, so 1.3 is a real value and must be stored."""
+    _, headers = paired
+    bad = doc()
+    bad["burn"] = dict(bad["burn"], share=1.2)
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+    bad = doc()
+    causes = copy.deepcopy(bad["burn"]["causes"])
+    causes[0]["share"] = -0.1
+    bad["burn"] = dict(bad["burn"], causes=causes)
+    assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
+
+    ok = _with_card(extras={"steer_rate": 1.3})
+    assert client.put("/v1/profile/report", json=ok, headers=headers).status_code == 200
+
+
+def test_more_cards_than_the_deck_has_is_refused(client, paired):
+    _, headers = paired
+    bad = doc()
+    one = bad["wrapped"]["cards"][0]
+    bad["wrapped"] = dict(bad["wrapped"], cards=[one] * 16)
     assert client.put("/v1/profile/report", json=bad, headers=headers).status_code == 422
 
 

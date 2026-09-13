@@ -4,13 +4,22 @@
  * `analysis/live.py` computes a running session's state and `wire()` DROPS its sentence: "the
  * phone renders its own words from the ids and numbers, so a reworded sentence is a client
  * change and not a re-upload" (docs/overnight-engine.md, rule 5). This is that renderer: a
- * line-for-line port of `live.sentence(state, names=False)` and of the `plain` helpers it uses
- * (`spoken`, `ordinal`, `ROLE_NOUN`, `has_dash`, as section 1.1 specifies them). The LOCAL
- * variant (`names=True`, file and command names) never reaches the phone, so it is not here.
+ * line-for-line port of `live.sentence(state, names=False)`. The `plain` helpers it uses
+ * (`spoken`, `ordinal`, `ROLE_NOUN`, the dash rule) are the phone's ONE copy of `analysis/
+ * plain.py`, `src/copy/plain.ts`, re-exported here: this file used to carry a second copy with
+ * a two character dash rule, so a horizontal bar or a minus sign passed it while the engine's
+ * `plain.has_dash` counted both (the review's finding, CLAUDE.md "one rule is one function").
+ * The LOCAL variant (`names=True`, file and command names) never reaches the phone, so it is
+ * not here.
  *
  * Pure, no React Native: `__tests__/liveSurface.test.ts` pins every branch to the engine's
- * exact words, and a change on either side has to change both.
+ * exact words, by hand, against `spec/fixtures/live/content_state.json`, and against
+ * `live.sentence` itself over every activity and verdict the wire can carry.
  */
+
+import { DASH, hasDash, ordinal, ROLE_NOUN, spoken } from '../copy/plain';
+
+export { DASH, hasDash, ordinal, ROLE_NOUN, spoken };
 
 // ------------------------------------------------------------------ the wire shape
 
@@ -54,10 +63,20 @@ export interface LiveEvidence {
   stuck_s?: number;
   files_changed?: number;
   commits?: number;
+  /** Background tasks the session launched that were still out when its turn ended. */
+  background?: number;
 }
 
+/**
+ * `live.BACKGROUND_BASIS`: a turn handed back cleanly while work the session launched into the
+ * background is still out. The agent is waiting on its own job, not on the person
+ * (`needs_you.reason` `waiting_on_background`, score 10), so the sentence says so.
+ */
+export const BACKGROUND_BASIS = 'turn_ended_background_out';
+
 export interface LiveVerdictWire {
-  state: VerdictState | string | null;
+  /** Absent or null when no rule fired (the spec leaves the key out; older fixtures send null). */
+  state?: VerdictState | string | null;
   evidence?: LiveEvidence | null;
   basis?: string | null;
   reason?: string | null;
@@ -65,12 +84,14 @@ export interface LiveVerdictWire {
 }
 
 export interface LiveEtaWire {
-  elapsed_s: number | null;
-  typical_s: number | null;
+  elapsed_s?: number | null;
+  typical_s?: number | null;
   p25_s?: number | null;
   p75_s?: number | null;
-  remaining_s: number | null;
+  remaining_s?: number | null;
   n?: number | null;
+  needed?: number | null;
+  unattended?: boolean | null;
   basis?: string | null;
   reason?: string | null;
 }
@@ -79,7 +100,8 @@ export interface LiveMapRow {
   id: string;
   role: string;
   depth?: number | null;
-  dir_id?: string;
+  /** Null at the base (spec/live.v1.json). */
+  dir_id?: string | null;
   reads?: number;
   edits?: number;
   last_read_ts?: number | null;
@@ -87,63 +109,35 @@ export interface LiveMapRow {
 }
 
 /**
- * `live.wire(live_state(...))`, as the server would hand it to the phone beside a live
- * `SessionDetail`. Every block is optional: a server older than the engine sends none, and a
- * newer one may add blocks this build ignores.
+ * `live.wire(live_state(...))`, as the server hands it to the phone beside a live
+ * `SessionDetail`: the structural partial of the generated `LiveState` (src/generated/live.ts)
+ * that the surfaces read. A generated `LiveState` is assignable to it, which
+ * `__tests__/liveSurface.test.ts` checks at compile time, so the two cannot drift apart. Every
+ * block is optional: a server older than the engine sends none, and a newer one may add blocks
+ * this build ignores.
  */
 export interface LiveStateWire {
+  live_version?: number | null;
+  /**
+   * When the engine computed this state (ISO 8601). The surfaces anchor every clock on it
+   * (docs/overnight-integration.md 3.5): `since_s`, `stuck_s` and `remaining_s` were true at
+   * THIS moment, and the session row's `updated_at` does not move when a heartbeat re-cuts an
+   * unchanged transcript.
+   */
+  computed_at?: string | null;
   session_id?: string | null;
   activity?: LiveActivityWire | null;
   verdict?: LiveVerdictWire | null;
   eta?: LiveEtaWire | null;
   decisions?: { kind: string; ts: number; evidence?: { event_n?: number; count?: number } }[] | null;
   needs_you?: { score: number; reason: string } | null;
-  map?: { files?: LiveMapRow[] | null } | null;
+  /**
+   * `files_total` counts every file the session touched; `files` keeps the rows touched most
+   * recently (400 in the detail, only the rows the sentence names in the slim list body).
+   */
+  map?: { files?: LiveMapRow[] | null; files_total?: number | null } | null;
   timelapse?: unknown;
   sample?: unknown;
-}
-
-// ------------------------------------------------------------------ plain.py, section 1.1
-
-const WORDS = [
-  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
-  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen',
-  'nineteen', 'twenty',
-] as const;
-
-const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'] as const;
-
-/** `plain.spoken`: 0 to 20 as words ("six"), digits above ("34"). */
-export function spoken(n: number): string {
-  return Number.isInteger(n) && n >= 0 && n <= 20 ? WORDS[n]! : String(n);
-}
-
-/** `plain.ordinal`: 1 to 10 as words ("third"), then "11th", "12th", "21st". */
-export function ordinal(n: number): string {
-  if (Number.isInteger(n) && n >= 1 && n <= 10) return ORDINALS[n - 1]!;
-  const teen = n % 100 >= 11 && n % 100 <= 13;
-  const suffix = teen ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
-  return `${n}${suffix}`;
-}
-
-/** `plain.ROLE_NOUN`: role to (one, "{n} many", collective). */
-export const ROLE_NOUN: Readonly<Record<string, readonly [string, string, string]>> = {
-  test: ['a test file', '{n} test files', 'your test suite'],
-  source: ['a source file', '{n} source files', 'the source code'],
-  config: ['a config file', '{n} config files', 'the configuration'],
-  docs: ['a doc', '{n} docs', 'the docs'],
-  migration: ['a database migration', '{n} database migrations', 'the migrations'],
-  style: ['a stylesheet', '{n} stylesheets', 'the styles'],
-  build: ['the build setup', '{n} build files', 'the build setup'],
-  dependency: ['the dependency list', '{n} dependency files', 'the dependencies'],
-  unknown: ['a file', '{n} files', 'the project'],
-};
-
-/** `plain.DASH`: an em dash, an en dash, or a hyphen standing alone between spaces. */
-export const DASH = /[\u2014\u2013]|\s-{1,2}\s/;
-
-export function hasDash(text: string): boolean {
-  return DASH.test(text);
 }
 
 // ------------------------------------------------------------------ live.sentence
@@ -161,7 +155,8 @@ function plural(n: number, one: string, many: string): string {
 }
 
 function noun(role: string, n: number, collective = false): string {
-  const [one, many, whole] = ROLE_NOUN[role] ?? ROLE_NOUN.unknown!;
+  const table = ROLE_NOUN as Readonly<Record<string, readonly [string, string, string]>>;
+  const [one, many, whole] = table[role] ?? ROLE_NOUN.unknown;
   if (collective) return whole;
   return n <= 1 ? one : many.replace('{n}', spoken(n));
 }
@@ -209,6 +204,10 @@ export function renderLiveSentence(state: LiveStateWire): string {
   const files = int(a.files);
   switch (a.kind) {
     case 'waiting_on_you':
+      if (st === 'waiting' && v?.basis === BACKGROUND_BASIS) {
+        const n = int(ev.background);
+        return `Waiting on ${spoken(n)} background ${plural(n, 'task', 'tasks')} it started`;
+      }
       return 'Waiting on you' + (sinceM >= 1 ? ` for ${minutes(sinceM)}` : '');
     case 'idle':
       return 'No new output' + (sinceM >= 1 ? ` for ${minutes(sinceM)}` : '');

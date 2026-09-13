@@ -4,8 +4,10 @@ import * as SecureStore from 'expo-secure-store';
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport } from '../generated/report';
 import type { ShippedPost } from '../generated/shipped';
-import type { FeedbackNoteWire } from '../generated/contract';
+import type { FeedbackNoteWire, SessionBurn, SessionTitleIds } from '../generated/contract';
 import type { Archetype, Dimension, SessionAnalysis } from '../generated/analysis';
+import type { Creature, LiveNames, LiveState } from '../generated/live';
+import type { QuotesUpload } from '../generated/quotes';
 
 /**
  * The phone's view of the server.
@@ -32,6 +34,13 @@ export interface SessionStats {
   prompt_count_basis: string;
   files_touched: number;
   lines_added_agent: number;
+  /**
+   * Lines the agent removed (docs/overnight-integration.md 5.4). Optional on READ, and read
+   * as absent, never as 0: a server older than 5.4 omits it, and so does every detail this
+   * phone cached before it (the cache never re-reads a final session it holds a strip for).
+   * The Live Activity's `linesRemoved` and the money view print nothing rather than "0".
+   */
+  lines_removed_agent?: number;
   commit_count: number;
   agent_line_bucket: string;
   attrib_confidence: string;
@@ -122,6 +131,47 @@ export interface SessionDetail {
    */
   feedback?: FeedbackNoteWire[] | null;
   updated_at?: string;
+
+  // ---- Contract v4 (docs/overnight-integration.md sections 2 and 3, and its addendum).
+  // ---- Every one is optional on READ: undefined is a server older than the field; null is
+  // ---- a server that knows the field and has nothing for this session.
+
+  /**
+   * What a RUNNING session is doing now (`spec/live.v1.json`), computed by the engine on the
+   * machine or by the hook channel. Null on a final session: the row is deleted when the
+   * session finalises, and the cache drops it on that transition too.
+   *
+   * TWO BODIES, ONE TYPE. On `GET /v1/sessions/live` and `/v1/profile`'s `live` rows it is
+   * the SLIM body: `timelapse` null and `map.files` cut to the rows `activity.file_id` and
+   * `verdict.file_id` name (`map.files_total` still counts every file). On
+   * `GET /v1/sessions/{id}` it is the full body. Mission control, the widget and the Live
+   * Activity read only activity, verdict, eta, needs_you and decisions, which both carry.
+   *
+   * `computed_at` is when the state was true: `activity.since_s` and the ETA are aged from
+   * it, never from the moment the phone happened to fetch it.
+   */
+  live_state?: LiveState | null;
+  /**
+   * OPT IN, OFF BY DEFAULT: the basename of each file in `live_state.map`, keyed by its id.
+   * Only on the detail endpoint, only while Settings > File names is on, and only ever shown
+   * on the session screen: never on the Lock Screen, the widget, a push or a share. The
+   * live list never carries it, so nothing that feeds ActivityKit can see one.
+   */
+  live_names?: LiveNames | null;
+  /**
+   * Where this sitting's tokens went and whether anything came of it (`analysis/burn.py`
+   * over the session window): counts, unrounded shares, enums and at most three costly
+   * stretches. The sentences are written on the phone (`src/copy/burn.ts`). Null when the
+   * producer does not compute it; a refusal is `burn.reason`, never a zero.
+   */
+  burn?: SessionBurn | null;
+  /**
+   * The engineer voice title as ids (`analysis/vocab.py` session_title): a verb and an
+   * object from fixed tables and the numbers the title says. Rendered on the phone
+   * (`src/copy/title.ts`); no file or directory name travels. Null when no title rule
+   * fired, or the producer does not compute it.
+   */
+  title_ids?: SessionTitleIds | null;
 }
 
 export interface Profile {
@@ -149,7 +199,10 @@ export interface Profile {
     attended_seconds?: number;
     autonomous_seconds?: number;
   };
-  /** Sessions the Mac is still uploading. Absent on a server older than the split. */
+  /**
+   * Sessions the Mac is still uploading. Absent on a server older than the split. Each row
+   * carries the SLIM `live_state` (see `SessionDetail.live_state`) and never `live_names`.
+   */
   live?: SessionDetail[];
   /**
    * The aggregate of the session analyses (server/builder/builder_profile.py). Undefined
@@ -379,7 +432,77 @@ export interface BuilderProfileResponse {
    * key. Both are the same thing on screen: the sections are absent, not empty.
    */
   report?: BuilderReport | null;
+  /**
+   * THE SECOND OPT IN EXCEPTION (contract v4 `quotes`): up to three of the owner's prompts,
+   * verbatim, for the Wrapped cards that quote them (go to prompt, crash out, cryptic
+   * prompt). Owner only, and only while BOTH Settings > Quotes and `--quotes` on the
+   * machine said yes. Null when there are none; undefined from a server older than 0021.
+   * Never put one in a post, a share, a push or an activity.
+   */
+  quotes?: QuotesUpload | null;
 }
+
+// ------------------------------------------------------------------ privacy
+// `server/builder/routes/privacy.py` (docs/overnight-integration.md 2.3 and 2.4). Two
+// switches, both OFF by default, each one the only thing that lets its data reach the
+// server, and each one DELETES that data when it is turned off.
+
+/**
+ * `GET /v1/privacy/prefs`. The account's map salt lives beside these on the server and is
+ * never returned: a salt the phone held could be used to test a guessed path against a
+ * file id.
+ */
+export interface PrivacyPrefs {
+  /** Quote my prompts on my cards: the contract v4 `quotes` document. */
+  quotes: boolean;
+  /** File names: the contract v4 `live_names` basenames beside a running session's map. */
+  live_names: boolean;
+}
+
+/** The body of `PUT /v1/privacy/prefs`: either key, or both. */
+export type PrivacyPrefsUpdate = Partial<PrivacyPrefs>;
+
+/**
+ * The answer to `PUT /v1/privacy/prefs`: the prefs as they now stand, plus how many quotes
+ * the same transaction deleted when `quotes` went off. Absent when nothing was deleted.
+ */
+export interface PrivacyPrefsResult extends PrivacyPrefs {
+  quotes_deleted?: number;
+}
+
+// -------------------------------------------------------------- live activities
+// `POST /v1/push/live-activity` (docs/overnight-integration.md 3.6). The server pushes
+// `liveactivity` updates to these tokens on a phase or trajectory change only.
+
+/** The APNs host a token was issued for. Debug builds get sandbox tokens. */
+export type PushEnvironment = 'sandbox' | 'production';
+
+/**
+ * One ActivityKit token. `kind: 'activity'` is an update token for one running activity,
+ * which names its server session and ActivityKit's own id; `push_to_start` (iOS 17.2+)
+ * names neither. The migration's CHECK holds the two together, so the type does too.
+ *
+ * The creature rides on the token because the server stores no creature and the Live
+ * Activity's ContentState requires one.
+ */
+export type LiveActivityRegistration =
+  | {
+      kind: 'activity';
+      /** The server's session uuid (`SessionDetail.id`), not the client session id. */
+      session_id: string;
+      /** ActivityKit's `Activity.id`, the key `forgetLiveActivity` deletes by. */
+      activity_id: string;
+      /** The push token, hex. */
+      token: string;
+      environment: PushEnvironment;
+      creature: Creature;
+    }
+  | {
+      kind: 'push_to_start';
+      token: string;
+      environment: PushEnvironment;
+      creature: Creature;
+    };
 
 // ------------------------------------------------------------------ social
 // Read shapes mirror `server/builder/routes/social.py` field for field. A feed item is
@@ -761,6 +884,7 @@ export class Api {
 
   // ------------------------------------------------------------------- data
 
+  /** `/v1/profile` reads `days`, the width of the activity graph. */
   profile(days = 119): Promise<Profile> {
     return this.request('GET', `/v1/profile?days=${encodeURIComponent(days)}`);
   }
@@ -768,9 +892,15 @@ export class Api {
   /**
    * The builder profile on its own, so the screen can refresh the part that changes
    * without refetching the graph, the projects and every live session with it.
+   *
+   * `/v1/profile/builder` reads `window_days` (default 90, at most 365). This used to send
+   * `?days=119`, a name the route does not read, so every answer was the 90 day default
+   * and nothing said so (docs/overnight-integration.md 5.3). The answer's own
+   * `window_days` is the window it actually used; a screen says that one, never the one
+   * it asked for.
    */
-  builderProfile(days = 119): Promise<BuilderProfileResponse> {
-    return this.request('GET', `/v1/profile/builder?days=${encodeURIComponent(days)}`);
+  builderProfile(windowDays = 90): Promise<BuilderProfileResponse> {
+    return this.request('GET', `/v1/profile/builder?window_days=${encodeURIComponent(windowDays)}`);
   }
 
   sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean } = {}): Promise<{
@@ -808,6 +938,46 @@ export class Api {
     return this.request('POST', '/v1/repos/visibility', {
       body: { repo_hash: repoHash, visibility },
     });
+  }
+
+  // ---------------------------------------------------------------- privacy
+
+  /** The two opt in switches as the account holds them. Both are false until turned on. */
+  privacyPrefs(): Promise<PrivacyPrefs> {
+    return this.request('GET', '/v1/privacy/prefs');
+  }
+
+  /**
+   * Flip one switch or both. Only a phone can (the route takes a device token). Turning
+   * `quotes` off deletes every stored quote in the same transaction and the answer says how
+   * many (`quotes_deleted`); turning `live_names` off clears every stored name. Only the
+   * keys given are sent, so flipping one never rewrites the other.
+   */
+  setPrivacyPrefs(prefs: PrivacyPrefsUpdate): Promise<PrivacyPrefsResult> {
+    const body: PrivacyPrefsUpdate = {};
+    if (prefs.quotes !== undefined) body.quotes = prefs.quotes;
+    if (prefs.live_names !== undefined) body.live_names = prefs.live_names;
+    return this.request('PUT', '/v1/privacy/prefs', { body });
+  }
+
+  /** Delete every stored quote now, whatever the switch says. 204. */
+  async deleteQuotes(): Promise<void> {
+    await this.request<unknown>('DELETE', '/v1/profile/quotes');
+  }
+
+  // -------------------------------------------------------- live activities
+
+  /**
+   * Hand the server an ActivityKit token, from `onPushToken`. Upserted on (account, token),
+   * so posting the same token twice is harmless.
+   */
+  async registerLiveActivity(body: LiveActivityRegistration): Promise<void> {
+    await this.request<unknown>('POST', '/v1/push/live-activity', { body });
+  }
+
+  /** The activity ended on the phone: forget its token so nothing pushes to it again. 204. */
+  async forgetLiveActivity(activityId: string): Promise<void> {
+    await this.request<unknown>('DELETE', `/v1/push/live-activity/${encodeURIComponent(activityId)}`);
   }
 
   // ----------------------------------------------------------------- social
@@ -996,7 +1166,7 @@ export class Api {
   // -------------------------------------------------------------- transport
 
   private async request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
     opts: { body?: unknown; auth?: boolean } = {}
   ): Promise<T> {

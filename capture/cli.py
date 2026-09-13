@@ -1,9 +1,10 @@
-"""`python -m capture pair` and `python -m capture sync`."""
+"""`python -m capture pair`, `sync`, `live`, `report`, `narrative` and `quotes`."""
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import functools
 import json
 import os
 import pathlib
@@ -13,7 +14,7 @@ import sys
 import time
 import zoneinfo
 
-from . import CLIENT_VERSION, ROOT, harnesses, repo, sessions
+from . import CLIENT_VERSION, ROOT, harnesses, identity, repo, sessions
 from . import client as cl
 from .discover import iter_root_transcripts
 from .tuning import LIVE_UPLOAD_MIN_INTERVAL_SEC, PAIR_TIMEOUT_SEC
@@ -97,7 +98,7 @@ def cmd_pair(a: argparse.Namespace) -> int:
     except cl.PairingTimedOut as e:
         print(f"\n  {e}")
         return 1
-    print(f"\n  Paired — this machine is linked as “{label}”. Run `python -m capture sync`.")
+    print(f"\n  Paired. This machine is linked as “{label}”. Run `python -m capture sync`.")
     return 0
 
 
@@ -218,6 +219,24 @@ def build_payloads(a: argparse.Namespace, now: float | None = None) -> tuple[lis
     machine_id = cl.machine_identity(creds)
     excluded = repo.excluded_origins()
     state = _load_state()
+    # One parse of each transcript's usage however many sittings share it (the per session
+    # `burn` block): the corpus cut's measurement, 49.9 s unmemoised against 1.6 s memoised
+    # over `~/.claude/projects` (docs/overnight-engine.md, Deviations (fixes)). Local to
+    # this run, so a long lived process never answers from a stale parse.
+    loader = _turns_loader()
+    # The live block's inputs, made once and only when a live payload needs them: the
+    # finished sittings of THIS cut that an ETA compares against (`live.eta_history`, no
+    # second parse), and the map salt, which never leaves the machine (`identity.map_salt`).
+    live_inputs: dict = {}
+
+    def live_history() -> tuple[list, str]:
+        if not live_inputs:
+            from analysis import live as lv
+
+            kept = [s for s in cut if not _excluded(s, excluded)]
+            live_inputs["history"] = lv.eta_history(kept)
+            live_inputs["salt"] = identity.map_salt()
+        return live_inputs["history"], live_inputs["salt"]
 
     payloads: list[dict] = []
     stats = {
@@ -232,13 +251,14 @@ def build_payloads(a: argparse.Namespace, now: float | None = None) -> tuple[lis
         "live": 0,
         "final": 0,
         "with_analysis": 0,
+        "with_live": 0,
         "tau": fit_report.get("tau"),
         "tau_fit": (
             sessions.mb.describe_fit(fit_report["fit"]) if fit_report.get("fit") else None
         ),
     }
     for s in cut:
-        if s.repo is not None and s.repo.identity in excluded:
+        if _excluded(s, excluded):
             stats["excluded"] += 1
             continue
         if s.state == "live" and not a.live:
@@ -247,15 +267,48 @@ def build_payloads(a: argparse.Namespace, now: float | None = None) -> tuple[lis
         analysis = None
         if a.analyze and s.state == "final":
             analysis = _analysis_for(s, state, a.quiet)
-        p = sessions.build_payload(s, tz, machine_id, CLIENT_VERSION, now, analysis)
+        p = sessions.build_payload(
+            s, tz, machine_id, CLIENT_VERSION, now, analysis, turns_loader=loader
+        )
         if not p["visible"]:
             stats["not_visible"] += 1
             continue
+        if s.state == "live" and s.harness == "claude_code":
+            # `analysis.live` reads Claude Code transcripts (its `stop_reason` and
+            # `result_ts`, and the background task records); another harness's live
+            # sitting uploads without a live block, which is "not computed", never a guess.
+            history, salt = live_history()
+            sessions.attach_live(
+                p,
+                s,
+                now=now,
+                history=history,
+                salt=salt,
+                names=getattr(a, "live_names", False),
+                loader=loader,
+            )
+            stats["with_live"] += 1
         stats[s.state] += 1
         if analysis is not None:
             stats["with_analysis"] += 1
         payloads.append(p)
     return payloads, {"state": state, **stats}
+
+
+def _excluded(s: sessions.Session, excluded: set[str]) -> bool:
+    """In a repository the person excluded (`BUILDER_CAPTURE_EXCLUDE`): zero uploads, and
+    not history for anybody's ETA either."""
+    return s.repo is not None and s.repo.identity in excluded
+
+
+def _turns_loader():
+    """`analysis.burn.load_turns`, memoised for one run; None when the engine is not
+    deployed beside capture (`build_payload` then computes no burn block)."""
+    try:
+        from analysis import burn as bn
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    return functools.lru_cache(maxsize=None)(bn.load_turns)
 
 
 def _corpus(a: argparse.Namespace):
@@ -449,27 +502,36 @@ def cmd_report(a: argparse.Namespace) -> int:
     contract puts none of that on the wire, so the measuring happens here or nowhere.
     """
     key = cl.capture_key(a.key)
+    quotes_on = bool(getattr(a, "quotes", False))
+    if quotes_on and _from_corpus() is None:
+        # Refused before anything is read: the quotes document is built by the same call
+        # that builds the report (docs/overnight-integration.md 1.3), and this checkout's
+        # engine does not have it yet. Never a second, local quote picker.
+        print(
+            "--quotes needs analysis.report.from_corpus, which this checkout's engine does "
+            "not have yet; nothing was read or sent.",
+            file=sys.stderr,
+        )
+        return 2
 
-    from analysis import profile as pf
-    from analysis import report as rp
-
-    facts, events, trends, fanout, contributions = _corpus(a)
-    doc = rp.build(
-        # Same profile the narrative reads, so the coverage the phone shows is the
-        # coverage the numbers were computed over.
-        profile=pf.corpus_profile(facts),
-        trends=trends,
-        fanout=fanout,
-        contributions=contributions,
-        sessions=events,
-        window_days=getattr(a, "days", None) or rp.DEFAULT_WINDOW_DAYS,
-    )
+    doc, quotes = _report_documents(a, quotes_on)
 
     if a.dry_run:
         print(json.dumps(doc, indent=1, ensure_ascii=False))
+        if quotes is not None:
+            # After the report, so the report above is byte for byte what a run without
+            # --quotes sends, and what the quotes flag adds is the second document alone.
+            print(json.dumps(quotes, indent=1, ensure_ascii=False))
         print(
             "\ndry run: nothing was sent. Every number above was measured on this machine "
-            "from your own transcripts; no prompt, path or command is in it.",
+            "from your own transcripts; no prompt, path or command is in it."
+            + (
+                " The second document is the opt in quotes: up to three of your prompts, "
+                "verbatim, sent only with --quotes and only while the account has Quote my "
+                "prompts on."
+                if quotes is not None
+                else ""
+            ),
             file=sys.stderr,
         )
         return 0
@@ -481,14 +543,156 @@ def cmd_report(a: argparse.Namespace) -> int:
         return 3
     c.put_report(doc)
     if not a.quiet:
-        ag_doc = doc["agents"]
+        ag_doc = doc.get("agents")
         print(
             f"Uploaded your builder report over {doc['window_days']} days: "
             f"{len(doc['trends'])} trend(s)"
             + (f", {ag_doc['agents']} subagents" if ag_doc else "")
             + "."
         )
+    if quotes is not None:
+        try:
+            c.put_quotes(quotes)
+        except cl.QuotesRefused as e:
+            # The server's own sentence, which names the switch on the phone.
+            print(f"Quotes not sent: {e}")
+            return 1
+        if not a.quiet:
+            n = len(quotes.get("quotes") or [])
+            print(f"Uploaded {n} quote{'' if n == 1 else 's'} for your Wrapped cards.")
     return 0
+
+
+def _from_corpus():
+    """`analysis.report.from_corpus` over `analysis.corpus.cut`, when the engine has them
+    (docs/overnight-integration.md 1.3: the one corpus cut, so this command and `python -m
+    analysis report` build one document), else None."""
+    try:
+        from analysis import corpus as co
+        from analysis import report as rp
+    except ImportError:
+        return None
+    fn = getattr(rp, "from_corpus", None)
+    cut = getattr(co, "cut", None)
+    return (cut, fn) if callable(fn) and callable(cut) else None
+
+
+def _report_documents(a: argparse.Namespace, quotes: bool) -> tuple[dict, dict | None]:
+    """(the report, the quotes document or None). Through `report.from_corpus` when the
+    engine has it; before it lands, the v1 path this command has always taken, which
+    builds the same report `python -m analysis report` does and no quotes."""
+    from analysis import report as rp
+
+    days = getattr(a, "days", None) or rp.DEFAULT_WINDOW_DAYS
+    pair = _from_corpus()
+    if pair is not None:
+        cut, from_corpus = pair
+        sources, transcripts, _ = discover_sources(a)
+        corpus = cut(sources, transcripts, _tz(a.tz), time.time(), tau=getattr(a, "tau", "auto"))
+        doc, q = from_corpus(corpus, days, quotes=quotes)
+        return doc, (q if quotes else None)
+
+    from analysis import profile as pf
+
+    facts, events, trends, fanout, contributions = _corpus(a)
+    doc = rp.build(
+        # Same profile the narrative reads, so the coverage the phone shows is the
+        # coverage the numbers were computed over.
+        profile=pf.corpus_profile(facts),
+        trends=trends,
+        fanout=fanout,
+        contributions=contributions,
+        sessions=events,
+        window_days=days,
+    )
+    return doc, None
+
+
+def cmd_quotes(a: argparse.Namespace) -> int:
+    """`python -m capture quotes --delete`: the quotes this account stored, gone (DELETE
+    /v1/profile/quotes). Turning the phone's switch off deletes them too; this is the same
+    thing from the machine that sent them."""
+    if not a.delete:
+        print("Nothing to do: pass --delete to delete the quotes this account stored.")
+        return 2
+    key = cl.capture_key(a.key)
+    c = cl.Client(_server(a.server), key=key)
+    if key is None and cl.load_credentials() is None:
+        print("Not paired. Run `python -m capture pair --server URL` first.")
+        return 3
+    c.delete_quotes()
+    print("Deleted the quotes this account stored.")
+    return 0
+
+
+#: `routes/ingest.py _SAFE`, the only session ids and project directory names the route
+#: accepts. Checked before the first post so a transcript outside `~/.claude/projects` is
+#: one sentence, not a 422 every five seconds. Pinned to the route by
+#: capture/tests/test_live_watch.py.
+_SAFE_NAME = r"^[A-Za-z0-9._-]{1,200}$"
+
+
+def cmd_live(a: argparse.Namespace) -> int:
+    """Tail running Claude Code transcripts into the hook's route (`capture/watch.py`).
+
+    Nothing is installed into Claude Code: this does what `hook.sh` does, every `--every`
+    seconds, and the server computes each running session's live state with the pipeline
+    both channels share. `--once` posts one tick and exits."""
+    import re
+
+    from analysis import digest
+
+    from . import watch
+
+    if a.every <= 0 or a.heartbeat <= 0 or (a.duration is not None and a.duration <= 0):
+        print("--every, --heartbeat and --for take a number of seconds above zero.", file=sys.stderr)
+        return 2
+    key = cl.capture_key(a.key)
+    paths: list[pathlib.Path] = []
+    for raw in a.transcript or []:
+        p = pathlib.Path(raw).expanduser()
+        if not p.is_file():
+            print(f"no transcript at {p}", file=sys.stderr)
+            return 1
+        harness = digest.detect_harness(p)
+        if harness != "claude_code":
+            print(
+                f"live posts Claude Code transcripts only, and {p.name} was written by {harness}.",
+                file=sys.stderr,
+            )
+            return 1
+        if not (re.match(_SAFE_NAME, p.stem) and re.match(_SAFE_NAME, p.parent.name)):
+            print(
+                f"{p} is not where Claude Code keeps a transcript "
+                "(<project dir>/<session id>.jsonl, letters, digits, dot, underscore, hyphen)",
+                file=sys.stderr,
+            )
+            return 1
+        paths.append(p)
+    server = _server(a.server)
+    c = cl.Client(server, key=key)
+    if key is None and cl.load_credentials() is None:
+        print("Not paired. Run `python -m capture pair --server URL` first.")
+        return 3
+    root = pathlib.Path(a.root).expanduser()
+    what = f"{len(paths)} transcript{'' if len(paths) == 1 else 's'}" if paths else f"every transcript under {root} written to in the last hour"
+    until = None if a.duration is None else time.time() + a.duration
+    print(
+        f"watching {what}, every {a.every:g} s, a heartbeat after {a.heartbeat:g} s with "
+        f"nothing new, posting to {server}"
+        + ("" if a.once else f" for {a.duration:g} s" if until else "; Ctrl+C to stop"),
+        file=sys.stderr,
+    )
+    return watch.run(
+        c,
+        transcripts=paths,
+        root=root,
+        tz=_tz(a.tz),
+        every=a.every,
+        heartbeat=a.heartbeat,
+        once=a.once,
+        until=until,
+    )
 
 
 def cmd_sync(a: argparse.Namespace) -> int:
@@ -505,6 +709,7 @@ def cmd_sync(a: argparse.Namespace) -> int:
         + (f", {info['not_visible']} below the visibility floor" if info["not_visible"] else "")
         + (f", {info['excluded']} excluded" if info["excluded"] else "")
         + (f", {info['with_analysis']} with an analysis" if info["with_analysis"] else "")
+        + (f", {info['with_live']} with a live state" if info.get("with_live") else "")
         + (f"; auth: capture key {cl.key_prefix(key)}… (no pairing needed)" if key else "")
         + (f"; {info['tau_fit']}" if info.get("tau_fit") else "")
     )
@@ -544,14 +749,19 @@ def cmd_sync(a: argparse.Namespace) -> int:
     live_state: dict = state.setdefault("live", {})
     to_send = []
     for p in payloads:
-        if known.get(p["client_session_id"]) == p["content_hash"]:
+        # A payload carrying `live` is resent although its hash is known: the block moves
+        # with the clock, not the bytes ("waiting on you for N minutes" advances with no
+        # new record), and `content_hash` is the hash WITHOUT it (docs/overnight-integration.md
+        # 3.2). Still at most once per `LIVE_UPLOAD_MIN_INTERVAL_SEC` per session.
+        moving = "live" in p
+        if not moving and known.get(p["client_session_id"]) == p["content_hash"]:
             continue
         if p["state"] == "live":
             last = live_state.get(p["client_session_id"])
             if last:
                 if now - float(last.get("at", 0)) < LIVE_UPLOAD_MIN_INTERVAL_SEC:
                     continue
-                if last.get("hash") == p["content_hash"]:
+                if not moving and last.get("hash") == p["content_hash"]:
                     continue
         to_send.append(p)
 
@@ -590,7 +800,7 @@ def cmd_sync(a: argparse.Namespace) -> int:
 def make_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="python -m capture",
-        description=f"Builder capture {CLIENT_VERSION} — upload Claude Code sessions from anywhere Python runs.",
+        description=f"Builder capture {CLIENT_VERSION}: upload Claude Code sessions from anywhere Python runs.",
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -621,7 +831,17 @@ def make_parser() -> argparse.ArgumentParser:
         "until there are 200 of them and the fit is bimodal), or a number of seconds",
     )
     s.add_argument("--dry-run", action="store_true", help="print the payloads; send nothing")
-    s.add_argument("--live", action="store_true", help="also upload the open session as state=live")
+    s.add_argument(
+        "--live",
+        action="store_true",
+        help="also upload the open session as state=live, with its live state (spec/live.v1.json)",
+    )
+    s.add_argument(
+        "--live-names",
+        action="store_true",
+        help="OPT IN, with --live: also send the basename of each file on the live map "
+        "(stored only while the account has File names on; never a directory)",
+    )
     s.add_argument(
         "--finalize",
         action="store_true",
@@ -682,12 +902,64 @@ def make_parser() -> argparse.ArgumentParser:
     )
     rp.add_argument("--dry-run", action="store_true", help="print the report; send nothing")
     rp.add_argument(
+        "--quotes",
+        action="store_true",
+        help="OPT IN, this run only, never remembered: also send up to three of your prompts, "
+        "verbatim, for the Wrapped cards that quote you (stored only while the account has "
+        "Quote my prompts on)",
+    )
+    rp.add_argument(
         "--no-other-harnesses",
         action="store_true",
         help="Claude Code only: skip Codex, Gemini CLI, Cline, opencode and Aider",
     )
     rp.add_argument("--quiet", action="store_true", help="only print errors")
     rp.set_defaults(fn=cmd_report)
+
+    lv = sub.add_parser(
+        "live",
+        help="tail running Claude Code transcripts into the hook's route; the server works "
+        "out what each running session is doing",
+    )
+    lv.add_argument(
+        "--transcript",
+        action="append",
+        help="a transcript to tail (repeatable); default: every one under --root written "
+        "to in the last hour",
+    )
+    lv.add_argument("--root", default=DEFAULT_ROOT, help=f"transcript root (default {DEFAULT_ROOT})")
+    lv.add_argument(
+        "--every",
+        type=float,
+        default=5.0,
+        help="seconds between ticks (default 5; UNMEASURED JUDGEMENT CALL, the cadence the "
+        "phone's 60 s poll can show)",
+    )
+    lv.add_argument(
+        "--heartbeat",
+        type=float,
+        default=30.0,
+        help="seconds with nothing new before an empty post re-cuts on the server's clock "
+        "(default 30; UNMEASURED JUDGEMENT CALL, half the phone's poll)",
+    )
+    lv.add_argument("--server", help="API base URL (or BUILDER_API_URL)")
+    lv.add_argument("--key", help="capture key (or BUILDER_CAPTURE_KEY); replaces pairing")
+    lv.add_argument("--tz", help="IANA zone for the 04:00 day rule (or BUILDER_TZ / TZ)")
+    lv.add_argument("--once", action="store_true", help="post one tick and exit")
+    lv.add_argument(
+        "--for",
+        dest="duration",
+        type=float,
+        default=None,
+        help="stop after this many seconds (default: until Ctrl+C)",
+    )
+    lv.set_defaults(fn=cmd_live)
+
+    q = sub.add_parser("quotes", help="delete the quotes this account stored")
+    q.add_argument("--delete", action="store_true", help="delete them (DELETE /v1/profile/quotes)")
+    q.add_argument("--server", help="API base URL (or BUILDER_API_URL)")
+    q.add_argument("--key", help="capture key (or BUILDER_CAPTURE_KEY); replaces pairing")
+    q.set_defaults(fn=cmd_quotes)
     return ap
 
 

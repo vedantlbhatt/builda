@@ -15,13 +15,20 @@ Commit messages. Commit SHAs. Branch names. Your working directory. Your git rem
 The names of repositories you have not marked public. MCP server names. Terminal commands
 and their output. Environment variables. URLs fetched. Your hostname. Your IP.
 
-Not redacted versions of these. Not excerpts. There is no code path that sends them —
-with one opt-in exception, **Session analysis**, described in its own section below. It is
-the only field in the table that carries prose, and it is off unless you turn it on.
+Not redacted versions of these. Not excerpts. There is no code path that sends them, with
+three opt-in exceptions, each off until you turn it on and each described in its own
+section below: **Session analysis** (prose your own Claude Code writes about a session),
+**Quoted prompts** (up to 3 of your prompts, for the Wrapped cards that quote you) and
+**File names** (the names of the files a running session touches, on its session screen).
+They are the only places a word you typed, or the name of a file, can travel.
+
+`tool_calls` counts calls by tool, and its keys can only be `Read`, `Edit`, `Write`, `Bash`, `mcp_other`, `other`: any other tool,
+an MCP server's included, is counted under `mcp_other` or `other`, and the server refuses
+a key outside that list.
 
 ## What does leave, if you sign in
 
-Every field, in full. `3` is the contract version.
+Every field, in full. `4` is the contract version.
 
 | Field | Type | Sent for | What it is |
 |---|---|---|---|
@@ -49,7 +56,7 @@ Every field, in full. `3` is the contract version.
 | `visible` | bool | public + anonymous | counts toward hours, graph, streaks |
 | `notable` | bool | public + anonymous | eligible for a card or a record |
 | `strip_columns` | base64 | public + anonymous | 1024 bytes: 2-bit class, 2-bit density. No text, no paths, by construction |
-| `strip_marks` | marks | public + anonymous | [{ms, k}] where k is prompt|commit|compact |
+| `strip_marks` | marks | public + anonymous | [{ms, k}] where k is prompt, commit or compact |
 | `timeline_fidelity` | enum | public + anonymous |  |
 | `human_prompt_count` | int | public + anonymous |  |
 | `prompt_count_basis` | enum | public + anonymous | so Cursor's looser rule never sums with Claude Code's |
@@ -61,16 +68,16 @@ Every field, in full. `3` is the contract version.
 | `commit_count` | int | public + anonymous |  |
 | `commit_insertions` | int | public + anonymous |  |
 | `commit_deletions` | int | public + anonymous |  |
-| `human_edit_events` | int | public + anonymous | count of edited_text_file / humanChanges signals. Existence only — these carry no line counts |
+| `human_edit_events` | int | public + anonymous | count of edited_text_file / humanChanges signals. Existence only: these carry no line counts |
 | `agent_line_bucket` | enum | public + anonymous | a 5-way LOWER BOUND, never a percentage |
 | `attrib_confidence` | enum | public + anonymous |  |
-| `tokens_reported` | bool | public + anonymous | false for EVERY Cursor session, forever — Cursor never writes token counts locally |
+| `tokens_reported` | bool | public + anonymous | false for EVERY Cursor session, forever: Cursor never writes token counts locally |
 | `tokens` | tokens | public + anonymous | five separate buckets. Null, never zero, when unreported |
 | `abandoned_branch_tokens` | int | public + anonymous | tokens spent on rewound DAG branches. You paid for them |
 | `token_dedupe` | enum | public + anonymous | server rejects none + tokens_reported: that is the 1.88x arriving unlabeled |
-| `token_scope` | enum | public + anonymous | 'flat' is NOT a legal value — it would let the ~3x subagent glob overcount in wearing a legitimate label |
+| `token_scope` | enum | public + anonymous | 'flat' is NOT a legal value: it would let the ~3x subagent glob overcount in wearing a legitimate label |
 | `token_coverage` | enum | public + anonymous |  |
-| `models` | models | public + anonymous | [{model_id, output_token_share}] — labels only. The [1m] suffix is preserved verbatim |
+| `models` | models | public + anonymous | [{model_id, output_token_share}], labels only. The [1m] suffix is preserved verbatim |
 | `model_state` | enum | public + anonymous | Cursor is ~84% unknown: modelName is 'default' on 115 of 137 composers |
 | `repo_hash` | sha256hex | public + anonymous | HMAC of the normalized origin URL. Full 64 hex, never truncated |
 | `repo_pepper_version` | int | public + anonymous |  |
@@ -80,29 +87,46 @@ Every field, in full. `3` is the contract version.
 | `title_source` | enum | **public repos only** |  |
 | `card_png_url` | url | public + anonymous | populated ONLY when you tap Share. The image you chose to publish; contains no field not listed above |
 | `analysis` | analysis | public + anonymous | model-written reading of the session, produced on the user's machine by their own Claude Code from a digest of the transcript (spec/analysis.v1.json). Present only when analysis upload is enabled. Private to the account under RLS; leaves it only when the session is shared. This is the ONE field that carries prose derived from prompts and code, and it is opt-in for exactly that reason. |
-| `feedback` | feedback | public + anonymous | what this one sitting cost that you would not have chosen: [{id, seconds, count}] where id is one of three fixed notes. Numbers only — no command, no file name, no prose. Computed on the machine (analysis/feedback.py); the sentence is rendered on the phone. Null, never [], when the sitting had nothing worth saying |
+| `feedback` | feedback | public + anonymous | what this one sitting cost that you would not have chosen: [{id, seconds, count}] where id is one of three fixed notes. Numbers only: no command, no file name, no prose. Computed on the machine (analysis/feedback.py); the sentence is rendered on the phone. Null, never [], when the sitting had nothing worth saying |
+| `live` | live | public + anonymous | what a RUNNING session is doing now (spec/live.v1.json): enums, integers, clocks and 16 hex salted file ids. No path, file name, command, prompt or sentence. Only on state=live payloads; deleted when the session is final. |
+| `live_names` | live_names | public + anonymous | OPT-IN, OFF BY DEFAULT: the basename of each file in live.map, keyed by its id. Sent only with `capture sync --live --live-names` and stored only while the account has File names on. Owner only; shown on the session screen, never on the Lock Screen, the widget, a push or a share. |
+| `burn` | SessionBurn | public + anonymous | where this sitting's tokens went and whether anything came of it (analysis/burn.py over the session window): counts, shares, enums and at most three costly stretches. No prompt, path, command, file name or tool name. Computed on the machine or by the hook channel; the phone writes every sentence. Null when the producer does not compute it; a refusal is burn.reason, never a zero. |
+| `title_ids` | SessionTitleIds | public + anonymous | an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. Null when no title rule fired, or the producer does not compute it. |
 
 ## Per-repository control
 
 Every repository is **anonymous** by default: its sessions sync as a shape and a set of
-counts, with no name attached. You can set a repository to **public** — which adds only
-`repo_name`, `title` and `title_source` — or to **excluded**, which sends nothing at all.
+counts, with no name attached. You can set a repository to **public**, which adds only
+`repo_name`, `title` and `title_source`, or to **excluded**, which sends nothing at all.
 If a single session touched an excluded repository, the whole session is dropped rather
 than partially uploaded.
 
 Titles come from the title your coding tool **already wrote to your disk**. Builder does
 not send your prompts to a model to generate one. There is no such endpoint.
 
+## A running session
+
+While a session runs, `live` says what it is doing, as numbers and ids: the kind of work
+(reading, editing, testing), whether it is converging, circling or lost, an ETA or the
+reason there is none, and a map of the files it touched in which every file is a 16
+character id, salted with a secret that never leaves your machine or your account. No path,
+no file name, no command, no prompt. It is deleted when the session finishes. Your Lock
+Screen, your widget and every push see only these numbers.
+
+`burn` and `title_ids` describe a session after the fact in the same way: where its tokens
+went and its title, as counts and ids from fixed lists. The sentences you read about them
+are written on your phone.
+
 ## Session analysis
 
-The `analysis` field is the deliberate exception to the rule above, and it is opt-in for
-exactly that reason.
+The `analysis` field is the first of the three exceptions to the rule above, and it is
+opt-in for exactly that reason.
 
 When a session finishes, Builder can ask **your own Claude Code**, on your own machine, to
 read a digest of the transcript and write a short account of it: what got built, how you
 steered the agent, where the friction was. That is model-written prose. It may name files
-and features, because that is what the session was about. It is produced locally — nothing
-is sent to a third party to be summarised — and its shape is fixed by
+and features, because that is what the session was about. It is produced locally (nothing
+is sent to a third party to be summarised), and its shape is fixed by
 `spec/analysis.v1.json`: every string has a length cap, and a document with an undeclared
 key is rejected by the server rather than stored.
 
@@ -113,8 +137,29 @@ quotes you.
 
 Private by default. On the server it is readable only by your account, under the same row
 level security as everything else, and it leaves your account only when you share that
-session. Turn analysis upload off and the field is not sent at all — omitted, not sent as
+session. Turn analysis upload off and the field is not sent at all: omitted, not sent as
 empty.
+
+## Quoted prompts
+
+The `quotes` document goes to its own address (`PUT /v1/profile/quotes`), never with a session, and
+only when BOTH the phone's setting "Quote my prompts on my cards" and the machine's
+`--quotes` flag say yes. The flag is never remembered, so a scheduled upload never sends
+one. It holds at most 3 of your prompts, verbatim, each at most 160 characters, for
+the Wrapped cards that quote you: your go-to prompt, your biggest crash out and your most
+cryptic prompt. Every quote is masked for secrets and filtered for anything shaped like an
+identifier twice, once on your machine and again on the server, which refuses it otherwise.
+
+Only you can see them. They are never in a post, a feed, a share, a push or a Live
+Activity. Turning the setting off deletes them.
+
+## File names
+
+`live_names` carries the name of each file in a running session's map (a basename such as
+`auth.py`, never a directory), keyed by its id. It is off by default: sent only with
+`capture sync --live --live-names`, and stored only while File names is on for your
+account. Only you can see them, on the session screen; the Lock Screen, the widget, pushes
+and shares never receive one. Turning it off deletes the names already stored.
 
 ## Check it yourself
 
@@ -125,10 +170,11 @@ Do not take the above on faith. The agent is open source and these commands run 
 builder sync --dry-run --print-payload | jq
 
 # 2. Diff its actual keys against this page, in both directions.
-#    `leaf_paths` expands the five structured fields (tokens, models, strip_marks,
-#    tool_calls, analysis) so a scalar-path walk lines up exactly. tool_calls keys are
-#    tool names, so they are normalised to the wildcard the contract publishes. List
-#    indices are stripped both mid-path (dimensions.0.score) and trailing (tags.0).
+#    `leaf_paths` expands every structured field (tokens, models, strip_marks, feedback,
+#    tool_calls, analysis, live, live_names, burn, title_ids) so a scalar-path walk lines
+#    up exactly. tool_calls keys are tool names, so they are normalised to the wildcard
+#    the contract publishes. List indices are stripped both mid-path
+#    (dimensions.0.score) and trailing (tags.0).
 builder sync --dry-run --print-payload \
   | jq -r '[paths(scalars)] | .[] | join(".")' \
   | sed 's/^sessions\.[0-9]*\.//' \
@@ -137,6 +183,7 @@ builder sync --dry-run --print-payload \
   | sed 's/^tool_calls\..*/tool_calls.<allowlisted tool name>/' \
   | sort -u > /tmp/actual
 curl -s "$BUILDER_BASE_URL/upload-fields.json" | jq -r '.leaf_paths[]' | sort -u > /tmp/declared
+# (`documents.quotes.leaf_paths` is the same list for the quotes document.)
 
 # Anything on the left that is not on the right is a field we send and did not declare.
 comm -23 /tmp/actual /tmp/declared
@@ -152,7 +199,7 @@ HTTPS_PROXY=http://127.0.0.1:8080 builder sync
 ## Repository hashing: the honest limit
 
 Repositories are identified by an HMAC of the normalized git origin URL. The key is a
-**global constant, identical for every user** — matching the same repository across two
+**global constant, identical for every user**: matching the same repository across two
 machines requires both to derive the same hash. It ships inside an open-source binary and
 is **not secret**.
 

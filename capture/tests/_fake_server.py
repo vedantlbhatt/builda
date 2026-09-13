@@ -2,16 +2,24 @@
 
 It implements exactly the behaviour the client depends on and nothing else: bearer
 checking, refresh-token ROTATION with reuse detection (a spent token presented again
-revokes the device), capture keys (`bck_…`, sync routes only, revoked == unknown == 401),
-the device-grant start/poll pair, `/v1/sync/known` and the batch upload. Every request is
-recorded so a test can assert what was — and was not — sent.
+revokes the device), capture keys (`bck_…`, accepted on the write only routes as
+`auth.current_uploader` accepts them; revoked == unknown == 401), the device-grant
+start/poll pair, `/v1/sync/known`, the batch upload, the hook's transcript route
+(`routes/ingest.py`: offsets, the 409 gap, gzip) and the report and quotes PUTs. Every
+request is recorded so a test can assert what was, and was not, sent.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+#: The routes a capture key may write to (`auth.current_uploader`); every other route
+#: refuses one.
+_KEY_ROUTES = re.compile(r"^/v1/(sync/|ingest/|profile/(narrative|report|quotes)$)")
 
 
 class FakeBuilder:
@@ -27,6 +35,15 @@ class FakeBuilder:
         self.pending_polls = 0  # authorization_pending answers before "ok"
         self.valid_keys: set[str] = set()  # capture keys the server accepts on sync routes
         self.counter = 0
+        #: The hook route: bytes held per native session id, every post's headers and
+        #: inflated body, and what `live` answers with (the route's list of lines).
+        self.chunks: dict[str, bytes] = {}
+        self.ingest_posts: list[tuple[dict, bytes]] = []
+        self.ingest_live: list[dict] = []
+        self.reports: list[dict] = []
+        self.quotes: list[dict] = []
+        self.quotes_on = True
+        self.quotes_deleted = 0
         self.lock = threading.Lock()
         server = self
 
@@ -35,6 +52,10 @@ class FakeBuilder:
                 pass
 
             def _send(self, status: int, body: dict):
+                if status == 204:
+                    self.send_response(204)
+                    self.end_headers()
+                    return
                 raw = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -42,9 +63,13 @@ class FakeBuilder:
                 self.end_headers()
                 self.wfile.write(raw)
 
-            def _body(self):
+            def _raw(self) -> bytes:
                 n = int(self.headers.get("Content-Length") or 0)
-                return json.loads(self.rfile.read(n)) if n else None
+                return self.rfile.read(n) if n else b""
+
+            def _body(self):
+                raw = self._raw()
+                return json.loads(raw) if raw else None
 
             def _bearer(self):
                 h = self.headers.get("Authorization", "")
@@ -56,9 +81,25 @@ class FakeBuilder:
             def do_POST(self):
                 self._route("POST")
 
+            def do_PUT(self):
+                self._route("PUT")
+
+            def do_DELETE(self):
+                self._route("DELETE")
+
             def _route(self, method):
-                body = self._body() if method == "POST" else None
                 token = self._bearer()
+                if self.path == "/v1/ingest/transcript" and method == "POST":
+                    raw = self._raw()
+                    if self.headers.get("Content-Encoding") == "gzip":
+                        raw = gzip.decompress(raw)
+                    headers = {k.lower(): v for k, v in self.headers.items()}
+                    with server.lock:
+                        server.requests.append((method, self.path, None, token))
+                        status, out = server.ingest(headers, raw, token)
+                    self._send(status, out)
+                    return
+                body = self._body() if method in ("POST", "PUT") else None
                 with server.lock:
                     server.requests.append((method, self.path, body, token))
                     status, out = server.handle(method, self.path, body, token)
@@ -137,14 +178,25 @@ class FakeBuilder:
                 "expires_in": 900,
             }
 
-        # everything below needs a bearer: a device token, or on the sync routes a key
-        if token is not None and token.startswith("bck_"):
-            if not path.startswith("/v1/sync/"):
-                return 401, {"detail": "capture keys are accepted by the sync routes only"}
-            if token not in self.valid_keys:
-                return 401, {"detail": "invalid capture key"}
-        elif token not in self.valid_access:
-            return 401, {"detail": "invalid token"}
+        # everything below needs a bearer: a device token, or on a write only route a key
+        denied = self._auth(path, token)
+        if denied is not None:
+            return denied
+        m = re.match(r"^/v1/ingest/transcript/([^/]+)/offset$", path)
+        if m and method == "GET":
+            return 200, {"next_offset": len(self.chunks.get(m.group(1), b""))}
+        if path == "/v1/profile/report" and method == "PUT":
+            self.reports.append(body or {})
+            return 200, {"ok": True}
+        if path == "/v1/profile/quotes" and method == "PUT":
+            if not self.quotes_on:
+                return 409, {"reason": "quotes are off for this account; turn on Settings, Quote my prompts"}
+            self.quotes.append(body or {})
+            return 200, {"ok": True}
+        if path == "/v1/profile/quotes" and method == "DELETE":
+            self.quotes_deleted += 1
+            self.quotes.clear()
+            return 204, {}
         if path == "/v1/sync/known" and method == "GET":
             return 200, {"known": dict(self.known)}
         if path == "/v1/sync/sessions:batch" and method == "POST":
@@ -161,3 +213,38 @@ class FakeBuilder:
                     accepted += 1
             return 200, {"accepted": accepted, "unchanged": unchanged, "rejected": []}
         return 404, {"detail": "no route"}
+
+    def _auth(self, path, token):
+        if token is not None and token.startswith("bck_"):
+            if not _KEY_ROUTES.match(path):
+                return 401, {"detail": "capture keys are accepted by the write only routes only"}
+            if token not in self.valid_keys:
+                return 401, {"detail": "invalid capture key"}
+            return None
+        if token not in self.valid_access:
+            return 401, {"detail": "invalid token"}
+        return None
+
+    def ingest(self, headers: dict, body: bytes, token):
+        """`routes/ingest.py`: an offset equal to what is held appends, a lower one
+        replaces from there, a higher one is a 409 naming the byte to resend from."""
+        denied = self._auth("/v1/ingest/transcript", token)
+        if denied is not None:
+            return denied
+        self.ingest_posts.append((headers, body))
+        sid = headers.get("x-builder-session-id", "")
+        offset = int(headers.get("x-builder-offset", "0"))
+        held = self.chunks.get(sid, b"")
+        if offset > len(held):
+            return 409, {"next_offset": len(held), "reason": "gap: resend from next_offset"}
+        held = held[:offset] + body
+        self.chunks[sid] = held
+        return 200, {
+            "next_offset": len(held),
+            "recut_stale": 0,
+            "accepted": 1 if body else 0,
+            "unchanged": 0 if body else 1,
+            "rejected": [],
+            "live": list(self.ingest_live),
+            "final": 0,
+        }

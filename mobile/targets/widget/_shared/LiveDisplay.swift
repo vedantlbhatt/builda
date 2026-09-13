@@ -4,9 +4,10 @@ import Foundation
 /// session, derived once from `BuilderSessionAttributes` + `ContentState` (or a widget snapshot
 /// row) at a given `now`. The views only lay these out, so the copy lives in one place.
 ///
-/// Copy rules (brief, DESIGN-DIRECTION 9): no dashes anywhere (a minus before a number is
-/// U+2212 MINUS SIGN, which is a sign, not punctuation), captions lower case, numbers tabular,
-/// and a refused number is a sentence ("no ETA yet"), never a 0 or "--".
+/// Copy rules (brief, DESIGN-DIRECTION 9): no dashes anywhere (`plain.DASH_CHARS`: em, en, the
+/// horizontal bar and the U+2212 minus sign; a removed count is "-88" with a hyphen, as the
+/// phone writes it), captions lower case, numbers tabular, and a refused number is a sentence
+/// ("no ETA yet"), never a 0 or "--".
 ///
 /// Time rule: a Live Activity is redrawn only when an update arrives, and none arrives while
 /// the app is in the background. So nothing on it is a duration computed at render ("12m",
@@ -222,8 +223,10 @@ enum LiveCopy {
   static let nothingRunning = "Nothing running."
   static let showsUpHere = "Your agents show up here while they run."
   static let today = "today"
-  /// U+2212 MINUS SIGN: the sign on "−88", so no punctuation dash ever reaches a surface.
-  static let minus = "\u{2212}"
+  /// The sign on "-88": a hyphen, as the phone writes a negative number (src/copy/plain.ts).
+  /// FOUND IN INTEGRATION (2026-09-13): this was U+2212, which `plain.DASH_CHARS` counts as a
+  /// dash, so the Lock Screen broke the one rule the no dash tests hold every other surface to.
+  static let minus = "-"
   static let separator = "\u{00B7}"
 
   static func filesChanged(_ n: Int) -> String { n == 1 ? "1 file changed" : "\(count(n)) files changed" }

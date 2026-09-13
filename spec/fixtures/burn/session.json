@@ -1,0 +1,544 @@
+[
+ {
+  "name": "replay",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 10600000,
+   "cache_read_share": 0.9172641509433962,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 7,
+   "lines_added": 192,
+   "lines_removed": 8,
+   "files_changed": 7,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 9100000,
+     "multiple": 36.4,
+     "barren": false,
+     "lines_added": 120,
+     "lines_removed": 8,
+     "seconds": 40,
+     "causes": [
+      {
+       "cause": "context_replay",
+       "n": 8463000,
+       "tokens": 8463000,
+       "repeat": null
+      },
+      {
+       "cause": "subagent_fanout",
+       "n": 4,
+       "tokens": 180000,
+       "repeat": null
+      },
+      {
+       "cause": "error_loop",
+       "n": 4,
+       "tokens": 180000,
+       "repeat": null
+      }
+     ],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 10.6M tokens, added 192 lines and removed 8.",
+   "92% of that was the conversation re-reading itself, which is normal in a long session and is the main reason cost climbs the longer you go.",
+   "The most expensive stretch cost 9.1M tokens, 93% of it re-reading the conversation so far, and it wrote 120 lines."
+  ]
+ },
+ {
+  "name": "reading",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 1030000,
+   "cache_read_share": 0.3592233009708738,
+   "barren_share": 0.7572815533980582,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 100,
+   "lines_removed": 0,
+   "files_changed": 5,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 780000,
+     "multiple": 15.6,
+     "barren": true,
+     "lines_added": 0,
+     "lines_removed": 0,
+     "seconds": 20,
+     "causes": [
+      {
+       "cause": "investigated",
+       "n": 12,
+       "tokens": 560000,
+       "repeat": null
+      }
+     ],
+     "files_changed": 0,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 1.0M tokens, added 100 lines and removed 0.",
+   "About 76% went into stretches where nothing was written. That is not always wasted, but it is where to look first.",
+   "The most expensive stretch cost 780k tokens, 72% of it on reading 12 files, and nothing was written."
+  ]
+ },
+ {
+  "name": "repeat",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 765000,
+   "cache_read_share": 0.39215686274509803,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 70,
+   "lines_removed": 4,
+   "files_changed": 6,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 590000,
+     "multiple": 16.9,
+     "barren": false,
+     "lines_added": 30,
+     "lines_removed": 4,
+     "seconds": 50,
+     "causes": [
+      {
+       "cause": "repeated_call",
+       "n": 4,
+       "tokens": 270000,
+       "repeat": "shell"
+      }
+     ],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 765k tokens, added 70 lines and removed 4.",
+   "The most expensive stretch cost 590k tokens, 46% of it on running the same command 4 times, and it wrote 30 lines."
+  ]
+ },
+ {
+  "name": "churn",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 615000,
+   "cache_read_share": 0.3983739837398374,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 83,
+   "lines_removed": 8,
+   "files_changed": 6,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 400000,
+     "multiple": 9.3,
+     "barren": false,
+     "lines_added": 8,
+     "lines_removed": 8,
+     "seconds": 50,
+     "causes": [
+      {
+       "cause": "repeated_call",
+       "n": 4,
+       "tokens": 210000,
+       "repeat": "edit"
+      },
+      {
+       "cause": "file_churn",
+       "n": 4,
+       "tokens": 210000,
+       "repeat": null
+      }
+     ],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 615k tokens, added 83 lines and removed 8.",
+   "The most expensive stretch cost 400k tokens, 52% of it on editing the same file 4 times, and it wrote 8 lines."
+  ]
+ },
+ {
+  "name": "script",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 590000,
+   "cache_read_share": 0.22033898305084745,
+   "barren_share": 0.1694915254237288,
+   "unreadable_share": 0.8305084745762712,
+   "segments": 6,
+   "lines_added": 0,
+   "lines_removed": 0,
+   "files_changed": 0,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 490000,
+     "multiple": 24.5,
+     "barren": false,
+     "lines_added": 0,
+     "lines_removed": 0,
+     "seconds": 20,
+     "causes": [],
+     "files_changed": 0,
+     "commits": 0,
+     "unreadable": true
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 590k tokens, and whether it changed any file cannot be read from this transcript.",
+   "About 83% went into stretches whose commands or helper agents may have changed files this transcript does not show.",
+   "The most expensive stretch cost 490k tokens, and whether it changed any file cannot be read from this transcript."
+  ]
+ },
+ {
+  "name": "one_helper",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 582000,
+   "cache_read_share": 0.0859106529209622,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 94,
+   "lines_removed": 0,
+   "files_changed": 6,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 482000,
+     "multiple": 24.1,
+     "barren": false,
+     "lines_added": 64,
+     "lines_removed": 0,
+     "seconds": 50,
+     "causes": [
+      {
+       "cause": "subagent_fanout",
+       "n": 1,
+       "tokens": 2000,
+       "repeat": null
+      }
+     ],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 582k tokens, added 94 lines and removed 0.",
+   "The most expensive stretch cost 482k tokens, under 1% of it on the turn that handed work to 1 helper agent, and it wrote 64 lines."
+  ]
+ },
+ {
+  "name": "short",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 1200000,
+   "cache_read_share": 0.9975,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 3,
+   "lines_added": 12,
+   "lines_removed": 0,
+   "files_changed": 3,
+   "commits": 0,
+   "reason": null,
+   "spikes": null,
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 1.2M tokens, added 12 lines and removed 0.",
+   "Over 99% of that was the conversation re-reading itself, which is normal in a long session and is the main reason cost climbs the longer you go."
+  ]
+ },
+ {
+  "name": "removed",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 250000,
+   "cache_read_share": 0.12,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 0,
+   "lines_removed": 160,
+   "files_changed": 6,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 165000,
+     "multiple": 9.4,
+     "barren": false,
+     "lines_added": 0,
+     "lines_removed": 120,
+     "seconds": 5,
+     "causes": [],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 250k tokens, added 0 lines and removed 160.",
+   "The most expensive stretch cost 165k tokens, and it removed 120 lines."
+  ]
+ },
+ {
+  "name": "sed",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 154000,
+   "cache_read_share": 0.15584415584415584,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 0,
+   "lines_removed": 0,
+   "files_changed": 2,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 94000,
+     "multiple": 7.8,
+     "barren": false,
+     "lines_added": 0,
+     "lines_removed": 0,
+     "seconds": 5,
+     "causes": [],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 154k tokens and changed 2 files with no line count.",
+   "The most expensive stretch cost 94k tokens, and it changed 1 file."
+  ]
+ },
+ {
+  "name": "commit",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 133000,
+   "cache_read_share": 0.13533834586466165,
+   "barren_share": 0.45112781954887216,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 0,
+   "lines_removed": 0,
+   "files_changed": 0,
+   "commits": 1,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 73000,
+     "multiple": 6.1,
+     "barren": false,
+     "lines_added": 0,
+     "lines_removed": 0,
+     "seconds": 5,
+     "causes": [],
+     "files_changed": 0,
+     "commits": 1,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 133k tokens and made 1 commit.",
+   "About 45% went into stretches where nothing was written. That is not always wasted, but it is where to look first.",
+   "The most expensive stretch cost 73k tokens, and it made 1 commit."
+  ]
+ },
+ {
+  "name": "halves",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 12500,
+   "cache_read_share": 0.0,
+   "barren_share": 0.12504,
+   "unreadable_share": 0.0,
+   "segments": 2,
+   "lines_added": 3,
+   "lines_removed": 0,
+   "files_changed": 1,
+   "commits": 0,
+   "reason": null,
+   "spikes": null,
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 12k tokens, added 3 lines and removed 0."
+  ]
+ },
+ {
+  "name": "million",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 1099500,
+   "cache_read_share": 0.0,
+   "barren_share": 0.0,
+   "unreadable_share": 0.0,
+   "segments": 6,
+   "lines_added": 140,
+   "lines_removed": 10,
+   "files_changed": 6,
+   "commits": 0,
+   "reason": null,
+   "spikes": [
+    {
+     "tokens": 999500,
+     "multiple": 50.0,
+     "barren": false,
+     "lines_added": 90,
+     "lines_removed": 10,
+     "seconds": 10,
+     "causes": [
+      {
+       "cause": "compaction",
+       "n": 1,
+       "tokens": 899500,
+       "repeat": null
+      }
+     ],
+     "files_changed": 1,
+     "commits": 0,
+     "unreadable": false
+    }
+   ],
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 1.1M tokens, added 140 lines and removed 10.",
+   "The most expensive stretch cost 1.0M tokens, 90% of it on rebuilding the context after it was summarised, and it wrote 90 lines."
+  ]
+ },
+ {
+  "name": "half_share",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": 16000,
+   "cache_read_share": 0.0,
+   "barren_share": 0.625,
+   "unreadable_share": 0.0,
+   "segments": 2,
+   "lines_added": 2,
+   "lines_removed": 0,
+   "files_changed": 1,
+   "commits": 0,
+   "reason": null,
+   "spikes": null,
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This session used 16k tokens, added 2 lines and removed 0.",
+   "About 62% went into stretches where nothing was written. That is not always wasted, but it is where to look first."
+  ]
+ },
+ {
+  "name": "no_counts",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": null,
+   "cache_read_share": null,
+   "barren_share": null,
+   "unreadable_share": null,
+   "segments": 1,
+   "lines_added": 0,
+   "lines_removed": 0,
+   "files_changed": 0,
+   "commits": 0,
+   "reason": "no_token_counts",
+   "spikes": null,
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "This transcript does not record token counts, so cost cannot be shown."
+  ]
+ },
+ {
+  "name": "not_read_yet",
+  "harness": "cline",
+  "burn": {
+   "tokens": null,
+   "cache_read_share": null,
+   "barren_share": null,
+   "unreadable_share": null,
+   "segments": 1,
+   "lines_added": 0,
+   "lines_removed": 0,
+   "files_changed": 0,
+   "commits": 0,
+   "reason": "no_token_counts",
+   "spikes": null,
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "Cost is not shown for this tool yet."
+  ]
+ },
+ {
+  "name": "empty",
+  "harness": "claude_code",
+  "burn": {
+   "tokens": null,
+   "cache_read_share": null,
+   "barren_share": null,
+   "unreadable_share": null,
+   "segments": 0,
+   "lines_added": null,
+   "lines_removed": null,
+   "files_changed": null,
+   "commits": null,
+   "reason": "not_segmented",
+   "spikes": null,
+   "spikes_needed": 5
+  },
+  "sentences": [
+   "Nothing in this transcript could be read yet, so there is no cost to show."
+  ]
+ }
+]

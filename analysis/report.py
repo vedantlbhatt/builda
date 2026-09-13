@@ -25,6 +25,14 @@ WHAT IS IN IT, AND WHY EACH BLOCK EARNED ITS PLACE:
                  product has this and this one did not; the language NAME is all that
                  travels, and a name is not a path.
 
+VERSION 2 appends five blocks (docs/overnight-integration.md section 1): `wrapped`, the
+fifteen cards; `money`, list price dollars beside tokens and lines; `burn`, the tokens
+spent in stretches that changed nothing; `vocab`, the glossary; `stack`, what the project
+is made of. Inside them no field is a string: ids, enums, numbers and clocks only, and a
+refusal is an enum code the phone turns into words. `build` sends all five as None, which
+means only "this machine does not compute it"; `from_corpus`, the one builder both
+commands call, fills them through `report_blocks.py`.
+
 WHAT IT DELIBERATELY LEAVES OUT. `analysis/rules.py` turns recurring failures into
 CLAUDE.md lines, and those lines quote ERROR TEXT, which carries paths and file names. It
 stays on the machine and is written to a file there. The playbook splits PROMPTS by
@@ -54,8 +62,13 @@ from . import trends as tr_mod
 DEFAULT_WINDOW_DAYS = 30
 
 #: The spec version. `spec/report.v1.json` is the only other place this number appears,
-#: and `scripts/gen_report.py` copies it into both generated halves.
-REPORT_VERSION = 1
+#: and `scripts/gen_report.py` copies it into both generated halves. Version 2 added the
+#: five nullable blocks in `V2_BLOCKS`; a version 1 document still validates.
+REPORT_VERSION = 2
+
+#: The blocks version 2 appended, in spec order. Each is None until this machine computes
+#: it: a null block says "not computed here", never "nothing happened", and never a zero.
+V2_BLOCKS: tuple[str, ...] = ("wrapped", "money", "burn", "vocab", "stack")
 
 #: Caps from the spec, restated where the document is BUILT rather than only where it is
 #: validated. A corpus with two years of commits would otherwise produce a document the
@@ -98,7 +111,74 @@ def build(
         "quality": _quality(sessions),
         "prompting": _prompting(sessions),
         "languages": _languages(sessions),
+        # Not computed here yet, and None says exactly that: a block of zeroes would say
+        # nothing happened (docs/overnight-integration.md 1.2).
+        **dict.fromkeys(V2_BLOCKS),
     }
+
+
+def recent_trends(facts: Sequence, window_days: int, now: float) -> list:
+    """The last `window_days` against the `window_days` before, on the cut's own clock.
+    Empty when there is not enough history, which is the normal state for a first month
+    and not an error.
+
+    The two windows are always the SAME LENGTH. A window against all of history reports
+    the trend of the corpus growing, and a 7 day window labelled "on last month" is a
+    wrong sentence attached to a right number.
+    """
+    from . import profile as pf_mod
+
+    edge, floor = now - window_days * 86400, now - 2 * window_days * 86400
+    recent = [f for f in facts if f.started_at >= edge]
+    earlier = [f for f in facts if floor <= f.started_at < edge]
+    if not recent or not earlier:
+        return []
+    return tr_mod.compare(pf_mod.corpus_profile(earlier), pf_mod.corpus_profile(recent))
+
+
+def from_corpus(corpus, window_days: int = DEFAULT_WINDOW_DAYS, *, quotes: bool = False) -> tuple[dict, dict | None]:
+    """THE ONE BUILDER: the report over one cut (`analysis.corpus.cut`), every block, and
+    with `quotes=True` the opt in quotes document beside it (None otherwise).
+
+    `python -m analysis report` and `python -m capture report` both call this with the
+    cut `corpus.cut` made, so the two cannot describe one corpus with two documents. Every
+    block reads the same profile, on the cut's clock: the report's coverage, the wrapped
+    cards, the money and the burn say what they rest on from one set of numbers. Nothing
+    here reads a file or runs git; the cut already did.
+    """
+    from . import profile as pf_mod
+    from . import report_blocks as rb_mod
+    from . import vocab as vc_mod
+    from . import wrapped as wr_mod
+
+    c = corpus
+    profile = pf_mod.corpus_profile(c.facts, now=c.now)
+    doc = build(
+        profile=profile,
+        trends=recent_trends(c.facts, window_days, c.now),
+        fanout=c.fanout,
+        contributions=c.contributions,
+        sessions=c.sessions,
+        window_days=window_days,
+        generated_at=c.now,
+    )
+    cards = wr_mod.wrapped(
+        c.facts,
+        c.sessions,
+        profile=profile,
+        contributions=c.contributions,
+        fanout=c.fanout,
+        commit_subjects=c.commit_subjects,
+        quotes=quotes,
+    )
+    doc["wrapped"] = rb_mod.wrapped_block(wr_mod.wire(cards))
+    doc["money"] = rb_mod.money_block(profile, c.facts)
+    doc["burn"] = rb_mod.burn_block(profile)
+    doc["vocab"] = rb_mod.vocab_block(vc_mod.wire(vc_mod.glossary(c.sessions)))
+    doc["stack"] = rb_mod.stack_block(
+        vc_mod.wire(vc_mod.stack(c.sessions, dependencies=c.dependencies))
+    )
+    return doc, (wr_mod.quotes_upload(cards, generated_at=c.now) if quotes else None)
 
 
 def _coverage(profile: dict | None, window_days: int) -> dict | None:
@@ -266,5 +346,8 @@ __all__ = [
     "MAX_LANGUAGES",
     "MAX_TRENDS",
     "REPORT_VERSION",
+    "V2_BLOCKS",
     "build",
+    "from_corpus",
+    "recent_trends",
 ]

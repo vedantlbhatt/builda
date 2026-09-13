@@ -58,6 +58,11 @@ def main() -> int:
         help=f"the window, and the length of each trend window (default {rp_default()})",
     )
     rp.add_argument("--out")
+    rp.add_argument(
+        "--quotes",
+        action="store_true",
+        help="also print the opt in quotes document (up to three prompts, verbatim) after it",
+    )
     ql = sub.add_parser(
         "quality", help="how long it takes you to get back to green, and what passed first try"
     )
@@ -418,19 +423,18 @@ def _burn_lines(rep: dict, added: int, removed: int) -> str:
 def _wrapped(a) -> int:
     """The fifteen cards over a corpus: `analysis/wrapped.py`, with everything it needs cut
     here, the one place the corpus is cut. Refused cards print their reason."""
+    from . import corpus as cp_mod
     from . import profile as pf_mod
     from . import wrapped as wr_mod
 
-    root = pathlib.Path(a.path).expanduser()
-    facts, sessions = _narrative_inputs(root)
-    roots, since = _commit_window(facts)
+    c = cp_mod.cut_root(pathlib.Path(a.path).expanduser())
     res = wr_mod.wrapped(
-        facts,
-        sessions,
-        profile=pf_mod.corpus_profile(facts),
-        contributions=_corpus_contributions(facts),
-        fanout=_corpus_fanout(root),
-        commit_subjects=_commit_subjects(roots, since) if since is not None else (),
+        c.facts,
+        c.sessions,
+        profile=pf_mod.corpus_profile(c.facts, now=c.now),
+        contributions=c.contributions,
+        fanout=c.fanout,
+        commit_subjects=c.commit_subjects,
         quotes=a.quotes,
     )
     if a.wire:
@@ -509,59 +513,18 @@ def _print_wrapped(res: dict) -> None:
 
 
 def _map_salt(path: pathlib.Path | None = None) -> str:
-    """The salt the codebase map keys its file ids with (`live._hash`), never printed.
+    """The salt the codebase map keys its file ids with (`live._hash`), never printed:
+    `capture.identity.map_salt`, the one definition, so `python -m analysis live` and
+    `capture sync --live` give one file one id (docs/overnight-integration.md 5.6).
 
-    32 random bytes, written once to `map-salt` beside the capture credentials
-    (`~/.builder/`, mode 0600, the directory 0700) and read back on every later run, so a
-    file keeps one id across runs and machines never share one.
-
-    FOUND IN REVIEW (2026-09-13): it was `sha256("builder-map-salt:" + raw)` of the raw
-    machine identifier, and the uploaded `machine_id` is `sha256("builder-machine-v1|" +
-    raw)`, which hands a server an offline test for any guess of `raw`.
-    `BUILDER_MACHINE_ID` may be "any stable string" (docs/cloud-capture.md); set to a
-    guessable one, the server recovered it from `machine_id`, then the salt, then two
-    file paths from their wire ids by dictionary. Nothing derived from what is hashed onto
-    the wire may key the map. When the file cannot be written (a read only home), the
-    salt is random for this run alone: the ids hold for every `--watch` refresh and are
-    never guessable.
+    32 random bytes, written once to `map-salt` beside the capture credentials and read
+    back on every later run. FOUND IN REVIEW (2026-09-13): it was a hash of the raw machine
+    identifier, and the uploaded `machine_id` is another hash of it, which hands a server an
+    offline test for any guess of the identifier and so for the salt.
     """
-    import os
-    import secrets
-    import tempfile
+    from capture import identity
 
-    from capture import client as cl
-
-    from . import live as lv_mod
-
-    path = path or cl.credentials_path().with_name("map-salt")
-    try:
-        text = path.read_text().strip()
-        if len(text) >= lv_mod.SALT_MIN_CHARS:
-            return text
-    except OSError:
-        pass
-    salt = secrets.token_hex(32)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.chmod(path.parent, 0o700)
-        except OSError:
-            pass
-        fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=str(path.parent))
-        try:
-            with os.fdopen(fd, "w") as f:
-                f.write(salt + "\n")
-            os.chmod(tmp, 0o600)
-            os.replace(tmp, path)
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
-    except OSError:
-        pass
-    return salt
+    return identity.map_salt(path)
 
 
 def _live(a) -> int:
@@ -1442,51 +1405,10 @@ def _shipped(a) -> int:
 
 
 def _commit_messages(common_root: str | None, since: float, cap: int | None = 40) -> list[str]:
-    """Commit SUBJECTS in the window, from capture's own git runner.
+    """`corpus.commit_messages`: the one reader of commit subjects."""
+    from . import corpus as cp_mod
 
-    Subjects only: a body can run to forty lines in a repository with a commit-message
-    convention, and the post needs to know what landed, not to read the reasoning again.
-    `cap` is the post's: forty subjects are enough to describe a week, and `None` reads
-    them all for a caller that counts them (`_commit_subjects`).
-    """
-    from capture import repo as cap_repo
-    from capture.tuning import GIT_EXCLUDE_PATHSPECS
-
-    if not common_root:
-        return []
-    out = cap_repo._git(
-        [
-            "log",
-            f"--since=@{since:.0f}",
-            "--pretty=format:%s",
-            "--no-merges",
-            "--",
-            *GIT_EXCLUDE_PATHSPECS,
-        ],
-        common_root,
-    )
-    subjects = [line for line in (out or "").splitlines() if line.strip()]
-    return subjects if cap is None else subjects[:cap]
-
-
-def _commit_subjects(roots, since: float) -> list[str]:
-    """Every commit subject in the window across every repository, uncapped: the kind of
-    work card counts them, and a cap would turn "25 of 247 are labelled" into a number
-    about the first forty. The same `git log` filters as `capture.repo.commits_in`
-    (no merges, vendored paths excluded), so the count matches `contributions.total`."""
-    return [s for r in roots for s in _commit_messages(r, since, cap=None)]
-
-
-def _commit_window(facts) -> tuple[list[str], float | None]:
-    """(every repository the facts resolved to, when their commit window opens): the first
-    sitting's start less the attribution lookback. The one definition both the
-    contribution graph and the commit subjects read, so the two count the same commits."""
-    from . import contributions as co_mod
-
-    roots = sorted({f.repo for f in facts if f.repo})
-    if not roots or not facts:
-        return roots, None
-    return roots, min(f.started_at for f in facts) - co_mod.LOOKBACK_SEC
+    return cp_mod.commit_messages(common_root, since, cap)
 
 
 def _stored_summaries(session_ids: list[str]) -> list[dict]:
@@ -1539,106 +1461,20 @@ def _cards(a) -> int:
 
 
 def _recent_trends(facts, window_days: int = 30):
-    """The last `window_days` against the `window_days` before. Empty when there is not
-    enough history, which is the normal state for a first month and not an error.
+    """`report.recent_trends` on the wall clock: the last `window_days` against the
+    `window_days` before, both the same length, or nothing for a first month."""
+    from . import report as rp_mod
 
-    The two windows are always the SAME LENGTH. A window against all of history reports
-    the trend of the corpus growing, and a 7 day window labelled "on last month" is a
-    wrong sentence attached to a right number.
-    """
-    from . import profile as pf_mod
-    from . import trends as tr_mod
-
-    now = time.time()
-    edge, floor = now - window_days * 86400, now - 2 * window_days * 86400
-    recent = [f for f in facts if f.started_at >= edge]
-    earlier = [f for f in facts if floor <= f.started_at < edge]
-    if not recent or not earlier:
-        return []
-    return tr_mod.compare(pf_mod.corpus_profile(earlier), pf_mod.corpus_profile(recent))
-
-
-def _transcripts(root: pathlib.Path):
-    """Every root transcript under `root`, or `root` itself when it is one transcript file.
-
-    A directory is walked through `capture.discover.iter_root_transcripts`, the allowlist
-    on path shape (CLAUDE.md, "Globbing"). A FILE is taken as the one transcript the person
-    named, so every corpus command can answer about a single sitting's transcript; before,
-    a file here was walked as a directory, found nothing, and answered about zero sessions
-    without saying why.
-    """
-    from capture import discover
-
-    root = pathlib.Path(root).expanduser()
-    if root.is_file():
-        return [discover.Transcript(project_dir=root.parent.name, path=root)]
-    return discover.iter_root_transcripts(root)
-
-
-def _corpus_fanout(root: pathlib.Path):
-    """Every subagent across the corpus, as one `Fanout`. Never a token: see agents.py."""
-    from . import agents as ag_mod
-
-    spans = [s for t in _transcripts(root) for s in ag_mod.spans(t.path)]
-    if not spans:
-        return None
-    wall = max(s.ended_at for s in spans) - min(s.started_at for s in spans)
-    return ag_mod.fanout(spans, wall)
-
-
-def _corpus_contributions(facts):
-    """Commits by day, split by whether a sitting was running."""
-    from capture import repo as cap_repo
-
-    from . import contributions as co_mod
-
-    roots, since = _commit_window(facts)
-    if since is None:
-        return None
-    commits = [ts for r in roots for _sha, ts in cap_repo.commits_in(r, since, time.time())]
-    if not commits:
-        return None
-    return co_mod.split(
-        commits, [(f.started_at, f.ended_at) for f in facts], facts[-1].tz_offset_minutes
-    )
+    return rp_mod.recent_trends(facts, window_days, time.time())
 
 
 def _narrative_inputs(root: pathlib.Path, *, lean: bool = False):
-    """(facts, session events) for the whole corpus: the one place both commands cut it.
-    `lean` as `_corpus_facts` takes it."""
-    import datetime as _dt
+    """(facts, session events) for the whole corpus, from `corpus.cut`, the one place the
+    corpus is cut. `lean` as the cut takes it."""
+    from . import corpus as cp_mod
 
-    from capture import sessions as cap
-
-    from . import patterns as pat
-
-    facts, kept = _corpus_facts(root, lean=lean)
-    tz = _dt.datetime.now().astimezone().tzinfo
-    from . import pricing as pr_mod
-    from . import profile as pf_mod
-
-    events = []
-    for f, s in zip(facts, kept, strict=True):
-        ledger = cap.token_ledger(s.records)
-        cost, dominant = pr_mod.priced_session(ledger, pf_mod.DOMINANT_SHARE)
-        offset = _dt.datetime.fromtimestamp(s.started_at, tz).utcoffset() or _dt.timedelta(0)
-        events.append(
-            pat.SessionEvents(
-                session_id=s.client_session_id,
-                started_at=s.started_at,
-                ended_at=s.ended_at,
-                active_seconds=s.attended + s.autonomous,
-                attended_seconds=s.attended,
-                tz_offset_minutes=int(offset.total_seconds() // 60),
-                events=s.events,
-                output_tokens=(
-                    ledger.buckets["output"] if ledger.reported and ledger.buckets else None
-                ),
-                cost_usd=cost,
-                dominant_model=dominant,
-            )
-        )
-    return facts, events
+    c = cp_mod.cut_root(root, lean=lean)
+    return c.facts, c.sessions
 
 
 def rp_default() -> int:
@@ -1652,28 +1488,21 @@ def rp_default() -> int:
 def _report(a) -> int:
     """The builder report: every measured block, assembled and printed.
 
-    This is the document `python -m capture report` uploads, byte for byte — the same
-    function builds it — so printing it here is the honest way to see what would leave the
-    machine before any of it does.
+    This is the document `python -m capture report` uploads, byte for byte: both commands
+    cut the corpus with `corpus.cut` and build the document with `report.from_corpus`, so
+    printing it here is the honest way to see what would leave the machine before any of
+    it does. `--quotes` prints the opt in quotes document after it, which only
+    `capture report --quotes` ever sends.
     """
-    from . import profile as pf_mod
+    from . import corpus as cp_mod
     from . import report as rp_mod
 
-    root = pathlib.Path(a.path).expanduser()
-    facts, sessions = _narrative_inputs(root)
     days = a.days or rp_mod.DEFAULT_WINDOW_DAYS
-    doc = rp_mod.build(
-        # The profile travels in so the report can say what it rests on. Without it the
-        # document answers a thirty day question with whatever it found and never says
-        # which.
-        profile=pf_mod.corpus_profile(facts),
-        trends=_recent_trends(facts, days),
-        fanout=_corpus_fanout(root),
-        contributions=_corpus_contributions(facts),
-        sessions=sessions,
-        window_days=days,
-    )
+    c = cp_mod.cut_root(pathlib.Path(a.path).expanduser())
+    doc, quotes = rp_mod.from_corpus(c, days, quotes=a.quotes)
     text = json.dumps(doc, indent=1, ensure_ascii=False)
+    if quotes is not None:
+        text += "\n" + json.dumps(quotes, indent=1, ensure_ascii=False)
     if a.out:
         pathlib.Path(a.out).write_text(text)
         sys.stderr.write(f"wrote {a.out}\n")
@@ -1693,7 +1522,10 @@ def _narrative(a) -> int:
     from . import patterns as pat
     from . import profile as pf_mod
 
-    facts, sessions = _narrative_inputs(pathlib.Path(a.path).expanduser())
+    from . import corpus as cp_mod
+
+    c = cp_mod.cut_root(pathlib.Path(a.path).expanduser())
+    facts, sessions = c.facts, c.sessions
     found = pat.findings(sessions)
 
     if a.findings_only:
@@ -1717,8 +1549,8 @@ def _narrative(a) -> int:
         profile=prof,
         findings=found,
         trends=_recent_trends(facts),
-        fanout=_corpus_fanout(pathlib.Path(a.path).expanduser()),
-        contributions=_corpus_contributions(facts),
+        fanout=c.fanout,
+        contributions=c.contributions,
         **kw,
     )
     text = json.dumps(doc, indent=1, ensure_ascii=False)
@@ -1730,156 +1562,38 @@ def _narrative(a) -> int:
     return 0
 
 
+def _transcripts(root: pathlib.Path):
+    """`corpus.transcripts`: every root transcript under `root`, or the one file it names."""
+    from . import corpus as cp_mod
+
+    return cp_mod.transcripts(root)
+
+
 def _excluded(session, excluded: set[str]) -> bool:
-    """Is this sitting in a repository the person excluded (`BUILDER_CAPTURE_EXCLUDE`,
-    read by `capture.repo.excluded_origins`)? The rule `capture/cli.py` applies before it
-    builds a payload, written as a function here because every wire bound input this
-    module cuts (`_corpus_facts` for wrapped, vocab and the ETA; `_live_doc` for live) must
-    apply it: "an excluded repo produces ZERO uploads" (privacy/upload-contract.json).
-    FOUND IN REVIEW (2026-09-13): none of them did, and `live.wire` built a full state for
-    a session in an excluded repository. RECORDED: the rule belongs beside `is_counted` in
-    `capture.sessions`, out of bounds for this workflow."""
-    return session.repo is not None and session.repo.identity in excluded
+    """`corpus.excluded`: a sitting in a repository the person excluded is in no corpus and
+    no live view ("an excluded repo produces ZERO uploads")."""
+    from . import corpus as cp_mod
+
+    return cp_mod.excluded(session, excluded)
 
 
 def _distinct(session):
-    """The sitting with each event once (`patterns.distinct_events`): a resumed
-    transcript's copy of the old one's records reaches the pooled sitting twice, and every
-    count read off the events (lines, tool calls, prompts, commits, burn segments) would
-    count them twice. FOUND IN REVIEW, MEASURED on the corpus: 5 of 158 sittings, 907
-    agent lines and 5 prompts."""
-    import dataclasses
+    """`corpus.distinct`: the sitting with each event once."""
+    from . import corpus as cp_mod
 
-    from . import patterns as pat
-
-    return dataclasses.replace(session, events=pat.distinct_events(session.events))
+    return cp_mod.distinct(session)
 
 
 def _corpus_facts(root: pathlib.Path, *, lean: bool = False) -> tuple[list, list]:
-    """Sessionize a whole `~/.claude/projects` tree: (facts, the sessions they came from).
+    """(facts, the sessions they came from) for a whole `~/.claude/projects` tree, from
+    `corpus.cut` (see its docstring for what the cut holds). The sessions travel back
+    beside the facts because the comparative findings need the EVENTS, prompt wording
+    included, and a `SessionFact` is deliberately a summary. Nothing that reads the
+    sessions may upload them."""
+    from . import corpus as cp_mod
 
-    The sessions travel back beside the facts because the comparative findings
-    (analysis/patterns.py) need the EVENTS, prompt wording included, and a `SessionFact`
-    is deliberately a summary. Nothing that reads the sessions may upload them.
-
-    The sessionizer is `capture`, which is the reference cut (v3 lineage pooling, fitted
-    tau) rather than a second implementation of the boundary rules. Live sessions are
-    excluded: their numbers move every minute, so a profile that included them would
-    disagree with itself between two runs. So is every sitting in an excluded repository
-    (`_excluded`), and each sitting's events are read once (`_distinct`).
-
-    `lean` skips what only the corpus cards read, the burn segments and the per session
-    `git log` attribution, for a caller that reads only the clocks and the repository (the
-    live ETA, the vocabulary). MEASURED (FOUND IN REVIEW, 2026-09-13): `live` spent 19.7 s
-    of 19.9 s here, 7.2 s of it in 329 `git` calls for commit attribution it never reads.
-    """
-    import dataclasses
-    import datetime as _dt
-    import functools
-
-    from capture import repo as cap_repo
-    from capture import sessions as cap
-
-    from . import burn as bn_mod
-    from . import profile as pf_mod
-
-    tz = _dt.datetime.now().astimezone().tzinfo
-    excluded = cap_repo.excluded_origins()
-    sources = [cap.load_source(t) for t in _transcripts(root)]
-    cut = [
-        _distinct(s)
-        for s in cap.sessionize_sources(sources, tz)
-        if s.state == "final" and not _excluded(s, excluded)
-    ]
-
-    # One parse per transcript however many sittings share it (docs/overnight-engine.md
-    # 5.3). MEASURED on `~/.claude/projects`, 345 counted sessions, 2026-09-13: 1.6 s of
-    # burn over a 7.4 s cut with the loader memoised, where unmemoised it was 49.9 s. Local
-    # to this call, so a long `live --watch` never answers from a stale parse.
-    load_turns = functools.lru_cache(maxsize=None)(bn_mod.load_turns)
-
-    facts, kept = [], []
-    for s in cut:
-        # `capture.sessions.is_counted`, not a second copy of the rule: it is what decides
-        # `visible` on the wire, and a private reimplementation here is a definition of
-        # "a session" that can drift from the one the phone uses.
-        if not cap.is_counted(s):
-            continue
-        # Output tokens per model come from the reference LEDGER (deduped on
-        # `(source_id, message.id)`, sidechain and `<synthetic>` records excluded), never
-        # from summing `.message.usage`: that inflates by 1.878x (CLAUDE.md). Share times
-        # the ledger total is also exactly what the server has to work with, so the two
-        # paths cannot disagree about the model mix.
-        ledger = cap.token_ledger(s.records)
-        by_model: dict[str, int] = {}
-        if ledger.reported and ledger.buckets:
-            out_tokens = ledger.buckets["output"]
-            for entry in ledger.models:
-                by_model[entry["model_id"]] = round(entry["output_token_share"] * out_tokens)
-        offset = _dt.datetime.fromtimestamp(s.started_at, tz).utcoffset() or _dt.timedelta(0)
-        # Where the tokens went, cut at the same prompts `burn` cuts one transcript at.
-        # Every file the sitting's records came from, each deduplicated on message id alone
-        # (the ledger's `(source_id, message.id)` rule), windowed to the sitting. None when
-        # the harness wrote no counts: `session_burn_detail` refuses rather than say 0.
-        spent = (
-            None
-            if lean
-            else bn_mod.session_burn_detail(
-                s.events,
-                bn_mod.turns_for_window(
-                    sorted({r["path"] for r in s.records}),
-                    s.started_at,
-                    s.ended_at,
-                    loader=load_turns,
-                ),
-            )
-        )
-        facts.append(
-            pf_mod.session_fact_from_events(
-                session_id=s.client_session_id,
-                events=s.events,
-                started_at=s.started_at,
-                ended_at=s.ended_at,
-                attended_seconds=s.attended,
-                autonomous_seconds=s.autonomous,
-                tz_offset_minutes=int(offset.total_seconds() // 60),
-                output_tokens_by_model=by_model,
-                # The five buckets, straight from the ledger. `cache_read` is billed at a
-                # tenth of the input rate and `cache_w5m` at 1.25x it, so they travel
-                # separately: adding them up and multiplying by one price overcharges
-                # cache-heavy work by a factor that grows with how well the cache worked.
-                tokens=(
-                    pf_mod.pricing.Tokens(**ledger.buckets)
-                    if ledger.reported and ledger.buckets
-                    else None
-                ),
-                unattended=s.presence == 0,
-                burn_tokens=spent["tokens"] if spent else None,
-                barren_tokens=spent["barren"] if spent else None,
-                unreadable_tokens=spent["unreadable"] if spent else None,
-            )
-        )
-        kept.append(s)
-
-    # Commits: `git log` over the session window, the same definition the uploader stores
-    # and the server aggregates. Counting `git commit` shell calls off the digest text is
-    # 3.5x low, because the command is truncated at 160 characters (MEASURED: 19 of 68
-    # calls survive that cut on this corpus).
-    #
-    # A commit is assigned to the FIRST session whose window contains it. Windows overlap
-    # (three sessions ran inside one 17:15-18:31 stretch, and every window reaches
-    # `tauCommitAttributionSec` back before its start), so summing per-session counts
-    # reported 92 commits where the repository had 68.
-    roots = [s.repo.common_root if s.repo else None for s in kept]
-    # WHICH repository, on the fact itself. Without it every session looks like it ran in
-    # the same place, which makes `_corpus_commits` treat one machine's whole corpus as a
-    # single repo and refuse the total for overlaps that are not overlaps, and leaves a
-    # build post with no commits to describe. FOUND BY RUNNING `shipped --dry-run`, which
-    # reported "0 commits" for a window with nine of them in it.
-    facts = [dataclasses.replace(f, repo=r) for f, r in zip(facts, roots, strict=True)]
-    if not lean:
-        facts = pf_mod.attribute_commits(facts, roots, cap_repo.commits_in)
-    return facts, kept
+    c = cp_mod.cut_root(root, lean=lean)
+    return c.facts, c.kept
 
 
 if __name__ == "__main__":

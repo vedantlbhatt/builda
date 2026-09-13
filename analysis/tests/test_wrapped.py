@@ -7,7 +7,7 @@ Sentinel words are planted in prompts (`zebracorn`), paths (`zebrapath`) and com
 (`zebrasubject`) so the privacy split can be checked by searching for them.
 
 `run()` is the only way a test builds a result, and it checks the house rules on every one:
-ten keys a card, the refusal shape, a digit in every answered sentence, and no dash in any
+twelve keys a card, the refusal shape (a code exactly when there is a reason), a digit in every answered sentence, and no dash in any
 string the module wrote. So every scenario below is also a dash test and a digit test.
 """
 
@@ -28,120 +28,25 @@ from analysis import profile as pf
 from analysis import wrapped as wr
 from analysis.digest import Ev
 
-#: 2026-09-01 15:00 UTC, a Tuesday afternoon: local day 2026-09-01 at offset 0, and nowhere
-#: near the night window, so no fixture here leans night owl by accident.
-T0 = dt.datetime(2026, 9, 1, 15, 0, tzinfo=dt.UTC).timestamp()
-DAY = 86400.0
-D0 = dt.date(2026, 9, 1)
-
-SENTINELS = ("zebracorn", "zebrapath", "zebrasubject")
-
-
-def day(k: int) -> dt.date:
-    return D0 + dt.timedelta(days=k)
-
-
-# ------------------------------------------------------------------ the corpus builder
-class Sitting:
-    """One synthetic session: events at offsets from its start, and its two clocks."""
-
-    def __init__(
-        self,
-        sid: str,
-        start: float = T0,
-        *,
-        attended: float = 1800.0,
-        autonomous: float = 0.0,
-        unattended: bool = False,
-        tz: int = 0,
-        end: float | None = None,
-    ):
-        self.sid = sid
-        self.start = start
-        self.attended = attended
-        self.autonomous = autonomous
-        self.unattended = unattended
-        self.tz = tz
-        self.end = end
-        self.events: list[Ev] = []
-
-    def _add(self, offset: float, kind: str, text: str = "", **kw) -> Sitting:
-        self.events.append(Ev(0, self.start + offset, kind, text, **kw))
-        return self
-
-    def prompt(self, offset: float, text: str) -> Sitting:
-        return self._add(offset, "prompt", text)
-
-    def tool(self, offset: float, text: str = "ls", tool: str = "Bash", **kw) -> Sitting:
-        return self._add(offset, "tool", text, tool=tool, **kw)
-
-    def edit(self, offset: float, path: str, added: int, tool: str = "Edit") -> Sitting:
-        return self._add(offset, "tool", "", tool=tool, path=path, added=added, removed=0)
-
-    def error(self, offset: float, text: str = "Error: boom") -> Sitting:
-        return self._add(offset, "result_error", text, ok=False)
-
-    def interrupt(self, offset: float) -> Sitting:
-        return self._add(offset, "interrupt")
-
-    def build(self) -> tuple[pf.SessionFact, pat.SessionEvents]:
-        ordered = sorted(self.events, key=lambda e: e.ts)
-        evs = [dataclasses.replace(e, n=i) for i, e in enumerate(ordered)]
-        ended = self.end
-        if ended is None:
-            ended = max(
-                self.start + self.attended + self.autonomous, evs[-1].ts if evs else self.start
-            )
-        fact = pf.session_fact_from_events(
-            session_id=self.sid,
-            events=evs,
-            started_at=self.start,
-            ended_at=ended,
-            attended_seconds=self.attended,
-            autonomous_seconds=self.autonomous,
-            tz_offset_minutes=self.tz,
-            unattended=self.unattended,
-        )
-        sess = pat.SessionEvents(
-            session_id=self.sid,
-            started_at=self.start,
-            ended_at=ended,
-            active_seconds=self.attended + self.autonomous,
-            attended_seconds=self.attended,
-            tz_offset_minutes=self.tz,
-            events=evs,
-        )
-        return fact, sess
-
-
-def corpus(*sittings: Sitting) -> tuple[list[pf.SessionFact], list[pat.SessionEvents]]:
-    pairs = [s.build() for s in sittings]
-    return [f for f, _ in pairs], [s for _, s in pairs]
-
-
-def contributions_on(days: dict[dt.date, tuple[int, int]]) -> co.Contributions:
-    """A commit graph: {day: (assisted, alone)}."""
-    rows = tuple(co.Day(day=d, assisted=a, alone=b) for d, (a, b) in sorted(days.items()))
-    return co.Contributions(
-        days=rows,
-        assisted=sum(r.assisted for r in rows),
-        alone=sum(r.alone for r in rows),
-        active_days=len(rows),
-        longest_streak=0,
-        current_streak=0,
-    )
-
-
-def fan(max_concurrent: int, agents: int) -> ag.Fanout:
-    return ag.Fanout(
-        agents=agents,
-        max_concurrent=max_concurrent,
-        agent_seconds=0.0,
-        wall_seconds=0.0,
-        busy_seconds=0.0,
-        by_type={},
-        spans=(),
-    )
+# The corpus builder lives in `corpus_fixture.py` (it is also what `scripts/gen_copy.py`
+# renders the phone's card fixtures from); every name is re-exported here, so the other
+# suites that build on this one (`test_cli.py` reads `tw.corpus`) are unchanged.
+from analysis.tests.corpus_fixture import (  # noqa: F401
+    D0,
+    DAY,
+    RICH_COMMITS,
+    RICH_SUBJECTS,
+    SENTINELS,
+    Sitting,
+    T0,
+    attended_trio,
+    contributions_on,
+    corpus,
+    day,
+    fan,
+    rich,
+    rich_kw,
+)
 
 
 # ------------------------------------------------------------------ the house rules
@@ -177,6 +82,18 @@ def check_house_rules(tc: unittest.TestCase, result: dict) -> None:
             tc.assertIsNone(c["value"], c["id"])
             tc.assertIsNone(c["display"], c["id"])
             tc.assertIsNone(c["sentence"], c["id"])
+        # A code exactly when there is a reason, and the reason IS the code's template
+        # filled from the card's own numbers, so the phone words it the same way.
+        tc.assertEqual(c["code"] is None, c["reason"] is None, c["id"])
+        if c["code"] is not None:
+            tc.assertIn(c["code"], wr.REFUSALS, c["id"])
+            tc.assertEqual(
+                c["reason"],
+                wr.refusal_text(c["code"], n=c["n"], needed=c["needed"], extras=c["extras"]),
+                c["id"],
+            )
+        else:
+            tc.assertIsNone(c["needed"], c["id"])
         # Every string the module wrote. Quotes are the person's own words and exempt, as
         # `prompt_excerpt` is (docs/analysis.md), so they are not walked here.
         for s in _strings(
@@ -200,88 +117,6 @@ class WrappedCase(unittest.TestCase):
 
 def by_id(result: dict, cid: str) -> dict:
     return next(c for c in result["cards"] if c["id"] == cid)
-
-
-def attended_trio(prompts: tuple[int, int, int] = (2, 2, 2), attended=(1800.0, 1800.0, 1800.0)):
-    """Three attended sittings a day apart, each with `k` plain prompts and a tool after each."""
-    out = []
-    for i, (k, secs) in enumerate(zip(prompts, attended, strict=True)):
-        s = Sitting(f"t{i}", T0 + i * DAY, attended=secs)
-        for j in range(k):
-            s.prompt(10 * j, f"add step {j} to the page").tool(10 * j + 5, "ls")
-        out.append(s)
-    return out
-
-
-# ------------------------------------------------------------------ the rich corpus
-#: Twelve fixes and nine features among 35 subjects: 21 labelled, exactly 60%.
-RICH_SUBJECTS = (
-    ["fix: zebrasubject crash"] * 12
-    + ["feat: add zebrasubject"] * 9
-    + ["Zebrasubject tidy up notes"] * 14
-)
-RICH_COMMITS = {day(0): (2, 1), day(1): (1, 0), day(3): (0, 2)}
-
-
-def rich() -> list[Sitting]:
-    """Four sittings a day apart, three attended, where every card answers.
-
-    Hand counts, used throughout:
-      lines   A 120 + 40 + 60, B 30 + 20, C 15 = 285 (source 225, test 40, docs 20)
-      clocks  active 4500 + 1800 + 3600 + 7200 = 17100 s (4.75 h), autonomous 10200 s,
-              attended 3900 + 1800 + 1200 = 6900 s (1.9 h)
-      prompts 9 with text (A 5, B 2, C 2), 8 quotable (C's `/compact` is a slash command)
-      tools   A 9, B 3, C 2, D 2 = 16; the attended A, B and C hold 14, so 1.6 tool
-              calls a prompt over the sessions the prompt card counts
-    """
-    a = (
-        Sitting("a", T0, attended=3900.0, autonomous=600.0)
-        .prompt(0, "run zebracorn tests")
-        .edit(10, "/repo/zebrapath/app.py", 120)
-        .tool(20, "pytest -q")
-        .edit(30, "/repo/tests/test_app.py", 40, tool="Write")
-        .tool(40, "git commit -m wip")
-        .prompt(60, "WHAT THE FUCK zebracorn is still broken???")
-        .tool(70, "", tool="Read", path="/repo/zebrapath/app.py")
-        .interrupt(80)
-        .prompt(90, "no, use the other file")
-        .edit(100, "/repo/zebrapath/util.py", 60)
-        .prompt(200, "zebracorn qwrtzsdfgh")
-        .tool(210, "ls")
-        .tool(220, "ls -la")
-        .tool(230, "cat notes")
-        .prompt(300, "looks good, thanks")
-    )
-    b = (
-        Sitting("b", T0 + DAY, attended=1800.0)
-        .prompt(0, "Run zebracorn tests!")
-        .edit(10, "/repo/zebrapath/app.py", 30)
-        .tool(20, "pytest")
-        .prompt(100, "please add a docs page for the zebracorn feature and explain it well")
-        .edit(110, "/repo/docs/guide.md", 20, tool="Write")
-    )
-    c = (
-        Sitting("c", T0 + 2 * DAY, attended=1200.0, autonomous=2400.0)
-        .prompt(0, "run zebracorn tests")
-        .edit(10, "/repo/zebrapath/app.py", 15)
-        .tool(20, "pytest")
-        .prompt(100, "/compact")
-    )
-    d = (
-        Sitting("d", T0 + 3 * DAY, attended=0.0, autonomous=7200.0, unattended=True)
-        .tool(0, "ls")
-        .tool(7000, "ls")
-    )
-    return [a, b, c, d]
-
-
-def rich_kw(**over) -> dict:
-    kw = {
-        "contributions": contributions_on(RICH_COMMITS),
-        "commit_subjects": RICH_SUBJECTS,
-    }
-    kw.update(over)
-    return kw
 
 
 # =================================================================== the shape
@@ -331,7 +166,9 @@ class Shape(WrappedCase):
                 "sentence",
                 "basis",
                 "n",
+                "needed",
                 "reason",
+                "code",
                 "extras",
             ),
         )
@@ -435,7 +272,9 @@ class TheRichCorpusByHand(WrappedCase):
         self.assertEqual(c["extras"], {"sessions": 3, "words": 3})
         self.assertEqual(c["n"], 8)
         q = self.result["quotes"]["go_to_prompt"]
-        self.assertEqual(q, {"text": "run zebracorn tests", "session_id": "c", "ts": T0 + 2 * DAY})
+        self.assertEqual(
+            q, {"text": "run zebracorn tests", "session_id": "c", "ts": T0 + 2 * DAY, "seconds_in": 0}
+        )
 
     def test_streak(self):
         c = self.c("streak")
@@ -686,7 +525,13 @@ class BuilderType(WrappedCase):
         )
         self.assertEqual(
             c["extras"]["closest"],
-            {"name": "quality_guardian", "value": 2.4, "threshold": 3.0, "score": 0.4},
+            {
+                "name": "quality_guardian",
+                "metric": "test_runs_per_hour",
+                "value": 2.4,
+                "threshold": 3.0,
+                "score": 0.4,
+            },
         )
         self.assertEqual(c["extras"]["metric_basis"], pf.TEST_RUNS_LOWER_BOUND)
         self.assertIsNone(c["reason"])
@@ -814,7 +659,11 @@ class WorkStyle(WrappedCase):
         c = by_id(result, "work_style")
         self.assertEqual(c["value"], "one_shot")
         self.assertEqual(c["extras"], {"autonomy": None, "median_prompts": 2.0, "steer_rate": None})
-        self.assertEqual(by_id(result, "change_course")["reason"], "prompt text is not stored here")
+        # Worded from the card's own code, never the profile's words, which are written
+        # for the server too ("not stored server side" is false on this machine).
+        cc = by_id(result, "change_course")
+        self.assertEqual(cc["code"], "no_prompt_text")
+        self.assertEqual(cc["reason"], "no prompt carried text or an interrupt count to read")
 
     def test_a_refusal_with_no_reason_is_a_crash_not_a_silent_card(self):
         facts, sessions = corpus(*self.steering_trio())
@@ -973,7 +822,7 @@ class GoToPrompt(WrappedCase):
         )
         self.assertEqual(
             result["quotes"]["go_to_prompt"],
-            {"text": "run the TESTS", "session_id": "b", "ts": T0 + DAY},
+            {"text": "run the TESTS", "session_id": "b", "ts": T0 + DAY, "seconds_in": 0},
         )
 
     def test_slash_commands_pastes_and_redacted_prompts_are_never_go_to(self):
@@ -1459,7 +1308,7 @@ class Quotable(unittest.TestCase):
             "revert to f7b1eb6 and redeploy",
         ):
             with self.subTest(text=text):
-                self.assertFalse(wr._quotable(text))
+                self.assertFalse(wr.quotable(text))
 
     def test_an_identifier_is_interleaved_a_word_with_one_digit_is_not(self):
         for token in ("Q7ZK2M9X4P", "f7b1eb6", "9aBcD3eFgH4iJkL5mNoPqR", "Z9Y8X7W6V5", "2hq5"):
@@ -1476,24 +1325,24 @@ class Quotable(unittest.TestCase):
             "fix the login page",
         ):
             with self.subTest(text=text):
-                self.assertTrue(wr._quotable(text))
+                self.assertTrue(wr.quotable(text))
 
     def test_a_numbered_list_is_prose_not_code(self):
         # The shape of four real prompts the unstripped rule threw away: `1)` is not code.
         brief = "\n".join(
             f"{i}) make the map load the stops for route {i} first" for i in range(1, 10)
         )
-        self.assertTrue(wr._quotable(brief))
+        self.assertTrue(wr.quotable(brief))
         lettered = "\n".join(f"{c}. keep the header" for c in "abcdefgh")
-        self.assertTrue(wr._quotable(lettered))
+        self.assertTrue(wr.quotable(lettered))
 
     def test_a_numbered_code_listing_is_still_a_paste(self):
         listing = "\n".join(f"{i}. const row{i} = load({i});" for i in range(1, 10))
-        self.assertFalse(wr._quotable(listing))
+        self.assertFalse(wr.quotable(listing))
 
     def test_an_indented_terminal_block_is_still_a_paste(self):
         block = "is this true?\n" + "\n".join(f"  line {i} of the agent output" for i in range(8))
-        self.assertFalse(wr._quotable(block))
+        self.assertFalse(wr.quotable(block))
 
     def test_the_quote_is_cut_at_a_space_inside_the_contracts_cap(self):
         q = wr._quote("word " * 100)
@@ -1548,7 +1397,7 @@ class NeverQuoted(WrappedCase):
                 self.assertTrue(wr._private(text))
                 # Still the person's own words, and still measured.
                 if "\n" not in text:
-                    self.assertTrue(wr._quotable(text) or wr._carries_identifier(text))
+                    self.assertTrue(wr.quotable(text) or wr._carries_identifier(text))
 
     def test_the_quote_cards_pass_them_over(self):
         for text in self.SECRETS + self.PATHS + self.THEIRS:
@@ -1595,8 +1444,9 @@ class Quotes(WrappedCase):
     def test_the_three_quotes_when_asked(self):
         q = self.run_wrapped(*rich(), quotes=True, **rich_kw())["quotes"]
         self.assertEqual(set(q), {"go_to_prompt", "crash_out", "cryptic_prompt"})
-        for v in q.values():
-            self.assertEqual(set(v), {"text", "session_id", "ts"})
+        for card, v in q.items():
+            extra = {"tool_calls_after", "corrected"} if card == "cryptic_prompt" else set()
+            self.assertEqual(set(v), {"text", "session_id", "ts", "seconds_in"} | extra)
         self.assertEqual(q["crash_out"]["text"], "WHAT THE FUCK zebracorn is still broken???")
         self.assertEqual(q["cryptic_prompt"]["text"], "zebracorn qwrtzsdfgh")
 
@@ -1630,7 +1480,9 @@ class Wire(WrappedCase):
         self.assertEqual([c["id"] for c in w["cards"]], list(wr.CARD_IDS))
         for c in w["cards"]:
             if c["id"] in ("crash_out", "cryptic_prompt"):
-                self.assertEqual(tuple(c), ("id", "n", "reason"))
+                # Which card and whether it answered: its unit and basis are the card's own
+                # constants, and its numbers stay here.
+                self.assertEqual(tuple(c), ("id", "unit", "basis", "n", "needed", "reason", "code"))
             else:
                 self.assertEqual(tuple(c), wr.WIRE_KEYS)
             for dropped in ("question", "display", "sentence"):
@@ -1669,6 +1521,8 @@ class NoDashes(unittest.TestCase):
             wr.ROLE_DISPLAY,
             wr.ROLE_WORD,
             wr._KIND_NOUN,
+            wr.REFUSALS,
+            wr.KIND_REFUSALS,
         )
         for table in tables:
             for s in _strings(table):
@@ -1694,6 +1548,130 @@ class NoDashes(unittest.TestCase):
         # A guard nobody has ever seen fail is a guard nobody should trust (CLAUDE.md).
         self.assertTrue(plain.has_dash("one — two"))
         self.assertTrue(plain.has_dash("one - two"))
+
+
+
+# =================================================================== codes, units, quotes
+class RefusalCodes(WrappedCase):
+    """docs/overnight-integration.md 1.3: every refusal is a code beside its words, from
+    `REFUSALS`, so the phone words it from the wire the way this module does."""
+
+    def test_every_card_has_a_code_exactly_when_it_has_a_reason(self):
+        for result in (self.run_wrapped(), self.run_wrapped(*rich(), **rich_kw()), self.run_wrapped(*attended_trio()[:2])):
+            for c in result["cards"]:
+                self.assertEqual(c["code"] is None, c["reason"] is None, c["id"])
+                if c["code"]:
+                    self.assertEqual(
+                        c["reason"],
+                        wr.refusal_text(c["code"], n=c["n"], needed=c["needed"], extras=c["extras"]),
+                    )
+
+    def test_the_floors_travel_as_needed(self):
+        empty = {c["id"]: c for c in self.run_wrapped()["cards"]}
+        self.assertEqual((empty["builder_type"]["code"], empty["builder_type"]["needed"]), ("below_session_floor", 3))
+        self.assertEqual((empty["work_style"]["code"], empty["work_style"]["needed"]), ("below_attended_floor", 3))
+        self.assertEqual((empty["prompt_length"]["code"], empty["prompt_length"]["needed"]), ("below_own_words_floor", 5))
+        self.assertEqual((empty["change_course"]["code"], empty["change_course"]["needed"]), ("below_prompt_floor", 5))
+        self.assertEqual((empty["shipped"]["code"], empty["shipped"]["needed"]), ("no_sessions", None))
+        kind = empty["kind_of_work"]
+        self.assertEqual((kind["code"], kind["needed"], kind["extras"]["commit_code"]), ("neither_kind_basis", None, "no_subjects"))
+
+    def test_the_kind_of_work_refusal_names_both_floors(self):
+        subjects = ["fix: the button"] * 5 + ["tidy the notes"] * 5
+        c = self.card(*attended_trio(), cid="kind_of_work", commit_subjects=subjects)
+        self.assertEqual((c["code"], c["needed"]), ("neither_kind_basis", wr.KIND_MIN_SUBJECTS))
+        self.assertEqual(
+            c["reason"],
+            "5 of 10 commit subjects say what kind of change they are, 20 needed; "
+            "0 attributable lines, 200 needed",
+        )
+        self.assertEqual((c["extras"]["lines"], c["extras"]["lines_needed"]), (0, 200))
+
+    def test_an_unknown_code_is_a_crash_not_a_card(self):
+        with self.assertRaises(KeyError):
+            wr._refuse("shipped", "lines", "absent", 0, "no_such_code", {})
+
+    def test_a_template_with_a_hole_raises(self):
+        with self.assertRaises(KeyError):
+            wr.refusal_text("below_attended_floor", n=2, needed=None, extras={})
+
+
+class Units(WrappedCase):
+    def test_units_are_identifiers(self):
+        """A unit is never rendered, so it is an identifier: the one with a space in it
+        ("prompts per session") would be a value the report spec refuses."""
+        for result in (self.run_wrapped(), self.run_wrapped(*rich(), **rich_kw())):
+            for c in result["cards"]:
+                self.assertRegex(c["unit"], r"^[a-z_]+$", c["id"])
+        self.assertEqual(by_id(self.run_wrapped(*rich(), **rich_kw()), "prompts_per_session")["unit"], "prompts_per_session")
+
+
+class QuotesUpload(WrappedCase):
+    """The quotes document (contract v4 `quotes`), THE SECOND OPT-IN EXCEPTION."""
+
+    def upload(self, *sittings, quotes=True, **kw):
+        result = self.run_wrapped(*sittings, quotes=quotes, **kw)
+        return wr.quotes_upload(result, generated_at=T0 + 10 * DAY)
+
+    def test_quotes_upload_is_empty_without_quotes_true(self):
+        doc = self.upload(*rich(), quotes=False, **rich_kw())
+        self.assertEqual(doc["quotes"], [])
+        self.assertEqual(doc["quotes_version"], wr.QUOTES_VERSION)
+        self.assertEqual(doc["generated_at"], "2026-09-11T15:00:00Z")
+
+    def test_the_three_quotes_carry_what_their_sentences_need(self):
+        doc = self.upload(*rich(), **rich_kw())
+        by_card = {q["card"]: q for q in doc["quotes"]}
+        self.assertEqual(list(by_card), list(wr.QUOTE_CARDS))
+        for q in doc["quotes"]:
+            self.assertEqual(
+                set(q),
+                {"card", "text", "client_session_id", "sent_at", "seconds_in", "tool_calls_after", "corrected"},
+            )
+        crash = by_card["crash_out"]
+        self.assertEqual((crash["seconds_in"], crash["sent_at"]), (60, "2026-09-01T15:01:00Z"))
+        self.assertEqual((crash["tool_calls_after"], crash["corrected"]), (None, None))
+        cryptic = by_card["cryptic_prompt"]
+        self.assertEqual((cryptic["tool_calls_after"], cryptic["corrected"]), (3, False))
+        # The card's sentences are said from these numbers alone.
+        self.assertEqual(wr.crash_out_into(crash["seconds_in"]), "1 minute")
+        self.assertEqual(
+            wr.cryptic_sentence(len(cryptic["text"]), cryptic["tool_calls_after"], cryptic["corrected"]),
+            "Somehow the agent knew. 3 tool calls followed.",
+        )
+
+    def test_quotes_upload_never_exceeds_160_or_carries_a_mask(self):
+        from analysis import digest
+
+        long = " ".join(["please make the settings page load faster on a cold start"] * 6)
+        sittings = [
+            Sitting(f"l{i}", T0 + i * DAY).prompt(0, long).tool(5, "ls") for i in range(2)
+        ]
+        doc = self.upload(*sittings)
+        self.assertEqual([q["card"] for q in doc["quotes"]], ["go_to_prompt"])
+        for q in doc["quotes"]:
+            self.assertLessEqual(len(q["text"]), wr.QUOTE_MAX)
+            self.assertEqual(digest.mask(q["text"]), q["text"])
+            self.assertTrue(wr.quotable(q["text"]))
+        # A quote the mask would change is dropped, never rewritten.
+        result = self.run_wrapped(*rich(), quotes=True, **rich_kw())
+        result["quotes"]["crash_out"]["text"] = "the key is sk-ant-api03-" + "a" * 40
+        cards = [q["card"] for q in wr.quotes_upload(result, generated_at=T0)["quotes"]]
+        self.assertNotIn("crash_out", cards)
+
+    def test_an_apple_team_id_is_never_quoted(self):
+        """A pasted identifier (letters and digits interleaved, the synthetic `Q7ZK2M9X4P`)
+        is the one prompt the corpus crowned the most cryptic before `_carries_identifier`:
+        it is never quoted on any card, and never measured as the person's words either."""
+        sittings = [
+            Sitting(f"id{i}", T0 + i * DAY).prompt(0, "Q7ZK2M9X4P").tool(5, "ls").prompt(20, "Q7ZK2M9X4P ok").tool(25, "ls")
+            for i in range(3)
+        ]
+        result = self.run_wrapped(*sittings, quotes=True)
+        self.assertNotIn("Q7ZK2M9X4P", json.dumps(result["quotes"]))
+        doc = wr.quotes_upload(result, generated_at=T0)
+        self.assertNotIn("Q7ZK2M9X4P", json.dumps(doc))
+        self.assertFalse(wr.quotable("my team id is Q7ZK2M9X4P"))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { handleIncomingUrl } from '../src/auth/googleFlow';
 import { api } from '../src/data/client';
+import { useLiveSurfaces } from '../src/live/useLiveSurfaces';
 import { usePendingNameSync, useOnboarded } from '../src/nav/onboarding';
 import { tabTitle } from '../src/nav/rules';
 import { HeaderRule } from '../src/nav/chrome';
@@ -49,6 +50,10 @@ export default function RootLayout() {
 
   // A name typed in onboarding while signed out reaches the account at the first chance.
   usePendingNameSync();
+
+  // The Lock Screen card, the Dynamic Island and the Home Screen widget follow the real live
+  // sessions while the app is in front, whichever screen is open (src/live/useLiveSurfaces.ts).
+  useLiveSurfaces(onboarded === true);
 
   // Google sign-in comes back through the app scheme (`builder://auth/google#id_token=…`).
   // It is handled here, at the root, rather than in Settings: the redirect can arrive at

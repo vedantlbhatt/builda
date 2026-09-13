@@ -32,6 +32,7 @@ one-line facts and the archetype the rules chose. Two consequences worth stating
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import pathlib
 import sys
@@ -237,6 +238,49 @@ def _profile_module():
     return ap
 
 
+def _final_rows(db, user_id: str, days: int | None, *, repo_hash: str | None = None) -> list:
+    """The viewer's FINAL, VISIBLE sessions with their stats, oldest first: the one read of
+    the stored corpus, shared by `corpus_metrics` and `eta_history` so the profile and the
+    ETA can never disagree about which sessions exist.
+
+    FINAL, VISIBLE is the population the hours total and the graph use, so a person cannot
+    find one screen counting a session another screen ignores; `visible` is what capture's
+    `is_counted` put on the wire. `days` None reads every stored session (the ETA, whose
+    machine side reads every transcript on disk); `repo_hash` narrows to one repository.
+
+    `repo_hash`, not `repo_id`, is the repository key every consumer reads: the commit
+    overlap rule only needs one key per repository (repo_hash is UNIQUE in `repos`, so the
+    change moves no number), and the hook channel's live state matches its ETA history on
+    the payload's `repo_hash`, the one key both sides of the wire hold.
+    """
+    clauses = ["s.user_id = :u", "s.state = 'final'", "s.visible"]
+    params: dict = {"u": user_id}
+    if days is not None:
+        clauses.append("s.started_at > now() - make_interval(days => :days)")
+        params["days"] = days
+    if repo_hash is not None:
+        clauses.append("r.repo_hash = :rh")
+        params["rh"] = repo_hash
+    return db.execute(
+        text(
+            f"""
+            SELECT s.id, r.repo_hash, s.started_at, s.ended_at, s.tz_offset_minutes,
+                   s.active_seconds, s.attended_seconds, s.autonomous_seconds, s.unattended,
+                   s.presence_count,
+                   st.tool_calls, st.human_prompt_count, st.lines_added_agent,
+                   st.lines_removed_agent, st.commit_count, st.models, st.tokens_reported,
+                   st.tok_in, st.tok_out, st.tok_cache_read, st.tok_cache_w5m, st.tok_cache_w1h
+            FROM sessions s
+            LEFT JOIN session_stats st ON st.session_id = s.id
+            LEFT JOIN repos r ON r.id = s.repo_id
+            WHERE {" AND ".join(clauses)}
+            ORDER BY s.started_at, s.id
+            """
+        ),
+        params,
+    ).all()
+
+
 def corpus_metrics(db, user_id: str, window_days: int) -> dict | None:
     """Every computed metric over the viewer's own sessions in the window, or None.
 
@@ -244,8 +288,7 @@ def corpus_metrics(db, user_id: str, window_days: int) -> dict | None:
     whose sample block says there are no sessions, which is a different thing and reads
     differently on the phone.
 
-    The population is FINAL, VISIBLE sessions: the same one the hours total and the graph
-    use, so a person cannot find one screen counting a session another screen ignores.
+    The population is `_final_rows`: final, visible sessions started inside the window.
     Live rows move every minute and are excluded here too.
     """
     try:
@@ -253,24 +296,67 @@ def corpus_metrics(db, user_id: str, window_days: int) -> dict | None:
     except MetricsUnavailable:
         return None
 
-    rows = db.execute(
-        text(
-            """
-            SELECT s.id, s.repo_id, s.started_at, s.ended_at, s.tz_offset_minutes,
-                   s.active_seconds, s.attended_seconds, s.autonomous_seconds, s.unattended,
-                   st.tool_calls, st.human_prompt_count, st.lines_added_agent,
-                   st.commit_count, st.models, st.tok_out, st.tokens_reported
-            FROM sessions s LEFT JOIN session_stats st ON st.session_id = s.id
-            WHERE s.user_id = :u AND s.state = 'final' AND s.visible
-              AND s.started_at > now() - make_interval(days => :days)
-            ORDER BY s.started_at
-            """
-        ),
-        {"u": user_id, "days": window_days},
-    ).all()
-
-    facts = [_session_fact(ap, r) for r in rows]
+    facts = [_session_fact(ap, r) for r in _final_rows(db, user_id, window_days)]
     return ap.corpus_profile(facts)
+
+
+def eta_history(db, user_id: str, *, repo_hash: str | None = None) -> list | None:
+    """The finished sessions a live session's ETA compares against, as `SessionFact`s, or
+    None when `analysis/` is not deployed (the ETA then refuses `no_history` rather than
+    counting zero sessions).
+
+    Only what `analysis.live._eta` reads, built the way the machine side's
+    `live.eta_history` builds it from a cut: final and counted (`visible` is what
+    `capture.sessions.is_counted` put on the wire), the session's clocks, `repo` as the
+    repository key (the hook channel passes the payload's `repo_hash` as `repo_key`), and
+    `unattended` as ZERO PRESENCE, the live side's own test (`live.session_state` passes
+    `presence == 0`). The stored `sessions.unattended` is the other definition, presence 0
+    over a notable span (capture.sessions.build_payload, engine doc 5.7): matching a short
+    robot run against attended sittings because the stored flag was never set below
+    1200 s would put it among the wrong durations.
+
+    Every stored session, not a window: the machine side compares against every transcript
+    it has, and a window here would make the same session's ETA differ by channel.
+    """
+    try:
+        ap = _profile_module()
+    except MetricsUnavailable:
+        return None
+    return [
+        ap.SessionFact(
+            session_id=str(r.id),
+            started_at=r.started_at.timestamp(),
+            ended_at=r.ended_at.timestamp(),
+            active_seconds=r.active_seconds,
+            attended_seconds=r.attended_seconds,
+            autonomous_seconds=r.autonomous_seconds,
+            tz_offset_minutes=r.tz_offset_minutes,
+            repo=r.repo_hash,
+            unattended=r.presence_count == 0,
+        )
+        for r in _final_rows(db, user_id, None, repo_hash=repo_hash)
+    ]
+
+
+def _stored_tokens(ap, r):
+    """The five stored buckets as `pricing.Tokens`, or None.
+
+    None unless the session reported tokens AND all five buckets are stored. The wire
+    carries the five together (`TokenBucketsWire` requires every one) and stats_tokens_ck
+    forbids buckets without `tokens_reported`, so a partial row is not something the door
+    can produce; if one ever appears it is refused rather than priced with a zero standing
+    in for a bucket nobody measured (Cursor's {0, 0} is exactly that trap).
+    """
+    buckets = (r.tok_in, r.tok_out, r.tok_cache_read, r.tok_cache_w5m, r.tok_cache_w1h)
+    if not r.tokens_reported or any(b is None for b in buckets):
+        return None
+    return ap.pricing.Tokens(
+        input=r.tok_in,
+        output=r.tok_out,
+        cache_read=r.tok_cache_read,
+        cache_w5m=r.tok_cache_w5m,
+        cache_w1h=r.tok_cache_w1h,
+    )
 
 
 def _session_fact(ap, r):
@@ -292,6 +378,12 @@ def _session_fact(ap, r):
       * per-model output TOKENS, except as shares. `models` carries
         `output_token_share` per model, so share times `tok_out` is the honest
         reconstruction, and it is exactly what the machine-side path uses too.
+
+    What it DOES have and used to drop: the five token buckets. Passing only the output
+    split left `tokens` None on every fact, so pricing skipped every session and
+    `spend_usd` refused with "no session reported token counts" about sessions that all
+    had (docs/overnight-integration.md 5.2). The buckets are priced by
+    `analysis.pricing`, the only place a price lives; nothing is priced here.
     """
     tokens: dict[str, int] = {}
     for entry in r.models or []:
@@ -299,6 +391,12 @@ def _session_fact(ap, r):
             tokens[entry["model_id"]] = round(
                 float(entry.get("output_token_share") or 0) * r.tok_out
             )
+    extra = {}
+    if "lines_removed_agent" in _fact_fields(ap):
+        # Summed like `lines_added_agent` (totals.total_lines_removed) once the engine takes
+        # it. Checked by name because the field lands with WP-B's profile change, and a
+        # server that passed it before then would fail every profile with a TypeError.
+        extra["lines_removed_agent"] = r.lines_removed_agent or 0
     return ap.SessionFact(
         session_id=str(r.id),
         started_at=r.started_at.timestamp(),
@@ -323,14 +421,21 @@ def _session_fact(ap, r):
         # Which repo, so the corpus total can tell whether two overlapping sessions were
         # asking git the same question. Two agents running at once in one repository both
         # count every commit in the overlap, and the SUM of correct per-session numbers is
-        # then wrong (analysis/profile.py, COMMITS_OVERLAPPING).
-        repo=str(r.repo_id) if r.repo_id else None,
+        # then wrong (analysis/profile.py, COMMITS_OVERLAPPING). The repo_hash, the key the
+        # ETA matches on too (`_final_rows`).
+        repo=r.repo_hash,
         commit_times=None,
         output_tokens_by_model=tokens,
+        tokens=_stored_tokens(ap, r),
         prompts=None,
         test_runs=None,
         unattended=r.unattended,
+        **extra,
     )
+
+
+def _fact_fields(ap) -> frozenset[str]:
+    return frozenset(f.name for f in dataclasses.fields(ap.SessionFact))
 
 
 # ---------------------------------------------------------------------- narrative
@@ -381,6 +486,29 @@ def put_builder_narrative(db, user_id: str, doc: dict) -> None:
             "b": json.dumps(doc),
         },
     )
+
+
+# ------------------------------------------------------------------------- quotes
+def builder_quotes(db, user_id: str) -> dict | None:
+    """The stored quotes document (contract v4 `quotes`, 0021), or None.
+
+    The second opt-in exception: up to three prompts, verbatim, for the Wrapped cards that
+    quote you. None unless the account has Quote my prompts ON and a document is stored.
+    Turning the switch off deletes the row in the same transaction; the read checks the
+    switch as well, so a row that somehow outlived it still shows nothing. Owner only by
+    RLS on both tables, and read by this route alone: no social query joins it.
+    """
+    row = db.execute(
+        text(
+            """
+            SELECT q.body FROM builder_quotes q
+            JOIN privacy_prefs pp ON pp.user_id = q.user_id AND pp.quotes
+            WHERE q.user_id = :u
+            """
+        ),
+        {"u": user_id},
+    ).first()
+    return row.body if row else None
 
 
 # ------------------------------------------------------------------------- report

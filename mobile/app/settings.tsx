@@ -6,8 +6,21 @@ import * as ReactNative from 'react-native';
 import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { isGoogleConfigured, onGoogleSignIn, startGoogleSignIn } from '../src/auth/googleFlow';
-import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me } from '../src/data/api';
+import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me, type PrivacyPrefs } from '../src/data/api';
 import * as cache from '../src/data/cache';
+import {
+  FILE_NAMES_DETAIL,
+  FILE_NAMES_TITLE,
+  loadPrivacyPrefs,
+  LOCK_SCREEN_TITLE,
+  lockScreenDetail,
+  type PrivacySwitch,
+  QUOTES_DETAIL,
+  QUOTES_MACHINE_COMMAND,
+  QUOTES_MACHINE_HINT,
+  QUOTES_TITLE,
+  setPrivacySwitch,
+} from '../src/data/privacy';
 import {
   appendKey,
   atKeyCap,
@@ -289,13 +302,15 @@ export default function SettingsScreen() {
         </>
       )}
 
-      <Section label="Privacy">
+      <Section label="Privacy" gap={space.tile}>
+        <PrivacySwitches signedIn={signedIn} />
         <Surface style={{ gap: space.tile }}>
           <T role="meta" tone="dim">
-            Your prompts, your code, your diffs and your file names never leave your machine.
+            Your prompts, your code, your diffs and your file names stay on your machine.
             What syncs is timings, counts, the shape of the session, and, only for
             repositories you mark public, the repository name and the title your editor
             already wrote to your own disk.
+            {signedIn ? ' Quotes and file names are the only exceptions, and only while their switches above are on.' : ''}
           </T>
           {/* The command on a line of its own: run inline, the line breaker split it after
               "--" and set "dry-run" on the next line, which no one can paste. */}
@@ -317,6 +332,141 @@ export default function SettingsScreen() {
         </T>
       )}
     </ScrollView>
+  );
+}
+
+/**
+ * The privacy switches. Two belong to the account and are the only way words from your
+ * machine reach the server (contract v4): Quotes, and File names. Both start off, and
+ * turning either off deletes what it let through (`src/data/privacy.ts`). The third,
+ * Show details on Lock Screen, belongs to this phone: the Lock Screen is public.
+ *
+ * A switch flips when the server agrees, not before: a privacy switch that shows "off"
+ * while the server still holds the quotes would be the one wrong state that matters.
+ */
+function PrivacySwitches({ signedIn }: { signedIn: boolean }) {
+  // undefined: still loading. null: this server has no such switches (hidden, not "off").
+  const [prefs, setPrefs] = useState<PrivacyPrefs | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<PrivacySwitch | null>(null);
+  const [line, setLine] = useState<string | null>(null);
+  const [lockDetails, setLockDetails] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void cache.getLockScreenDetails().then(setLockDetails);
+  }, []);
+
+  useEffect(() => {
+    setLine(null);
+    if (!signedIn) {
+      setPrefs(undefined);
+      setLoadError(null);
+      return;
+    }
+    let cancelled = false;
+    loadPrivacyPrefs(api)
+      .then((p) => {
+        if (!cancelled) setPrefs(p);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'could not load your privacy settings');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const flip = useCallback(
+    async (key: PrivacySwitch, on: boolean) => {
+      if (!prefs || busy) return;
+      setBusy(key);
+      const out = await setPrivacySwitch(api, prefs, key, on, cache.forgetLiveNames);
+      setPrefs(out.prefs);
+      setLine(out.message);
+      setBusy(null);
+    },
+    [prefs, busy]
+  );
+
+  const flipLock = useCallback(async (on: boolean) => {
+    setLockDetails(on);
+    await cache.setLockScreenDetails(on);
+  }, []);
+
+  return (
+    <Surface padding={0}>
+      {signedIn && prefs ? (
+        <>
+          <Row
+            title={QUOTES_TITLE}
+            titleLines={2}
+            meta={QUOTES_DETAIL}
+            metaLines={4}
+            hairline
+            below={
+              prefs.quotes ? (
+                <View style={{ gap: space.xs, paddingTop: space.xs }}>
+                  <T role="meta" tone="dim">
+                    {QUOTES_MACHINE_HINT}
+                  </T>
+                  <T role="mono" tone="text" selectable>
+                    {QUOTES_MACHINE_COMMAND}
+                  </T>
+                </View>
+              ) : undefined
+            }
+            trailing={
+              <Switch
+                value={prefs.quotes}
+                disabled={busy !== null}
+                onValueChange={(v) => void flip('quotes', v)}
+                trackColor={{ true: c.accent }}
+                accessibilityLabel={QUOTES_TITLE}
+              />
+            }
+          />
+          <Row
+            title={FILE_NAMES_TITLE}
+            meta={FILE_NAMES_DETAIL}
+            metaLines={4}
+            hairline
+            trailing={
+              <Switch
+                value={prefs.live_names}
+                disabled={busy !== null}
+                onValueChange={(v) => void flip('live_names', v)}
+                trackColor={{ true: c.accent }}
+                accessibilityLabel={FILE_NAMES_TITLE}
+              />
+            }
+          />
+        </>
+      ) : signedIn && prefs === undefined ? (
+        <T role="meta" tone="dim" style={{ padding: layout.gutter }}>
+          {loadError ?? 'Loading your privacy settings…'}
+        </T>
+      ) : null}
+      <Row
+        title={LOCK_SCREEN_TITLE}
+        titleLines={2}
+        meta={lockScreenDetail(lockDetails ?? cache.LOCK_SCREEN_DETAILS_DEFAULT)}
+        metaLines={4}
+        trailing={
+          <Switch
+            value={lockDetails ?? cache.LOCK_SCREEN_DETAILS_DEFAULT}
+            disabled={lockDetails === null}
+            onValueChange={(v) => void flipLock(v)}
+            trackColor={{ true: c.accent }}
+            accessibilityLabel={LOCK_SCREEN_TITLE}
+          />
+        }
+      />
+      {line ? (
+        <T role="meta" weight={600} accessibilityLiveRegion="polite" style={{ padding: layout.gutter, paddingTop: 0 }}>
+          {line}
+        </T>
+      ) : null}
+    </Surface>
   );
 }
 

@@ -86,3 +86,63 @@ def raw_machine_identifier() -> str:
 def repo_hash(identity: str, pepper: bytes, prefix: str) -> str:
     """`RepoHasher.hash`: HMAC-SHA256 under the GLOBAL, non-secret pepper. Full 64 hex."""
     return hmac.new(pepper, (prefix + identity).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+#: The shortest map salt read back from disk: `analysis.live.SALT_MIN_CHARS`, restated so
+#: this module imports nothing from `analysis` (capture/tests pins the two together). A
+#: shorter file is replaced, never used.
+MAP_SALT_MIN_CHARS = 32
+
+
+def map_salt(path: pathlib.Path | None = None) -> str:
+    """The salt the live codebase map keys its file ids with (`analysis.live._hash`). NEVER
+    UPLOADED and never printed: it is what stands between a wire file id and its path.
+
+    32 random bytes as hex, written once to `map-salt` beside the credentials (the
+    directory 0700, the file 0600) and read back on every later run, so a file keeps ONE id
+    across runs. FOUND WHILE DESIGNING (docs/overnight-integration.md 5.6): the salt used to
+    be a hash of `raw_machine_identifier()`, which on a Mac is a fresh random UUID per call,
+    so a timer driven `capture sync --live` redrew the map from nothing on every upload; and
+    a salt derived from the raw identifier hands a server that holds `machine_id` (another
+    hash of it) an offline test for any guess. Nothing derived from what is hashed onto the
+    wire may key the map.
+
+    The same file `python -m analysis live` reads, so the CLI and the uploader give one file
+    one id. When the file cannot be written (a read only home) the salt is random for this
+    run alone: ids hold for the run, and are never guessable.
+    """
+    import secrets
+    import tempfile
+
+    if path is None:
+        from .client import credentials_path
+
+        path = credentials_path().with_name("map-salt")
+    try:
+        text = path.read_text().strip()
+        if len(text) >= MAP_SALT_MIN_CHARS:
+            return text
+    except OSError:
+        pass
+    salt = secrets.token_hex(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(path.parent, 0o700)
+        except OSError:
+            pass
+        fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(salt + "\n")
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except OSError:
+        pass
+    return salt

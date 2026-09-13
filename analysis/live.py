@@ -335,10 +335,13 @@ class _Paths:
     def id(self, path: str) -> str:
         return _hash(self.salt, self.rel(path)[0])
 
-    def dir_id(self, path: str) -> str:
+    def dir_id(self, path: str) -> str | None:
+        """The salted id of the file's directory, or None at the base (spec/live.v1.json:
+        "null at the base"). A hash of the empty string would be an id that names no
+        directory, which a reader could only take for one."""
         rel = self.rel(path)[0]
         d = posixpath.dirname(rel)
-        return _hash(self.salt, "" if d == "." else d)
+        return None if d in ("", ".") else _hash(self.salt, d)
 
     def role(self, path: str) -> str:
         """`plain.role_of` over the RELATIVE path, so a parent folder of the checkout named
@@ -937,7 +940,14 @@ def _verdict(
         ),
     }
     local: dict = {"failing_command": None}
-    verdict = {"state": None, "evidence": ev, "basis": None, "reason": None, "file_id": None}
+    verdict = {
+        "state": None,
+        "evidence": ev,
+        "basis": None,
+        "reason": None,
+        "code": None,
+        "file_id": None,
+    }
 
     def fire(state: str, basis: str) -> tuple[dict, list[dict], dict]:
         verdict["state"], verdict["basis"] = state, basis
@@ -945,6 +955,7 @@ def _verdict(
 
     if seg is None:
         verdict["reason"] = "the session has no events yet"
+        verdict["code"] = "no_events"
         return verdict, causes, local
 
     # 1. The turn ended. `done` is the stronger claim, so every condition below is one more
@@ -1025,6 +1036,7 @@ def _verdict(
         f"no rule fired: {ev['window_calls']} calls, {ev['errors_now']} errors, "
         f"{ev['checkpoints']} checkpoints"
     )
+    verdict["code"] = "no_rule_fired"
     return verdict, causes, local
 
 
@@ -1035,12 +1047,33 @@ def _plural(n: int, one: str, many: str) -> str:
     return one if n == 1 else many
 
 
+#: Every way the ETA can refuse, as the wire's enum (spec/live.v1.json `eta_refusal`), in
+#: the order `_eta` tries them. The prose `reason` beside each is LOCAL (the CLI prints it);
+#: `wire()` sends the code, and the phone writes its own sentence from it, `n` and `needed`.
+ETA_REFUSALS = (
+    "no_active_time",
+    "repo_unresolved",
+    "no_history",
+    "too_few_sessions",
+    "too_few_survivors",
+)
+
+#: Every way the verdict can refuse (spec/live.v1.json `verdict_refusal`).
+VERDICT_REFUSALS = ("no_events", "no_rule_fired")
+
+
 def _eta(
-    history: Iterable[profile.SessionFact],
+    history: Iterable[profile.SessionFact] | None,
     repo: str | None,
     unattended: bool,
     elapsed: float | None,
 ) -> dict:
+    """The ETA, or its refusal. `repo` is the KEY history is matched on: the repository's
+    common root on a machine, its salted hash on the server (`live_state(repo_key=...)`).
+
+    `history` None is "nothing was supplied to compare against", refused as `no_history`.
+    It used to be an empty list, which the rule then counted as "0 finished sessions on
+    this repository", a measurement nobody took."""
     out = {
         "elapsed_s": _secs(elapsed) if elapsed is not None else None,
         "typical_s": None,
@@ -1048,33 +1081,45 @@ def _eta(
         "p75_s": None,
         "remaining_s": None,
         "n": None,
+        "needed": ETA_MIN_SESSIONS,
+        "unattended": bool(unattended),
         "basis": ETA_BASIS,
         "reason": None,
+        "code": None,
     }
+
+    def refuse(code: str, reason: str) -> dict:
+        out["code"], out["reason"] = code, reason
+        return out
+
     if elapsed is None:
-        out["reason"] = "the active time of this session was not supplied"
-        return out
+        return refuse("no_active_time", "the active time of this session was not supplied")
     if repo is None:
-        out["reason"] = "the repository this session runs in could not be resolved"
-        return out
+        return refuse(
+            "repo_unresolved", "the repository this session runs in could not be resolved"
+        )
+    if history is None:
+        return refuse(
+            "no_history", "no finished sessions were supplied to compare this one against"
+        )
     similar = [f.active_seconds for f in history if f.repo == repo and f.unattended == unattended]
     k = len(similar)
     noun = ("unattended run", "unattended runs") if unattended else ("session", "sessions")
     if k < ETA_MIN_SESSIONS:
         out["n"] = k
-        out["reason"] = (
-            f"{k} finished {_plural(k, *noun)} on this repository, {ETA_MIN_SESSIONS} needed"
+        return refuse(
+            "too_few_sessions",
+            f"{k} finished {_plural(k, *noun)} on this repository, {ETA_MIN_SESSIONS} needed",
         )
-        return out
     survivors = [d for d in similar if d >= elapsed]
     n = len(survivors)
     out["n"] = n
     if n < ETA_MIN_SESSIONS:
-        out["reason"] = (
+        return refuse(
+            "too_few_survivors",
             f"{n} finished {_plural(n, *noun)} on this repository ran at least "
-            f"{feedback._mins(elapsed)}, {ETA_MIN_SESSIONS} needed"
+            f"{feedback._mins(elapsed)}, {ETA_MIN_SESSIONS} needed",
         )
-        return out
     p25, typical, p75 = statistics.quantiles(survivors, n=4, method="inclusive")
     out.update(
         typical_s=_secs(typical),
@@ -1532,10 +1577,11 @@ def live_state(
     events: Sequence[digest.Ev],
     turns: Sequence[burn.Turn],
     now: float,
-    history: Sequence[profile.SessionFact],
+    history: Sequence[profile.SessionFact] | None,
     *,
     salt: str,
     repo: str | None = None,
+    repo_key: str | None = None,
     active_seconds: float | None = None,
     unattended: bool = False,
     session_id: str | None = None,
@@ -1546,12 +1592,16 @@ def live_state(
     """Everything this module can honestly say about one running session at `now`.
 
     `events` are the live cut's digest events, `turns` its usage (`burn.turns_for_window`),
-    `history` the finished sessions (`__main__._corpus_facts`), `active_seconds` the live
+    `history` the finished sessions (`eta_history`, or `__main__._corpus_facts`; None when
+    the caller has none to offer, which the ETA refuses as such), `active_seconds` the live
     cut's attended plus autonomous seconds, `background` the tasks the session launched into
     the background that have not reported back by `now` (`background_tasks`, which reads
     the transcript; None when the caller could not, and the digest's lower bound is used),
-    `root` the worktree the session works in (`worktree_root`; `repo` stays the common root,
-    which is what the ETA matches history on). Pure: no I/O, no clock.
+    `root` the worktree the session works in (`worktree_root`). `repo` is the common root
+    the map places paths under; `repo_key` is what the ETA matches `history[].repo` on,
+    `repo` by default. The server keys its stored sessions by `repo_hash` while the paths
+    here are relative to a checkout, so it passes the hash as the key. Pure: no I/O, no
+    clock; `computed_at` is `now`.
     """
     if not isinstance(salt, str) or len(salt) < SALT_MIN_CHARS:
         raise ValueError(
@@ -1572,10 +1622,16 @@ def live_state(
     )
     state: dict = {
         "session_id": session_id,
+        "computed_at": now,
         "activity": activity,
         "sentence": None,
         "verdict": verdict,
-        "eta": _eta(history, repo, unattended, active_seconds),
+        "eta": _eta(
+            None if history is None else list(history),
+            repo_key if repo_key is not None else repo,
+            unattended,
+            active_seconds,
+        ),
         "decisions": _decisions(events, segs, paths, failed, names),
         "needs_you": _needs_you(verdict, activity, causes),
         "map": _map(events, paths, failed),
@@ -1709,17 +1765,224 @@ def sentence(state: Mapping, names: bool = False) -> str:
 # ------------------------------------------------------------------------------ wire
 
 
+#: `spec/live.v1.json` "version". The spec is not shipped in the server image (the root
+#: Dockerfile copies `spec/strip.v1.json` alone), so the number is restated here and
+#: `tests/test_live.py` pins it, and every cap below, to the spec.
+LIVE_VERSION = 1
+
+#: The most map rows the wire carries, the ones touched most recently. 400 is 2.8x the
+#: largest number of distinct tool paths in one transcript of the corpus (MEASURED: 141, of
+#: 57 root transcripts, 2026-09-13); UNMEASURED JUDGEMENT CALL beyond that. `files_total`
+#: always counts every row, so a cut map says how much it cut. The spec's `LiveMap.files`
+#: and `LiveNames.files` caps.
+MAX_MAP_FILES = 400
+
+#: The longest basename `live_names` carries: the contract's own cap on a name (the spec's
+#: `max_lengths.name`). A longer one is left out rather than cut, because a cut name is a
+#: different name.
+MAX_NAME_CHARS = 120
+
+
+def _iso(ts: float) -> str:
+    import datetime as _dt
+
+    return _dt.datetime.fromtimestamp(ts, _dt.UTC).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def _touched_ts(row: Mapping) -> float:
+    """When a map row was last read or edited; a row that was only named (a failing call,
+    a search) sorts below every one that was."""
+    ts = [t for t in (row.get("last_read_ts"), row.get("last_edit_ts")) if t is not None]
+    return max(ts) if ts else float("-inf")
+
+
+def _wire_map(state: Mapping) -> dict | None:
+    m = state.get("map")
+    if m is None:
+        return None
+    rows = list(m.get("files") or [])
+    # The MAX_MAP_FILES touched most recently, kept in the state's own order (first
+    # appearance), so the same state always cuts to the same rows.
+    keep = sorted(range(len(rows)), key=lambda i: (-_touched_ts(rows[i]), i))[:MAX_MAP_FILES]
+    return {
+        "files": [copy.deepcopy(rows[i]) for i in sorted(keep)],
+        "files_total": len(rows),
+    }
+
+
 def wire(state: Mapping) -> dict:
-    """The uploadable form: drops `names`, `sentence` and every decision `detail`.
+    """The uploadable form, exactly `spec/live.v1.json` `LiveState`.
+
+    Dropped: `names`, `sentence`, `session_id` and every decision `detail` (LOCAL, or
+    rendered, or the machine's own id; the payload carries `client_session_id`). Each prose
+    refusal is replaced by its code (`reason := code`), a decision's evidence is flattened
+    onto it, a frame becomes an object, the map is cut to `MAX_MAP_FILES` with `files_total`
+    beside it, and `live_version` and `computed_at` (ISO, UTC) lead.
 
     The sentence is dropped although it is WIRE safe, as `feedback.wire` drops its text: the
     phone renders its own words from the ids and numbers, so a reworded sentence is a client
-    change and not a re-upload.
+    change and not a re-upload. `sentence(wire(state)) == sentence(state)` holds for
+    `names=False`, which `tests/test_live.py` pins over every scenario.
     """
-    out = {k: copy.deepcopy(v) for k, v in state.items() if k not in ("names", "sentence")}
-    for d in out.get("decisions") or []:
-        d.pop("detail", None)
+    v = state["verdict"]
+    eta = state["eta"]
+    out = {
+        "live_version": LIVE_VERSION,
+        "computed_at": _iso(float(state["computed_at"])),
+        "activity": copy.deepcopy(state.get("activity")),
+        "verdict": {
+            "state": v.get("state"),
+            "basis": v.get("basis"),
+            "reason": v.get("code"),
+            "file_id": v.get("file_id"),
+            "evidence": {k: int(v["evidence"][k]) for k in EVIDENCE_KEYS},
+        },
+        "eta": {
+            "elapsed_s": eta.get("elapsed_s"),
+            "typical_s": eta.get("typical_s"),
+            "p25_s": eta.get("p25_s"),
+            "p75_s": eta.get("p75_s"),
+            "remaining_s": eta.get("remaining_s"),
+            "n": eta.get("n"),
+            "needed": eta.get("needed"),
+            "unattended": eta.get("unattended"),
+            "basis": eta.get("basis"),
+            "reason": eta.get("code"),
+        },
+        "decisions": [
+            {
+                "kind": d["kind"],
+                "ts": d["ts"],
+                "event_n": int(d["evidence"]["event_n"]),
+                "count": int(d["evidence"]["count"]),
+            }
+            for d in state.get("decisions") or []
+        ][:MAX_DECISIONS],
+        "needs_you": dict(state["needs_you"]),
+        "map": _wire_map(state),
+        "timelapse": (
+            None
+            if state.get("timelapse") is None
+            else [{"t": int(t), "file_id": f, "kind": k} for t, f, k in state["timelapse"]][
+                :MAX_FRAMES
+            ]
+        ),
+        "sample": dict(state["sample"]),
+    }
     return out
+
+
+def wire_names(state: Mapping) -> dict | None:
+    """The opt in `live_names` block (contract v4, spec `LiveNames`): the basename of each
+    file the wire map keeps, keyed by its id, and nothing else. None unless the state was
+    computed with `names=True`.
+
+    `posixpath.basename` of the relative path, so no directory ever travels. A name that
+    carries a separator or a NUL cannot be a basename (the server's gate refuses one) and is
+    left out, and so is one over `MAX_NAME_CHARS`: a cut name is a different name. Rows the
+    wire map cut have no name here either, and Claude Code's own files are on neither."""
+    nm = state.get("names")
+    if not nm:
+        return None
+    rel_of = nm.get("files") or {}
+    wm = _wire_map(state) or {"files": []}
+    out = []
+    for row in wm["files"]:
+        rel = rel_of.get(row["id"])
+        if not rel:
+            continue
+        name = posixpath.basename(str(rel))
+        if (
+            not name
+            or len(name) > MAX_NAME_CHARS
+            or "/" in name
+            or "\\" in name
+            or "\x00" in name
+        ):
+            continue
+        out.append({"id": row["id"], "name": name})
+    return {"files": out}
+
+
+def eta_history(cut: Iterable[sessions.Session]) -> list[profile.SessionFact]:
+    """The finished sessions an ETA compares against, from sessions ALREADY CUT: no second
+    parse, no burn, no git. `_eta` reads each fact's repository, its `unattended` flag and
+    its active seconds, so that is all these carry.
+
+    Final and counted only (`capture.sessions.is_counted`, the one definition, which
+    decides `visible` on the wire): a live sitting is not a finished one, and a sitting the
+    phone does not show is not one the ETA may compare against. `repo` is the common root
+    (`capture.repo.RepoIdentity.common_root`), which is what `live_state(repo=...)` keys on
+    on a machine; `unattended` is `presence == 0`, the definition `_corpus_facts` uses, and
+    `active_seconds` attended plus autonomous, the clock `elapsed_s` is read on."""
+    from capture import sessions as cap
+
+    from . import profile as pf
+
+    out: list[pf.SessionFact] = []
+    for s in cut:
+        if s.state != "final" or not cap.is_counted(s):
+            continue
+        out.append(
+            pf.SessionFact(
+                session_id=s.client_session_id,
+                started_at=s.started_at,
+                ended_at=s.ended_at,
+                active_seconds=s.attended + s.autonomous,
+                attended_seconds=s.attended,
+                autonomous_seconds=s.autonomous,
+                repo=s.repo.common_root if s.repo else None,
+                unattended=s.presence == 0,
+            )
+        )
+    return out
+
+
+def session_state(
+    session: sessions.Session,
+    *,
+    now: float,
+    history: Sequence[profile.SessionFact] | None,
+    salt: str,
+    repo_key: str | None = None,
+    names: bool = False,
+    loader=None,
+) -> dict:
+    """`live_state` for one cut sitting: THE ONE PLACE a capture `Session` becomes a live
+    state, for `capture sync --live`, the hook channel (`server/builder/hook_ingest.py`) and
+    `python -m analysis live`, so the three cannot compute two different states from one
+    transcript.
+
+    Each event once (`patterns.distinct_events`: a resumed transcript's copy of the old
+    one's records reaches the pooled sitting twice); usage from every file the sitting's
+    records came from, windowed to it (`burn.turns_for_window`, `loader` a memoised
+    `burn.load_turns` for a caller that walks many sittings); background work summed over
+    those files, None when any cannot be read (absent, not zero); the worktree the files
+    sit in (`worktree_root`). `repo_key` as `live_state` takes it."""
+    import dataclasses
+    import pathlib
+
+    session = dataclasses.replace(session, events=patterns.distinct_events(session.events))
+    paths = sorted({r["path"] for r in session.records})
+    counts = [background_tasks(pathlib.Path(p), session.started_at, now) for p in paths]
+    kw = {} if loader is None else {"loader": loader}
+    return live_state(
+        session.events,
+        burn.turns_for_window(paths, session.started_at, now, **kw),
+        now,
+        history,
+        salt=salt,
+        repo=session.repo.common_root if session.repo else None,
+        repo_key=repo_key,
+        active_seconds=session.attended + session.autonomous,
+        unattended=session.presence == 0,
+        session_id=session.client_session_id,
+        names=names,
+        background=None if any(c is None for c in counts) else sum(counts),
+        root=worktree_root(session),
+    )
 
 
 # ------------------------------------------------------------------------------ finding it
@@ -1926,26 +2189,34 @@ __all__ = [
     "DECISION_KINDS",
     "DECISION_SENTENCES",
     "ETA_MIN_SESSIONS",
+    "ETA_REFUSALS",
     "EVIDENCE_KEYS",
     "IDLE_SEC",
     "LIVE_MTIME_SEC",
+    "LIVE_VERSION",
     "LOST_MIN_BLIND_FILES",
     "MAX_DECISIONS",
     "MAX_FRAMES",
+    "MAX_MAP_FILES",
+    "MAX_NAME_CHARS",
     "NEEDS_YOU_REASONS",
     "THINKING_MIN_SEC",
     "TURN_ENDED_STOPS",
     "VERDICT_MIN_TOOL_CALLS",
+    "VERDICT_REFUSALS",
     "VERDICT_STATES",
     "WAITING_MIN_SEC",
     "background_tasks",
     "current_session",
-    "last_session",
-    "worktree_root",
     "decision_sentence",
+    "eta_history",
+    "last_session",
     "live_state",
     "live_transcripts",
     "mission_order",
     "sentence",
+    "session_state",
     "wire",
+    "wire_names",
+    "worktree_root",
 ]

@@ -41,7 +41,44 @@ def load() -> dict:
         "report_version must be present: a stored document that cannot say which rules "
         "produced it is a document nobody can recompute or compare."
     )
+    check(s)
     return s
+
+
+def check(s: dict) -> None:
+    """Refuse a spec whose output would compile and still be wrong.
+
+    A misspelled enum or object name generates a TypeScript type nobody declared and a
+    Python validator that raises KeyError on the first upload carrying the field, months
+    after the typo. A `double` is emitted with 0 to 1 bounds, so one that is not a
+    fraction would turn a real value into a 422; the rule is gen_analysis.py's, read from
+    there (`ga.FRACTION_DOC`) rather than restated.
+    """
+    for owner, fs in list(s["objects"].items()) + [(TOP, s["fields"])]:
+        seen: set[str] = set()
+        for f in fs:
+            where = f"{owner}.{f['name']}"
+            assert f["name"] not in seen, f"{where} is declared twice"
+            seen.add(f["name"])
+            t = f["type"]
+            if t == "enum":
+                assert f["values"] in s["enums"], f"{where} names an enum the spec lacks"
+            elif t in ("object", "list"):
+                item = f["item"]
+                assert item in s["objects"] or item in ga.PY_SCALARS, (
+                    f"{where} names an item the spec lacks: {item!r}"
+                )
+            else:
+                # `map` is not here on purpose: its validator reads MAP_KEY_ENUMS, which this
+                # generator does not emit, so kinds and role lines are lists of objects.
+                assert t in ga.PY_SCALARS, f"{where} has a type this generator cannot emit: {t!r}"
+            if t == "double":
+                assert ga.FRACTION_DOC.search(f.get("doc", "")), (
+                    f"{where} is a double whose doc does not say it is a fraction or a share. "
+                    "Every double is emitted with bounds 0 to 1; use `number` for anything else."
+                )
+    for name, values in s["enums"].items():
+        assert len(values) == len(set(values)), f"enum {name} repeats a value"
 
 
 def gen_py(s: dict) -> str:
@@ -66,9 +103,13 @@ this already: the document is computed by `analysis/report.py`, so a field it gr
 without the spec growing it is caught HERE, at the door, as a 422 rather than as a column
 of nulls on somebody's phone.
 
-The server does NOT compute this document and cannot. Three of its five blocks rest on
-subagent sidecar transcripts, shell command text and prompt text, none of which leave the
+The server does NOT compute this document and cannot: its blocks rest on subagent sidecar
+transcripts, shell command text, prompt text and git history, none of which leave the
 machine (privacy/upload-contract.json). It validates and stores.
+
+Inside the five version 2 blocks (wrapped, money, burn, vocab, stack) there is no string
+field at all. Every value the door accepts there is an enum from the tables below, a
+number or a clock, so a sentence, a quote or a path in one of them is a 422.
 """
 
 from __future__ import annotations
@@ -112,6 +153,7 @@ def gen_ts(s: dict) -> str:
         + [ga.ts_interface(s, TOP, s["fields"])]
     )
     max_lengths = "\n".join(f"  {k}: {v}," for k, v in s["max_lengths"].items())
+    enum_table = "\n".join(f"  {name}: {json.dumps(values)}," for name, values in s["enums"].items())
     return f"""{BANNER_TS}
 
 export const REPORT_VERSION = {s["version"]};
@@ -122,6 +164,12 @@ export const REPORT_MAX_LENGTHS = {{
 }} as const;
 
 {unions}
+
+/** Legal values for every enum, in spec order, so a screen can iterate a catalog (every
+ * vocab_term, every stack_item) and a test can check the copy covers each one. */
+export const REPORT_ENUMS = {{
+{enum_table}
+}} as const;
 
 {interfaces}
 """

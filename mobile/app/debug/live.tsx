@@ -244,7 +244,7 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
     out.push(`${attrs.repo} · ${attrs.agent} · ${s.id.slice(0, 12)}`);
     out.push(`${st.phase} · ${st.trajectory} · "${st.sentence}"`);
     out.push(
-      `progress ${st.progress} · ${st.filesChanged} files changed · eta ${clock(st.etaEpoch) ?? 'refused'} · since ${clock(st.sinceEpoch) ?? 'none'} · ended ${clock(st.endedEpoch) ?? 'no'} · +${st.linesAdded ?? '?'} −${st.linesRemoved ?? '?'} · ${st.commits ?? '?'} commits · ${st.runningCount} more · ${payloadBytes(attrs, st)} bytes`
+      `progress ${st.progress} · ${st.filesChanged} files changed · eta ${clock(st.etaEpoch) ?? 'refused'} · since ${clock(st.sinceEpoch) ?? 'none'} · ended ${clock(st.endedEpoch) ?? 'no'} · +${st.linesAdded ?? '?'} -${st.linesRemoved ?? '?'} · ${st.commits ?? '?'} commits · ${st.runningCount} more · ${payloadBytes(attrs, st)} bytes`
     );
   }
   return out;

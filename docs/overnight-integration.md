@@ -593,3 +593,86 @@ generated files. (3) C: migrations and `boot.py` in its first commit, then `live
 changes, gen_copy. (5) A phase 2 after C's migrations: `live_push`, push, prefs and quotes routes, then `gen_live_fixtures.py` once D's wire lands.
 (6) E throughout; its parity tests go green when gen_copy and gen_live_fixtures have run. (7) Integration, one agent: `make gen && git diff
 --exit-code`, all six commands of section 7 green, the section 4 demo on the simulator with screenshots, CLAUDE.md's suite counts and PROGRESS.md.
+
+## Deviations (push and privacy, WP-A phase 2)
+
+Each is the option most consistent with CLAUDE.md where section 3.6 or 2.4 was silent, or where the phone's code had moved since this page was
+written. Every one has a test in `server/tests/test_live_push.py`, `test_quotes_route.py` or `test_privacy_prefs.py` that fails when it is undone
+(checked by mutation: 36 of 36 caught).
+
+- **The card is the Swift struct as it is now.** `BuilderSessionAttributes.ContentState` has 14 keys: `filesTouched` became `filesChanged` (map rows
+  with an edit, never a read) and `sinceEpoch` and `endedEpoch` were added. `live_push.CONTENT_STATE_KEYS` is read against the Swift file.
+- **No duration in the card's sentence.** A Lock Screen is redrawn only when a push lands, so the card renders `live.sentence` of the state with
+  `since_s` and `stuck_s` zeroed ("Waiting on you") and says when it began through `sinceEpoch`; the alert, read once, carries the minutes
+  ("Waiting on you for two minutes"). Both are `surface.ts`'s own rules (`surfaceSentenceOf`, `sentenceOf`), ported.
+- **Clocks anchor on `live.computed_at`,** as 2.5 and 3.5 say. `surface.ts etaEpochOf` and `sinceEpochOf` still anchor on the session row's
+  `updated_at`, which a heartbeat on an unchanged transcript never moves; the fixture's rows are 90 s older than their states, so the phone's
+  half fails the fixture until it anchors the same way.
+- **A cut map is not counted.** `filesChanged` is -1 when `map.files_total` is above the rows sent. The slim list body keeps one or two rows, and a
+  count over them is a plausible wrong number. The fixture's `map_cut` case pins it.
+- **`Math.round`, not `round`.** Halves round up, as on the phone (`live_push.js_round`); Python's banker's rounding would move an ETA a minute.
+- **The finished card comes down at once while another session runs** (`surface.endOptions`), else after `DISMISS_AFTER_SECONDS`; its content is
+  `toState` of the final row with no live state ("Finished", the final counts, `endedEpoch`). Priority 5. `apns-expiration` is eight hours,
+  Apple's ceiling on a running activity, so a late end still takes a stale card down.
+- **An end is owed to any card whose session is final,** not only to one whose live row was deleted: a session the Mac app sent (no live block)
+  deletes no live row when it finishes, so `plan` also ends every activity token on a final session of the account. It runs only when some live
+  row of the account moves; `routes/sync.py` could add a live to final transition to `live_changed` to end it on the same upload.
+- **A token starts from what the phone shows.** Registration seeds `last_phase` and `last_trajectory` from the session's current live state, so
+  the first push is the first change, and a session already waiting when its activity starts does not alert again. A finished session is a 409;
+  another person's is a 404; a newer token for the same activity replaces the older one.
+- **One entry, one alert, across both channels.** `session_live.alerted_phase` is set when either the activity or the banner said it, and
+  cleared when the session leaves needs you. An entry older than `notify.NOTIFY_HORIZON_SEC` (the state's `since_s` aged by the seconds since
+  `computed_at`) is recorded and never announced, by either channel. The banner's words and collapse id are the phone's own fallback
+  notification's (`localCopy.ts needsYouNotification`: "A session needs you", `needs-you-<id>`); the activity alert's title is `alertFor`'s
+  ("private repo needs you"), with the phone's `sound: default`.
+- **A planning failure never fails the upload.** `plan` runs in a savepoint; a bug rolls back only its own bookkeeping and is logged.
+- **Quotes: three filters, not two, and a fourth lock.** The gate also runs `wrapped._private` (the rule the quote cards pick by), which alone
+  catches a home directory path; every quote must name a session the account has uploaded (an excluded repository's are deleted); the switch is
+  read `FOR UPDATE`, so a store racing the phone's off either waits and is deleted or sees the off. Reasons name the quote and the rule, never
+  the text.
+- **Standard library only for the card.** CI's `make gen` runs on a bare Python, so `live_push` restates the spec's `phase`, `trajectory` and
+  `creature` lists (pinned both ways to `live_spec.py`) instead of importing pydantic, and the generator leaves the door check to the suite.
+
+Recorded, not fixed (other packages' files):
+- `store_payloads` checks File names before storing names without a lock, so a store racing the phone's off can write names after it (the read
+  side still refuses to serve them). Reading the switch `FOR UPDATE`, as quotes do, closes it.
+- Show details on Lock Screen is the phone's alone; server pushes carry the sentence and the repo. With it off the phone should not register
+  activity tokens (and should forget the ones it has), or the token needs a `details` column: a migration.
+- A finish that is news still sends its banner (`notify.plan`) when the activity's finished card stays up; `surface.planSync` sends none then.
+  Suppressing it needs a `session_notifications.kind` value, which is a migration.
+
+## Deviations (integration, section 8 step 7)
+
+The integration pass, 2026-09-13. Each has a test that fails when it is undone (checked by mutation).
+
+- **The surfaces anchor on `computed_at`.** `surface.anchorOf` is `live_state.computed_at`, then the row's `updated_at`, then now, the
+  Python `live_push.anchor_of`; `etaEpochOf` and `sinceEpochOf` count from it. `mission.toWire` carries `computed_at` and `files_total`.
+- **A cut map is not counted** on the phone either: `filesChangedOf` is -1 when `files_total` is above the rows sent.
+- **`LiveStateWire` is the generated `LiveState`'s structural partial**, and `liveSurface.test.ts` assigns one to the other at compile
+  time. `content_state.json` gains a fifteenth case, `waiting_on_background` (a new `tests/transcripts.py` scenario: two background jobs
+  out, "Waiting on two background tasks it started", working, relevance 10, no alert), and the phone's `toState`, `renderLiveSentence`,
+  `sentenceOf`, `relevanceOf` and `alertFor` equal the fixture on every case. The sentence is also held to `live.sentence` itself over
+  45,360 generated states.
+- **One dash rule on the phone.** `src/live/sentence.ts` imports `spoken`, `ordinal`, `ROLE_NOUN` and the dash rule from `src/copy/plain.ts`
+  (four characters, as `plain.DASH_CHARS`), `__tests__/copy.test.ts` uses it too, the widget string scan decodes Swift `\u{...}` escapes,
+  and the Lock Screen's removed count is `-88` with a hyphen, as the phone writes it (it was U+2212).
+- **The foreground poll** is `src/live/useLiveSurfaces.ts`, mounted once in `app/_layout.tsx` (it runs whichever tab is open, pauses in
+  the background, and stands aside on `/debug/*`); mission control's own sync runs one pass too, so a tile and its card move together.
+  `cache.sync` is single flight: two passes asked for at once share one.
+- **Activity push tokens** (`src/live/tokens.ts`): every card starts with `push: true` when the server may push to it (signed in, details
+  on), and without when ActivityKit refuses a token; `onPushToken` posts `{kind, session_id, activity_id, token, environment, creature}`
+  once per token, a creature change re-registers, and an ended or dismissed card, sign out, or turning details off forgets the token on
+  the server. On the simulator a real token reached `live_activity_tokens` for this session.
+- **Show details on Lock Screen off** now changes the surfaces: the card is named Builder, says "Builder · N running", and carries no
+  verdict, clock, count or alert; a move of the switch ends every card so the next sync starts them with the new name.
+- **A live to final upload ends its card on that upload** (`routes/sync._went_final`), the Mac app's sessions included, and the file names
+  switch is read `FOR SHARE` before names are stored (a two connection race test).
+- **The prompt gate reads from 3 tool calls up** (`PROMPT_GATE_MIN_TOOL_CALLS`, measured in CLAUDE.md): the four real conversations it
+  refused are stored, and a broken prompt filter is still refused on 110 of the corpus's 115 sessions with a prompt.
+- **Session numbers are exact** (`copy.clock`, the CLI's `_clock`): the paragraph said "3 minutes of it with you there" above "2m
+  attended" about one 162 second figure. The map row says "project files", because the map leaves Claude Code's own files out and the
+  numbers' "files touched" does not.
+
+Recorded, not fixed: `live --wire` on an ended sitting blanks the ETA's `needed` and `unattended` (CLI only, never uploaded; a code for
+"ended" would be a spec value); the server does not check that `live_names` ids are map ids; a finished card that stays up still gets the
+server's finish banner (a `session_notifications.kind` value, a migration).

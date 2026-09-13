@@ -435,21 +435,6 @@ class CorpusCut(unittest.TestCase):
             (None, None, None),
         )
 
-    def test_commit_subjects_are_uncapped(self):
-        seen = []
-        real = cli._commit_messages
-
-        def fake(root, since, cap=40):
-            seen.append(cap)
-            return [f"{root} {i}" for i in range(50)][: cap if cap is not None else None]
-
-        cli._commit_messages = fake
-        try:
-            got = cli._commit_subjects(["/a", "/b"], 0.0)
-        finally:
-            cli._commit_messages = real
-        self.assertEqual((len(got), seen), (100, [None, None]))
-
 
 if __name__ == "__main__":
     unittest.main()

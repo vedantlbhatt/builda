@@ -69,7 +69,154 @@ export function colors(scheme: Scheme) {
     googleButton: tokens.surface.card.light,
 
     graph: tokens.graph.levels[scheme],
+
+    /** The nine identity hues resolved for this scheme (`hue()`): `useColors().hues.tide.ink`. */
+    hues: Object.fromEntries(HUE_NAMES.map((n) => [n, hue(n, scheme)])) as Record<HueName, Hue>,
   };
+}
+
+// ─── the spectrum: identity colour (the owner's 2026-09-13 override) ─────────────────────
+//
+// "Why are all of them the same color? Looks horrible." (brief.md, "Owner override"). The one
+// accent rule is lifted for IDENTITY: every creature, session, Wrapped card, harness tile,
+// archetype and dimension wears one of nine hues from `tokens.spectrum`. Chrome does not: the
+// tab bar, buttons other than the amber primary, rows, screens and sheets stay the warm greys,
+// and amber stays the brand and the only action colour. The rules and every measurement are in
+// design-refs/DESIGN-V2-COLOUR-MOTION.md; `scripts/gen_tokens.py` refuses a spectrum that breaks
+// a contrast floor or crowds a data hue, so what arrives here is already checked.
+
+type Spectrum = typeof tokens.spectrum;
+
+/** One of the nine: amber, brass, tide, cobalt, iris, heather, orchid, coral, ember. */
+export type HueName = keyof Spectrum['hues'];
+/** Bit and the eight animals: the keys of `spectrum.creature`. */
+export type CreatureId = keyof Spectrum['creature'];
+/** A harness MARK id (`HARNESS_MARKS`): `cursor` covers `cursor_ide` and `cursor_agent`. */
+export type HarnessHueId = keyof Spectrum['harness'];
+/** A Wrapped card id, in `wrapped.CARD_IDS` order. */
+export type CardId = keyof Spectrum['card'];
+/** The six per session archetypes, `director` and `skeptic` from the corpus rules, and `generalist`. */
+export type ArchetypeId = keyof Spectrum['archetype'];
+export type DimensionId = keyof Spectrum['dimension'];
+export type VerdictId = keyof Spectrum['verdict'];
+
+/** The nine, in the sheet's order (amber first: the brand). */
+export const HUE_NAMES = Object.keys(tokens.spectrum.hues) as HueName[];
+
+/**
+ * The ring a session's creature is picked from: `CREW_RING[fnv1a32(client_session_id) % 8]`,
+ * stepped forward past any creature a session running at its start already wears. Never Bit,
+ * so no session is ever amber (on a live surface amber means "needs you" and nothing else).
+ * The rule itself is `crew_creature` in analysis/live.py and its twin in src/live/crew.ts.
+ */
+export const CREW_RING = tokens.spectrum.crew.ring as readonly Exclude<CreatureId, 'bit'>[];
+
+/**
+ * A hue resolved for one scheme. Every field is sRGB hex.
+ *
+ *   ink      a mark: a creature, a glyph, a ring, a bar. The dark ink on dark; on light the
+ *            3:1 mark tone (the dark ink is 1.3 to 2.8:1 on cream).
+ *   text     the hue as a label (13 pt semibold and up, never a paragraph). The dark ink on
+ *            dark; on light the 4.5:1 text tone.
+ *   partner  the dither's middle tone (paper, partner, ink). Never text, never a creature on its
+ *            own, never the ink at reduced opacity (that is the brown the judges saw).
+ *   fill     a solid fill: a selected tile, a share card band. The dark ink in both schemes.
+ *   onFill   ink on the fill: `#1C1917`, 5.2:1 or better on every hue.
+ */
+export interface Hue {
+  name: HueName;
+  ink: string;
+  text: string;
+  partner: string;
+  fill: string;
+  onFill: string;
+}
+
+export function isHueName(value: unknown): value is HueName {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(tokens.spectrum.hues, value);
+}
+
+export function hue(name: HueName, scheme: Scheme = 'dark'): Hue {
+  const t = tokens.spectrum.hues[name];
+  const dark = scheme === 'dark';
+  return {
+    name,
+    ink: dark ? t.dark : t.light,
+    text: dark ? t.dark : t.lightText,
+    partner: dark ? t.partner : t.lightPartner,
+    fill: t.dark,
+    onFill: tokens.surface.text.light,
+  };
+}
+
+/** Bit is amber (the brand); each animal has its own hue and no two share one. */
+export function creatureHue(creature: CreatureId, scheme: Scheme = 'dark'): Hue {
+  return hue(tokens.spectrum.creature[creature], scheme);
+}
+
+/**
+ * The wire values that are not mark ids: Cursor's IDE and its CLI are one mark and one hue
+ * (`HARNESS_MARKS`). `__tests__/spectrum.test.ts` holds this against `markFor`.
+ */
+const HARNESS_WIRE_TO_MARK: Readonly<Record<string, HarnessHueId>> = {
+  cursor_ide: 'cursor',
+  cursor_agent: 'cursor',
+};
+
+/**
+ * A harness's hue, by mark id or by wire value, where the harness is the object (the picker, the
+ * Stack page, Settings). Undefined for a harness this build does not know: the caller shows the
+ * name alone, as `HarnessGlyph` does. Where the SESSION is the object the glyph stays `textDim`,
+ * so a row never carries two identity hues.
+ */
+export function harnessHue(id: string, scheme: Scheme = 'dark'): Hue | undefined {
+  const table = tokens.spectrum.harness as Readonly<Record<string, HueName>>;
+  const key = Object.prototype.hasOwnProperty.call(table, id) ? id : HARNESS_WIRE_TO_MARK[id];
+  const name = key === undefined ? undefined : table[key];
+  return name === undefined ? undefined : hue(name, scheme);
+}
+
+/**
+ * The archetype's creature's hue, so the You hero, Wrapped card one and the creature always
+ * agree. No archetype (null, a refusal, a name from a newer engine) is the generalist: Bit's amber.
+ */
+export function archetypeHue(archetype: string | null | undefined, scheme: Scheme = 'dark'): Hue {
+  const table = tokens.spectrum.archetype as Readonly<Record<string, HueName>>;
+  const name =
+    typeof archetype === 'string' && Object.prototype.hasOwnProperty.call(table, archetype)
+      ? table[archetype]!
+      : tokens.spectrum.archetype.generalist;
+  return hue(name, scheme);
+}
+
+/**
+ * A Wrapped card's hue. `builder_type` wears the archetype's; cards two and three step to their
+ * `cardAlt` when the archetype already wears theirs, so no card meets its own hue across or down
+ * the two column grid (gen_tokens.py checks every archetype).
+ */
+export function cardHue(card: CardId, archetype: string | null | undefined, scheme: Scheme = 'dark'): Hue {
+  const own = archetypeHue(archetype).name;
+  const wears = tokens.spectrum.card[card] as HueName | 'archetype';
+  if (wears === 'archetype') return hue(own, scheme);
+  const alt = (tokens.spectrum.cardAlt as Readonly<Record<string, HueName>>)[card];
+  return hue(alt !== undefined && wears === own ? alt : wears, scheme);
+}
+
+/** Each dimension wears the hue of the archetype whose rule reads it (tokens.json says which). */
+export function dimensionHue(dimension: DimensionId, scheme: Scheme = 'dark'): Hue {
+  return hue(tokens.spectrum.dimension[dimension], scheme);
+}
+
+/**
+ * A verdict's colour. State, not identity: converging is `add`, lost is `del`, and circling is
+ * `textDim`, so the neutral verdict is never the loudest word on a tile.
+ */
+export function verdictColor(verdict: VerdictId, scheme: Scheme = 'dark'): string {
+  const [group, key] = tokens.spectrum.verdict[verdict].split('.') as [string, string];
+  const table = (tokens as unknown as Record<string, Record<string, { light: string; dark: string }>>)[group];
+  const pair = table?.[key];
+  if (!pair) throw new Error(`spectrum.verdict.${verdict} names no token`);
+  return pair[scheme];
 }
 
 const OVERLAY_STROKE = 'rgba(255,255,255,0.8)';

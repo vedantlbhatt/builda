@@ -12,6 +12,12 @@ The spec is validated before anything is written, so a bad edit to design/tokens
 space scale stays on the 4pt grid, no type role goes under the 11pt floor, and the Bayer
 table is exactly what the shader's arithmetic computes (the phone's test checks the
 TypeScript port against the same table, so all three agree or the build is red).
+
+The nine hue `spectrum` (the owner's 2026-09-13 override of the one accent rule) is checked
+the same way: every tone clears the contrast floor DESIGN-V2-COLOUR-MOTION.md states for its
+use, no identity ink sits in the red or green band data owns or within 0.10 OKLab of another
+ink or of a data hue, and every mapping names a hue that exists. The TypeScript carries the
+whole block; `theme.ts` resolves it (`hue`, `creatureHue`, `cardHue`, `harnessHue`, ...).
 """
 
 from __future__ import annotations
@@ -69,6 +75,158 @@ def bayer8(x: float, y: float) -> float:
     return bayer2(x * 0.25, y * 0.25) * 0.0625 + bayer2(x * 0.5, y * 0.5) * 0.25 + bayer2(x, y)
 
 
+# ─── the spectrum's measurements: WCAG 2 contrast and OKLab ────────────────────────────
+
+
+def _linear(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _rgb(h: str) -> tuple[float, float, float]:
+    return tuple(_linear(int(h[i : i + 2], 16) / 255) for i in (1, 3, 5))  # type: ignore[return-value]
+
+
+def contrast(a: str, b: str) -> float:
+    la, lb = (0.2126 * r + 0.7152 * g + 0.0722 * b_ for r, g, b_ in (_rgb(a), _rgb(b)))
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def oklab(h: str) -> tuple[float, float, float]:
+    r, g, b = _rgb(h)
+    l_ = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+    m_ = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+    s_ = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+    l_, m_, s_ = (math.copysign(abs(x) ** (1 / 3), x) for x in (l_, m_, s_))
+    return (
+        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
+    )
+
+
+def oklch_hue(h: str) -> float:
+    _, a, b = oklab(h)
+    return math.degrees(math.atan2(b, a)) % 360
+
+
+# The floors DESIGN-V2-COLOUR-MOTION.md 1.1 states. A hue under one of them is a colour a person
+# cannot read, or one that turns brown or reads as data, and it fails `make gen` before it ships.
+SPECTRUM_TONES = ("dark", "partner", "light", "lightText", "lightPartner")
+INK_ON_GROUND = 4.5  # dark on bg and on card; onAccent ink on the dark as a fill
+PARTNER_ON_CARD = 3.0  # the dither's middle tone is a mark
+PARTNER_STEP = (1.5, 2.6)  # below its ink: enough depth for three levels, never a second colour
+LIGHT_MARK = 3.0
+LIGHT_TEXT = 4.5
+MIN_OKLAB = 0.10  # between any two inks, and between an ink and add, del or the human teal
+DATA_BANDS = ((19.0, 42.0), (120.0, 200.0))  # OKLCH hue: red is del and Claude, green is add and you
+TOKEN_REFS = ("data.add", "data.del", "surface.textDim", "surface.text")
+
+
+def spectrum_card_hues(card: dict, alt: dict, archetype_hue: str) -> list[str]:
+    """The fifteen as worn when card one wears `archetype_hue`: the rule `theme.cardHue` runs."""
+    out = []
+    for cid, h in card.items():
+        h = archetype_hue if h == "archetype" else h
+        if cid in alt and h == archetype_hue:
+            h = alt[cid]
+        out.append(h)
+    return out
+
+
+def validate_spectrum(t: dict) -> list[str]:
+    problems: list[str] = []
+    spec = clean(t.get("spectrum", {}))
+    hues = spec.get("hues", {})
+    if len(hues) != 9:
+        problems.append(f"spectrum.hues has {len(hues)} hues; the spectrum is nine")
+    bg, card = t["surface"]["bg"]["dark"], t["surface"]["card"]["dark"]
+    lbg, lcard = t["surface"]["bg"]["light"], t["surface"]["card"]["light"]
+    on_ink = t["surface"]["text"]["light"]
+    for name, v in hues.items():
+        for tone in SPECTRUM_TONES:
+            if not isinstance(v.get(tone), str) or not HEX.match(v[tone]):
+                problems.append(f"spectrum.hues.{name}.{tone} is {v.get(tone)!r}, not #RRGGBB (upper case)")
+        if any(not isinstance(v.get(k), str) or not HEX.match(v[k]) for k in SPECTRUM_TONES):
+            continue
+        ink, partner = v["dark"], v["partner"]
+        for ground, label in ((bg, "bg"), (card, "card")):
+            if contrast(ink, ground) < INK_ON_GROUND:
+                problems.append(f"spectrum.hues.{name}.dark is {contrast(ink, ground):.2f}:1 on {label}, under {INK_ON_GROUND}")
+        if contrast(on_ink, ink) < INK_ON_GROUND:
+            problems.append(f"spectrum.hues.{name}: ink on the fill is {contrast(on_ink, ink):.2f}:1, under {INK_ON_GROUND}")
+        if contrast(partner, card) < PARTNER_ON_CARD:
+            problems.append(f"spectrum.hues.{name}.partner is {contrast(partner, card):.2f}:1 on card, under {PARTNER_ON_CARD}")
+        step = contrast(ink, partner)
+        if not PARTNER_STEP[0] <= step <= PARTNER_STEP[1]:
+            problems.append(f"spectrum.hues.{name}.partner is {step:.2f}:1 below its ink, outside {PARTNER_STEP}")
+        if contrast(v["light"], lbg) < LIGHT_MARK:
+            problems.append(f"spectrum.hues.{name}.light is {contrast(v['light'], lbg):.2f}:1 on the light bg, under {LIGHT_MARK}")
+        for ground, label in ((lbg, "the light bg"), (lcard, "the light card")):
+            if contrast(v["lightText"], ground) < LIGHT_TEXT:
+                problems.append(f"spectrum.hues.{name}.lightText is {contrast(v['lightText'], ground):.2f}:1 on {label}, under {LIGHT_TEXT}")
+        h = oklch_hue(ink)
+        for lo, hi in DATA_BANDS:
+            if lo <= h <= hi:
+                problems.append(f"spectrum.hues.{name}.dark sits at OKLCH hue {h:.1f}, inside the band data owns ({lo:g} to {hi:g})")
+    inks = {k: v["dark"] for k, v in hues.items() if isinstance(v.get("dark"), str) and HEX.match(v["dark"])}
+    names = list(inks)
+    data = {"data.add": t["data"]["add"]["dark"], "data.del": t["data"]["del"]["dark"], "strip.human_edit": t["strip"]["human_edit"]["dark"]}
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            dist = math.dist(oklab(inks[a]), oklab(inks[b]))
+            if dist < MIN_OKLAB:
+                problems.append(f"spectrum: {a} and {b} are {dist:.3f} apart in OKLab, under {MIN_OKLAB}")
+        for label, hexv in data.items():
+            dist = math.dist(oklab(inks[a]), oklab(hexv))
+            if dist < MIN_OKLAB:
+                problems.append(f"spectrum: {a} is {dist:.3f} from {label}, under {MIN_OKLAB}: it would read as data")
+
+    def hue_ref(path: str, value) -> None:
+        if value not in hues:
+            problems.append(f"spectrum.{path} names {value!r}, which is not one of the nine hues")
+
+    creature = spec.get("creature", {})
+    for k, v in creature.items():
+        hue_ref(f"creature.{k}", v)
+    if creature.get("bit") != "amber":
+        problems.append("spectrum.creature.bit must be amber: the mascot is the brand")
+    if sorted(creature.values()) != sorted(hues):
+        problems.append("spectrum.creature must give each of the nine hues to exactly one creature")
+    ring = spec.get("crew", {}).get("ring", [])
+    animals = sorted(k for k in creature if k != "bit")
+    if sorted(ring) != animals or len(ring) != 8:
+        problems.append(f"spectrum.crew.ring must be the eight animals once each (not Bit): {ring}")
+    for k, v in spec.get("harness", {}).items():
+        hue_ref(f"harness.{k}", v)
+        if v == "amber":
+            problems.append(f"spectrum.harness.{k} is amber: amber is Builda's, never a harness's")
+    for k, v in spec.get("archetype", {}).items():
+        hue_ref(f"archetype.{k}", v)
+    for k, v in spec.get("dimension", {}).items():
+        hue_ref(f"dimension.{k}", v)
+    for k, v in spec.get("verdict", {}).items():
+        if v not in TOKEN_REFS:
+            problems.append(f"spectrum.verdict.{k} is {v!r}; a verdict is a state colour, one of {TOKEN_REFS}")
+    cards, alt = spec.get("card", {}), spec.get("cardAlt", {})
+    if len(cards) != 15 or list(cards.values()).count("archetype") != 1:
+        problems.append("spectrum.card must be the fifteen Wrapped cards, one of them wearing 'archetype'")
+    for k, v in cards.items():
+        if v != "archetype":
+            hue_ref(f"card.{k}", v)
+    for k, v in alt.items():
+        hue_ref(f"cardAlt.{k}", v)
+        if k not in cards:
+            problems.append(f"spectrum.cardAlt.{k} is not a card")
+    for arch in sorted(set(spec.get("archetype", {}).values())):
+        worn = spectrum_card_hues(cards, alt, arch)
+        for i in range(len(worn)):
+            for j in (i + 1, i + 2):
+                if j < len(worn) and worn[i] == worn[j]:
+                    problems.append(f"spectrum.card: with card one in {arch}, cards {i + 1} and {j + 1} are both {worn[i]}")
+    return problems
+
+
 # ─── validation ────────────────────────────────────────────────────────────────────────
 
 
@@ -112,6 +270,8 @@ def validate(t: dict) -> None:
             problems.append(f"type.{name}.weight {role['weight']} is not 100..900")
         if role["maxScale"] < 1:
             problems.append(f"type.{name}.maxScale must be >= 1 (1 means fixed)")
+
+    problems.extend(validate_spectrum(t))
 
     table = t["dither"]["bayer8"]
     if sorted(v for row in table for v in row) != list(range(64)):

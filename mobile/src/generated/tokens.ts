@@ -306,6 +306,149 @@ export const tokens = {
       ]
     ]
   },
+  "spectrum": {
+    "hues": {
+      "amber": {
+        "dark": "#FFB300",
+        "partner": "#D07506",
+        "light": "#BC8303",
+        "lightText": "#976902",
+        "lightPartner": "#E8B45E"
+      },
+      "brass": {
+        "dark": "#ECE659",
+        "partner": "#CA9E09",
+        "light": "#A68C03",
+        "lightText": "#857000",
+        "lightPartner": "#D3BE66"
+      },
+      "tide": {
+        "dark": "#6CD9F1",
+        "partner": "#0E86AD",
+        "light": "#049BB3",
+        "lightText": "#057C90",
+        "lightPartner": "#85CADB"
+      },
+      "cobalt": {
+        "dark": "#53A3F2",
+        "partner": "#417ACC",
+        "light": "#4192DF",
+        "lightText": "#1F74BF",
+        "lightPartner": "#8DC3FB"
+      },
+      "iris": {
+        "dark": "#A670F3",
+        "partner": "#7658CB",
+        "light": "#A670F3",
+        "lightText": "#8C55D6",
+        "lightPartner": "#C5A3FF"
+      },
+      "heather": {
+        "dark": "#EAB8FF",
+        "partner": "#9C68B0",
+        "light": "#B178C8",
+        "lightText": "#8D5FA0",
+        "lightPartner": "#D1AFE0"
+      },
+      "orchid": {
+        "dark": "#F54BB8",
+        "partner": "#BF3A90",
+        "light": "#F248B5",
+        "lightText": "#D12198",
+        "lightPartner": "#FF98D3"
+      },
+      "coral": {
+        "dark": "#FCA0A6",
+        "partner": "#D36D86",
+        "light": "#D66E77",
+        "lightText": "#AB575E",
+        "lightPartner": "#EBAAAD"
+      },
+      "ember": {
+        "dark": "#F9833E",
+        "partner": "#D85A05",
+        "light": "#E06C23",
+        "lightText": "#B95201",
+        "lightPartner": "#FBA77B"
+      }
+    },
+    "creature": {
+      "bit": "amber",
+      "cat": "orchid",
+      "dog": "cobalt",
+      "fox": "ember",
+      "owl": "heather",
+      "bee": "brass",
+      "whale": "tide",
+      "octopus": "iris",
+      "crab": "coral"
+    },
+    "crew": {
+      "ring": [
+        "fox",
+        "whale",
+        "bee",
+        "octopus",
+        "crab",
+        "dog",
+        "cat",
+        "owl"
+      ]
+    },
+    "harness": {
+      "claude_code": "heather",
+      "codex": "tide",
+      "cursor": "brass",
+      "gemini_cli": "coral",
+      "cline": "iris",
+      "opencode": "ember",
+      "aider": "cobalt"
+    },
+    "card": {
+      "builder_type": "archetype",
+      "shipped": "brass",
+      "work_style": "tide",
+      "longest_session": "iris",
+      "agents_at_once": "ember",
+      "go_to_prompt": "orchid",
+      "streak": "coral",
+      "change_course": "cobalt",
+      "crash_out": "ember",
+      "prompt_length": "heather",
+      "deep_sessions": "iris",
+      "time_put_in": "amber",
+      "cryptic_prompt": "tide",
+      "prompts_per_session": "orchid",
+      "kind_of_work": "brass"
+    },
+    "cardAlt": {
+      "shipped": "coral",
+      "work_style": "coral"
+    },
+    "archetype": {
+      "architect": "heather",
+      "velocity_machine": "brass",
+      "quality_guardian": "coral",
+      "night_owl": "orchid",
+      "explorer": "iris",
+      "firefighter": "ember",
+      "director": "cobalt",
+      "skeptic": "tide",
+      "generalist": "amber"
+    },
+    "dimension": {
+      "steering": "tide",
+      "execution": "brass",
+      "engineering": "coral",
+      "product_instinct": "cobalt",
+      "planning": "heather"
+    },
+    "verdict": {
+      "converging": "data.add",
+      "circling": "surface.textDim",
+      "lost": "data.del"
+    }
+  },
   "card": {
     "landscape": {
       "w": 1600,

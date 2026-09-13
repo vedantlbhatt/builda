@@ -48,9 +48,12 @@ section.
 - Landed after the review: native recolour (8e7dff7), privacy fixes (5f4e675), numbers fixes
   (9969477). All suites green: analysis 1218, capture 137, bun 2052, tsc clean, server 331,
   lint, make gen stable. Stack re synced with the corrected numbers (160 sessions).
-- Running: the final capture of every screen into shots/final/ (+ videos); project analytics
-  (engine, report block, server; docs/projects.md); the stack page with real tech logos.
-  Then: the Projects tab UI, the artifact.
+- Landed 19:10: the Projects tab and project pages (bf7407d): the week axis in the projects
+  block, rivers, the rank race, comparisons, the session swarm, nicknames on the phone only,
+  `repo_key` on your own session rows. Captures in `shots/projects/`.
+- Waiting on its review, then committing: the Money Sankey (`src/money/`), the stack tools
+  chapter over the report's sessions, `burn._human` parity, Wrapped card 2's margin,
+  `dev-auth?quiet=1`. Captures in `shots/money/`. Then the artifact republish.
 - Visualizations the owner liked the sound of (16:40), to build next: project rivers (a
   streamgraph of hours per project by week), a rank race (bump chart of projects by week) and a
   session swarm (every session a dot, sized by length, coloured by creature, tap to open) in

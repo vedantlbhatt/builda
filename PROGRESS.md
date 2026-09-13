@@ -142,3 +142,14 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
 - native pass must also: draw each session in its crew creature's hue on the Lock Screen and
   island (src/live/activity.ts still uses the builder's own creature), and stop calling a
   finished unreviewed session "needs you" there (mission control's tilePhase rule).
+
+## Waiting on the owner's go (discussed 17:40, not started: "don't code anything to change the UI")
+
+- Restraint: the colour bands lost their charm by being everywhere. Proposal: at most one
+  full bleed band per screen for the hero moment; the rest on the calm ground, colour only for
+  data and identity; big reveals on first visit only; small pages quiet; Wrapped and the
+  analysis page keep their chapters.
+- Scroll jank on the analysis page in the simulator. Likely: many Skia canvases redrawing during
+  scroll, count ups re rendering text per frame, bands re printing, and a debug build on the
+  simulator. Ideas: pause animations while scrolling, flatten finished bands into still images,
+  mount only chapters near the viewport, and measure on a release build on a real phone first.

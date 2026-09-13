@@ -263,7 +263,8 @@ def test_gate_rejects_a_name_for_a_file_the_map_does_not_carry():
     server, so it is refused like a name sent without the map. So is any name at all when
     the state has no map."""
     live = {"state": "live", "end_reason": "still_running"}
-    stray = {"files": [*SAMPLE_LIVE_NAMES["files"], {"id": "0123456789abcdef", "name": "secret.py"}]}
+    unmapped = {"id": "0123456789abcdef", "name": "secret.py"}
+    stray = {"files": [*SAMPLE_LIVE_NAMES["files"], unmapped]}
     reason = sanity_gate(valid_payload(**live, live=SAMPLE_LIVE, live_names=stray))
     assert reason == "live_names names a file the live map does not carry"
     assert "secret" not in reason and "0123456789abcdef" not in reason

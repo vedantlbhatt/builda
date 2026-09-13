@@ -19,6 +19,11 @@
  *
  * Reduce Motion: no finger follow and no flight; an advance swaps the front card and fades
  * it in over 150ms.
+ *
+ * The front card's own views take touches (`box-none` on its slot), so the card can wear
+ * react-bits TiltedCard (it leans toward the finger) and GlareHover (a sheen crosses it on
+ * press): both only WATCH a touch, never take it, so the stack's pan and tap still decide. Every
+ * advance reports where the finger was (`onAdvance`), for the ClickSpark and the art's ripple.
  */
 import React, { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { View, type AccessibilityActionEvent, type StyleProp, type ViewStyle } from 'react-native';
@@ -87,6 +92,8 @@ export interface StoryStackProps {
   renderCard: (index: number, slot: SlotRender) => ReactNode;
   /** What VoiceOver reads for the front card. */
   labelFor: (index: number) => string;
+  /** A finger moved the deck on, at (`x`, `y`) in the stack's box. Not under VoiceOver or Reduce Motion. */
+  onAdvance?: (x: number, y: number) => void;
 }
 
 interface Shared {
@@ -110,7 +117,7 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-export function StoryStack({ count, initial, boxWidth, boxHeight, width, height, onFrontChange, renderCard, labelFor }: StoryStackProps) {
+export function StoryStack({ count, initial, boxWidth, boxHeight, width, height, onFrontChange, renderCard, labelFor, onAdvance }: StoryStackProps) {
   const reduce = useReduceMotion();
   const start = Math.max(0, Math.min(count - 1, initial));
 
@@ -143,6 +150,9 @@ export function StoryStack({ count, initial, boxWidth, boxHeight, width, height,
 
   const onFrontRef = useRef(onFrontChange);
   onFrontRef.current = onFrontChange;
+  const onAdvanceRef = useRef(onAdvance);
+  onAdvanceRef.current = onAdvance;
+  const advanced = useCallback((x: number, y: number) => onAdvanceRef.current?.(x, y), []);
 
   const swapped = useCallback((index: number) => {
     frontRef.current = index;
@@ -202,9 +212,9 @@ export function StoryStack({ count, initial, boxWidth, boxHeight, width, height,
   }, [s.mode, s.p, s.dragged, s.dx, s.dy]);
 
   const forward = useCallback(
-    (thrown: number, velocity: number) => {
+    (thrown: number, velocity: number): boolean => {
       'worklet';
-      if (s.mode.value !== 0 || frontIdx.value >= count - 1) return;
+      if (s.mode.value !== 0 || frontIdx.value >= count - 1) return false;
       const slot = s.frontSlot.value as SlotIndex;
       const exit = thrown === 0 ? EXIT_SIDE[slot] : thrown;
       const fromDrag = thrown !== 0;
@@ -227,6 +237,7 @@ export function StoryStack({ count, initial, boxWidth, boxHeight, width, height,
             if (done) settle();
           });
       runOnJS(select)();
+      return true;
     },
     [count, frontIdx, s, settle, width],
   );
@@ -271,7 +282,7 @@ export function StoryStack({ count, initial, boxWidth, boxHeight, width, height,
         const thrown = throwOf({ dx: e.translationX, dy: e.translationY, vx: e.velocityX, vy: e.velocityY });
         if (thrown !== 0 && frontIdx.value < count - 1) {
           if (reduce) runOnJS(reducedStep)(1);
-          else forward(thrown, e.velocityX);
+          else if (forward(thrown, e.velocityX)) runOnJS(advanced)(e.x, e.y);
           return;
         }
         s.dx.value = withSpring(0, { ...SNAP, velocity: e.velocityX });
@@ -284,10 +295,10 @@ export function StoryStack({ count, initial, boxWidth, boxHeight, width, height,
         const goBack = e.x < boxWidth * BACK_TAP_SHARE;
         if (reduce) runOnJS(reducedStep)(goBack ? -1 : 1);
         else if (goBack) back();
-        else forward(0, 0);
+        else if (forward(0, 0)) runOnJS(advanced)(e.x, e.y);
       });
     return Gesture.Race(pan, tap);
-  }, [back, boxWidth, count, forward, frontIdx, reduce, reducedStep, s.dx, s.dy, s.mode, tracking]);
+  }, [advanced, back, boxWidth, count, forward, frontIdx, reduce, reducedStep, s.dx, s.dy, s.mode, tracking]);
 
   const onAccessibilityAction = useCallback(
     (e: AccessibilityActionEvent) => {
@@ -411,7 +422,8 @@ function Slot({
 
   return (
     <Animated.View
-      pointerEvents="none"
+      // The front card's own views watch the finger (TiltedCard, GlareHover); the rest never do.
+      pointerEvents={depth === 0 ? 'box-none' : 'none'}
       style={[
         {
           position: 'absolute',

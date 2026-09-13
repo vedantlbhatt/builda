@@ -352,6 +352,24 @@ export function refusalSamples(): ReportWrappedCard[] {
   });
 }
 
+/**
+ * A deck in which every card is refused, for the dev link `?sample=1&refused=1`: each card
+ * refused by a code the engine refuses it with (the first `refusalSamples` entry for it; the
+ * two cards that table does not name, work style and prompts per session, refuse below the
+ * attended floor, `_attended_floor` in analysis/wrapped.py). What a first week looks like.
+ */
+export function refusedDeck(): ReportWrapped {
+  const samples = refusalSamples();
+  const order = REPORT_ENUMS.wrapped_card as readonly WrappedCard[];
+  const out = order.map((id): ReportWrappedCard => {
+    const hit = samples.find((c) => c.id === id);
+    if (hit) return hit;
+    const base = cards.find((c) => c.id === id)!;
+    return { ...base, value: null, value_id: null, n: 2, needed: NEEDED.below_attended_floor ?? 3, reason: 'below_attended_floor', extras: {} };
+  });
+  return { cards: out, prompts_with_text: 2, attended_sessions: 2 };
+}
+
 // ─── synthetic art sources ──────────────────────────────────────────────────────────────
 
 const DAY_MS = 86_400_000;

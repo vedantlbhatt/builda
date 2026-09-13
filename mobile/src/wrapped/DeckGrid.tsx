@@ -1,104 +1,69 @@
 /**
- * The Wrapped grid: every card at once, two columns 12pt apart, each turned by the fixed
- * tilt table so the deck reads as a scatter of real cards and two screenshots of it are the
- * same picture (DESIGN-DIRECTION 6). A tap opens that card in the story.
+ * The Wrapped grid: every card at once, small, each in its own hue: two columns, the fifteen
+ * colour worlds at a glance (the owner's "why are all of them the same color", answered). Each
+ * card is turned by the fixed tilt table (`deck.gridTilt`, never random, so two screenshots of
+ * the deck are the same picture) and arrives on react-bits AnimatedContent: rising 12 points from
+ * 0.95, its colour snapping in under 100 ms while it moves (a hue half faded over the ground is
+ * brown), 40 ms after the one before, the whole deck in about half a second (Appllama's Yazio
+ * study: objects "enter as separately staggered damped springs" over ~0.53 s). Once, when the
+ * grid opens; a pulled refresh does not replay it. A tap opens that card in the story.
  *
- * A card's first reveal happens here if this is where it is first seen: its answer counts
- * up once it is mostly on screen, staggered 40ms a card across what arrives together.
+ * Reduce Motion: the cards fade in at once over 150 ms (AnimatedContent's still).
  */
-import React, { useCallback, useRef, useState, type ReactElement } from 'react';
-import { FlatList, View, type RefreshControlProps, type ViewToken } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { type ReactElement } from 'react';
+import { ScrollView, StyleSheet, View, type RefreshControlProps } from 'react-native';
 
-import type { WrappedCard } from '../generated/report';
-import { layout, space } from '../theme';
-import { PressableScale, staggerDelay } from '../ui';
+import { GROUND } from '../insights/palette';
+import { layout, space, type Hue } from '../theme';
+import { AnimatedContent } from '../ui/bits/effects/AnimatedContent';
+import { PressableScale } from '../ui/PressableScale';
 import { GRID_COLUMNS, gridTilt } from './deck';
 import type { DeckItem } from './deckItems';
-import { STORY_RATIO, WrappedCardView } from './WrappedCardView';
+import { GRID_RATIO } from './story';
+import { GridCard } from './WrappedCardView';
 
 export interface DeckGridProps {
   items: readonly DeckItem[];
-  /** The screen's width; the grid takes the gutter off each side. */
+  hues: readonly Hue[];
   width: number;
   onOpen: (index: number) => void;
-  revealed: ReadonlySet<WrappedCard>;
-  revealReady: boolean;
-  onRevealed: (id: WrappedCard) => void;
   refreshControl?: ReactElement<RefreshControlProps>;
-  /** Above the first row: the stale line, the sample label. */
-  header?: ReactElement | null;
 }
 
-const VIEWABILITY = { itemVisiblePercentThreshold: 60 };
+/** 40 ms apart, all fifteen: the kit's step, without its cap of eight (the deck is one piece). */
+const STEP = 40;
 
-export function DeckGrid({ items, width, onOpen, revealed, revealReady, onRevealed, refreshControl, header }: DeckGridProps) {
-  const insets = useSafeAreaInsets();
+export function DeckGrid({ items, hues, width, onOpen, refreshControl }: DeckGridProps) {
   const cardWidth = Math.floor((width - layout.gutter * 2 - layout.tileGap * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
-  const cardHeight = Math.round(cardWidth * STORY_RATIO);
-
-  // Which cards are on screen now, and the order they arrived in, for the stagger.
-  const [visible, setVisible] = useState<ReadonlyMap<string, number>>(new Map());
-  // A stable callback: FlatList refuses a changing onViewableItemsChanged.
-  const onViewable = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    const next = new Map<string, number>();
-    viewableItems.forEach((v, i) => {
-      if (v.isViewable && typeof v.key === 'string') next.set(v.key, i);
-    });
-    setVisible(next);
-  }).current;
-
-  const renderItem = useCallback(
-    ({ item, index }: { item: DeckItem; index: number }) => {
-      const id = item.card.id;
-      const order = visible.get(id);
-      const play = revealReady && order !== undefined && !revealed.has(id);
-      return (
-        <View style={{ transform: [{ rotate: `${gridTilt(index)}deg` }] }}>
-          <PressableScale
-            onPress={() => onOpen(index)}
-            accessibilityLabel={item.face.label}
-            accessibilityHint="Opens this card on its own"
-          >
-            <WrappedCardView
-              card={item.card}
-              face={item.face}
-              sources={item.sources}
-              width={cardWidth}
-              height={cardHeight}
-              variant="grid"
-              play={play}
-              pending={!revealReady || !revealed.has(id)}
-              delay={staggerDelay(order ?? 0)}
-              onRevealed={() => onRevealed(id)}
-            />
-          </PressableScale>
-        </View>
-      );
-    },
-    [visible, revealReady, revealed, onOpen, onRevealed, cardWidth, cardHeight],
-  );
+  const cardHeight = Math.round(cardWidth * GRID_RATIO);
 
   return (
-    <FlatList
-      data={items as DeckItem[]}
-      keyExtractor={(it) => it.card.id}
-      numColumns={GRID_COLUMNS}
-      renderItem={renderItem}
-      extraData={[visible, revealed, revealReady]}
-      onViewableItemsChanged={onViewable}
-      viewabilityConfig={VIEWABILITY}
-      columnWrapperStyle={{ gap: layout.tileGap }}
-      contentContainerStyle={{
-        paddingHorizontal: layout.gutter,
-        paddingTop: space.sm,
-        paddingBottom: insets.bottom + space.section,
-        gap: layout.tileGap,
-      }}
-      contentInsetAdjustmentBehavior="automatic"
-      ListHeaderComponent={header ?? null}
-      refreshControl={refreshControl}
+    <ScrollView
+      style={styles.scroll}
+      // The screen's bottom bar holds the safe area and the hint ("Tap a card to open it.").
+      contentContainerStyle={{ paddingHorizontal: layout.gutter, paddingTop: space.sm, paddingBottom: space.section }}
       showsVerticalScrollIndicator={false}
-    />
+      refreshControl={refreshControl}
+    >
+      <View style={styles.grid}>
+        {items.map((item, i) => {
+          const hue = hues[i]!;
+          return (
+            <AnimatedContent key={item.card.id} index={i} step={STEP} cap={items.length} distance={12} scale={0.95} hue>
+              <View style={{ transform: [{ rotate: `${gridTilt(i)}deg` }] }}>
+                <PressableScale onPress={() => onOpen(i)} accessibilityLabel={item.face.label} accessibilityHint="Opens this card on its own">
+                  <GridCard item={item} hue={hue} width={cardWidth} height={cardHeight} number={i + 1} />
+                </PressableScale>
+              </View>
+            </AnimatedContent>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: GROUND.bg },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: layout.tileGap },
+});

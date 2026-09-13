@@ -1,78 +1,50 @@
 /**
- * The loading state, shaped like the result: the stack of cards, each with its dashed
- * outline and window dots, the header and the three lines of text as quiet blocks where the
- * dither and the words will be. Static: no shimmer (the slop list), and the one thing that
- * moves on the screen while it waits is Bit, thinking, under it.
+ * The loading state, shaped like the result: the story card as a flat block of the ground's
+ * raised grey, its number, question, answer and art as quieter blocks where they will be, and
+ * the line under it saying what is happening. Static: no shimmer (the slop list), no hue it
+ * has not earned yet (the card's colour arrives with the card).
  */
 import React from 'react';
-import { View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { space } from '../theme';
-import { DashedFrame, Dots, SHAPE, useColors } from '../ui';
-import { WINDOW_DOT } from '../ui/shape';
-import { restPose, type SlotIndex } from './deck';
+import { GROUND } from '../insights/palette';
+import { SHAPE } from '../ui/shape';
+import { CARD_TYPE, STORY_COPY } from './story';
 
-function Block({ width, height, radius }: { width: number | `${number}%`; height: number; radius: number }) {
-  const c = useColors();
-  return <View style={{ width, height, borderRadius: radius, borderCurve: 'continuous', backgroundColor: c.raised }} />;
+function Bar({ width, height }: { width: number | `${number}%`; height: number }) {
+  return <View style={{ width, height, borderRadius: SHAPE.mark, borderCurve: 'continuous', backgroundColor: GROUND.card }} />;
 }
 
-function SkeletonCard({ width, height }: { width: number; height: number }) {
-  const c = useColors();
-  const pad = space.lg;
+export function DeckSkeleton({ width, height }: { width: number; height: number }) {
+  const ty = CARD_TYPE.story;
   return (
-    <View
-      style={{
-        width,
-        height,
-        backgroundColor: c.card,
-        borderRadius: SHAPE.wrapped,
-        borderCurve: 'continuous',
-        padding: pad,
-        overflow: 'hidden',
-        justifyContent: 'space-between',
-      }}
-    >
-      <DashedFrame />
-      <View style={{ gap: space.tile }}>
-        <Dots />
-        <Block width="100%" height={Math.floor(height / 2 - pad - space.tile - WINDOW_DOT.size)} radius={SHAPE.inner} />
-      </View>
-      <View style={{ gap: space.sm }}>
-        <Block width="62%" height={15} radius={SHAPE.mark} />
-        <Block width="44%" height={48} radius={SHAPE.mark} />
-        <Block width="86%" height={17} radius={SHAPE.mark} />
+    <View accessibilityLabel={STORY_COPY.reading} accessible style={{ width, height }}>
+      <View style={[styles.card, { width, height, padding: ty.pad }]}>
+        <View style={{ gap: ty.gap }}>
+          <Bar width={22} height={ty.index} />
+          <Bar width="78%" height={ty.questionLine} />
+          <Bar width="46%" height={Math.round(ty.heroMax * 0.62)} />
+          <Bar width="64%" height={ty.tailLine} />
+        </View>
+        <View style={styles.art}>
+          <Text maxFontSizeMultiplier={1.4} style={styles.reading}>
+            {STORY_COPY.reading}
+          </Text>
+        </View>
       </View>
     </View>
   );
 }
 
-/** Two cards fanned behind the front one, in the stack's own rest poses. */
-export function DeckSkeleton({ boxWidth, boxHeight, width, height }: { boxWidth: number; boxHeight: number; width: number; height: number }) {
-  const left = (boxWidth - width) / 2;
-  const top = (boxHeight - height) / 2;
-  const behind: SlotIndex[] = [2, 1];
-  return (
-    <View style={{ width: boxWidth, height: boxHeight }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {behind.map((slot) => {
-        const pose = restPose(slot, width);
-        return (
-          <View
-            key={slot}
-            style={{
-              position: 'absolute',
-              left,
-              top,
-              transform: [{ translateX: pose.x }, { translateY: pose.y }, { rotate: `${pose.rotation}deg` }, { scale: pose.scale }],
-            }}
-          >
-            <SkeletonCard width={width} height={height} />
-          </View>
-        );
-      })}
-      <View style={{ position: 'absolute', left, top }}>
-        <SkeletonCard width={width} height={height} />
-      </View>
-    </View>
-  );
-}
+const styles = StyleSheet.create({
+  card: { backgroundColor: GROUND.raised, borderRadius: SHAPE.wrapped, borderCurve: 'continuous', overflow: 'hidden', justifyContent: 'space-between' },
+  art: {
+    height: '32%',
+    borderRadius: SHAPE.inner,
+    borderCurve: 'continuous',
+    backgroundColor: GROUND.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reading: { fontSize: 13, lineHeight: 18, color: GROUND.dim },
+});

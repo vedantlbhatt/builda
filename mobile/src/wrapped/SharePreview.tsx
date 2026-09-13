@@ -1,24 +1,36 @@
 /**
  * Share one card: the export itself, at its real 4:5 shape, then the system share sheet.
  *
- * The preview is the capture (what you see is the 1080 by 1350 image), and it is where a
- * quote card warns: a card showing the owner's own prompt says so, in words, before the
- * image can leave (DESIGN-DIRECTION 6; quotes are owner only everywhere else in the app).
+ * The preview is the capture (what you see is the 1080 by 1350 image): the story card's share
+ * size, still, with the wordmark in its corner. It sits in react-bits TiltedCard, so it leans
+ * toward the finger with GlareHover's stepped band sweeping across it, the way a printed card
+ * catches the light (DESIGN-V2 4.3: "the Wrapped share preview wears it"). The primary action is
+ * in the builder's hue (the theme is their creature's colour) and ClickSpark bursts from it in
+ * the CARD's hue: the one commitment on this screen.
  *
- * Share cards keep the dark palette in either scheme, so a shared image looks the same on
- * every phone it lands on (DESIGN-DIRECTION 3.2).
+ * A card showing the owner's own prompt says so, in words, before the image can leave
+ * (DESIGN-DIRECTION 6; quotes are owner only everywhere else in the app).
+ *
+ * Reduce Motion: no lean, no sheen, no sparks; the sheet arrives with the kit's fade.
  */
+import { SymbolView } from 'expo-symbols';
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { layout, space, TAP_TARGET } from '../theme';
-import { Button, SchemeProvider, SymbolIcon, T, commit, useColors } from '../ui';
+import { GROUND } from '../insights/palette';
+import { AccentButton } from '../nav/chrome';
+import type { Animal } from '../pixel/animals';
+import { layout, space, TAP_TARGET, type Hue } from '../theme';
+import { TiltedCard } from '../ui/bits/components/TiltedCard';
+import { ClickSpark } from '../ui/bits/effects/ClickSpark';
+import { commit } from '../ui/haptics';
 import { exitMs, timing, T as Durations } from '../ui/motion';
 import type { DeckItem } from './deckItems';
 import { shareCardImage, SHARE_PIXELS } from './share';
-import { SHARE_RATIO, WrappedCardView } from './WrappedCardView';
+import { SHARE_RATIO, STORY_COPY } from './story';
+import { StoryCard } from './WrappedCardView';
 
 export const QUOTE_WARNING = 'This card shows your own prompt, word for word. Anyone you send the image to can read it.';
 export const SHARE_FAILED = 'The image could not be made. Try again.';
@@ -27,13 +39,12 @@ export const SHARE_UNAVAILABLE = 'This phone has no share sheet to hand the imag
 /** Drawn at the export's width in points on a phone wide enough (360 at @3x is 1080). */
 const PREFERRED_WIDTH = SHARE_PIXELS.w / 3;
 /**
- * Everything on the preview that is not the card: the title row, the warning, the two
- * buttons and the gaps between (44 + 34 + 52 + 44 + 4 x 16, rounded up).
+ * Everything on the preview that is not the card: the title row, the warning, the action, the
+ * cancel line and the gaps between (44 + 40 + 52 + 44 + 4 x 16, rounded up).
  */
-const CHROME_HEIGHT = 250;
+const CHROME_HEIGHT = 256;
 
-export function SharePreview({ item, onClose }: { item: DeckItem; onClose: () => void }) {
-  const c = useColors();
+export function SharePreview({ item, hue, animal, number, onClose }: { item: DeckItem; hue: Hue; animal: Animal; number: number; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   // The export's width where it fits, narrower on a short phone so the actions stay on it.
@@ -50,9 +61,10 @@ export function SharePreview({ item, onClose }: { item: DeckItem; onClose: () =>
   }, [shown]);
   const enter = useAnimatedStyle(() => ({ opacity: shown.value, transform: [{ translateY: (1 - shown.value) * space.md }] }));
 
+  const leave = exitMs(Durations.enter);
   const close = () => {
-    shown.value = withTiming(0, timing(exitMs(Durations.enter)));
-    setTimeout(onClose, exitMs(Durations.enter));
+    shown.value = withTiming(0, timing(leave));
+    setTimeout(onClose, leave);
   };
 
   const share = async () => {
@@ -69,66 +81,64 @@ export function SharePreview({ item, onClose }: { item: DeckItem; onClose: () =>
   const withQuote = item.face.quote !== null;
 
   return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }, enter]}
-      accessibilityViewIsModal
-      onAccessibilityEscape={close}
-    >
-      <View
-        style={{
-          flex: 1,
-          paddingTop: insets.top + space.sm,
-          paddingBottom: insets.bottom + space.md,
-          paddingHorizontal: layout.gutter,
-          gap: space.md,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile }}>
-          <T role="title" accessibilityRole="header" style={{ flex: 1 }}>
-            Share this card
-          </T>
+    <Animated.View style={[StyleSheet.absoluteFill, styles.sheet, enter]} accessibilityViewIsModal onAccessibilityEscape={close}>
+      <View style={{ flex: 1, paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.md, paddingHorizontal: layout.gutter, gap: space.md }}>
+        <View style={styles.titleRow}>
+          <Text accessibilityRole="header" maxFontSizeMultiplier={1.4} style={styles.title}>
+            {STORY_COPY.shareTitle}
+          </Text>
           <Pressable
             onPress={close}
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={STORY_COPY.close}
             hitSlop={space.sm}
-            style={({ pressed }) => ({ width: TAP_TARGET, height: TAP_TARGET, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+            style={({ pressed }) => [styles.icon, { opacity: pressed ? 0.5 : 1 }]}
           >
-            <SymbolIcon name="xmark" weight="semibold" tone="text" />
+            <SymbolView name="xmark" tintColor={GROUND.text} weight="semibold" size={18} />
           </Pressable>
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <SchemeProvider scheme="dark">
+        <View style={styles.stage}>
+          <TiltedCard width={cardWidth} height={cardHeight} glare floating accessibilityLabel={item.face.label}>
             <View ref={shot} collapsable={false} style={{ width: cardWidth, height: cardHeight }}>
-              <WrappedCardView
-                card={item.card}
-                face={item.face}
-                sources={item.sources}
-                width={cardWidth}
-                height={cardHeight}
-                variant="share"
-                play={false}
-              />
+              <StoryCard item={item} hue={hue} animal={animal} width={cardWidth} height={cardHeight} variant="share" number={number} />
             </View>
-          </SchemeProvider>
+          </TiltedCard>
         </View>
 
         <View style={{ gap: space.sm }}>
           {withQuote ? (
-            <T role="meta" tone="dim">
+            <Text maxFontSizeMultiplier={1.6} style={styles.meta}>
               {QUOTE_WARNING}
-            </T>
+            </Text>
           ) : null}
           {problem !== null ? (
-            <T role="meta" tone="dim" accessibilityLiveRegion="polite">
+            <Text maxFontSizeMultiplier={1.6} style={styles.meta} accessibilityLiveRegion="polite">
               {problem}
-            </T>
+            </Text>
           ) : null}
-          <Button label="Share image" onPress={share} busy={busy} busyLabel="Making the image" />
-          <Button label="Cancel" kind="secondary" onPress={close} />
+          <ClickSpark hue={hue}>
+            <AccentButton label={STORY_COPY.shareAction} size="large" block onPress={share} busy={busy} busyLabel={STORY_COPY.shareBusy} />
+          </ClickSpark>
+          <Pressable onPress={close} accessibilityRole="button" style={({ pressed }) => [styles.cancel, { opacity: pressed ? 0.5 : 1 }]}>
+            <Text maxFontSizeMultiplier={1.4} style={styles.cancelText}>
+              {STORY_COPY.cancel}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  // Over everything on the Wrapped screen, its bars included.
+  sheet: { backgroundColor: GROUND.bg, zIndex: 10 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.tile },
+  title: { flex: 1, fontSize: 22, lineHeight: 27, fontWeight: '700', letterSpacing: -0.3, color: GROUND.text },
+  icon: { width: TAP_TARGET, height: TAP_TARGET, alignItems: 'center', justifyContent: 'center' },
+  stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  meta: { fontSize: 13, lineHeight: 18, color: GROUND.dim },
+  cancel: { minHeight: TAP_TARGET, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { fontSize: 17, lineHeight: 22, fontWeight: '600', color: GROUND.dim },
+});

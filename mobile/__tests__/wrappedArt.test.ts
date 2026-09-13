@@ -9,8 +9,16 @@ import { tokens } from '../src/generated/tokens';
 import { archetypeHue, cardHue, colors, graphLevel, hue, HUE_NAMES } from '../src/theme';
 import { bayer8, quantize } from '../src/ui/dithering';
 import {
+  BAND_INK,
+  BAR_BODY,
   FADED_INK,
+  LANE_PEAK,
   NO_SOURCES,
+  SCATTER_INK,
+  WORD_LIT,
+  WORD_UNLIT,
+  paragraphBlocks,
+  tallyBlocks,
   activityGrid,
   artFor,
   artHue,
@@ -59,10 +67,10 @@ describe('never random: the same card draws the same header, every render', () =
 
   test('with no sources the data cards fall back to a seeded field, and say so', () => {
     const procedural = REPORT_ENUMS.wrapped_card.filter((id) => artFor(card(id), NO_SOURCES).basis === 'procedural');
-    // Two cards carry their own data on the wire: the share and the split.
-    expect(procedural.sort()).toEqual(
-      [...REPORT_ENUMS.wrapped_card].filter((id) => id !== 'change_course' && id !== 'kind_of_work').sort(),
-    );
+    // Five cards carry their own data on the wire: the share, the split, the sends, the
+    // average prompt with its median, and the helper agents with their peak.
+    const onTheWire = new Set(['change_course', 'kind_of_work', 'go_to_prompt', 'prompt_length', 'agents_at_once']);
+    expect(procedural.sort()).toEqual([...REPORT_ENUMS.wrapped_card].filter((id) => !onTheWire.has(id)).sort());
   });
 
   test('different cards seed different fields', () => {
@@ -106,6 +114,8 @@ describe('real data where the phone holds it', () => {
     kind_of_work: 'role_split',
     deep_sessions: 'attended_per_session',
     prompts_per_session: 'prompts_per_session',
+    go_to_prompt: 'send_count',
+    prompt_length: 'prompt_words',
   };
 
   test('each data card draws its own data; the rest are seeded', () => {
@@ -240,10 +250,132 @@ describe('the data into shapes', () => {
       for (let by = 0; by < 10; by++)
         for (let bx = 0; bx < nx; bx++) {
           blocks += 1;
-          if (f.data[(by * 10 + 3) * 100 + (bx * 10 + 3)] === 1) solid += 1;
+          if (Math.abs(f.data[(by * 10 + 3) * 100 + (bx * 10 + 3)]! - SCATTER_INK) < 1e-6) solid += 1;
         }
       expect(solid).toBe(Math.round(share * blocks));
     }
+  });
+
+  test('the go to prompt card draws one ring for every send', () => {
+    const at = (sends: number) => {
+      const spec = artFor({ ...card('go_to_prompt'), value: sends }, NO_SOURCES);
+      expect(spec.basis).toBe('send_count');
+      const W = 240;
+      const H = 120;
+      const f = fieldOf(spec, W, H);
+      // A ray from the centre dot rightwards crosses each ring once: count the ink runs after
+      // the dot. The centre is where the field is densest near the left third.
+      let cx = 0;
+      let cy = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W / 2; x++) if (f.data[y * W + x] === 1) ((cx = x), (cy = y));
+      let runs = 0;
+      let inRun = true; // standing on the dot
+      for (let x = cx; x < W; x++) {
+        const on = f.data[cy * W + x]! > 0;
+        if (on && !inRun) runs += 1;
+        inRun = on;
+      }
+      return runs;
+    };
+    expect(at(4)).toBe(4);
+    expect(at(2)).toBe(2);
+    expect(at(7)).toBe(7);
+    // One send is no repetition: the seeded ripples, labelled as procedural.
+    expect(artFor({ ...card('go_to_prompt'), value: 1 }, NO_SOURCES).basis).toBe('procedural');
+  });
+
+  test('the average prompt, drawn to scale: a block a word, the median in ink, the last word cut to the decimal', () => {
+    const c = card('prompt_length'); // 29.9 words on average, a median of 16
+    const spec = artFor(c, NO_SOURCES);
+    expect(spec.kind).toBe('words');
+    const blocks = paragraphBlocks(29.9, 16, seedOf('prompt_length'), 120, 80);
+    expect(blocks.length).toBe(30);
+    expect(blocks.filter((b) => b.lit).length).toBe(16);
+    expect(blocks.slice(0, 16).every((b) => b.lit)).toBe(true);
+    for (const b of blocks) {
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.w).toBeLessThanOrEqual(120);
+      expect(b.y + b.h).toBeLessThanOrEqual(80);
+    }
+    const f = fieldOf(spec, 120, 80);
+    const round = (v: number) => Math.round(v * 1e4) / 1e4;
+    expect(new Set(Array.from(f.data).filter((v) => v > 0).map(round))).toEqual(new Set([WORD_LIT, WORD_UNLIT].map(round)));
+    // A whole average is whole blocks; nothing is drawn for no words.
+    expect(paragraphBlocks(12, 3, 1, 120, 80).length).toBe(12);
+    expect(paragraphBlocks(0, 0, 1, 120, 80)).toEqual([]);
+  });
+});
+
+// The owner, on "How many agents": it must be real dithered data, never flat blocks.
+describe('never a flat block', () => {
+  const at = (h: number) => new Date(Date.UTC(2026, 8, 1, 10) + h * 3_600_000).toISOString();
+  const sessions: ArtSession[] = [
+    { started_at: at(0), ended_at: at(2) },
+    { started_at: at(0.5), ended_at: at(1.5) },
+    { started_at: at(1), ended_at: at(3) },
+    { started_at: at(2.5), ended_at: at(3.4) },
+  ];
+
+  test('an agent lane is densest where the most sessions overlap, and never one flat value', () => {
+    const lanes = peakLanes(sessions)!;
+    const f = fieldOf({ kind: 'lanes', lanes, basis: 'peak_overlap' }, 120, 60);
+    const values = Array.from(f.data).filter((v) => v > 0);
+    expect(new Set(values).size).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...values)).toBeLessThanOrEqual(LANE_PEAK[0] + LANE_PEAK[1] + 1e-6);
+    // The densest column is inside the stretch where all three peak sessions ran (1h to 1.5h).
+    let best = -1;
+    let bestX = 0;
+    for (let x = 0; x < 120; x++) {
+      let s = 0;
+      for (let y = 0; y < 60; y++) s += f.data[y * 120 + x]!;
+      if (s > best) ((best = s), (bestX = x));
+    }
+    const u = (bestX + 0.5) / 120;
+    const peak = lanes.flat().filter((l) => l.peak);
+    const from = Math.max(...peak.map((l) => l.from));
+    const to = Math.min(...peak.map((l) => l.to));
+    expect(u).toBeGreaterThanOrEqual(from - 1 / 120);
+    expect(u).toBeLessThanOrEqual(to + 1 / 120);
+  });
+
+  test('with no sessions cached, the agents card draws its own count: a square an agent, the peak in ink', () => {
+    const spec = artFor(card('agents_at_once'), NO_SOURCES); // 39 helper agents, up to 9 at once
+    expect(spec).toEqual({ kind: 'tally', total: 39, lit: 9, basis: 'agent_count', hue: spec.hue });
+    const blocks = tallyBlocks(39, 120, 70);
+    expect(blocks.length).toBe(39);
+    for (const b of blocks) {
+      expect(b.x + b.s).toBeLessThanOrEqual(118);
+      expect(b.y + b.s).toBeLessThanOrEqual(68);
+    }
+    const f = fieldOf(spec, 120, 70);
+    const round = (v: number) => Math.round(v * 1e4) / 1e4;
+    const lit = Array.from(f.data).filter((v) => round(v) === round(WORD_LIT)).length;
+    const unlit = Array.from(f.data).filter((v) => round(v) === round(WORD_UNLIT)).length;
+    const side = blocks[0]!.s;
+    expect(lit).toBe(9 * side * side);
+    expect(unlit).toBe(30 * side * side);
+    // None ran: nothing to count, the seeded field instead.
+    expect(artFor({ ...card('agents_at_once'), extras: {} }, NO_SOURCES).basis).toBe('procedural');
+  });
+
+  test('a bar is a lighter body under a cap of its full density', () => {
+    const f = fieldOf({ kind: 'bars', bars: [{ h: 1, d: 1 }, { h: 0.5, d: 0.34 }], basis: 'attended_per_session' }, 20, 40);
+    const column = (x: number) => Array.from({ length: 40 }, (_, y) => f.data[y * 20 + x]!);
+    const deep = column(2);
+    expect(deep[0]).toBe(1);
+    expect(deep[1]).toBe(1);
+    expect(deep[2]).toBeCloseTo(BAR_BODY, 6);
+    expect(deep[39]).toBeCloseTo(BAR_BODY, 6);
+    const short = column(12);
+    expect(short[19]).toBe(0);
+    expect(short[20]).toBeCloseTo(0.34, 6);
+    expect(short[39]).toBeCloseTo(0.34 * BAR_BODY, 6);
+  });
+
+  test('the largest split band stops short of solid', () => {
+    expect(BAND_INK[0]).toBeLessThan(1);
+    const f = fieldOf(artFor(card('kind_of_work'), NO_SOURCES), 60, 20);
+    expect(Math.max(...Array.from(f.data))).toBeCloseTo(BAND_INK[0], 6);
   });
 });
 

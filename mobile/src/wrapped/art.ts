@@ -21,23 +21,33 @@
  * |---------------------|----------------------------------------------|------------------------------------------|
  * | time_put_in         | the contribution grid, hours per day         | `GET /v1/profile` `graph`                |
  * | longest_session     | that session's strip                         | its `SessionDetail.strip`                |
- * | agents_at_once      | the sessions running at the busiest moment   | cached session windows                   |
+ * | agents_at_once      | the sessions running at the busiest moment; with none cached, every helper agent as a square, the peak's in ink | cached session windows, else the card's `subagents` and `subagents_peak` |
  * | streak              | the daily commit row                         | report `contributions.days`              |
  * | shipped             | lines, summed session by session             | cached `stats.lines_added_agent`         |
  * | change_course       | a scatter inked at the card's own share      | the card's `value`                       |
  * | kind_of_work        | the split, as bands                          | the card's `kinds` or `role_lines`       |
  * | deep_sessions       | attended time per session, the hour ones solid | cached `attended_seconds`              |
  * | prompts_per_session | prompts per session                          | cached `stats.human_prompt_count`        |
+ * | go_to_prompt        | one ring for every time it was sent          | the card's `value` (sends)               |
+ * | prompt_length       | the average prompt, drawn to scale: one block a word, the median's worth in ink | the card's `value` and `median` |
  * | builder_type        | an orb lit by the archetype's seed           | procedural, seeded by the answer         |
  * | work_style          | two waves, back and forth                    | procedural, seeded by the answer         |
- * | go_to_prompt        | ripples: the same words, coming back         | procedural, seeded by the card           |
  * | crash_out           | a burst                                      | procedural, seeded by the card           |
- * | prompt_length       | a paragraph's silhouette                     | procedural: the report carries no histogram of prompt words, only the median |
  * | cryptic_prompt      | a blocky mosaic                              | procedural, seeded by the card           |
  *
  * change_course would be interrupts over time, but no per session interrupt count reaches
  * the phone (the contract's `presence_count` folds interrupts in with prompts and edits),
  * so its scatter carries the one number the card has: the share, as the fraction inked.
+ * prompt_length has no histogram on the wire, only the average and the median, so its
+ * paragraph is exactly those two numbers: as many word blocks as the average prompt has words
+ * (the last one cut to the decimal), the first `median` of them in ink; the word widths are
+ * seeded, and only the widths.
+ *
+ * NEVER A FLAT BLOCK (the owner, 2026-09-13, on "How many agents": it must be real dithered
+ * data). A solid rectangle of ink reads as a placeholder, so every data shape carries its data
+ * as DENSITY too: an agent lane is densest where the most sessions overlapped, a bar is a
+ * partner body under an ink cap, a scatter block and the largest split band stop short of solid.
+ * The card view (`field.ts`) then breathes through the density; it never adds to it.
  *
  * The session derived headers read the sessions THIS PHONE has cached (the notable ones
  * the Sessions tab synced), not the report's whole window: they draw a shape, never a
@@ -67,6 +77,9 @@ export type ArtBasis =
   | 'kind_split'
   | 'attended_per_session'
   | 'prompts_per_session'
+  | 'send_count'
+  | 'prompt_words'
+  | 'agent_count'
   | 'procedural';
 
 export interface Lane {
@@ -85,6 +98,10 @@ export type ArtShape =
   | { kind: 'bars'; bars: { h: number; d: number }[]; basis: ArtBasis }
   | { kind: 'lanes'; lanes: Lane[][]; basis: ArtBasis }
   | { kind: 'bands'; shares: number[]; basis: ArtBasis }
+  /** A paragraph of `words` blocks (the last `words % 1` wide), the first `lit` in ink. */
+  | { kind: 'words'; words: number; lit: number; seed: number; basis: ArtBasis }
+  /** `total` squares, one each, the first `lit` in ink: a count drawn as that many marks. */
+  | { kind: 'tally'; total: number; lit: number; basis: ArtBasis }
   | { kind: 'motif'; motif: Motif; seed: number; amount: number; basis: ArtBasis };
 
 /**
@@ -204,6 +221,20 @@ export function motifFn(motif: Motif, seed: number, aspect: number, amount = 0):
       const cx = 0.22 + r() * 0.2;
       const cy = 0.42 + r() * 0.16;
       const k = 5 + r() * 2;
+      const rings = Math.min(MAX_RINGS, Math.round(amount));
+      if (rings >= 1) {
+        // One ring for every send (`amount`), evenly out to `RING_REACH`, the nearest in ink
+        // and each further one a step lighter: the prompt, and each time it came back.
+        const thick = Math.min(0.05, (0.4 * RING_REACH) / rings);
+        return (u, v) => {
+          const d = Math.hypot((u - cx) * aspect, v - cy);
+          if (d < 0.045) return 1;
+          for (let i = 0; i < rings; i++) {
+            if (Math.abs(d - (RING_REACH * (i + 1)) / rings) < thick / 2) return 0.92 - (0.5 * i) / rings;
+          }
+          return 0;
+        };
+      }
       return (u, v) => {
         const d = Math.hypot((u - cx) * aspect, v - cy);
         const ring = 0.5 + 0.5 * Math.cos(2 * Math.PI * d * k);
@@ -293,7 +324,7 @@ export function motifFn(motif: Motif, seed: number, aspect: number, amount = 0):
         const fx = u * nx - bx;
         const fy = v * ny - by;
         if (fx > 0.82 || fy > 0.82) return 0; // paper between blocks, so it reads as a count
-        return inked.has(by * nx + bx) ? 1 : 0.07;
+        return inked.has(by * nx + bx) ? SCATTER_INK : 0.07;
       };
     }
     case 'drift':
@@ -306,6 +337,13 @@ export function motifFn(motif: Motif, seed: number, aspect: number, amount = 0):
     }
   }
 }
+
+/** The most rings the go to prompt card draws; past this the rings would merge into a disc. */
+export const MAX_RINGS = 12;
+/** How far out the last ring sits, in the header's heights. */
+const RING_REACH = 0.82;
+/** An inked scatter block: dense, and short of a flat solid square. */
+export const SCATTER_INK = 0.86;
 
 function motif(m: Motif, seed: number, amount = 0): ArtShape {
   return { kind: 'motif', motif: m, seed, amount, basis: 'procedural' };
@@ -565,7 +603,15 @@ function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): Art
     }
     case 'agents_at_once': {
       const lanes = src.sessions ? peakLanes(src.sessions) : null;
-      return lanes ? { kind: 'lanes', lanes, basis: 'peak_overlap' } : fallback;
+      if (lanes) return { kind: 'lanes', lanes, basis: 'peak_overlap' };
+      // No sessions on this phone to draw the overlap from: the card's own count of helper
+      // agents, one square each, the most that ran at once in ink (the analysis page's
+      // "every agent that ran, one square each"). Exact numbers from the report, never a shape.
+      const total = card.extras.subagents;
+      const peak = card.extras.subagents_peak;
+      return typeof total === 'number' && total > 0
+        ? { kind: 'tally', total: Math.min(MAX_TALLY, Math.round(total)), lit: Math.min(Math.round(total), Math.max(0, Math.round(peak ?? 0))), basis: 'agent_count' }
+        : fallback;
     }
     case 'streak': {
       const values = src.commitDays ? commitRow(src.commitDays, src.windowEnd) : null;
@@ -591,9 +637,105 @@ function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): Art
       const bars = src.sessions ? promptBars(src.sessions) : null;
       return bars ? { kind: 'bars', bars, basis: 'prompts_per_session' } : fallback;
     }
+    case 'go_to_prompt': {
+      // The card's own count of sends: one ring each. A count under 2 is no repetition.
+      const sends = card.value;
+      return typeof sends === 'number' && sends >= 2
+        ? { kind: 'motif', motif: 'ripples', seed: fallbackSeed(card), amount: Math.min(MAX_RINGS, Math.round(sends)), basis: 'send_count' }
+        : fallback;
+    }
+    case 'prompt_length': {
+      const mean = card.value;
+      const median = card.extras.median;
+      if (typeof mean !== 'number' || !(mean > 0)) return fallback;
+      const words = Math.min(MAX_PARAGRAPH_WORDS, mean);
+      return {
+        kind: 'words',
+        words,
+        lit: typeof median === 'number' && median > 0 ? Math.min(words, median) : 0,
+        seed: seedOf(card.id),
+        basis: 'prompt_words',
+      };
+    }
     default:
       return fallback;
   }
+}
+
+function fallbackSeed(card: ReportWrappedCard): number {
+  return seedOf(card.value_id ? `${card.id}:${card.value_id}` : card.id);
+}
+
+/** A paragraph longer than this is drawn at this: the blocks would shrink under a cell. */
+export const MAX_PARAGRAPH_WORDS = 90;
+/** The most squares a tally draws; past it a square would be under two cells. */
+export const MAX_TALLY = 240;
+
+/** Where each of `total` squares sits in `cols` by `rows` cells: the largest square that fits them all, in reading order. */
+export function tallyBlocks(total: number, cols: number, rows: number): { x: number; y: number; s: number }[] {
+  const n = Math.max(0, Math.floor(total));
+  if (n === 0) return [];
+  const margin = 2;
+  const w = cols - margin * 2;
+  const h = rows - margin * 2;
+  for (let s = 12; s >= 1; s--) {
+    const gap = Math.max(1, Math.round(s * 0.34));
+    const per = Math.floor((w + gap) / (s + gap));
+    if (per < 1) continue;
+    const lines = Math.ceil(n / per);
+    if (lines * (s + gap) - gap > h) continue;
+    return Array.from({ length: n }, (_, i) => ({ x: margin + (i % per) * (s + gap), y: margin + Math.floor(i / per) * (s + gap), s }));
+  }
+  return [];
+}
+
+/** A word block in the paragraph, placed in cells. */
+export interface WordBlock {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  lit: boolean;
+}
+
+/**
+ * The paragraph laid out in `cols` by `rows` cells: `ceil(words)` blocks of seeded widths, the
+ * last one cut to the decimal (29.9 words: 30 blocks, the last 0.9 of its width), wrapped left
+ * to right, at the largest scale whose lines fit. The first `lit` blocks (the median prompt) are
+ * lit. Deterministic in its arguments.
+ */
+export function paragraphBlocks(words: number, lit: number, seed: number, cols: number, rows: number): WordBlock[] {
+  const count = Math.max(0, Math.ceil(words - 1e-9));
+  if (count === 0 || cols < 6 || rows < 4) return [];
+  const r = mulberry32(seed);
+  const rel = Array.from({ length: count }, () => 0.55 + r() * 1.1);
+  const frac = words - Math.floor(words);
+  if (frac > 1e-9) rel[count - 1] = rel[count - 1]! * frac;
+  const margin = 2;
+  for (let k = 16; k >= 1; k--) {
+    const h = Math.max(1, Math.round(k * 0.55));
+    const gap = Math.max(1, Math.round(k * 0.3));
+    const lead = Math.max(1, Math.round(k * 0.45));
+    const out: WordBlock[] = [];
+    let x = margin;
+    let y = margin;
+    let fits = true;
+    for (let i = 0; i < count; i++) {
+      const w = Math.max(1, Math.round(k * rel[i]!));
+      if (x + w > cols - margin && x > margin) {
+        x = margin;
+        y += h + lead;
+      }
+      if (x + w > cols - margin || y + h > rows - margin) {
+        fits = false;
+        break;
+      }
+      out.push({ x, y, w, h, lit: i < Math.round(lit) });
+      x += w + gap;
+    }
+    if (fits) return out;
+  }
+  return [];
 }
 
 // ─── specs into fields ──────────────────────────────────────────────────────────────────
@@ -635,18 +777,25 @@ function rawField(spec: ArtShape, cols: number, rows: number): Field {
     case 'series':
       return fieldFromSeries(spec.series, cols, rows, { shape: spec.shape, fill: 0.42 });
     case 'row': {
-      // One column per day, full height: a barcode of shipping days. At most a third of the
-      // columns as days, so each day keeps its gap; the most recent days are kept.
+      // One bar a day, as tall as its commits (the row's value), a partner body under an ink
+      // cap: a skyline of shipping days. At most a third of the columns as days, so each day
+      // keeps its gap; the most recent days are kept.
       const n = Math.max(1, Math.min(spec.values.length, Math.floor(cols / 3)));
       const values = spec.values.slice(-n);
-      return blockField(cols, rows, (x) => {
+      return blockField(cols, rows, (x, y) => {
         const s = spanAt(x, values.length, cols);
-        return s.gap ? 0 : (values[s.k] ?? 0);
+        if (s.gap) return 0;
+        const v = values[s.k] ?? 0;
+        const h = v > 0 ? Math.max(BAR_CAP_CELLS + 1, Math.round(v * rows)) : 0;
+        const fromBottom = rows - 1 - y;
+        if (fromBottom >= h) return 0;
+        return fromBottom >= h - BAR_CAP_CELLS ? ROW_INK : ROW_INK * BAR_BODY;
       });
     }
     case 'bars': {
-      // One bar per session, bottom aligned, each its own density. The latest ones that fit
-      // at two cells a bar, so bars never merge into a block.
+      // One bar per session, bottom aligned, each its own density: a partner body under a cap
+      // of its full ink, so a bar reads as a measured bar and never a flat block. The latest
+      // ones that fit at two cells a bar, so bars never merge into a block.
       const n = Math.max(1, Math.min(spec.bars.length, Math.floor(cols / 2)));
       const bars = spec.bars.slice(-n);
       return blockField(cols, rows, (x, y) => {
@@ -656,20 +805,59 @@ function rawField(spec: ArtShape, cols: number, rows: number): Field {
         if (end - start >= 2 && x === end - 1) return 0;
         const bar = bars[s.k]!;
         const h = bar.h > 0 ? Math.max(1, Math.round(bar.h * rows)) : 0;
-        return rows - 1 - y < h ? bar.d : 0;
+        const fromBottom = rows - 1 - y;
+        if (fromBottom >= h) return 0;
+        return fromBottom >= h - BAR_CAP_CELLS ? bar.d : bar.d * BAR_BODY;
       });
     }
     case 'lanes': {
+      // Each session a lane, its density the share of the busiest moment's sessions running at
+      // that instant: faint where one ran alone, densest where they all overlapped, so the
+      // answer ("3 at once") is the darkest stretch of the picture. A session's first and last
+      // cells thin out, so a lane has ends rather than square corners.
       const n = Math.max(1, spec.lanes.length);
+      const items = spec.lanes.flat();
+      const running = new Float32Array(cols);
+      let most = 0;
+      for (let x = 0; x < cols; x++) {
+        const u = (x + 0.5) / cols;
+        let c = 0;
+        for (const it of items) if (u >= it.from && u < it.to) c += 1;
+        running[x] = c;
+        if (c > most) most = c;
+      }
       return blockField(cols, rows, (x, y) => {
         const s = spanAt(y, n, rows);
         if (s.gap) return 0;
         const u = (x + 0.5) / cols;
         for (const item of spec.lanes[s.k] ?? []) {
-          if (u >= item.from && u < item.to) return item.peak ? 1 : 0.4;
+          if (u >= item.from && u < item.to) {
+            const share = most > 0 ? running[x]! / most : 0;
+            const edge = Math.min(u - item.from, item.to - u) * cols;
+            const taper = edge < 1 ? 0.55 : edge < 2 ? 0.8 : 1;
+            return (item.peak ? LANE_PEAK[0] + LANE_PEAK[1] * share : LANE_REST[0] + LANE_REST[1] * share) * taper;
+          }
         }
         return 0;
       });
+    }
+    case 'tally': {
+      const data = new Float32Array(cols * rows);
+      tallyBlocks(spec.total, cols, rows).forEach((b, i) => {
+        const v = i < spec.lit ? WORD_LIT : WORD_UNLIT;
+        for (let y = b.y; y < b.y + b.s; y++) for (let x = b.x; x < b.x + b.s; x++) data[y * cols + x] = v;
+      });
+      return { width: cols, height: rows, data };
+    }
+    case 'words': {
+      const blocks = paragraphBlocks(spec.words, spec.lit, spec.seed, cols, rows);
+      const data = new Float32Array(cols * rows);
+      for (const b of blocks) {
+        for (let y = b.y; y < b.y + b.h; y++) {
+          for (let x = b.x; x < b.x + b.w; x++) data[y * cols + x] = b.lit ? WORD_LIT : WORD_UNLIT;
+        }
+      }
+      return { width: cols, height: rows, data };
     }
     case 'bands': {
       // The split as vertical bands, largest first, each a step lighter.
@@ -695,8 +883,24 @@ function rawField(spec: ArtShape, cols: number, rows: number): Field {
   }
 }
 
-/** Band densities, largest share first. UNMEASURED JUDGEMENT CALL: a step the dither shows. */
-export const BAND_INK = [1, 0.62, 0.42, 0.3, 0.22, 0.16, 0.12, 0.09, 0.07] as const;
+/**
+ * Band densities, largest share first. UNMEASURED JUDGEMENT CALL: a step the dither shows. The
+ * largest stops short of solid (0.88: one cell in four of its partner shows), so the split is
+ * printed, not a flat slab.
+ */
+export const BAND_INK = [0.88, 0.62, 0.42, 0.3, 0.22, 0.16, 0.12, 0.09, 0.07] as const;
+
+/** A bar's cap, in cells, drawn at the bar's full density over a body at `BAR_BODY` of it. */
+export const BAR_CAP_CELLS = 2;
+export const BAR_BODY = 0.62;
+/** The commit skyline's density: a day is a day, its height is how much landed. */
+const ROW_INK = 0.9;
+/** A lane's density: base + span x (the share of the busiest moment's sessions running then). */
+export const LANE_PEAK = [0.4, 0.52] as const;
+export const LANE_REST = [0.16, 0.34] as const;
+/** The median prompt's words, and the rest of the average one. */
+export const WORD_LIT = 0.9;
+export const WORD_UNLIT = 0.4;
 
 // ─── the three levels, as the kit draws them ────────────────────────────────────────────
 

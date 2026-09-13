@@ -31,7 +31,9 @@ import { BUILDER_PROFILE_KEY } from '../onboarding/keys';
 import { NO_SOURCES, type ArtSession, type ArtSources } from './art';
 import { quotesStateOf, type QuotesState } from './face';
 import { parseRevealed, REVEALED_KEY, serializeRevealed } from './reveal';
+import type { DeckStatus } from './story';
 import {
+  refusedDeck,
   SAMPLE_COVERAGE,
   SAMPLE_GENERATED_AT,
   SAMPLE_QUOTES,
@@ -40,7 +42,19 @@ import {
   SAMPLE_WRAPPED_WITH_QUOTES,
 } from './sample';
 
-export type DeckStatus = 'loading' | 'signed_out' | 'no_report' | 'no_cards' | 'error' | 'ready';
+export type { DeckStatus } from './story';
+export { FORCEABLE, forcedState } from './story';
+
+export interface DeckOptions {
+  sample: boolean;
+  sampleQuotes: boolean;
+  /** DEV: every card refused. */
+  sampleRefused?: boolean;
+  /** DEV: one of `FORCEABLE`, so every state can be looked at without an account in it. */
+  sampleState?: DeckStatus | null;
+  /** DEV: labelled as a saved copy, as when the server does not answer. */
+  sampleStale?: boolean;
+}
 
 export interface DeckMeta {
   generatedAt: string;
@@ -136,8 +150,8 @@ async function longestStrip(
   }
 }
 
-export function useWrappedDeck(options: { sample: boolean; sampleQuotes: boolean }): WrappedDeckState {
-  const { sample, sampleQuotes } = options;
+export function useWrappedDeck(options: DeckOptions): WrappedDeckState {
+  const { sample, sampleQuotes, sampleRefused = false, sampleState = null, sampleStale = false } = options;
   const [builder, setBuilder] = useState<BuilderProfileResponse | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<SessionDetail[]>([]);
@@ -217,9 +231,23 @@ export function useWrappedDeck(options: { sample: boolean; sampleQuotes: boolean
     setRefreshing(false);
   }, [load]);
 
-  const wrapped = sample ? (sampleQuotes ? SAMPLE_WRAPPED_WITH_QUOTES : SAMPLE_WRAPPED) : (builder?.report?.wrapped ?? null);
+  const sampleDeck = useMemo(
+    () =>
+      sampleState === 'no_cards'
+        ? { ...SAMPLE_WRAPPED, cards: [] }
+        : sampleRefused
+          ? refusedDeck()
+          : sampleQuotes
+            ? SAMPLE_WRAPPED_WITH_QUOTES
+            : SAMPLE_WRAPPED,
+    [sampleState, sampleRefused, sampleQuotes],
+  );
+  const wrapped = sample ? sampleDeck : (builder?.report?.wrapped ?? null);
+  const sampleHasReport = sampleState === null || sampleState === 'no_cards' || sampleState === 'error';
   const meta: DeckMeta | null = sample
-    ? { generatedAt: SAMPLE_GENERATED_AT, coverage: SAMPLE_COVERAGE }
+    ? sampleHasReport
+      ? { generatedAt: SAMPLE_GENERATED_AT, coverage: SAMPLE_COVERAGE }
+      : null
     : builder?.report
       ? { generatedAt: builder.report.generated_at, coverage: builder.report.coverage ?? null }
       : null;
@@ -275,7 +303,7 @@ export function useWrappedDeck(options: { sample: boolean; sampleQuotes: boolean
   }, []);
 
   let status: DeckStatus;
-  if (sample) status = 'ready';
+  if (sample) status = sampleState ?? 'ready';
   else if (!loaded && !builder) status = 'loading';
   else status = statusOf(builder) ?? (signedIn === false ? 'signed_out' : error !== null ? 'error' : 'loading');
 
@@ -286,8 +314,8 @@ export function useWrappedDeck(options: { sample: boolean; sampleQuotes: boolean
     quotes,
     quotesState,
     sources,
-    stale: !sample && builder !== null && error !== null,
-    error,
+    stale: sample ? sampleStale : builder !== null && error !== null,
+    error: sample ? (sampleState === 'error' ? OFFLINE_MESSAGE : null) : error,
     sample,
     refreshing,
     refresh,

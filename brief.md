@@ -141,6 +141,12 @@ Also asked: "what is $2951 in api usage? I don't actually have to pay that right
 what the tokens would cost at Anthropic's public API list prices. On a subscription you pay
 the plan. The money view must say so in words, never "you spent".
 
+## Owner, 10:50: the product is Builda
+
+"Rename everything to Builda not builder." Every user facing word says Builda (commit
+`3665e85`). Kept: bundle id `com.vedantlbhatt.Builder`, App Group, APNs topic, the `builder://`
+scheme and code identifiers, because a bundle id change breaks signing, push and widget data.
+
 ## Design mandate
 
 Use these, do not hand roll:

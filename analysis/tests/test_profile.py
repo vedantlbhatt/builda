@@ -1370,3 +1370,68 @@ class ProjectLinesAndPlainNumbers(unittest.TestCase):
         self.assertEqual(m["reason"], "1 prompt, 5 needed")
         m = pf.corpus_profile([prompt_session(["go", "more"])])["metrics"]["steer_rate"]
         self.assertEqual(m["reason"], "2 prompts, 5 needed")
+
+
+class ParallelSittingsAndPricedHours(unittest.TestCase):
+    """Two corpus numbers the review found wrong in silence (2026-09-13)."""
+
+    TOK = None
+
+    def fact(self, sid, start, end, *, tokens=True):
+        from analysis import pricing
+
+        return pf.SessionFact(
+            session_id=sid,
+            started_at=start,
+            ended_at=end,
+            active_seconds=end - start,
+            attended_seconds=end - start,
+            autonomous_seconds=0,
+            prompt_count=3,
+            output_tokens_by_model={"claude-opus-4-8": 100_000} if tokens else {},
+            tokens=pricing.Tokens(input=1000, output=100_000) if tokens else None,
+        )
+
+    def test_the_inner_of_two_parallel_sittings_did_not_end_with_no_commit(self):
+        """Four pairs of parallel sittings in one repository: the outer one runs two hours,
+        the inner one runs inside it and makes all three of the pair's commits. `git log`
+        sees them in both windows, and the first claim rule gives them to the outer one.
+        MEASURED before the fix: the four inner sittings read "ended with no commit",
+        `spend_without_a_commit_usd` $10.02 over 4 sittings, half the spend, and
+        `ships_rate` 0.5. After: $0 over 0 sittings and 1.0, while the first claim counts
+        (A 3, B 0) still add up to the 12 commits git holds."""
+        facts, roots, commits = [], [], []
+        for k in range(4):
+            t = T0 + k * DAY
+            facts += [self.fact(f"A{k}", t, t + 7200), self.fact(f"B{k}", t + 600, t + 3600)]
+            roots += ["/repo", "/repo"]
+            commits += [(f"sha{k}{j}", t + 1000 + j * 600) for j in range(3)]
+
+        def lister(root, since, until):
+            return [c for c in commits if since <= c[1] <= until]
+
+        out = pf.attribute_commits(facts, roots, lister)
+        self.assertEqual([f.commit_count for f in out], [3, 0] * 4)
+        self.assertEqual([f.commits_in_window for f in out], [3, 3] * 4)
+        self.assertEqual(sum(f.commit_count for f in out), 12, "a total still counts each commit once")
+        m = pf.corpus_profile(out)["metrics"]
+        quiet = m["spend_without_a_commit_usd"]
+        self.assertEqual((quiet["value"], quiet["sessions"], quiet["share_of_spend"]), (0, 0, 0.0))
+        self.assertEqual((m["ships_rate"]["value"], m["ships_rate"]["shipped_sessions"]), (1.0, 8))
+
+    def test_a_server_fact_reads_its_stored_count_as_the_window_count(self):
+        """The server stores the uploader's per window count as `commit_count` and passes
+        no `commits_in_window`; the predicate reads what it has."""
+        f = dataclasses.replace(self.fact("s", T0, T0 + 3600), commit_count=2, commit_basis=pf.COMMITS_GIT_LOG)
+        self.assertTrue(pf.ended_with_a_commit(f))
+        self.assertFalse(pf.ended_with_a_commit(dataclasses.replace(f, commit_count=0)))
+
+    def test_dollars_an_hour_are_over_the_hours_that_were_priced(self):
+        """One priced Claude Code hour at list price, one Cursor hour with no token counts
+        (Cursor writes {0, 0} on every row). MEASURED before the fix: $2.50 spent and
+        $1.25 an hour, the Cursor hour in the denominator; after: $2.50 an hour."""
+        cc = self.fact("cc", T0, T0 + HOUR)
+        cursor = self.fact("cu", T0 + 2 * HOUR, T0 + 3 * HOUR, tokens=False)
+        m = pf.corpus_profile([cc, cursor])["metrics"]
+        self.assertEqual((m["spend_usd"]["value"], m["spend_usd"]["n"]), (2.5, 1))
+        self.assertEqual((m["spend_per_hour_usd"]["value"], m["spend_per_hour_usd"]["n"]), (2.5, 1))

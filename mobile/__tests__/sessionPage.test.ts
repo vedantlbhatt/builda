@@ -6,12 +6,13 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { wholeMinutes } from '../src/copy/numbers';
 import { hasDash } from '../src/copy/plain';
 import type { SessionDetail } from '../src/data/api';
 import { StripClass } from '../src/generated/strip';
 import { heroOf, ledgerOf, partOfDay, rowOf, untitledName, wordsOf } from '../src/session/page';
 import { sampleOutcome } from '../src/session/samples';
-import { sessionTitle, summarySentences } from '../src/session/summary';
+import { sessionTitle, summarySentences, timeSentence } from '../src/session/summary';
 import { clockLabel, whenLabel } from '../src/session/when';
 import { HERO, layoutStrip, legendOf, MINI, TRACK_HEIGHT } from '../src/strip/layout';
 
@@ -78,6 +79,32 @@ describe('the hero', () => {
 
   test('a private repository is said as one, never as an empty line', () => {
     expect(heroOf({ ...FINAL, repo_name: null }, NOW).repo).toBe('private repo');
+  });
+
+  test('the hero and the sentence under it say one number of minutes', () => {
+    // FOUND IN REVIEW (2026-09-13): the hero floored (`theme.duration`, no zero pad) and the
+    // sentence rounded (`mins`). MEASURED before the fix, hero over sentence: 3,570 s "59m" over
+    // "1h 00m", 5,370 s "1h 29m" over "1h 30m", 3,900 s "1h 5m" over "1h 05m". After: one rule,
+    // `wholeMinutes`, and the same figure in both.
+    const said = (secs: number) => {
+      const s = { ...FINAL, active_seconds: secs, attended_seconds: secs, autonomous_seconds: 0 };
+      return [heroOf(s, NOW).active.final, timeSentence(s)] as const;
+    };
+    expect(said(3570)).toEqual(['59m', 'You built for 59 minutes, all of it with you there, and sent 52 prompts.']);
+    expect(said(5370)).toEqual(['1h 29m', 'You built for 1h 29m, all of it with you there, and sent 52 prompts.']);
+    expect(said(3900)).toEqual(['1h 05m', 'You built for 1h 05m, all of it with you there, and sent 52 prompts.']);
+    // And everywhere between: the hero's minutes are the sentence's minutes.
+    const minutesOf = (text: string): number => {
+      const hm = /(\d+)h (\d+)m/.exec(text);
+      if (hm) return Number(hm[1]) * 60 + Number(hm[2]);
+      const m = /(\d+) ?m(?:inutes?)?\b/.exec(text);
+      return m ? Number(m[1]) : 0;
+    };
+    for (let secs = 0; secs <= 4 * 3600; secs += 7) {
+      const [hero, sentence] = said(secs);
+      expect({ secs, hero: minutesOf(hero) }).toEqual({ secs, hero: minutesOf(sentence) });
+      expect(minutesOf(hero)).toBe(wholeMinutes(secs));
+    }
   });
 });
 

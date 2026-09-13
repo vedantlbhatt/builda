@@ -8,6 +8,7 @@ import Animated from 'react-native-reanimated';
 
 import { isGoogleConfigured, onGoogleSignIn, startGoogleSignIn } from '../src/auth/googleFlow';
 import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me, type PrivacyPrefs } from '../src/data/api';
+import { forgetCachedQuotes } from '../src/data/builderCache';
 import * as cache from '../src/data/cache';
 import {
   FILE_NAMES_DETAIL,
@@ -650,7 +651,7 @@ function PrivacySwitches({ signedIn, accent }: { signedIn: boolean; accent: Acce
     async (key: PrivacySwitch, on: boolean) => {
       if (!prefs || busy) return;
       setBusy(key);
-      const out = await setPrivacySwitch(api, prefs, key, on, cache.forgetLiveNames);
+      const out = await setPrivacySwitch(api, prefs, key, on, cache.forgetLiveNames, () => forgetCachedQuotes(cache));
       setPrefs(out.prefs);
       setLine(out.message);
       setBusy(null);

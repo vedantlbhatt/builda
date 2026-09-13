@@ -19,6 +19,7 @@ import {
   trendValues,
   trendVerdict,
   trendWords,
+  withinWindow,
 } from '../src/profile/report';
 
 function trend(over: Partial<ReportTrend> = {}): ReportTrend {
@@ -215,9 +216,28 @@ describe('what the numbers rest on', () => {
   });
 
   test('a machine that covers the window says nothing at all', () => {
-    // Silence is right here: there is no caveat to make.
+    // Silence is right here: there is no caveat to make. A window of 30 days touches 31 dates.
     expect(coverageLine(coverage({ spans_days: 30 }))).toBeNull();
-    expect(coverageLine(coverage({ spans_days: 45 }))).toBeNull();
+    expect(coverageLine(coverage({ spans_days: 31 }))).toBeNull();
+  });
+
+  test('numbers read over MORE than the window say so, never nothing', () => {
+    // FOUND IN REVIEW (2026-09-13): a report built over all history spanned 33 dates under
+    // "the last 30 days". MEASURED before the fix: null for 45 and for 33; after, both said.
+    expect(coverageLine(coverage({ spans_days: 45 }))).toBe('30 days asked for; these numbers span 45 days.');
+    expect(coverageLine(coverage({ spans_days: 33 }))).toBe('30 days asked for; these numbers span 33 days.');
+  });
+
+  test('a window is inside itself only when its first sitting is: the clock decides, not the count', () => {
+    const made = '2026-09-13T12:00:00Z';
+    expect(withinWindow(coverage({ spans_days: 31, first_at: '2026-08-14T12:00:00Z' }), made)).toBe(true);
+    // The committed report: its first sitting is two days before the window opened.
+    expect(withinWindow(coverage({ spans_days: 33, first_at: '2026-08-12T00:44:30Z' }), made)).toBe(false);
+    // Few dates, but all of them older than the window: still not "the last 30 days".
+    expect(withinWindow(coverage({ spans_days: 2, first_at: '2026-07-01T00:00:00Z' }), made)).toBe(false);
+    // No clock to compare: the dates decide.
+    expect(withinWindow(coverage({ spans_days: 31, first_at: null }), made)).toBe(true);
+    expect(withinWindow(coverage({ spans_days: 32, first_at: null }), made)).toBe(false);
   });
 
   test('one day is a day', () => {

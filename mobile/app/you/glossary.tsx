@@ -3,7 +3,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { count } from '../../src/copy/numbers';
 import { Band, BandWords } from '../../src/insights/Band';
-import { BandFigure, GUTTER, Kicker, Swatch, type, Words } from '../../src/insights/kit';
+import { BandFigure, figure, GUTTER, Kicker, Swatch, type, Words } from '../../src/insights/kit';
 import { GROUND, SPECTRUM, type Hue } from '../../src/insights/palette';
 import { Block, Section } from '../../src/insights/reveal';
 import { useAccent } from '../../src/theme/accent';
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   block: { paddingHorizontal: GUTTER, marginTop: 30 },
   month: { marginTop: 18 },
   monthHead: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
-  monthName: { fontSize: 30, lineHeight: 34, fontWeight: '800', letterSpacing: -0.7 },
+  monthName: { ...figure(30, GROUND.text), lineHeight: 34, letterSpacing: -0.7 },
   terms: { paddingHorizontal: GUTTER, marginTop: 6 },
   term: { paddingVertical: 11, gap: 3 },
   termHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },

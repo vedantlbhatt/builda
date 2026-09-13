@@ -26,8 +26,9 @@ function whole(x: number | null | undefined): x is number {
 }
 
 /**
- * The title, or null when these ids are not a title the engine writes. `null` input (no rule
- * fired, or a producer that does not compute titles) is null too.
+ * The title, or null when these ids are not a title the engine writes. A refusal (`reason`
+ * set, no verb: `vocab.TITLE_REFUSALS`) and `null` input (a producer that does not compute
+ * titles) are null too, and the caller falls back to the harness's own title.
  */
 export function renderTitle(ids: SessionTitleIds | null | undefined): string | null {
   if (!ids) return null;

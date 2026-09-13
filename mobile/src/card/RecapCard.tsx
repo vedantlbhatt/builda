@@ -1,10 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { human } from '../copy/numbers';
 import type { SessionDetail } from '../data/api';
 import { TimelineStrip } from '../strip/TimelineStrip';
 import { decodeMarks } from '../strip/decode';
-import { colors, compactNumber, duration, type Scheme } from '../theme';
+import { colors, duration, type Scheme } from '../theme';
 
 /**
  * The share card, on the phone.
@@ -169,7 +170,7 @@ export function RecapCard({ model, width, scheme = 'dark' }: Props) {
   stats.push([`${model.prompts}`, model.prompts === 1 ? 'prompt' : 'prompts']);
   // Tokens only when the harness reports them. Cursor never does, and a "0" there reads
   // as a bug in Builda rather than as a fact about Cursor.
-  if (model.tokensReported) stats.push([compactNumber(model.totalTokens), 'tokens']);
+  if (model.tokensReported) stats.push([human(model.totalTokens), 'tokens']);
 
   const stripWidth = width - 152 * s;
 

@@ -1,5 +1,6 @@
 import { FLOAT_SHADOW, tokens } from './generated/tokens';
 import { StripClass, StripMarkKind } from './generated/strip';
+import { wholeMinutes } from './copy/numbers';
 
 export type Scheme = 'light' | 'dark';
 
@@ -107,7 +108,8 @@ export const HUE_NAMES = Object.keys(tokens.spectrum.hues) as HueName[];
  * The ring a session's creature is picked from: `CREW_RING[fnv1a32(client_session_id) % 8]`,
  * stepped forward past any creature a session running at its start already wears. Never Bit,
  * so no session is ever amber (on a live surface amber means "needs you" and nothing else).
- * The rule itself is `crew_creature` in analysis/live.py and its twin in src/live/crew.ts.
+ * The rule itself is `crewCreatures` in src/live/crew.ts, the only implementation: the server's
+ * Live Activity pushes carry the creature the phone registered with each push token.
  */
 export const CREW_RING = tokens.spectrum.crew.ring as readonly Exclude<CreatureId, 'bit'>[];
 
@@ -261,13 +263,16 @@ export const MONO_FAMILY = 'ui-monospace';
  */
 export const floatShadow = FLOAT_SHADOW;
 
-/** Duration, the way a person says it. "1h 42m", never "102 minutes". */
+/**
+ * Duration, the way a person says it: "45s", "42m", "1h 05m", never "102 minutes". The minutes
+ * are `wholeMinutes`, the one rule the session's sentence reads too (`floorMins`), and the hour
+ * pads its minutes as the sentence does: "1h 05m" on the hero over "You built for 1h 05m".
+ */
 export function duration(seconds: number): string {
-  const s = Math.round(seconds);
-  if (s < 60) return `${s}s`;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  const m = wholeMinutes(seconds);
+  if (m < 1) return `${Math.floor(Math.max(0, seconds))}s`;
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
 }
 
 /**
@@ -300,12 +305,6 @@ export function dayLabel(iso: string | number, now: number = Date.now()): string
   if (ago > 1 && ago < 7) return day.toLocaleDateString(undefined, { weekday: 'long' });
   const sameYear = day.getFullYear() === new Date(now - DAY_BOUNDARY_HOUR * 3_600_000).getFullYear();
   return day.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
-}
-
-export function compactNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return `${n}`;
 }
 
 /**

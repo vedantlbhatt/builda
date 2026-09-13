@@ -16,7 +16,7 @@ import { api } from '../../src/data/client';
 import { PixelBadge } from '../../src/pixel/PixelBadge';
 import { PostRow } from '../../src/social/FeedList';
 import { applyKudos, authorName, relativeTime, revertKudos, toggleKudos } from '../../src/social/format';
-import { colors, hitSlopToReach, space } from '../../src/theme';
+import { colors, hitSlopToReach, radius, space, typeRoles } from '../../src/theme';
 
 const c = colors('dark');
 const COMMENT_MAX = 500;
@@ -124,28 +124,28 @@ export default function PostScreen() {
       <ScrollView contentContainerStyle={{ padding: space.md, paddingBottom: space.xl }}>
         {error && (
           <View style={banner}>
-            <Text style={{ color: c.textDim, fontSize: 13 }}>{error}</Text>
+            <Text style={{ color: c.textDim, fontSize: typeRoles.meta.size }}>{error}</Text>
           </View>
         )}
         {post && <PostRow item={post} onKudos={onKudos} linkToPost={false} photoLayout="full" />}
 
-        <Text style={sectionTitle}>COMMENTS</Text>
+        <Text style={sectionTitle}>comments</Text>
         {comments && comments.length === 0 && (
-          <Text style={{ color: c.textDim, fontSize: 13 }}>No comments yet.</Text>
+          <Text style={{ color: c.textDim, fontSize: typeRoles.meta.size }}>No comments yet.</Text>
         )}
         {(comments ?? []).map((cm) => (
           <View key={cm.id} style={{ paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: c.border }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-              <Text style={{ color: c.text, fontWeight: '600', fontSize: 13 }}>{authorName(cm.author)}</Text>
-              <Text style={{ color: c.textDim, fontSize: 12 }}>· {relativeTime(cm.created_at)}</Text>
+              <Text style={{ color: c.text, fontWeight: '600', fontSize: typeRoles.meta.size }}>{authorName(cm.author)}</Text>
+              <Text style={{ color: c.textDim, fontSize: typeRoles.label.size }}>· {relativeTime(cm.created_at)}</Text>
               <View style={{ flex: 1 }} />
               {cm.author.is_you === true && (
                 <Pressable onPress={() => remove(cm)} hitSlop={hitSlopToReach(16)} accessibilityRole="button">
-                  <Text style={{ color: c.textDim, fontSize: 12 }}>Delete</Text>
+                  <Text style={{ color: c.textDim, fontSize: typeRoles.label.size }}>Delete</Text>
                 </Pressable>
               )}
             </View>
-            <Text style={{ color: c.text, fontSize: 14, lineHeight: 19, marginTop: 2 }}>{cm.body}</Text>
+            <Text style={{ color: c.text, fontSize: typeRoles.row.size, lineHeight: 19, marginTop: 2 }}>{cm.body}</Text>
           </View>
         ))}
       </ScrollView>
@@ -161,12 +161,12 @@ export default function PostScreen() {
             flex: 1,
             color: c.text,
             backgroundColor: c.card,
-            borderRadius: 12,
+            borderRadius: radius.sm,
             borderCurve: 'continuous',
             paddingHorizontal: space.md,
             paddingVertical: space.sm,
             maxHeight: 120,
-            fontSize: 14,
+            fontSize: typeRoles.row.size,
           }}
         />
         <Pressable
@@ -175,7 +175,7 @@ export default function PostScreen() {
           style={({ pressed }) => [
             {
               backgroundColor: c.accent,
-              borderRadius: 12,
+              borderRadius: radius.pill,
               borderCurve: 'continuous',
               paddingHorizontal: space.md,
               justifyContent: 'center',
@@ -192,16 +192,16 @@ export default function PostScreen() {
 
 const sectionTitle = {
   color: c.textDim,
-  fontSize: 11,
+  fontSize: typeRoles.label.size,
   fontWeight: '700',
-  letterSpacing: 0.8,
+  letterSpacing: typeRoles.label.tracking,
   marginTop: space.lg,
   marginBottom: space.sm,
 } as const;
 
 const banner = {
   backgroundColor: c.card,
-  borderRadius: 12,
+  borderRadius: radius.sm,
   borderCurve: 'continuous',
   borderWidth: 1,
   borderColor: c.textDim,

@@ -239,7 +239,8 @@ Masking and the ID, OTP and token filter, all existing functions, in order: (1) 
 the same two functions (lazy import, as `builder_profile` does): 422 on a failure, 503 and nothing stored when `analysis` cannot be imported.
 
 Routes (`routes/privacy.py`): `GET /v1/privacy/prefs` answers `{"quotes": false, "live_names": false}` (the salt is never returned); `PUT
-/v1/privacy/prefs` takes either key (`current_device`, so only the phone flips a switch); `PUT /v1/profile/quotes` and `DELETE /v1/profile/quotes`
+/v1/privacy/prefs` takes either key (`current_phone`, a Sign in with Apple or Google token, so only the phone flips a switch: a paired machine's
+device flow token was accepted by `current_device` and is a 403 since `0024_device_grant_flow`); `PUT /v1/profile/quotes` and `DELETE /v1/profile/quotes`
 take `current_uploader` (the machine holds a capture key or a device token). Two switches, both off by default: the phone's Settings row "Quote my
 prompts on my cards" ("Up to three of your prompts, quoted on your Wrapped cards. Only you can see them. Turning this off deletes them."), and
 `python -m capture report --quotes`, never persisted, so a scheduled `capture report` never sends one. With the account off, the PUT answers 409
@@ -395,8 +396,11 @@ has no state for, so the presence line fallback is not ported. `spec/fixtures/li
 When, decided inside the transaction and sent after commit like `send_pending`: `live_push.plan(db, user_id, changed)` for every session whose live
 row was written or deleted, per activity token of that session. `(phase, trajectory)` unchanged from `(last_phase, last_trajectory)`: nothing (state
 transitions only). Changed: `event: "update"`, `apns-priority: 10` with `alert {"title": "{repo} needs you", "body": sentence}` only on a move INTO
-`needsYou` (the phone's `alertFor` words), else priority 5 and no alert; `last_*` updated. Final: `event: "end"` with the done state and
-`"dismissal-date": now + 1200` (DISMISS_AFTER_SECONDS), then the token row is deleted. A move into `needsYou` with NO activity token: one ordinary
+`needsYou` (the phone's `alertFor` words), else priority 5 and no alert; `last_*` updated. Final, or a turn the engine called `done` while the
+row is still live (finished, not looked at yet: phase `done`, never `needsYou`, the owner's rule of 2026-09-13, on both halves and in the fixture's
+`done_after_commit` case): `event: "end"` with the done state and `"dismissal-date": now + 1200` (DISMISS_AFTER_SECONDS), then the token row is
+deleted. The card's `creature` is the one the phone registered with the token: that session's crew creature (`mobile/src/live/crew.ts`), so the
+server needs no copy of the crew rule. A move into `needsYou` with NO activity token: one ordinary
 banner (`apns-push-type: alert`, `data.kind = "needs_you"`, which `notify.push_data` grows) through `send_session_finished`'s machinery, once per entry
 (`session_live.alerted_phase`) and only while `activity.since_s <= notify.NOTIFY_HORIZON_SEC`, because backfill must be silent.
 

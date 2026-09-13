@@ -533,7 +533,7 @@ function RowsBlock() {
 const STATS: StatItem[] = [
   { value: '1.4M', label: 'tokens' },
   { value: '$12.40', label: 'api list price' },
-  { value: '16h 0m', label: 'longest session' },
+  { value: '16h 00m', label: 'longest session' },
   { value: '+2,450', label: 'lines added', tone: 'add' },
   { value: '-318', label: 'lines removed', tone: 'del' },
   { value: null, label: 'commits', refusal: 'two sessions overlapped' },

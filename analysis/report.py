@@ -145,17 +145,26 @@ def from_corpus(corpus, window_days: int = DEFAULT_WINDOW_DAYS, *, quotes: bool 
     block reads the same profile, on the cut's clock: the report's coverage, the wrapped
     cards, the money and the burn say what they rest on from one set of numbers. Nothing
     here reads a file or runs git; the cut already did.
+
+    EVERY BLOCK IS THE WINDOW (`corpus.window`): the report says `window_days` and the
+    phone prints "the last 30 days", so no block may rest on a sitting, a commit or an
+    agent from before it. FOUND IN REVIEW (2026-09-13): the profile was built over every
+    fact the machine held, and the committed report's coverage ran Aug 11 to Sep 13 under
+    "the last 30 days". The trends alone read the whole cut, because they compare this
+    window with the one before it.
     """
+    from . import corpus as cp_mod
     from . import profile as pf_mod
     from . import report_blocks as rb_mod
     from . import vocab as vc_mod
     from . import wrapped as wr_mod
 
-    c = corpus
+    everything = corpus
+    c = cp_mod.window(everything, window_days)
     profile = pf_mod.corpus_profile(c.facts, now=c.now)
     doc = build(
         profile=profile,
-        trends=recent_trends(c.facts, window_days, c.now),
+        trends=recent_trends(everything.facts, window_days, c.now),
         fanout=c.fanout,
         contributions=c.contributions,
         sessions=c.sessions,
@@ -235,10 +244,20 @@ def _agents(fanout) -> dict | None:
     nothing at all cost tokens and returned air, and the difference between 52 agents and
     51 that produced something is the difference between a boast and a measurement. It is
     `Fanout`'s own property rather than a second count of the same thing here.
+
+    Each type travels as its `agent_type` id (`agents.wire_type`): a built in name as
+    itself, every other name summed under `custom`. A custom agent's name is free text its
+    author typed, and free text does not leave the machine.
     """
+    from . import agents as ag_mod
+
     if fanout is None or not fanout.agents:
         return None
-    by_type = sorted(fanout.by_type.items(), key=lambda kv: (-kv[1], kv[0]))
+    types: dict[str, int] = {}
+    for name, n in fanout.by_type.items():
+        key = ag_mod.wire_type(name)
+        types[key] = types.get(key, 0) + n
+    by_type = sorted(types.items(), key=lambda kv: (-kv[1], kv[0]))
     return {
         "agents": fanout.agents,
         "produced": fanout.produced,

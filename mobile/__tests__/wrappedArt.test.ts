@@ -204,6 +204,24 @@ describe('the data into shapes', () => {
     for (const lane of lanes) for (const l of lane) expect(l.from).toBeLessThan(l.to);
   });
 
+  test('the lanes never show a different count from the number printed on the card', () => {
+    // FOUND IN REVIEW (2026-09-13): the card counts first to last EVENT; the phone's windows run
+    // to `ended_at`, which carries the trailing idle credit. A's last event 10:05, its window to
+    // 10:20; B from 10:10. MEASURED before the fix: 2 lanes, both solid, under a card of 1 at
+    // once. After: no lanes; the header is the card's own helper agent count instead.
+    const two: ArtSession[] = [
+      { started_at: '2026-09-13T10:00:00Z', ended_at: '2026-09-13T10:20:00Z', attended_seconds: 300 },
+      { started_at: '2026-09-13T10:10:00Z', ended_at: '2026-09-13T11:00:00Z', attended_seconds: 300 },
+    ];
+    expect(peakLanes(two, 1)).toBeNull();
+    expect(peakLanes(two, 2)!.flat().filter((l) => l.peak).length).toBe(2);
+    const one = { ...card('agents_at_once'), value: 1 };
+    const spec = artFor(one, { ...SAMPLE_SOURCES, sessions: two });
+    expect(spec.basis).toBe('agent_count');
+    // When they do agree, the lanes are drawn.
+    expect(artFor({ ...one, value: 2 }, { ...SAMPLE_SOURCES, sessions: two }).basis).toBe('peak_overlap');
+  });
+
   test('a handoff at the same instant is not two at once (agents.py\'s rule)', () => {
     const at = (h: number) => new Date(Date.UTC(2026, 8, 1, 10) + h * 3_600_000).toISOString();
     const lanes = peakLanes([

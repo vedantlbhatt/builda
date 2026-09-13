@@ -141,12 +141,40 @@ export function hasAnything(r: BuilderReport): boolean {
  * "30 days asked for, 2 days on this machine" needs no adjective, and a reader who has
  * been building for a month knows instantly that the rest of it is somewhere else.
  *
- * Silent when the span covers the window, because then there is nothing to say.
+ * Silent only when the span IS the window. Longer is said too: the numbers then rest on more
+ * than the question asked, and a page that went quiet then would let "the last 30 days" stand
+ * over 34 of them. FOUND IN REVIEW (2026-09-13): a report built over all history spanned Aug
+ * 11 to Sep 13 under "The last 30 days", and this line said nothing.
+ *
+ * `spans_days` counts DATES, both ends included (`profile.py`: last day less first, plus one),
+ * so a window of 30 days touches up to 31 of them: 10:00 on Aug 14 to 10:00 on Sep 13 is the
+ * window, exactly, on 31 dates (`windowDates`).
  */
 export function coverageLine(c: ReportCoverage): string | null {
-  if (c.spans_days >= c.window_days) return null;
+  if (c.spans_days >= c.window_days && c.spans_days <= windowDates(c.window_days)) return null;
   const d = c.spans_days === 1 ? 'day' : 'days';
+  if (c.spans_days > c.window_days) return `${c.window_days} days asked for; these numbers span ${c.spans_days} ${d}.`;
   return `${c.window_days} days asked for; these transcripts span ${c.spans_days} ${d}.`;
+}
+
+/** The most dates a window of `days` days can touch, both ends included. */
+export function windowDates(days: number): number {
+  return days + 1;
+}
+
+/**
+ * Whether a report's numbers rest on the window it names: its first sitting no earlier than
+ * `window_days` before it was made (the engine's own bound, `corpus.window`), or with no clock
+ * to compare, no more dates than the window touches. THE ONE TEST every line that says "the
+ * last N days" asks first (`insights/model.readSpan`); when it fails, the line says the stretch
+ * it actually read. A report from an engine that read all of history fails it, however the
+ * phone came by it. A second of slack: both clocks travel as whole seconds.
+ */
+export function withinWindow(c: ReportCoverage, generatedAt: string): boolean {
+  const first = c.first_at ? Date.parse(c.first_at) : NaN;
+  const made = Date.parse(generatedAt);
+  if (Number.isFinite(first) && Number.isFinite(made)) return first >= made - c.window_days * 86_400_000 - 1000;
+  return c.spans_days <= windowDates(c.window_days);
 }
 
 /**

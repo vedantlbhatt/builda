@@ -5,7 +5,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import type { Cursor, FollowState, UserPage } from '../../src/data/api';
 import { api } from '../../src/data/client';
 import { FeedList } from '../../src/social/FeedList';
-import { colors, hitSlopToReach, space } from '../../src/theme';
+import { colors, hitSlopToReach, radius, space, typeRoles } from '../../src/theme';
 
 const c = colors('dark');
 /** The follow pill's height; the slop takes the tap target to 44 without a taller pill. */
@@ -56,11 +56,11 @@ export default function UserScreen() {
   }, [busy, profile]);
 
   const header = profile ? (
-    <View style={{ backgroundColor: c.card, borderRadius: 12, borderCurve: 'continuous', padding: space.md, marginBottom: space.md }}>
-      <Text style={{ color: c.text, fontSize: 22, fontWeight: '700' }}>
+    <View style={{ backgroundColor: c.card, borderRadius: radius.sm, borderCurve: 'continuous', padding: space.md, marginBottom: space.md }}>
+      <Text style={{ color: c.text, fontSize: typeRoles.title.size, fontWeight: '700' }}>
         {profile.display_name ?? profile.handle}
       </Text>
-      <Text style={{ color: c.textDim, fontSize: 13 }}>
+      <Text style={{ color: c.textDim, fontSize: typeRoles.meta.size }}>
         @{profile.handle}
         {profile.profile_public ? '' : ' · private'}
       </Text>
@@ -74,19 +74,19 @@ export default function UserScreen() {
             {
               marginTop: space.md,
               alignSelf: 'flex-start',
-              borderRadius: 999,
+              borderRadius: radius.pill,
               borderCurve: 'continuous',
               paddingHorizontal: space.md,
               minHeight: FOLLOW_HEIGHT,
               justifyContent: 'center',
               backgroundColor: profile.follow_state ? c.bg : c.accent,
-              borderWidth: 1,
-              borderColor: profile.follow_state ? c.border : c.accent,
+              borderWidth: profile.follow_state ? 1 : 0,
+              borderColor: c.border,
               opacity: busy ? 0.6 : pressed ? 0.8 : 1,
             },
           ]}
         >
-          <Text style={{ color: profile.follow_state ? c.text : c.onAccent, fontWeight: '700', fontSize: 13 }}>
+          <Text style={{ color: profile.follow_state ? c.text : c.onAccent, fontWeight: '700', fontSize: typeRoles.meta.size }}>
             {profile.follow_state === 'accepted'
               ? 'Following'
               : profile.follow_state === 'pending'

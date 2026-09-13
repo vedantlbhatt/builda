@@ -21,7 +21,7 @@
  * |---------------------|----------------------------------------------|------------------------------------------|
  * | time_put_in         | the contribution grid, hours per day         | `GET /v1/profile` `graph`                |
  * | longest_session     | that session's strip                         | its `SessionDetail.strip`                |
- * | agents_at_once      | the sessions running at the busiest moment; with none cached, every helper agent as a square, the peak's in ink | cached session windows, else the card's `subagents` and `subagents_peak` |
+ * | agents_at_once      | the sessions running at the busiest moment, when as many as the card counts; else every helper agent as a square, the peak's in ink | cached session windows, else the card's `subagents` and `subagents_peak` |
  * | streak              | the daily commit row                         | report `contributions.days`              |
  * | shipped             | lines, summed session by session             | cached `stats.lines_added_agent`         |
  * | change_course       | a scatter inked at the card's own share      | the card's `value`                       |
@@ -438,10 +438,19 @@ export const MAX_LANES = 6;
  * The busiest moment among `sessions` and everything around it, packed into lanes: the
  * sessions running at that moment are the solid ones. The sweep puts an end before a start
  * at the same instant, so a handoff never reads as two at once (analysis/agents.py's rule).
- * Session windows carry the trailing idle credit, so this can overlap a little more than
- * the card's own first to last event count; it draws the shape, the card says the number.
+ *
+ * `atOnce` is the card's own count, and the lanes are drawn only when their busiest moment
+ * holds exactly that many. The card counts first to last EVENT (`wrapped._agents_at_once`,
+ * `sweep_over_first_to_last_event`); the phone holds only `started_at` and `ended_at`, and
+ * `ended_at` carries the trailing idle credit, so two sittings the card never saw overlap can
+ * overlap here. FOUND IN REVIEW (2026-09-13): a sitting whose last event was at 10:05 and whose
+ * window ran to 10:20 drew two solid lanes beside another that began at 10:10, under a card
+ * that said one at once. A header that shows a different count from the number printed on it
+ * is two answers to one question, so a mismatch draws nothing here, and `artFor` falls back
+ * to the card's own numbers. RECORDED, NOT FIXED: drawing the card's own spans needs the first
+ * and last event times on the wire.
  */
-export function peakLanes(sessions: readonly ArtSession[]): Lane[][] | null {
+export function peakLanes(sessions: readonly ArtSession[], atOnce?: number | null): Lane[][] | null {
   const spans = sessions.map(spanOf).filter((s): s is [number, number] => s !== null);
   if (spans.length < 2) return null;
   const events = spans.flatMap(([a, b]) => [
@@ -460,6 +469,7 @@ export function peakLanes(sessions: readonly ArtSession[]): Lane[][] | null {
     }
   }
   if (peak < 1) return null;
+  if (atOnce != null && peak !== atOnce) return null;
   const busy = spans.filter(([a, b]) => a <= at && at < b);
   const lo0 = Math.min(...busy.map((s) => s[0]));
   const hi0 = Math.max(...busy.map((s) => s[1]));
@@ -602,11 +612,13 @@ function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): Art
       return heights ? { kind: 'series', series: heights, shape: 'area', basis: 'session_strip' } : fallback;
     }
     case 'agents_at_once': {
-      const lanes = src.sessions ? peakLanes(src.sessions) : null;
+      // Lanes only when the cached windows' busiest moment is the card's own count.
+      const lanes = src.sessions && typeof card.value === 'number' ? peakLanes(src.sessions, card.value) : null;
       if (lanes) return { kind: 'lanes', lanes, basis: 'peak_overlap' };
-      // No sessions on this phone to draw the overlap from: the card's own count of helper
-      // agents, one square each, the most that ran at once in ink (the analysis page's
-      // "every agent that ran, one square each"). Exact numbers from the report, never a shape.
+      // No sessions on this phone to draw the overlap from, or none that agree with the card:
+      // the card's own count of helper agents, one square each, the most that ran at once in
+      // ink (the analysis page's "every agent that ran, one square each"). Exact numbers from
+      // the report, never a shape.
       const total = card.extras.subagents;
       const peak = card.extras.subagents_peak;
       return typeof total === 'number' && total > 0

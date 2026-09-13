@@ -22,8 +22,8 @@
  * The pure logic (splitting, stagger, typewriter frames, flap plans, shuffle strips, bands) is
  * in the `.ts` files beside them, and `__tests__/bitsText.test.ts` holds it.
  *
- * The dev gallery is not exported here (Metro does not tree shake); import it from
- * './TextBitsGallery' directly.
+ * The dev gallery that once sat beside them was reached by no route and no test and was removed
+ * (FOUND IN REVIEW, 2026-09-13); the dev screen is `app/dev-gallery.tsx`.
  */
 export { SplitText, type SplitTextProps } from './SplitText';
 export { BlurText, type BlurTextProps } from './BlurText';

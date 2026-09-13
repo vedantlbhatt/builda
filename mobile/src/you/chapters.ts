@@ -26,6 +26,7 @@ import {
   isRefused,
   moneyOf,
   NO_REPORT,
+  readSpan,
   sentence,
   shippingOf,
   type HeroModel,
@@ -138,7 +139,7 @@ export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): 
   const scope =
     priced > 0
       ? b.report?.money
-        ? `The last ${count(b.report.window_days, 'day')}, as your Mac priced them: ${count(priced, 'session')}.`
+        ? `${readSpan(b.report, now).phrase}, as your Mac priced them: ${count(priced, 'session')}.`
         : `The last ${count(b.window_days, 'day')} on the server: ${count(priced, 'session')} priced.`
       : null;
 
@@ -300,11 +301,12 @@ export function youTab(b: BuilderProfileResponse, profile: Profile | null, now: 
 
   // Your analysis: the days it reads.
   const cov = report?.coverage ?? null;
-  if (cov) {
+  if (cov && report) {
+    const read = readSpan(report, now);
     doors.push(
       door('analysis', 'Your analysis', '/analysis', {
         num: spec(n(cov.active_days)),
-        caption: `${cov.active_days === 1 ? 'day' : 'days'} with a session, of the last ${n(cov.window_days)}`,
+        caption: `${cov.active_days === 1 ? 'day' : 'days'} with a session, ${read.window ? `of the last ${n(cov.window_days)}` : read.inline}`,
         note: ANALYSIS_CONTENTS,
       }),
     );

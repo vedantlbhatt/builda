@@ -218,11 +218,23 @@ export function pyFloorDiv(a: number, b: number): number {
 }
 
 /**
+ * THE WHOLE MINUTES of a duration: floored, never rounded up. One function for a session's own
+ * clock in minutes, the figure (`theme.duration`) and the sentence (`floorMins`), so the two can
+ * never disagree by a minute. FOUND IN REVIEW (2026-09-13): the session page printed 3,570 s as
+ * "59m" on the hero and "You built for 1h 00m" under it, one floored and one rounded. Floored
+ * because a duration is a clock: 59 minutes and 30 seconds has not been an hour yet, which is
+ * the cards' rule too (`wrapped._floor_mins`).
+ */
+export function wholeMinutes(seconds: number): number {
+  return pyFloorDiv(Math.max(0, seconds), 60);
+}
+
+/**
  * `wrapped._floor_mins`: a record's length, never rounded UP. 3,585 seconds is 59 minutes
- * on every card that says it.
+ * on every card that says it. The minutes are `wholeMinutes`.
  */
 export function floorMins(seconds: number): string {
-  const m = pyFloorDiv(Math.max(0, seconds), 60);
+  const m = wholeMinutes(seconds);
   if (m < 1) return 'under a minute';
   if (m < 60) return count(m, 'minute');
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;

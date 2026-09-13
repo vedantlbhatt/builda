@@ -9,6 +9,7 @@ export const REPORT_MAX_LENGTHS = {
 } as const;
 
 export type TrendDirection = "up" | "down" | "steady";
+export type AgentType = "general-purpose" | "Explore" | "Plan" | "fork" | "workflow-subagent" | "statusline-setup" | "output-style-setup" | "claude-code-guide" | "unknown" | "custom";
 export type WrappedCard = "builder_type" | "shipped" | "work_style" | "longest_session" | "agents_at_once" | "go_to_prompt" | "streak" | "change_course" | "crash_out" | "prompt_length" | "deep_sessions" | "time_put_in" | "cryptic_prompt" | "prompts_per_session" | "kind_of_work";
 export type WrappedUnit = "archetype" | "lines" | "style" | "seconds" | "sessions" | "sends" | "days" | "share" | "score" | "words" | "hours" | "prompts_per_session" | "kind";
 export type WrappedBasis = "archetype_rules" | "project_edit_tools_and_credited_shell_writes" | "edit_tools_only" | "uploaded_agent_lines" | "absent" | "autonomy_then_prompts_then_steer" | "attended_seconds_rank" | "sweep_over_first_to_last_event" | "normalized_prompt_text_across_sessions" | "days_with_a_commit_and_an_attended_session" | "interrupts_and_correction_markers" | "profanity_caps_punctuation_markers" | "words_per_prompt" | "attended_sessions_over_an_hour" | "active_seconds" | "vowelless_runs" | "prompts_over_attended_sessions" | "commit_subject_labels" | "lines_by_file_role" | "commit_subject_labels_then_lines_by_file_role";
@@ -37,6 +38,7 @@ export type StackEvidence = "manifest" | "language" | "command" | "path" | "tool
  * vocab_term, every stack_item) and a test can check the copy covers each one. */
 export const REPORT_ENUMS = {
   trend_direction: ["up", "down", "steady"],
+  agent_type: ["general-purpose", "Explore", "Plan", "fork", "workflow-subagent", "statusline-setup", "output-style-setup", "claude-code-guide", "unknown", "custom"],
   wrapped_card: ["builder_type", "shipped", "work_style", "longest_session", "agents_at_once", "go_to_prompt", "streak", "change_course", "crash_out", "prompt_length", "deep_sessions", "time_put_in", "cryptic_prompt", "prompts_per_session", "kind_of_work"],
   wrapped_unit: ["archetype", "lines", "style", "seconds", "sessions", "sends", "days", "share", "score", "words", "hours", "prompts_per_session", "kind"],
   wrapped_basis: ["archetype_rules", "project_edit_tools_and_credited_shell_writes", "edit_tools_only", "uploaded_agent_lines", "absent", "autonomy_then_prompts_then_steer", "attended_seconds_rank", "sweep_over_first_to_last_event", "normalized_prompt_text_across_sessions", "days_with_a_commit_and_an_attended_session", "interrupts_and_correction_markers", "profanity_caps_punctuation_markers", "words_per_prompt", "attended_sessions_over_an_hour", "active_seconds", "vowelless_runs", "prompts_over_attended_sessions", "commit_subject_labels", "lines_by_file_role", "commit_subject_labels_then_lines_by_file_role"],
@@ -84,8 +86,8 @@ export interface ReportTrend {
 }
 
 export interface ReportAgentType {
-  /** the subagent type as the harness names it: general-purpose, Explore, workflow-subagent. (max 80 chars) */
-  name: string;
+  /** the subagent type, one of the harness's own (analysis/agents.py BUILTIN_AGENT_TYPES); unknown when the sidecar never said, and custom for every name somebody gave their own agent, which is free text and never leaves the machine. */
+  name: AgentType;
   /** how many instances of that type ran. */
   agents: number;
 }

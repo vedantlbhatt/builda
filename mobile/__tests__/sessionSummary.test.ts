@@ -176,17 +176,21 @@ describe('against the engine itself (skipped without python3)', () => {
 // ------------------------------------------------------------------ the time it took
 
 describe('the time sentence: one total, one part of it, and who was there', () => {
-  test('attended beside the total, in feedback._mins, with the prompts you sent', () => {
+  test('attended beside the total, in whole minutes (the hero\'s rule), with the prompts you sent', () => {
     expect(timeSentence(input())).toBe('You built for 42 minutes, 38 minutes of it with you there, and sent five prompts.');
     expect(timeSentence(input({ active_seconds: 19_020, attended_seconds: 15_120, stats: stats({ human_prompt_count: 52 }) }))).toBe(
       'You built for 5h 17m, 4h 12m of it with you there, and sent 52 prompts.'
     );
   });
 
-  test('all of it, and almost all of it when the minutes round to the same number', () => {
+  test('all of it, and almost all of it when the two come to the same whole minute', () => {
     expect(timeSentence(input({ attended_seconds: 2526 }))).toBe('You built for 42 minutes, all of it with you there, and sent five prompts.');
-    expect(timeSentence(input({ attended_seconds: 2500 }))).toBe(
+    expect(timeSentence(input({ attended_seconds: 2521 }))).toBe(
       'You built for 42 minutes, almost all of it with you there, and sent five prompts.'
+    );
+    // A whole minute short is said as the minutes: 2,500 s is 41 of them, never "almost all" of 42.
+    expect(timeSentence(input({ attended_seconds: 2500 }))).toBe(
+      'You built for 42 minutes, 41 minutes of it with you there, and sent five prompts.'
     );
   });
 
@@ -221,15 +225,15 @@ describe('the time sentence: one total, one part of it, and who was there', () =
     );
   });
 
-  test('when both clocks round to one minute, the word follows the ratio, not the rounding', () => {
-    // 150 s and 91 s both say "2 minutes"; 91 of 150 is most of it, not almost all.
-    expect(timeSentence(input({ active_seconds: 150, attended_seconds: 91 }))).toBe(
+  test('when both clocks come to the same whole minute, the word follows the ratio, not the minutes', () => {
+    // 150 s and 125 s both say "2 minutes"; 125 of 150 is most of it, not almost all.
+    expect(timeSentence(input({ active_seconds: 150, attended_seconds: 125 }))).toBe(
       'You built for 2 minutes, most of it with you there, and sent five prompts.'
     );
     expect(timeSentence(input({ active_seconds: 20, attended_seconds: 8 }))).toBe(
       'You built for under a minute, part of it with you there, and sent five prompts.'
     );
-    expect(timeSentence(input({ active_seconds: 2526, attended_seconds: 2500 }))).toBe(
+    expect(timeSentence(input({ active_seconds: 2526, attended_seconds: 2521 }))).toBe(
       'You built for 42 minutes, almost all of it with you there, and sent five prompts.'
     );
   });

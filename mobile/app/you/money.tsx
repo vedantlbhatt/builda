@@ -10,6 +10,7 @@ import { Num } from '../../src/insights/Num';
 import { DATA, GROUND, SPECTRUM, type Hue } from '../../src/insights/palette';
 import { Block, Section } from '../../src/insights/reveal';
 import { BUCKET_COLOR, BurnBody, modelColors } from '../../src/insights/sections/Money';
+import { typeRoles } from '../../src/theme';
 import { useAccent } from '../../src/theme/accent';
 import { ChapterPage } from '../../src/you/ChapterPage';
 import { doorHues, isRefused, moneyPage, REPORT_COMMAND, type MoneyLedgerRow, type MoneyModelRow, type MoneyPage } from '../../src/you/chapters';
@@ -355,7 +356,7 @@ const styles = StyleSheet.create({
   legendValue: { fontVariant: ['tabular-nums'] },
   ringRow: { flexDirection: 'row', alignItems: 'center', gap: 22 },
   ringCentre: { alignItems: 'center', justifyContent: 'center' },
-  ringCaption: { fontSize: 13, lineHeight: 16, fontWeight: '600', color: GROUND.dim, marginTop: 2, maxWidth: 110 },
+  ringCaption: { fontSize: typeRoles.meta.size, lineHeight: 16, fontWeight: '600', color: GROUND.dim, marginTop: 2, maxWidth: 110 },
   ringLegend: { flex: 1, gap: 14 },
   modelLine: { gap: 0 },
   modelHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },

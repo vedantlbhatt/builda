@@ -97,10 +97,10 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   (`python3 scripts/gen_widget_creatures.py`), rebuild, re-capture island/lock/widget.
 - live state: Lock Screen "Finished, with two files changed" beside "+0 -0" when line counts
   are unknown (should be hidden, never 0); small widget truncates the sentence.
-- simulator: the app on 231E27A6 was rebuilt at 08:40 with `BUILDER_API_URL` (the address is
+- simulator: the app on <simulator 1> was rebuilt at 08:40 with `BUILDER_API_URL` (the address is
   baked in at build time) and signed in with its own minted device
   (`~/.builder-overnight/simulator.json`), never `device.json`'s pair. The rebuild's
-  `expo run:ios` opened its dev client link on the OTHER booted simulator (C3F41B44) too.
+  `expo run:ios` opened its dev client link on the OTHER booted simulator (<simulator 2>) too.
 
 ## The final artifact (plan)
 

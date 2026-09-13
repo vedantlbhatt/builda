@@ -24,7 +24,7 @@
  */
 
 import { explainBurn } from '../copy/burn';
-import { capital, mins } from '../copy/numbers';
+import { capital, floorMins } from '../copy/numbers';
 import { spoken } from '../copy/plain';
 import { renderTitle } from '../copy/title';
 import type { SessionDetail } from '../data/api';
@@ -82,8 +82,8 @@ export function agentAlone(s: Pick<SessionDetail, 'unattended' | 'attended_secon
 }
 
 /**
- * A part of a whole said in words, for the one place a number cannot be: both clocks round to
- * the same minute. UNMEASURED JUDGEMENT CALL on the two bars, 0.9 for "almost all" and 0.5 for
+ * A part of a whole said in words, for the one place a number cannot be: both clocks come to
+ * the same whole minute. UNMEASURED JUDGEMENT CALL on the two bars, 0.9 for "almost all" and 0.5 for
  * "most" (the plain meaning of each word); it only ever speaks for sittings of a few minutes.
  */
 function sharePhrase(share: number): string {
@@ -95,12 +95,17 @@ function sharePhrase(share: number): string {
 /**
  * The time the session took, and who was there. "With you there" is the one phrase for
  * attended time (docs/overnight-engine.md, the copy review). Only one part of the split is
- * said beside the total: the two parts rounded separately need not add up to the rounded
+ * said beside the total: the two parts floored separately need not add up to the floored
  * total, and a sentence whose own numbers disagree is two answers to one question.
+ *
+ * The minutes are `floorMins`, whose whole minutes are `wholeMinutes`, the rule the hero's
+ * figure (`theme.duration`) reads: one number of minutes on the page, never two. FOUND IN
+ * REVIEW (2026-09-13): this rounded (`mins`) under a hero that floored, so 3,570 s read "59m"
+ * over "You built for 1h 00m".
  */
 export function timeSentence(s: SummaryInput): string {
   const live = isLive(s);
-  const total = mins(s.active_seconds);
+  const total = floorMins(s.active_seconds);
   if (agentAlone(s)) {
     return live ? `So far the agent has built for ${total} on its own.` : `The agent built for ${total} on its own.`;
   }
@@ -108,11 +113,11 @@ export function timeSentence(s: SummaryInput): string {
   const attended = s.attended_seconds;
   if (typeof attended === 'number') {
     if (attended >= s.active_seconds) present = ', all of it with you there';
-    else if (mins(attended) !== total) present = `, ${mins(attended)} of it with you there`;
-    // Short of all of it, and the same number of minutes once rounded: "42 minutes, 42
-    // minutes of it" would read as all of it, which it was not. At 42 minutes the two are
-    // under a minute apart; in a sitting of two or three minutes one rounded minute can hide
-    // a third of it, so the word follows the ratio, not the rounding.
+    else if (floorMins(attended) !== total) present = `, ${floorMins(attended)} of it with you there`;
+    // Short of all of it, and the same whole number of minutes: "42 minutes, 42 minutes of
+    // it" would read as all of it, which it was not. At 42 minutes the two are under a minute
+    // apart; in a sitting of two or three minutes one whole minute can hide a third of it, so
+    // the word follows the ratio, not the minutes.
     else present = `, ${sharePhrase(attended / s.active_seconds)} of it with you there`;
   }
   const p = s.stats?.human_prompt_count;

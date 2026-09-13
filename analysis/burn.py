@@ -443,9 +443,9 @@ def turns_for_window(
     counted sittings, three of them exactly 2x (one reported 8,234,650 tokens where its
     distinct messages carry 4,117,325; its 168 records hold 81 distinct uuids), and the
     corpus burn total 25,528,872 tokens high. A message id is the API's own id for one
-    response, so two files carrying it carry one response. RECORDED, NOT FIXED:
-    `capture.sessions.token_ledger` sums per source and doubles the same sittings, and
-    capture is out of bounds for this workflow.
+    response, so two files carrying it carry one response. `capture.sessions.token_ledger`
+    summed per source and doubled the same sittings; it keys on the message id across the
+    sitting now, the rule this function reads.
     """
     out: list[Turn] = []
     seen: set[str] = set()

@@ -58,6 +58,41 @@ _SESSION_DIR = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 #: the timestamps and a handoff routinely straddles one.
 MIN_OVERLAP_SEC = 2.0
 
+#: The agent types the uploaded report may NAME: the ones the harness itself ships. Any
+#: other name is `AGENT_TYPE_CUSTOM` on the wire, because a custom agent is named by
+#: whoever wrote its `.claude/agents/<name>.md`, and a name like `acme-payroll-migrator`
+#: says whose payroll is being migrated. FOUND IN REVIEW (2026-09-13): the name travelled
+#: as free text. MEASURED on 2026-09-13: `~/.claude/projects`, 137 agents: general-purpose
+#: 116, Explore 13, fork 4, 4 with no type recorded; `~/.builder-overnight/corpus`, 39:
+#: general-purpose 29, Explore 7, 3 unrecorded; `workflow-subagent` on the container this
+#: module was first measured on. `Plan`, `statusline-setup`, `output-style-setup` and
+#: `claude-code-guide` are the rest of Claude Code's own roster, listed rather than
+#: measured: a built in name says nothing about anybody. `spec/report.v1.json`'s
+#: `agent_type` enum is this list and the two below, in this order.
+BUILTIN_AGENT_TYPES: tuple[str, ...] = (
+    "general-purpose",
+    "Explore",
+    "Plan",
+    "fork",
+    "workflow-subagent",
+    "statusline-setup",
+    "output-style-setup",
+    "claude-code-guide",
+)
+#: A sidecar that never said its type and whose spawn could not be matched.
+AGENT_TYPE_UNRECORDED = "unknown"
+#: Every name that is not a built in one.
+AGENT_TYPE_CUSTOM = "custom"
+AGENT_TYPES: tuple[str, ...] = (*BUILTIN_AGENT_TYPES, AGENT_TYPE_UNRECORDED, AGENT_TYPE_CUSTOM)
+
+
+def wire_type(name: str | None) -> str:
+    """The `agent_type` an agent's type travels as: a built in name as itself, no name as
+    `unknown`, and anything else as `custom`. Never the name somebody gave their agent."""
+    if name is None or name == AGENT_TYPE_UNRECORDED:
+        return AGENT_TYPE_UNRECORDED
+    return name if name in BUILTIN_AGENT_TYPES else AGENT_TYPE_CUSTOM
+
 
 @dataclasses.dataclass(frozen=True)
 class AgentSpan:
@@ -356,6 +391,10 @@ def fanout(agent_spans: Sequence[AgentSpan], wall_seconds: float) -> Fanout:
 
 
 __all__ = [
+    "AGENT_TYPES",
+    "AGENT_TYPE_CUSTOM",
+    "AGENT_TYPE_UNRECORDED",
+    "BUILTIN_AGENT_TYPES",
     "AgentSpan",
     "Fanout",
     "MIN_OVERLAP_SEC",
@@ -363,4 +402,5 @@ __all__ = [
     "peak_concurrency",
     "sidecar_paths",
     "spans",
+    "wire_type",
 ]

@@ -55,6 +55,18 @@
       "down",
       "steady"
     ],
+    "agent_type": [
+      "general-purpose",
+      "Explore",
+      "Plan",
+      "fork",
+      "workflow-subagent",
+      "statusline-setup",
+      "output-style-setup",
+      "claude-code-guide",
+      "unknown",
+      "custom"
+    ],
     "wrapped_card": [
       "builder_type",
       "shipped",
@@ -479,9 +491,9 @@
     "ReportAgentType": [
       {
         "name": "name",
-        "type": "string",
-        "max": "label",
-        "doc": "the subagent type as the harness names it: general-purpose, Explore, workflow-subagent."
+        "type": "enum",
+        "values": "agent_type",
+        "doc": "the subagent type, one of the harness's own (analysis/agents.py BUILTIN_AGENT_TYPES); unknown when the sidecar never said, and custom for every name somebody gave their own agent, which is free text and never leaves the machine."
       },
       {
         "name": "agents",

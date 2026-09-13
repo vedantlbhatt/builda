@@ -30,8 +30,9 @@ The pipeline, and where each step's rules live:
    `ended_at` extended by the same amount so active never exceeds elapsed.
 5. **counts** — `analysis.digest.load_claude_code_events` supplies tool calls, edit-tool
    line deltas, human edits and compactions; nothing here re-parses tool inputs.
-6. **tokens** — deduped on `(source_id, message.id)`, first record in file order carries
-   the usage, `<synthetic>` and sidechain records excluded (`TokenAccountant.ledger`).
+6. **tokens** — deduped on `message.id` across the sitting's files (a resumed transcript
+   copies the old one's messages), first record in file order carries the usage,
+   `<synthetic>` and sidechain records excluded (`token_ledger`).
 
 **Every branch is treated as live.** The engine excludes records off the surviving DAG
 branch from lines, tool counts and the strip, and reports their tokens as
@@ -407,9 +408,20 @@ class Ledger:
 
 
 def token_ledger(records: list[dict]) -> Ledger:
-    """`TokenAccountant.ledger`: first record per `(source, message.id)` in file order is
-    authoritative; sidechain and `<synthetic>` records never contribute."""
-    seen: set[tuple[str, str]] = set()
+    """`TokenAccountant.ledger` over ONE SITTING's records: the first record per
+    `message.id` in (source, line) order is authoritative; sidechain and `<synthetic>`
+    records never contribute.
+
+    Keyed on the message id alone across the sitting, not `(source, message.id)`: a
+    resumed transcript BEGINS WITH A COPY of the old one's records (the same message id
+    and usage under a new session id), the sitting pools both files, and a per source key
+    counted every copied message twice. A message id is the API's own id for one response,
+    so two files carrying it carry one response; `analysis.burn.turns_for_window` reads
+    each message once across a sitting's files by the same rule, so the payload's buckets
+    and its own burn block now count one set of messages. FOUND IN REVIEW (2026-09-13): the
+    suite's resumed sitting uploaded 1,380 tokens beside a burn block of 920; on the real
+    corpus 5 of 158 sittings, three of them exactly 2x (burn.py's measurement)."""
+    seen: set[str] = set()
     b = {"input": 0, "output": 0, "cache_read": 0, "cache_w5m": 0, "cache_w1h": 0}
     out_by_model: Counter[str] = Counter()
     saw = False
@@ -418,10 +430,9 @@ def token_ledger(records: list[dict]) -> Ledger:
         mid = r.get("msg_id")
         if not u or not mid or r.get("sidechain") or r.get("model") == SYNTHETIC_MODEL_SENTINEL:
             continue
-        key = (r["source_id"], mid)
-        if key in seen:
+        if mid in seen:
             continue
-        seen.add(key)
+        seen.add(mid)
         saw = True
         cc = u.get("cache_creation") if isinstance(u.get("cache_creation"), dict) else {}
         w5 = cc.get("ephemeral_5m_input_tokens")
@@ -509,13 +520,27 @@ def build_payload(
     reads its own files. `live` is NOT computed here: it moves with the clock, not the
     bytes, and is attached after the hash (`attach_live`).
     """
+    from analysis import patterns as pat
+
     observed_at = time.time() if observed_at is None else observed_at
     attended = round(s.attended)
     autonomous = round(s.autonomous)
     active = attended + autonomous
     wall = s.ended_at - s.started_at
 
-    tools = [e for e in s.events if e.kind == "tool"]
+    # EACH EVENT ONCE, before anything is counted (`patterns.distinct_events`, the rule the
+    # corpus cut applies as `corpus.distinct` and `session_burn` applies to its own block).
+    # A resumed transcript begins with a copy of the old one's records and the sitting pools
+    # both files, so every count below read the copies twice. FOUND IN REVIEW (2026-09-13),
+    # the suite's own resumed sitting through this function: tool calls 9 where there were
+    # 6, prompts 3 where there were 2, and tokens 1,380 beside its own burn block's 920.
+    s = dataclasses.replace(s, events=pat.distinct_events(s.events))
+    # The reference's prompt count (`measure_boundaries`: a `prompt` record), each record
+    # once: a copied record keeps its uuid, and a record with no uuid is never merged.
+    prompts = len(
+        {r.get("uuid") or (r["source_id"], r["line"]) for r in s.records if r["kind"] == "prompt"}
+    )
+
     tool_counts = uploaded_tool_counts(s.events, s.harness)
     meaningful = sum(1 for e in s.events if e.kind in _MEANINGFUL_EV_KINDS)
     human_edits = sum(1 for e in s.events if e.kind == "human_edit")
@@ -575,7 +600,7 @@ def build_payload(
         "strip_columns": strip.encode_columns(cols),
         "strip_marks": marks,
         "timeline_fidelity": "full",
-        "human_prompt_count": s.prompts,
+        "human_prompt_count": prompts,
         "prompt_count_basis": "typed_promptsource",
         "tool_calls": tool_counts,
         "files_touched": len(touched),
@@ -674,9 +699,15 @@ def session_burn_of(s: Session, loader=None) -> dict | None:
 def title_ids(s: Session) -> dict | None:
     """The contract v4 `title_ids` block: `analysis.vocab.session_title`'s verb, object and
     numbers, never its words (the phone renders "Debugged a failing test suite" from the
-    ids) and never `names=True` (the one LOCAL title, with a directory name in it). None
-    when no title rule fired (a refusal: no tool calls, a parser blind spot, writes that
-    name no file) or the engine is not deployed beside capture."""
+    ids) and never `names=True` (the one LOCAL title, with a directory name in it).
+
+    A REFUSAL (no tool calls, a parser blind spot, writes that name no file, only Claude
+    Code's own files written) is a document with no verb and the refusal's code in
+    `reason`, as a burn refusal is `burn.reason`. FOUND IN THE ADVERSARIAL REVIEW
+    (2026-09-13): it was None, which also means "not computed", so the server kept a live
+    cut's title after the same sitting's final cut refused one. None now means only that
+    the engine is not deployed beside capture. An answer says `reason: null`: every declared
+    key is on the wire, as burn's are (the payload's hash moves once for a titled sitting)."""
     try:
         from analysis import patterns as pat
         from analysis import vocab
@@ -694,8 +725,14 @@ def title_ids(s: Session) -> dict | None:
         )
     )
     if t["verb"] is None:
-        return None
-    return {"verb": t["verb"], "object": t["object"], "n": t["count"], "modules": t["modules"]}
+        return {"verb": None, "object": None, "n": None, "modules": None, "reason": t["code"]}
+    return {
+        "verb": t["verb"],
+        "object": t["object"],
+        "n": t["count"],
+        "modules": t["modules"],
+        "reason": None,
+    }
 
 
 # ----------------------------------------------------------------------------- live

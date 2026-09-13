@@ -255,7 +255,7 @@ describe('refusals, from the code and the numbers beside it', () => {
     [card('change_course', { reason: 'below_prompt_floor', n: 1, needed: 5 }), '1 prompt with text, 5 needed'],
     [card('shipped', { reason: 'no_lines_attributed', n: 3 }), 'none of the 3 sessions has a line the agent wrote into a project file that can be counted, and 0 would read as nothing written'],
     [card('longest_session', { reason: 'no_presence' }), 'no session had you present, and an unattended run cannot hold a record'],
-    [card('cryptic_prompt', { reason: 'no_cryptic_prompt', n: 0 }), 'no short prompt of 2 or more words to read (4 to 80 characters, no path, link or hash)'],
+    [card('cryptic_prompt', { reason: 'no_cryptic_prompt', n: 0 }), 'no short prompt with 2 or more words of 4 or more characters to read (4 to 80 characters, no path, link or hash)'],
     [card('cryptic_prompt', { reason: 'no_cryptic_prompt', n: 1 }), 'the 1 short prompt was not mostly keyboard mash (five letters in a row with no vowel)'],
     [card('cryptic_prompt', { reason: 'no_cryptic_prompt', n: 410 }), 'none of the 410 short prompts was mostly keyboard mash (five letters in a row with no vowel)'],
     [

@@ -1141,6 +1141,19 @@ VERBS = (
 #: What a title is about: a file role, or one of four things that are not files.
 OBJECTS = (*plain.ROLES, "test_suite", "commit", "failure", "codebase")
 
+#: Why a sitting has no title, as the code the wire carries (contract v4 `title_refusal`,
+#: `title_ids.reason`) beside the prose `reason` this module writes for a person on the
+#: machine. FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a refusal went on the wire as null,
+#: which also means "not computed", so the server could not tell a refused final cut from
+#: a client that computes no titles and kept the live cut's title forever. In the order
+#: `session_title` tries them; server/tests/test_contract.py reads every `_refused` call.
+TITLE_REFUSALS = (
+    "no_tool_calls",
+    "writes_name_no_file",
+    "harness_files_only",
+    "below_checkpoint_density",
+)
+
 #: A refactor touches this many files. UNMEASURED JUDGEMENT CALL (the design's).
 REFACTOR_MIN_FILES = 5
 
@@ -1186,7 +1199,8 @@ def _common_dir(paths) -> str | None:
     return tally.most_common(1)[0][0] if tally else None
 
 
-def _refused(n: int, reason: str, shell: tuple[int, int] = (0, 0)) -> dict:
+def _refused(n: int, reason: str, shell: tuple[int, int] = (0, 0), *, code: str) -> dict:
+    assert code in TITLE_REFUSALS, code
     return {
         "title": None,
         "verb": None,
@@ -1198,6 +1212,7 @@ def _refused(n: int, reason: str, shell: tuple[int, int] = (0, 0)) -> dict:
         "shell_calls": shell[0],
         "shell_calls_cut": shell[1],
         "reason": reason,
+        "code": code,
     }
 
 
@@ -1245,7 +1260,9 @@ def session_title(session: patterns.SessionEvents, *, names: bool = False) -> di
     events = list(session.events)
     calls = [e for e in events if e.kind == "tool"]
     if not calls:
-        return _refused(0, "no tool calls in this session, so there is no work to title")
+        return _refused(
+            0, "no tool calls in this session, so there is no work to title", code="no_tool_calls"
+        )
 
     writes = [e for e in calls if patterns._wrote(e) and not _harness_event(e)]
     scratch = {e.path for e in calls if patterns._wrote(e) and _harness_event(e)}
@@ -1304,6 +1321,7 @@ def session_title(session: patterns.SessionEvents, *, names: bool = False) -> di
             "shell_calls": shell[0],
             "shell_calls_cut": shell[1],
             "reason": None,
+            "code": None,
         }
 
     if recovered >= 1:
@@ -1407,6 +1425,7 @@ def session_title(session: patterns.SessionEvents, *, names: bool = False) -> di
             ("the one write names no file" if k == 1 else f"none of the {k} writes names a file")
             + ", so there is no role to title the work by",
             shell,
+            code="writes_name_no_file",
         )
     if scratch:
         # Every file written was Claude Code's own (a scratch script, a memory note).
@@ -1424,6 +1443,7 @@ def session_title(session: patterns.SessionEvents, *, names: bool = False) -> di
             )
             + " Claude Code's own scratch or notes, so there is no project work to title",
             shell,
+            code="harness_files_only",
         )
     if blind:
         return _refused(
@@ -1432,6 +1452,7 @@ def session_title(session: patterns.SessionEvents, *, names: bool = False) -> di
             f"transcript shows, one in {round(1 / patterns.MIN_CHECKPOINT_DENSITY)} needed: a "
             "title would describe what the transcript hides, not the work",
             shell,
+            code="below_checkpoint_density",
         )
     return answer(
         "Looked around the codebase",
@@ -1632,6 +1653,7 @@ __all__ = [
     "STACK",
     "StackItem",
     "TESTED_MIN_RUNS",
+    "TITLE_REFUSALS",
     "Term",
     "VERBS",
     "glossary",

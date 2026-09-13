@@ -11,8 +11,8 @@
  *   DotGrid       dots a tap shoves               the codebase map
  *
  * Every one takes `BackgroundProps` (spec.ts documents them) and adds its own react-bits tuning.
- * Import from here; `BackgroundsGallery` is deliberately not exported (Metro does not tree shake):
- * import it from './BackgroundsGallery' in a dev screen.
+ * Import from here. The dev gallery that once sat beside them was reached by no route and no test
+ * and was removed (FOUND IN REVIEW, 2026-09-13); the dev screen is `app/dev-gallery.tsx`.
  *
  * Ported from react-bits `Backgrounds/*` by David Haz.
  * react-bits is MIT + Commons Clause (Copyright (c) 2026 David Haz): the notice is kept here

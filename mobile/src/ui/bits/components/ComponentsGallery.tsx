@@ -72,7 +72,7 @@ const FACES: readonly { hue: HueName; creature: Animal; question: string; answer
   { hue: 'ember', creature: 'fox', question: 'How many agents do you run?', answer: '3 at once', line: 'Most of the time, one leads.' },
   { hue: 'brass', creature: 'bee', question: 'How much did you ship?', answer: '229k lines', line: 'Across 1,000 commits.' },
   { hue: 'tide', creature: 'whale', question: 'How do you work?', answer: 'In dialogue', line: 'A back and forth with the agent.' },
-  { hue: 'iris', creature: 'octopus', question: 'Your longest session?', answer: '16h 0m', line: 'The deepest stretch.' },
+  { hue: 'iris', creature: 'octopus', question: 'Your longest session?', answer: '16h 00m', line: 'The deepest stretch.' },
   { hue: 'orchid', creature: 'cat', question: 'Your go to prompt?', answer: '5 times', line: 'The same words, coming back.' },
 ];
 

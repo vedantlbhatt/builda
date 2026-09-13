@@ -729,7 +729,7 @@
   "question": "Your most cryptic prompt?",
   "display": null,
   "sentence": null,
-  "refusal": "no short prompt of 2 or more words to read (4 to 80 characters, no path, link or hash)",
+  "refusal": "no short prompt with 2 or more words of 4 or more characters to read (4 to 80 characters, no path, link or hash)",
   "local": true
  },
  {

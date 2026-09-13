@@ -219,10 +219,33 @@ class Agents(unittest.TestCase):
         self.assertEqual(rp.build(fanout=fo)["agents"]["produced"], fo.produced)
 
     def test_types_are_ranked_and_capped(self):
-        spans = [span(0, 10, f"a{i}", kind=f"k{i % 20}") for i in range(40)]
+        """Every type the enum names, most common first; the spec's cap holds the list."""
+        kinds = [*ag.BUILTIN_AGENT_TYPES, None, "k-made-up"]
+        spans = [span(0, 10, f"a{i}", kind=kinds[i % len(kinds)]) for i in range(40)]
         by_type = rp.build(fanout=ag.fanout(spans, 10))["agents"]["by_type"]
-        self.assertEqual(len(by_type), rp.MAX_AGENT_TYPES)
-        self.assertGreaterEqual(by_type[0]["agents"], by_type[-1]["agents"])
+        self.assertLessEqual(len(by_type), rp.MAX_AGENT_TYPES)
+        self.assertEqual(sorted(t["name"] for t in by_type), sorted(ag.AGENT_TYPES))
+        counts = [t["agents"] for t in by_type]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+        self.assertEqual(sum(counts), 40)
+
+    def test_a_custom_agents_name_never_travels(self):
+        """FOUND IN REVIEW (2026-09-13): `by_type` carried the name an agent's author typed
+        into `.claude/agents/<name>.md`, free text, into the uploaded report. MEASURED
+        before the fix: `[{"name": "acme-payroll-migrator", "agents": 3}]`; after, two
+        custom names and one built in read `[custom 2, general-purpose 1]`, and the spec's
+        `agent_type` enum is `agents.AGENT_TYPES`, so the server refuses any other name."""
+        spans = [
+            span(0, 10, "a", kind="acme-payroll-migrator"),
+            span(0, 10, "b", kind="zebra-release-bot"),
+            span(0, 10, "c", kind="general-purpose"),
+        ]
+        block = rp.build(fanout=ag.fanout(spans, 10))["agents"]
+        self.assertEqual(block["by_type"], [{"name": "custom", "agents": 2}, {"name": "general-purpose", "agents": 1}])
+        self.assertNotIn("acme", json.dumps(block))
+        self.assertEqual(SPEC["enums"]["agent_type"], list(ag.AGENT_TYPES))
+        name = next(f for f in SPEC["objects"]["ReportAgentType"] if f["name"] == "name")
+        self.assertEqual((name["type"], name["values"]), ("enum", "agent_type"))
 
 
 class WhatMayTravel(unittest.TestCase):

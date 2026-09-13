@@ -123,7 +123,7 @@ export const REFUSALS = {
   "no_commit_history": "no commit history could be read for the repositories these sessions ran in",
   "no_crash_out": "no prompt read as a crash out",
   "no_cryptic_prompt": {
-    "zero": "no short prompt of {min_tokens} or more words to read ({min_chars} to {max_chars} characters, no path, link or hash)",
+    "zero": "no short prompt with {min_tokens} or more words of {min_token_chars} or more characters to read ({min_chars} to {max_chars} characters, no path, link or hash)",
     "one": "the 1 short prompt was not mostly keyboard mash (five letters in a row with no vowel)",
     "other": "none of the {n:short prompt} was mostly keyboard mash (five letters in a row with no vowel)",
   },
@@ -140,6 +140,7 @@ export const KIND_REFUSALS = {
 /** `wrapped.REFUSAL_CONSTANTS`: numbers a refusal names that no card carries. */
 export const REFUSAL_CONSTANTS = {
   "min_tokens": 2,
+  "min_token_chars": 4,
   "min_chars": 4,
   "max_chars": 80,
 } as const;

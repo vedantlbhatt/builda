@@ -660,6 +660,30 @@ class TitleRefusals(unittest.TestCase):
         self.assertTrue(two["reason"].startswith("none of the 2 writes names a file"))
         self.assertFalse(plain.has_dash(got["reason"]))
 
+    def test_every_refusal_carries_its_code_and_every_answer_none(self):
+        """The wire's `title_ids.reason` (contract v4 `title_refusal`): the prose stays on
+        the machine, the code travels, so a refused final cut can clear a titled live one.
+        One code per refusal, and the four codes are `TITLE_REFUSALS` exactly."""
+        patch = ev(1, "tool", "*** Begin Patch", tool="apply_patch", added=12, removed=0)
+        refused = {
+            "no_tool_calls": title(prompt(1, "hello"), ev(2, "assistant", "hi")),
+            "writes_name_no_file": title(patch),
+            "harness_files_only": vocab.session_title(
+                sess([write(i, f"{SCRATCH}/s{i}.py", 5) for i in range(2)])
+            ),
+            "below_checkpoint_density": title(
+                *[sh(i, "python3 - <<'PY'\nx\nPY") for i in range(40)]
+            ),
+        }
+        self.assertEqual(set(refused), set(vocab.TITLE_REFUSALS))
+        for code, got in refused.items():
+            with self.subTest(code=code):
+                self.assertIsNone(got["verb"])
+                self.assertEqual(got["code"], code)
+                self.assertIsInstance(got["reason"], str)
+        answered = title(sh(1, "git commit -m x"))
+        self.assertEqual((answered["verb"], answered["code"]), ("committed", None))
+
     def test_a_commit_beside_pathless_writes_is_titled_by_the_commit(self):
         patch = ev(1, "tool", "*** Begin Patch", tool="apply_patch", added=12, removed=0)
         self.assertEqual(title(patch, sh(2, "git commit -m x"))["title"], "Landed a commit")

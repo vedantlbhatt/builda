@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { OFFLINE_MESSAGE, type BuilderProfileResponse, type Profile, type SessionDetail } from '../data/api';
+import { saveBuilderProfile } from '../data/builderCache';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import type { QuotesUpload } from '../generated/quotes';
@@ -197,8 +198,9 @@ export function useWrappedDeck(options: DeckOptions): WrappedDeckState {
       setBuilder(fresh);
       setQuotesDoc(fresh.quotes ?? null);
       setError(null);
-      // Saved without the quotes: the cached copy never holds a word the owner typed.
-      await cache.setKv(BUILDER_PROFILE_KEY, JSON.stringify({ ...fresh, quotes: undefined }));
+      // Saved without the quotes (`saveBuilderProfile`, the one writer): the cached copy never
+      // holds a word the owner typed.
+      await saveBuilderProfile(fresh, cache);
     } catch (e) {
       setError(e instanceof Error ? e.message : OFFLINE_MESSAGE);
     }

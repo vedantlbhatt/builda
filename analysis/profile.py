@@ -259,6 +259,15 @@ class SessionFact:
     #: marks are deduped for rendering, so the server passes None and the commit night
     #: share comes back None rather than wrong.
     commit_times: tuple[float, ...] | None = None
+    #: How many commits `git log` says landed in this session's OWN window, before the
+    #: first claim rule (`attribute_commits`) handed any of them to an earlier sitting. The
+    #: per session question "did anything land while this ran", which `commit_count` stops
+    #: answering the moment two sittings overlap: the inner of two parallel sittings has its
+    #: commits claimed by the outer one and would read as a sitting that ended with no
+    #: commit. None when the caller did not ask git per window (the server, whose stored
+    #: `commit_count` already IS the per window count); `ended_with_a_commit` then reads
+    #: `commit_count`.
+    commits_in_window: int | None = None
     output_tokens_by_model: Mapping[str, int] = dataclasses.field(default_factory=dict)
     #: The five token buckets for this sitting, or None when the harness reported none.
     #: None is a refusal: Cursor writes {0, 0} on all 14,565 of its message rows, and a
@@ -586,15 +595,35 @@ def attribute_commits(
         if not root:
             continue
         since, until = fact.started_at - COMMIT_ATTRIBUTION_SEC, fact.ended_at
-        mine = [c for c in lister(root, since, until) if c[0] not in claimed]
+        landed = list(lister(root, since, until))
+        mine = [c for c in landed if c[0] not in claimed]
         claimed.update(sha for sha, _ in mine)
         out[i] = dataclasses.replace(
             fact,
             commit_count=len(mine),
             commit_basis=COMMITS_GIT_LOG,
             commit_times=tuple(ts for _, ts in mine),
+            # Before the claim: whether anything landed while THIS sitting ran is a
+            # question about its own window, and the answer does not change because an
+            # outer sitting claimed the commit first (`ended_with_a_commit`).
+            commits_in_window=len(landed),
         )
     return out
+
+
+def ended_with_a_commit(f: SessionFact) -> bool:
+    """Did anything land in this sitting's own window. THE ONE PREDICATE for "a sitting
+    that shipped" and "a sitting that ended with no commit", so `ships_rate` and
+    `spend_without_a_commit_usd` split one set of sittings the same way.
+
+    Per window, never per claim. FOUND IN REVIEW (2026-09-13): four pairs of parallel
+    sittings, the inner one of each making all three of its pair's commits, had every one
+    of those commits claimed by the outer sitting (`attribute_commits`, first claim), so
+    the four inner sittings read "ended with no commit" and put $10.02, half the priced
+    spend, under that label. The first claim count stays the right number for a TOTAL
+    (`_corpus_commits`, the per model commits), where a commit must be counted once.
+    """
+    return (f.commits_in_window if f.commits_in_window is not None else f.commit_count) > 0
 
 
 def _corpus_commits(ss: Sequence[SessionFact]) -> tuple[int | None, str]:
@@ -894,7 +923,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # about most.
     committed_known = [s for s in ss if s.commit_basis == COMMITS_GIT_LOG]
     if len(committed_known) >= MIN_SESSIONS_FOR_SHARE:
-        shipped = sum(1 for s in committed_known if s.commit_count > 0)
+        shipped = sum(1 for s in committed_known if ended_with_a_commit(s))
         m["ships_rate"] = _metric(
             round(shipped / len(committed_known), 3),
             "share of sessions that ended with a commit",
@@ -978,14 +1007,19 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             unpriced_sessions=unpriced or None,
             prices_read_on=str(pricing.PRICES_READ_ON),
         )
+        # Over the PRICED sittings' own hours: the dollars are theirs alone, so an hour the
+        # price table never saw (a Cursor sitting writes {0, 0} on every row, a model not
+        # in the table) is not an hour those dollars bought. FOUND IN REVIEW (2026-09-13):
+        # one priced Claude Code hour at $2.50 beside one Cursor hour read $1.25 an hour.
+        priced_hours = sum(f.active_seconds for f, _ in priced) / 3600.0
         m["spend_per_hour_usd"] = (
             _metric(
-                round(spend / active_hours, 2),
+                round(spend / priced_hours, 2),
                 "US dollars per active hour at list prices",
                 len(priced),
                 price_basis,
             )
-            if active_hours > 0
+            if priced_hours > 0
             else _metric(None, "US dollars per active hour at list prices", 0, "absent", "no active time")
         )
     else:
@@ -1011,7 +1045,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # commit is a story, and it is the one people screenshot.
     shipped_known = [(f, usd) for f, usd in priced if f.commit_basis == COMMITS_GIT_LOG]
     if len(shipped_known) >= MIN_SESSIONS_FOR_SHARE:
-        quiet = [(f, usd) for f, usd in shipped_known if f.commit_count == 0]
+        quiet = [(f, usd) for f, usd in shipped_known if not ended_with_a_commit(f)]
         quiet_usd = sum(usd for _, usd in quiet)
         total_usd = sum(usd for _, usd in shipped_known)
         m["spend_without_a_commit_usd"] = _metric(

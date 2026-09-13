@@ -22,7 +22,6 @@ import { capital, commas, human, mins, n as said, pyRound, shareWords } from '..
 import { spoken } from '../copy/plain';
 import type { SessionDetail } from '../data/api';
 import type { SessionBurn, SessionBurnSpike } from '../generated/contract';
-import { compactNumber } from '../theme';
 import { burnRefusal } from './summary';
 
 /** One number over its label: the shape the kit's `StatItem` takes. */
@@ -171,8 +170,8 @@ export function burnView(s: Pick<SessionDetail, 'burn' | 'harness' | 'stats'>): 
   // get a line saying why, rather than silence.
   const ledger = ledgerTokens(s.stats);
   const ledgerNote =
-    ledger !== null && compactNumber(ledger) !== human(b.tokens)
-      ? `Counted from your first prompt on, each message once, so it can differ from the ${compactNumber(ledger)} tokens under numbers.`
+    ledger !== null && human(ledger) !== human(b.tokens)
+      ? `Counted from your first prompt on, each message once, so it can differ from the ${human(ledger)} tokens under numbers.`
       : null;
 
   const spikes = (b.spikes ?? []).map(spikeView);

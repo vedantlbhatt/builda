@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   category: { marginTop: 22 },
   catHead: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
-  catName: { fontSize: 30, lineHeight: 34, fontWeight: '800', letterSpacing: -0.7 },
+  catName: { ...figure(30, GROUND.text), lineHeight: 34, letterSpacing: -0.7 },
   items: { paddingHorizontal: GUTTER, marginTop: 4 },
   named: { paddingHorizontal: GUTTER, marginTop: 10, gap: 8 },
   item: { paddingVertical: 10, gap: 6 },

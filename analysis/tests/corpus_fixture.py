@@ -270,11 +270,13 @@ def scenarios() -> list[Scenario]:
         dataclasses.replace(f, lines_basis=pf.LINES_ABSENT, write_events=None)
         for f in corpus(*_unique_trio())[0]
     ]
+    # Short prompts with two words of four characters or more (`wrapped.CRYPTIC_MIN_TOKEN_CHARS`),
+    # so each is a cryptic candidate and the card refuses by the mash rule, one and many.
     one_short = _unique_trio()
-    one_short[0].prompt(40, "fix the button")
+    one_short[0].prompt(40, "fix this button")
     two_short = _unique_trio()
-    two_short[0].prompt(40, "fix the button")
-    two_short[1].prompt(40, "ship it now")
+    two_short[0].prompt(40, "fix this button")
+    two_short[1].prompt(40, "ship this now")
     # Lines enough for the file role fallback (source 150, tests 60), commit subjects that
     # are prose, commit days that never meet a sitting (no streak yet), and one sitting
     # past an hour.

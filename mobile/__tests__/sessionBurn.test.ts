@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { explainBurn } from '../src/copy/burn';
+import { human } from '../src/copy/numbers';
 import { hasDash } from '../src/copy/plain';
 import type { SessionDetail } from '../src/data/api';
 import type { SessionBurn, SessionBurnSpike } from '../src/generated/contract';
@@ -29,7 +30,16 @@ import {
   tooFewStretches,
   type BurnView,
 } from '../src/session/burnView';
+import { statTiles } from '../src/recap/format';
+import * as theme from '../src/theme';
 import { REPO } from './pythonRef';
+
+/** A session with no stats of its own: the recap tiles read only `stats` for the tokens. */
+const RECAP_BASE = {
+  id: 'r', client_session_id: 'r', harness: 'claude_code', repo_name: null, started_at: '2026-09-13T10:00:00Z',
+  ended_at: '2026-09-13T11:00:00Z', active_seconds: 3600, idle_seconds: 0, local_date: '2026-09-13', title: null,
+  title_source: null, notable: true, unattended: false, timeline_fidelity: 'full', is_shared: false,
+} satisfies SessionDetail;
 
 const FIXTURE = join(REPO, 'spec', 'fixtures', 'burn', 'session.json');
 
@@ -252,6 +262,19 @@ describe('two counts for one quantity get a line saying why', () => {
   test('MEASURED: the ledger said 57.6M where burn counted 41.6M on one real session', () => {
     const v = ready(burnView({ burn: block({ tokens: 41_593_495 }), harness: 'claude_code', stats: stats({ tok_cache_read: 57_609_898 }) }));
     expect(v.ledgerNote).toBe('Counted from your first prompt on, each message once, so it can differ from the 57.6M tokens under numbers.');
+  });
+
+  test('one formatter for a token count: the same count never reads as two', () => {
+    // FOUND IN REVIEW (2026-09-13): `theme.compactNumber` printed 999,500 to 999,999 as "1000k"
+    // where `human` (burn._human) prints "1.0M", so a ledger and a burn block holding the SAME
+    // 999,700 tokens got the "can differ from the 1000k tokens" line. MEASURED before the fix:
+    // that line, for two equal counts; after: none, and the tiles say what the burn says.
+    const v = ready(burnView({ burn: block({ tokens: 999_700 }), harness: 'claude_code', stats: stats({ tok_in: 700, tok_out: 9_000, tok_cache_read: 990_000 }) }));
+    expect(v.ledgerNote).toBeNull();
+    for (const t of [999_499, 999_500, 999_700, 999_999, 1_000_000, 12_500]) {
+      expect(statTiles({ ...RECAP_BASE, stats: stats({ tok_cache_read: t }) }).find((x) => x.key === 'tokens')?.value).toBe(human(t));
+    }
+    expect('compactNumber' in theme).toBe(false);
   });
 
   test('silent when both say the same, and when the ledger holds no count', () => {

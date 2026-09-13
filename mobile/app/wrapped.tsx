@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GROUND } from '../src/insights/palette';
 import { clampCard } from '../src/nav/rules';
-import { hue as hueOf, layout, MONO_FAMILY, space, TAP_TARGET, type Hue } from '../src/theme';
+import { hue as hueOf, layout, MONO_FAMILY, space, TAP_TARGET, typeRoles, type Hue } from '../src/theme';
 import { useAccent } from '../src/theme/accent';
 import { TiltedCard } from '../src/ui/bits/components/TiltedCard';
 import { ClickSpark, type ClickSparkHandle } from '../src/ui/bits/effects/ClickSpark';
@@ -460,16 +460,16 @@ const styles = StyleSheet.create({
   chrome: { zIndex: 2, backgroundColor: GROUND.bg },
   progressSlot: { height: 3 },
   captionSlot: { height: 36 },
-  hint: { fontSize: 13, lineHeight: 18, color: GROUND.dim },
+  hint: { fontSize: typeRoles.meta.size, lineHeight: 18, color: GROUND.dim },
   body: { flex: 1, zIndex: 1 },
   bar: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs, paddingTop: space.xs, marginRight: -space.sm },
   barWords: { flex: 1, gap: 2, paddingTop: space.sm },
-  title: { fontSize: 22, lineHeight: 27, fontWeight: '800', letterSpacing: -0.4, color: GROUND.text },
-  caption: { fontSize: 13, lineHeight: 18, color: GROUND.dim },
+  title: { fontSize: typeRoles.title.size, lineHeight: 27, fontWeight: '800', letterSpacing: -0.4, color: GROUND.text },
+  caption: { fontSize: typeRoles.meta.size, lineHeight: 18, color: GROUND.dim },
   icon: { width: TAP_TARGET, height: TAP_TARGET, alignItems: 'center', justifyContent: 'center' },
   bottom: { paddingHorizontal: layout.gutter, paddingTop: space.sm },
   bottomRow: { height: TAP_TARGET, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   share: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: TAP_TARGET, paddingRight: space.sm },
-  shareText: { fontSize: 17, lineHeight: 22, fontWeight: '700' },
-  count: { fontFamily: MONO_FAMILY, fontSize: 13, fontWeight: '600', color: GROUND.dim, fontVariant: ['tabular-nums'] },
+  shareText: { fontSize: typeRoles.headline.size, lineHeight: 22, fontWeight: '700' },
+  count: { fontFamily: MONO_FAMILY, fontSize: typeRoles.mono.size, fontWeight: '600', color: GROUND.dim, fontVariant: ['tabular-nums'] },
 });

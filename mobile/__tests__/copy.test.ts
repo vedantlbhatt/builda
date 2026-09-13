@@ -120,7 +120,7 @@ describe('the scan itself', () => {
     const rel = files.map((f) => relative(MOBILE, f));
     expect(rel.length).toBeGreaterThan(100);
     expect(rel).toContain('app/settings.tsx');
-    expect(rel).toContain('src/profile/ReportSections.tsx');
+    expect(rel).toContain('src/session/SessionPage.tsx');
     expect(rel.some((f) => f.startsWith('src/generated/'))).toBe(false);
   });
 

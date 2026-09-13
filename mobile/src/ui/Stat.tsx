@@ -7,7 +7,7 @@ import { T } from './Text';
 
 export interface StatItem {
   /**
-   * The number, already product formatted ("1.4M", "38k", "$4.99", "16h 0m"), or null when
+   * The number, already product formatted ("1.4M", "38k", "$4.99", "16h 00m"), or null when
    * it was refused. A refused number is a sentence (`refusal`), never 0 or a placeholder.
    */
   value: string | null;

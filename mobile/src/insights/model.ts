@@ -32,7 +32,7 @@ import { dollars, withoutACommit } from '../copy/money';
 import { capital, clock, commas, count, floorMins, human, n, pct, shareWords, tally } from '../copy/numbers';
 import { renderCard, type RenderedCard } from '../copy/wrapped';
 import { narrativeView, archetypeSentence as narrativeArchetypeLine } from '../profile/narrative';
-import { coverageHint, coverageLine, fanoutWaste, shortDuration, streakLine, trendVerdict, trendWords } from '../profile/report';
+import { coverageHint, coverageLine, fanoutWaste, shortDuration, streakLine, trendVerdict, trendWords, withinWindow } from '../profile/report';
 import { resolveAnimal, type Animal } from '../pixel/animals';
 import { duration, graphLevel, DAY_BOUNDARY_HOUR } from '../theme';
 import {
@@ -75,6 +75,40 @@ export function isRefused<T extends object>(x: T | Refused): x is Refused {
 export interface Coverage {
   line: string;
   caveat: string | null;
+}
+
+/**
+ * The stretch a report's numbers were read over, said as what it is. `window` is true when
+ * they rest on the window the report names (`withinWindow`), and `phrase` is then "The last 30
+ * days"; otherwise it is the stretch itself, "Aug 11 to Sep 13". Every line that says the window
+ * reads this, so none can claim one the data does not match. FOUND IN REVIEW (2026-09-13): the
+ * committed report said "The last 30 days, as your Mac read them ... Aug 11 to Sep 13", 34 days,
+ * on the coverage line, the money page and the analysis door.
+ */
+export interface ReadSpan {
+  window: boolean;
+  /** Opening a sentence: "The last 30 days", "Aug 11 to Sep 13", "All on Aug 11". */
+  phrase: string;
+  /** Inside one: "the last 30 days", "Aug 11 to Sep 13", "all on Aug 11". */
+  inline: string;
+  /** "Aug 11" and "Sep 13", the first and last sitting's days, when the report says them. */
+  first: string | null;
+  last: string | null;
+}
+
+export function readSpan(report: BuilderReport, now: number): ReadSpan {
+  const c = report.coverage ?? null;
+  const first = c?.first_at ? dayOf(c.first_at, now) : null;
+  const last = c?.last_at ? dayOf(c.last_at, now) : null;
+  const window = !c || withinWindow(c, report.generated_at);
+  const inline = window
+    ? `the last ${count(report.window_days, 'day')}`
+    : first && last
+      ? first === last
+        ? `all on ${first}`
+        : `${first} to ${last}`
+      : `over ${count(c!.spans_days, 'day')}`;
+  return { window, phrase: capital(inline), inline, first, last };
 }
 
 export interface RuleBar {
@@ -369,11 +403,11 @@ function metricRefusal(corpus: CorpusProfile | null | undefined, key: string): s
 
 export function coverageOf(b: BuilderProfileResponse, now: number): Coverage {
   const c = b.report?.coverage ?? null;
-  if (c) {
-    const first = c.first_at ? dayOf(c.first_at, now) : null;
-    const last = c.last_at ? dayOf(c.last_at, now) : null;
-    const span = first && last ? (first === last ? `, all on ${first}` : `, ${first} to ${last}`) : '';
-    const line = `The last ${count(c.window_days, 'day')}, as your Mac read them: ${count(c.sessions, 'session')} on ${count(c.active_days, 'day')}${span}.`;
+  if (c && b.report) {
+    const read = readSpan(b.report, now);
+    const { first, last } = read;
+    const span = read.window && first && last ? (first === last ? `, all on ${first}` : `, ${first} to ${last}`) : '';
+    const line = `${read.phrase}, as your Mac read them: ${count(c.sessions, 'session')} on ${count(c.active_days, 'day')}${span}.`;
     const said = coverageLine(c);
     const hint = coverageHint(c);
     return { line, caveat: said ? (hint ? `${said} ${hint}` : said) : null };

@@ -7,8 +7,9 @@
  * `SessionDetail`; this file decides only how to say it and when to leave it out.
  */
 
+import { human } from '../copy/numbers';
 import type { SessionDetail } from '../data/api';
-import { compactNumber, duration } from '../theme';
+import { duration } from '../theme';
 
 /**
  * How long after a session ends the list still offers the recap, and the analysis slot
@@ -78,7 +79,7 @@ export function statTiles(s: SessionDetail): StatTile[] {
   if (stats.tokens_reported) {
     const total =
       n('tok_in') + n('tok_out') + n('tok_cache_read') + n('tok_cache_w5m') + n('tok_cache_w1h');
-    tiles.push({ key: 'tokens', label: 'Tokens', value: compactNumber(total) });
+    tiles.push({ key: 'tokens', label: 'Tokens', value: human(total) });
   } else {
     // Absent, not zero. Cursor accounts usage server-side and writes {0,0} locally.
     tiles.push({ key: 'tokens', label: 'Tokens', value: 'not recorded', dim: true });

@@ -222,6 +222,14 @@ describe('engineer voice titles, in the engine test\'s own words', () => {
     expect(renderTitle(undefined)).toBeNull();
   });
 
+  test('a refused title renders nothing, whatever the refusal', () => {
+    // contract v4 `title_ids.reason` (FOUND IN THE ADVERSARIAL REVIEW, 2026-09-13): a refusal
+    // is a document with no verb, so a refused final cut replaces a stale live title.
+    for (const reason of CONTRACT_ENUMS.title_refusal) {
+      expect(renderTitle({ verb: null, object: null, n: null, modules: null, reason })).toBeNull();
+    }
+  });
+
   test('every verb the contract declares has a title for some object', () => {
     for (const verb of CONTRACT_ENUMS.title_verb) {
       const rendered = CONTRACT_ENUMS.title_object.some((object) => renderTitle({ verb, object, n: 2, modules: 2 }) !== null);

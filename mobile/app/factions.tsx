@@ -18,7 +18,7 @@ import { api } from '../src/data/client';
 import { PixelBadge } from '../src/pixel/PixelBadge';
 import { pruneBySlug, upsertMine } from '../src/social/account';
 import { normalizeFactionCode } from '../src/social/format';
-import { colors, duration, hitSlopToReach, radius, space, TAP_TARGET } from '../src/theme';
+import { colors, duration, hitSlopToReach, radius, space, TAP_TARGET, typeRoles } from '../src/theme';
 
 const c = colors('dark');
 
@@ -153,10 +153,10 @@ export default function FactionsScreen() {
       {justCreated && (
         <View style={[card, { borderWidth: 1, borderColor: c.border }]}>
           <Text style={{ color: c.text, fontWeight: '600' }}>{justCreated.name}</Text>
-          <Text style={{ color: c.textDim, fontSize: 12 }}>/{justCreated.slug}</Text>
-          <Text style={{ color: c.textDim, fontSize: 12, fontWeight: '600', marginTop: space.md }}>join code</Text>
+          <Text style={{ color: c.textDim, fontSize: typeRoles.label.size }}>/{justCreated.slug}</Text>
+          <Text style={{ color: c.textDim, fontSize: typeRoles.label.size, fontWeight: '600', marginTop: space.md }}>join code</Text>
           <Text
-            style={{ color: c.text, fontSize: 36, fontWeight: '800', letterSpacing: 4, fontVariant: ['tabular-nums'] }}
+            style={{ color: c.text, fontSize: typeRoles.display.size, fontWeight: '800', letterSpacing: 4, fontVariant: ['tabular-nums'] }}
             selectable
           >
             {justCreated.join_code ?? '·'}
@@ -171,18 +171,18 @@ export default function FactionsScreen() {
                   })
                 }
               >
-                <Text style={{ color: c.text, fontSize: 13 }}>Share code</Text>
+                <Text style={{ color: c.text, fontSize: typeRoles.meta.size }}>Share code</Text>
               </Pressable>
             )}
             <Pressable style={pill} onPress={() => setJustCreated(null)}>
-              <Text style={{ color: c.text, fontSize: 13 }}>Done</Text>
+              <Text style={{ color: c.text, fontSize: typeRoles.meta.size }}>Done</Text>
             </Pressable>
           </View>
         </View>
       )}
 
       <View style={card}>
-        <Text style={label}>CREATE</Text>
+        <Text style={label}>create</Text>
         <View style={{ flexDirection: 'row', gap: space.sm }}>
           <TextInput
             value={name}
@@ -198,7 +198,7 @@ export default function FactionsScreen() {
       </View>
 
       <View style={card}>
-        <Text style={label}>JOIN BY CODE</Text>
+        <Text style={label}>join by code</Text>
         <View style={{ flexDirection: 'row', gap: space.sm }}>
           <TextInput
             value={code}
@@ -217,13 +217,13 @@ export default function FactionsScreen() {
 
       {mineError && (
         <View style={[card, { borderWidth: 1, borderColor: c.textDim }]}>
-          <Text style={{ color: c.textDim, fontSize: 13 }}>Could not load your factions: {mineError}</Text>
+          <Text style={{ color: c.textDim, fontSize: typeRoles.meta.size }}>Could not load your factions: {mineError}</Text>
           <Pressable
             onPress={() => void loadMine()}
             accessibilityRole="button"
             style={{ minHeight: TAP_TARGET, justifyContent: 'center', alignSelf: 'flex-start' }}
           >
-            <Text style={{ color: c.accent, fontSize: 13, fontWeight: '600' }}>Retry</Text>
+            <Text style={{ color: c.accent, fontSize: typeRoles.meta.size, fontWeight: '600' }}>Retry</Text>
           </Pressable>
         </View>
       )}
@@ -231,7 +231,7 @@ export default function FactionsScreen() {
       {mine.length === 0 && !mineError && (
         <View style={{ marginTop: space.sm }}>
           <PixelBadge state="waving" text="Start a faction or join one with a code." style={{ paddingHorizontal: 0 }} />
-          <Text style={{ color: c.textDim, fontSize: 12 }}>
+          <Text style={{ color: c.textDim, fontSize: typeRoles.label.size }}>
             The board ranks attended hours this week.
           </Text>
         </View>
@@ -242,22 +242,22 @@ export default function FactionsScreen() {
         return (
           <View key={f.slug} style={card}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-              <Text style={{ color: c.text, fontSize: 18, fontWeight: '700', flex: 1 }}>{f.name}</Text>
+              <Text style={{ color: c.text, fontSize: typeRoles.headline.size, fontWeight: '700', flex: 1 }}>{f.name}</Text>
               <Pressable
                 onPress={() => router.push({ pathname: '/feed', params: { slug: f.slug } })}
                 hitSlop={hitSlopToReach(18)}
                 accessibilityRole="button"
               >
-                <Text style={{ color: c.accent, fontSize: 13, fontWeight: '600' }}>Feed</Text>
+                <Text style={{ color: c.accent, fontSize: typeRoles.meta.size, fontWeight: '600' }}>Feed</Text>
               </Pressable>
             </View>
-            <Text style={{ color: c.textDim, fontSize: 12 }}>
+            <Text style={{ color: c.textDim, fontSize: typeRoles.label.size }}>
               /{f.slug} · {f.member_count} {f.member_count === 1 ? 'member' : 'members'}
               {f.role === 'admin' ? ' · you admin' : ''}
             </Text>
             {b === undefined && <ActivityIndicator color={c.accent} style={{ marginVertical: space.md }} />}
             {b === 'error' && (
-              <Text style={{ color: c.textDim, fontSize: 13, marginTop: space.sm }}>Board unavailable right now.</Text>
+              <Text style={{ color: c.textDim, fontSize: typeRoles.meta.size, marginTop: space.sm }}>Board unavailable right now.</Text>
             )}
             {b && b !== 'error' && <Board board={b} onShare={(v) => void setShare(f.slug, v)} />}
           </View>
@@ -271,7 +271,7 @@ function Board({ board, onShare }: { board: FactionBoard; onShare: (share: boole
   const me = board.members.find((m) => m.you);
   return (
     <>
-      <Text style={{ color: c.textDim, fontSize: 12, marginTop: space.sm, marginBottom: space.sm }}>
+      <Text style={{ color: c.textDim, fontSize: typeRoles.label.size, marginTop: space.sm, marginBottom: space.sm }}>
         {board.week} · {board.week_start} → {board.week_end}
         {board.faction.join_code ? ` · code ${board.faction.join_code}` : ''}
       </Text>
@@ -298,7 +298,7 @@ function Board({ board, onShare }: { board: FactionBoard; onShare: (share: boole
       ))}
       {me && (
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: space.md }}>
-          <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>Share my hours on the board</Text>
+          <Text style={{ color: c.text, fontSize: typeRoles.row.size, flex: 1 }}>Share my hours on the board</Text>
           <Switch value={me.share_hours} onValueChange={onShare} trackColor={{ true: c.accent }} />
         </View>
       )}
@@ -314,20 +314,20 @@ const card = {
   marginBottom: space.md,
 } as const;
 
-const label = { color: c.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: space.sm } as const;
+const label = { color: c.textDim, fontSize: typeRoles.label.size, fontWeight: '700', letterSpacing: typeRoles.label.tracking, marginBottom: space.sm } as const;
 const input = {
   flex: 1,
   color: c.text,
   backgroundColor: c.bg,
-  borderRadius: 10,
+  borderRadius: radius.sm,
   borderCurve: 'continuous',
   paddingHorizontal: space.md,
   paddingVertical: space.sm,
-  fontSize: 15,
+  fontSize: typeRoles.row.size,
 } as const;
-const button = { backgroundColor: c.accent, borderRadius: 10, borderCurve: 'continuous', paddingHorizontal: space.md, justifyContent: 'center' } as const;
+const button = { backgroundColor: c.accent, borderRadius: radius.pill, borderCurve: 'continuous', paddingHorizontal: space.md, justifyContent: 'center' } as const;
 const buttonText = { color: c.onAccent, fontWeight: '700' } as const;
-const pill = { backgroundColor: c.bg, borderRadius: 999, borderCurve: 'continuous', paddingHorizontal: space.md, paddingVertical: space.sm } as const;
-const th = { color: c.textDim, fontSize: 11, fontWeight: '700' } as const;
-const td = { color: c.text, fontSize: 13 } as const;
+const pill = { backgroundColor: c.bg, borderRadius: radius.pill, borderCurve: 'continuous', paddingHorizontal: space.md, paddingVertical: space.sm } as const;
+const th = { color: c.textDim, fontSize: typeRoles.label.size, fontWeight: '700' } as const;
+const td = { color: c.text, fontSize: typeRoles.meta.size } as const;
 const num: TextStyle = { width: 64, textAlign: 'right', fontVariant: ['tabular-nums'] };

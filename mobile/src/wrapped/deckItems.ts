@@ -10,7 +10,7 @@ import type { QuotesUpload } from '../generated/quotes';
 import type { ReportWrapped, ReportWrappedCard } from '../generated/report';
 import type { ArtSources } from './art';
 import { CARD_ORDER } from './deck';
-import { faceOf, type Face, type QuotesState } from './face';
+import { faceOf, shareFaceOf, type Face, type QuotesState } from './face';
 
 export interface DeckItem {
   card: ReportWrappedCard;
@@ -36,4 +36,17 @@ export function deckItems(
     if (face) out.push({ card, face, sources });
   }
   return out;
+}
+
+/**
+ * The card as a share draws it: its face with no quote (`shareFaceOf`), whatever the owner's
+ * story shows. A card the copy layer could not draw without its quote would share its
+ * question alone, never the quoted face; that cannot happen for the three quote cards (the
+ * go to prompt's answer does not read its quote, and the LOCAL two fall back to their
+ * counts), and `__tests__/wrappedShare.test.ts` walks every card.
+ */
+export function shareItem(item: DeckItem, tzOffsetMinutes?: number): DeckItem {
+  const face = shareFaceOf(item.card, tzOffsetMinutes);
+  const bare: Face = { ...item.face, hero: null, tail: null, sentence: null, quote: null, decrypt: false, note: null, label: item.face.question };
+  return { ...item, face: face ?? bare };
 }

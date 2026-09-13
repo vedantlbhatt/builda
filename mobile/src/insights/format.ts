@@ -16,7 +16,7 @@
 export type NumFormat =
   /** Digits with a fixed number of decimals, optionally grouped, with a prefix and a unit. */
   | { kind: 'fixed'; decimals: number; grouping: boolean; prefix: string; suffix: string }
-  /** `theme.duration`: "45s", "12m", "1h 42m" (floored minutes). */
+  /** `theme.duration`: "45s", "12m", "1h 05m" (`copy.wholeMinutes`, floored). */
   | { kind: 'duration' }
   /** `copy.clock`: measured seconds exactly, "39s", "59m 28s", "1h 02m 05s". */
   | { kind: 'clock' }
@@ -74,11 +74,10 @@ export function formatWith(fmt: NumFormat, value: number): string {
     case 'fixed':
       return fmt.prefix + fixed(v, fmt.decimals, fmt.grouping) + fmt.suffix;
     case 'duration': {
-      const s = Math.round(Math.max(0, v));
-      if (s < 60) return String(s) + 's';
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      return h > 0 ? String(h) + 'h ' + String(m) + 'm' : String(m) + 'm';
+      const m = Math.floor(Math.max(0, v) / 60);
+      if (m < 1) return String(Math.floor(Math.max(0, v))) + 's';
+      const h = Math.floor(m / 60);
+      return h > 0 ? String(h) + 'h ' + pad2(m % 60) + 'm' : String(m) + 'm';
     }
     case 'clock': {
       const s = Math.round(Math.max(0, v));

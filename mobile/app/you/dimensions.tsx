@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   note: { marginTop: 8 },
   side: { flexDirection: 'row', alignItems: 'flex-end', gap: 14 },
   sideWords: { flex: 1, paddingBottom: 14 },
-  waiting: { fontSize: 34, lineHeight: 38, fontWeight: '800', letterSpacing: -0.9, color: ON_HUE },
+  waiting: { ...figure(34, ON_HUE), lineHeight: 38, letterSpacing: -0.9 },
   squares: { marginTop: 10, marginBottom: 14 },
   key: { gap: 12 },
   keyItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },

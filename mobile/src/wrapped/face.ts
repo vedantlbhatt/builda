@@ -95,7 +95,7 @@ export interface Face {
   decrypt: boolean;
   /** The quiet line under a quote card that could not show its quote. */
   note: string | null;
-  /** A card that can quote: sharing it with its quote on it warns first. */
+  /** A card that can quote. Its quote is drawn in the owner's story only: a share draws `shareFaceOf`. */
   quoteCard: boolean;
   /** Everything the card says, in reading order, for VoiceOver and the share sheet title. */
   label: string;
@@ -187,6 +187,28 @@ export function faceOf(
 ): Face | null {
   const quoteCard = QUOTE_CARDS.includes(card.id);
   const shown = quoteCard && quotes === 'shown' && quote !== null && quote.card === card.id ? quote : null;
+  const note = !quoteCard ? null : quotes === 'shown' ? QUOTE_NOTES.missing : quotes === 'waiting' ? QUOTE_NOTES.waiting : QUOTE_NOTES.off;
+  return compose(card, shown, note, tzOffsetMinutes);
+}
+
+/**
+ * The face a SHARED card draws. Quotes are owner only: the contract's `quotes` document and
+ * PRIVACY.md both say they are never in a share, and a share is an image anyone can read. So
+ * the export is the card as it stands with quotes off: the counts only answer on the two LOCAL
+ * cards, the answer without its quote on the go to prompt, and no quiet note, which tells the
+ * owner how to see a quote and is nobody else's business. FOUND IN THE ADVERSARIAL REVIEW
+ * (2026-09-13): the share preview drew the story's face, quote and all.
+ */
+export function shareFaceOf(card: ReportWrappedCard, tzOffsetMinutes?: number): Face | null {
+  return compose(card, null, null, tzOffsetMinutes);
+}
+
+/**
+ * The one place a face is built. `shown` is the quote to draw (already checked against the
+ * switch and the card), `note` the quiet line a quote card says when it draws none.
+ */
+function compose(card: ReportWrappedCard, shown: QuoteWire | null, noteWithoutQuote: string | null, tzOffsetMinutes?: number): Face | null {
+  const quoteCard = QUOTE_CARDS.includes(card.id);
   const r: RenderedCard | null = renderCard(card, { quote: shown, tzOffsetMinutes });
 
   if (r === null) {
@@ -199,14 +221,7 @@ export function faceOf(
   const display = clean(r.display);
   const sentence = clean(r.sentence);
   const quoteText = shown ? clean(shown.text) : null;
-  const note =
-    quoteCard && quoteText === null
-      ? quotes === 'shown'
-        ? QUOTE_NOTES.missing
-        : quotes === 'waiting'
-          ? QUOTE_NOTES.waiting
-          : QUOTE_NOTES.off
-      : null;
+  const note = quoteCard && quoteText === null ? noteWithoutQuote : null;
 
   const base = { id: card.id, question, answered: true, refusal: null, quoteCard } as const;
 

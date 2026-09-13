@@ -12,7 +12,8 @@ import { describe, expect, test } from 'bun:test';
 import type { BuilderProfile, BuilderProfileResponse, Profile } from '../src/data/api';
 import fixture from '../src/insights/fixtures/report-2026-09-13.json';
 import { formatWith, type NumSpec } from '../src/insights/format';
-import { analysisModel, isRefused, NO_REPORT } from '../src/insights/model';
+import { analysisModel, coverageOf, isRefused, NO_REPORT, readSpan } from '../src/insights/model';
+import { dayOf } from '../src/you/numbers';
 import { HUE_NAMES, type HueName } from '../src/insights/palette';
 import { hasDash } from '../src/copy/plain';
 import {
@@ -77,9 +78,50 @@ const FIVE = bp({
   planning: { mean: 39, sessions: 12, trend: 0 },
 });
 
+/** The fixture report's real stretch, in this machine's zone (`dayOf`, the Builda day). */
+const FIXTURE_SPAN = `${dayOf('2026-08-12T00:44:30Z', NOW)} to ${dayOf('2026-09-13T07:06:05Z', NOW)}`;
+
 const EVERY_PAGE = (b: BuilderProfileResponse) => [moneyPage(b, NOW), youTab(b, P, NOW), dimensionsPage(b), glossaryPage(b, NOW), stackPage(b, NOW)];
 
 // ------------------------------------------------------------------ money
+
+describe('a window is claimed only when the numbers sit inside it', () => {
+  // FOUND IN REVIEW (2026-09-13): the report was computed over all history and three lines
+  // said "the last 30 days" over it. MEASURED on the committed report (first sitting Aug 12
+  // 00:44 UTC, made Sep 13 12:34 UTC, 33 dates, window 30), before the fix: "The last 30 days,
+  // as your Mac read them ... Aug 11 to Sep 13", "The last 30 days, as your Mac priced them",
+  // "days with a session, of the last 30". After: the stretch it read, on all three.
+  const made = '2026-09-13T12:00:00Z';
+  const at = (daysAgo: number) => new Date(Date.parse(made) - daysAgo * 86_400_000).toISOString();
+  const report = (firstDaysAgo: number, spans: number) => ({
+    ...B.report!,
+    generated_at: made,
+    window_days: 30,
+    coverage: { window_days: 30, spans_days: spans, active_days: 12, sessions: 40, first_at: at(firstDaysAgo), last_at: at(0.2) },
+  });
+
+  test('inside the window: "the last 30 days" on every line that says it', () => {
+    const b = { ...B, report: report(29.9, 31) };
+    expect(readSpan(b.report, NOW)).toMatchObject({ window: true, phrase: 'The last 30 days' });
+    expect(coverageOf(b, NOW).line).toStartWith('The last 30 days, as your Mac read them: 40 sessions on 12 days, ');
+    // 31 dates is the window, both ends counted: nothing to caveat.
+    expect(coverageOf(b, NOW).caveat).toBeNull();
+    expect(moneyPage(b, NOW)!.scope).toStartWith('The last 30 days, as your Mac priced them:');
+    expect(youTab(b, P, NOW).doors[0]!.caption).toBe('days with a session, of the last 30');
+  });
+
+  test('read over more than the window: the stretch it read, and the caveat says both numbers', () => {
+    const b = { ...B, report: report(33, 34) };
+    const span = `${dayOf(at(33), NOW)} to ${dayOf(at(0.2), NOW)}`;
+    expect(readSpan(b.report, NOW)).toMatchObject({ window: false, phrase: span });
+    expect(coverageOf(b, NOW).line).toBe(`${span}, as your Mac read them: 40 sessions on 12 days.`);
+    expect(coverageOf(b, NOW).caveat).toBe('30 days asked for; these numbers span 34 days.');
+    expect(moneyPage(b, NOW)!.scope).toBe(`${span}, as your Mac priced them: ${moneyPage(b, NOW)!.scope!.split(': ')[1]}`);
+    expect(moneyPage(b, NOW)!.scope).not.toContain('last 30');
+    expect(youTab(b, P, NOW).doors[0]!.caption).toBe(`days with a session, ${span}`);
+    for (const page of EVERY_PAGE(b)) expect(JSON.stringify(page)).not.toContain('last 30');
+  });
+});
 
 describe('the money page', () => {
   const m = moneyPage(B, NOW)!;
@@ -92,7 +134,9 @@ describe('the money page', () => {
     expect(m.hero.usd.final).toBe('$2,952');
     expect(m.hero.digits.final).toBe('2,952');
     expect(m.hero.read).toBe('Prices read Sep 6.');
-    expect(m.scope).toBe('The last 30 days, as your Mac priced them: 157 sessions.');
+    // The committed report was built over ALL history (its first sitting 2026-08-12 00:44 UTC,
+    // 33 dates, under `window_days: 30`), so the page says the stretch it read, never the window.
+    expect(m.scope).toBe(`${FIXTURE_SPAN}, as your Mac priced them: 157 sessions.`);
   });
 
   test('what it bought and what it wrote: tokens, the hour, lines added in green and removed in red', () => {
@@ -165,7 +209,7 @@ describe('the You tab', () => {
     expect(y.doors.map((d) => d.key)).toEqual([...DOOR_ORDER]);
     const said = Object.fromEntries(y.doors.map((d) => [d.key, [d.num?.final ?? null, d.caption]]));
     expect(said).toEqual({
-      analysis: ['27', 'days with a session, of the last 30'],
+      analysis: ['27', `days with a session, ${FIXTURE_SPAN}`],
       wrapped: ['14', 'of 15 questions answered'],
       money: ['$2,952', 'what the tokens would cost at API list prices'],
       dimensions: [null, null],

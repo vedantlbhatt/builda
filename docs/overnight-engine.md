@@ -669,7 +669,7 @@ No checked-in fixtures: transcripts are built by code in a temp dir, so none can
   4.1 catalog checks, unlock counts and `locked_count`, exact titles per rule, only catalog ids in `stack`, no manifest string in the output.
 - D extends `test_burn.py`, `test_profile.py` and `test_contributions.py` (fixed `today`) as section 5 lists.
 
-Each implementer runs `cd /Users/vedantbhatt/Downloads/projects/builder-overnight && python3 -m unittest discover -s analysis/tests -t .` before
+Each implementer runs `cd ~/Downloads/projects/builder-overnight && python3 -m unittest discover -s analysis/tests -t .` before
 handing over; the count only goes up from 546.
 
 ## 7. CLI (the integrator, in `analysis/__main__.py`)

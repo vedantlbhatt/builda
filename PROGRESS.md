@@ -82,12 +82,13 @@ section.
   RCTTextLayoutManager: Yoga framed four lines of 23pt at 91.99975 and the last line vanished).
   Reproduced with the chapter's JS workaround off on the unpatched app, whole on the patched
   one (`shots/tokens/textfix-*`). Native, so the phone needs build 4 for it.
-- Token chart review (22:50): all 160 stored blocks match raw JSONL to the token. Being fixed:
-  my a2adb51 put tide on Claude's reply under a burn chapter that draws re-reading in tide (same
-  page beats cross page, so re-read goes back to tide); binned bars drawn as sums under a per
-  call axis; "before this session began" missing on 57 of 58 rewrites; share bars not summing
-  to 100; overlapping rewrite labels; the upload gate accepting Infinity dollars (500 on insert);
-  a readout number with no unit; scrub re-renders; away_seconds shown to strangers.
+- Landed 23:30: the token chart's review fixes (e374c12): re-read back to tide under burn's
+  re-reading, new amber, reply ember; binned bars at the per call average; "before this
+  session began" on 58 of 59 rewrites; share bars by largest remainder; colliding labels
+  dropped; the upload gate bounds every field and holds the points to burn's tokens; strangers
+  get no away_seconds. Then burn and the chart ask one `burn.files_record_usage` (58e7c17):
+  a window with no counts in files that record them is nothing inside, not "no token counts".
+  Stack restarted onto it and re-synced; artifact version 9.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

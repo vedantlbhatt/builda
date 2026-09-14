@@ -39,12 +39,18 @@ export interface CardModel {
 const CHORE_PATTERN =
   /^(Check|Run|Debug the|Disable|Enable|List|Add file|Say|Clarify|Analyze|Toggle)\b/;
 
+/**
+ * `mostly_you` has no sentence on purpose. It means the agent's lines were under half of what
+ * git counted in the window, and git also counts parallel sessions, generated files and
+ * lockfiles, so nothing says who wrote the rest. FOUND IN THE now3 PASS (2026-09-14): a card
+ * said "Most of these lines are yours" beside +507 lines its own page counted as the agent's,
+ * with the person's edits at 0%. The card falls through to the next true fact instead.
+ */
 const BUCKET_COPY: Record<string, string> = {
   almost_all_agent: 'Nearly every line came from',
   nine_in_ten: '9 of every 10 lines came from',
   three_in_four: '3 of every 4 lines came from',
   about_half: 'About half the lines came from',
-  mostly_you: 'Most of these lines are yours',
 };
 
 /**
@@ -68,9 +74,7 @@ export function headline(m: CardModel): string {
     if (copy) {
       // "at least" is not decoration: human edits are counted as events with no line
       // count, so this is a lower bound. The hedge is also the more impressive phrasing.
-      return m.agentLineBucket === 'mostly_you'
-        ? copy
-        : `${copy} ${m.modelName}, at least`;
+      return `${copy} ${m.modelName}, at least`;
     }
   }
 

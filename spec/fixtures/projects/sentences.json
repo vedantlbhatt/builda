@@ -189,7 +189,7 @@
    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Both are floors, at least 10.4 in RideGT and at least 4.8 in builder, and two floors that fall short by different amounts cannot be compared."
+  "sentence": "Both are only lower bounds, at least 10.4 in RideGT and at least 4.8 in builder. Either could be higher by any amount, so they cannot be compared."
  },
  {
   "kind": "comparison",
@@ -213,7 +213,7 @@
    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Both are floors, at least 4,261.8 in RideGT and at least 424.9 in builder, and two floors that fall short by different amounts cannot be compared."
+  "sentence": "Both are only lower bounds, at least 4,261.8 in RideGT and at least 424.9 in builder. Either could be higher by any amount, so they cannot be compared."
  },
  {
   "kind": "comparison",

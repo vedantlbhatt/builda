@@ -765,7 +765,7 @@ export const PROJECT_COMPARISON_REFUSALS = {
     "other": "No two projects have {needed:session} in this window with this number yet.",
   },
   "within_noise": "{high} and {low} are close on this: {high_value} against {low_value}.",
-  "floors_only": "Both are floors, at least {high_value} in {high} and at least {low_value} in {low}, and two floors that fall short by different amounts cannot be compared.",
+  "floors_only": "Both are only lower bounds, at least {high_value} in {high} and at least {low_value} in {low}. Either could be higher by any amount, so they cannot be compared.",
 } as const;
 
 /** `projects.PROJECT_REFUSALS`: why a project's number is null, by code (`{n}` and `{needed}` from the block). */

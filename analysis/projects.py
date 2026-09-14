@@ -240,8 +240,8 @@ COMPARISON_REFUSALS: dict[str, str | dict[str, str]] = {
     },
     "within_noise": "{high} and {low} are close on this: {high_value} against {low_value}.",
     "floors_only": (
-        "Both are floors, at least {high_value} in {high} and at least {low_value} in {low}, "
-        "and two floors that fall short by different amounts cannot be compared."
+        "Both are only lower bounds, at least {high_value} in {high} and at least {low_value} in "
+        "{low}. Either could be higher by any amount, so they cannot be compared."
     ),
 }
 

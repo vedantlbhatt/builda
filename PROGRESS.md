@@ -128,6 +128,11 @@ section.
   fixed, do not point `--repo` at anyone else's repository. The two published demos are the
   owner's own code, their files carry no metadata, and nothing left this Mac. The phone showed one
   project's pictures under another's name after switching; also being fixed.
+- Numbers review of the defect fixes (06:20), being fixed: the "nothing written" note cannot fire
+  (shell commands are cut at 160 characters and a cut command counted as a possible write: 10,313
+  of 14,100 calls, so 0 of 368 sittings instead of the true handful); an old rule note survives
+  on a session never re uploaded; the Sessions totals can overstate from the cache; the Lock
+  Screen names a private project two ways; a few numbers rounded twice.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

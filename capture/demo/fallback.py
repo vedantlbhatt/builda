@@ -101,28 +101,35 @@ def _usable(p: pathlib.Path) -> tuple[int, int] | None:
 
 
 def checkout_images(top: pathlib.Path, kind: str | None, limit: int = 6) -> list[tuple[pathlib.Path, str]]:
-    """Up to `limit` images from the checkout: README images, then the image folders."""
+    """Up to `limit` images from the checkout: README images, then the image folders.
+
+    Never a picture reached through a symlink, and never one whose real path is outside the
+    checkout (`_inside`, the review's item 3): a tracked `docs -> /etc` link, or a `shots/x.png`
+    that is a link out of the tree, would otherwise be published as if it were the project's."""
+    from .workspace import _inside
+
     found: list[pathlib.Path] = []
     readme = next((top / n for n in ("README.md", "readme.md") if (top / n).exists()), None)
-    if readme is not None:
+    if readme is not None and not (top / readme.name).is_symlink():
         for m in _README_IMG.finditer(readme.read_text(errors="replace")):
             ref = m.group(1) or m.group(2)
             if ref.startswith(("http://", "https://", "data:")):
                 continue
-            p = (top / ref.split("#")[0].split("?")[0]).resolve()
-            if p.is_file() and _IMG.search(p.name) and str(p).startswith(str(top.resolve())):
+            p = top / ref.split("#")[0].split("?")[0]
+            if p.is_file() and _IMG.search(p.name) and _inside(top, p):
                 found.append(p)
     times = _git_times(top)
     folder: list[pathlib.Path] = []
     for d in IMAGE_DIRS:
         base = top / d
-        if not base.is_dir():
+        if not base.is_dir() or base.is_symlink():
             continue
-        for dirpath, dirnames, filenames in os.walk(base):
+        for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
             dirnames[:] = [x for x in dirnames if x not in ("node_modules", ".git")]
             for f in filenames:
-                if _IMG.search(f):
-                    folder.append(pathlib.Path(dirpath) / f)
+                p = pathlib.Path(dirpath) / f
+                if _IMG.search(f) and not p.is_symlink() and _inside(top, p):
+                    folder.append(p)
 
     def rank(p: pathlib.Path):
         rel = str(p.relative_to(top)) if str(p).startswith(str(top)) else str(p)

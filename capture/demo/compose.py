@@ -231,6 +231,9 @@ def join_command(
     args += [
         "-filter_complex", ";".join(parts), "-map", "[out]",
         "-c:v", "libx264", "-preset", "slow", "-crf", str(CRF_FINAL), "-profile:v", "high",
+        # No metadata on the shipped file: no encoder tag, no creation time, nothing carried from
+        # the source recording (the review's item 7).
+        "-map_metadata", "-1", "-map_chapters", "-1",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", out,
     ]  # fmt: skip
     return args
@@ -249,7 +252,7 @@ def poster_time(durations: list[float], speed: float = 1.0, fade: float = FADE) 
 
 
 def poster_command(ffmpeg: str, video: str, t: float, out: str) -> list[str]:
-    return [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1", "-q:v", "3", out]
+    return [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1", "-q:v", "3", "-map_metadata", "-1", out]
 
 
 def cfr_command(ffmpeg: str, raw: str, out: str) -> list[str]:

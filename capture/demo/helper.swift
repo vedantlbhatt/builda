@@ -44,7 +44,10 @@ func ocr(_ files: [String]) {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
-        request.minimumTextHeight = 0.008
+        // 0.004 of the frame height: about 10 px on a 2622 px tall screen. Lower than the old
+        // 0.008 (about 21 px), which skipped a tab bar label or a small caption, so a private
+        // name drawn small was never read (the review's item 7). Smaller means stricter.
+        request.minimumTextHeight = 0.004
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {
             try handler.perform([request])

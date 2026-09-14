@@ -10,7 +10,10 @@ checked as text because they travel with the demo.
 
 from __future__ import annotations
 
+import json
+import pathlib
 import unittest
+from unittest import mock
 
 from capture.demo import privacy as pv
 from capture.demo.project import names_for
@@ -74,6 +77,25 @@ class Names(unittest.TestCase):
         self.assertEqual(pv.name_patterns(["ab", "abc"], WORDS)[0][0], "abc")
         self.assertEqual(len(pv.name_patterns(["ab"], WORDS)), 0)
 
+    def test_a_name_split_across_two_lines_is_matched_over_the_joined_text(self):
+        # The review's item 7: OCR wrapped "gt-transit" as "GT" / "transit"; neither line alone
+        # matches, but the two joined do. A single line's match is still counted once, not twice.
+        lines = [pv.Line("GT", BOX), pv.Line("transit", BOX)]
+        got = [(h.reason, h.text) for h in pv.find(lines, RIDEGT, (), WORDS)]
+        self.assertEqual(got, [("repo_name", "gt-transit")])
+        # A name fully inside one line is not also reported from the joined text.
+        lines = [pv.Line("RideGT", BOX), pv.Line("home", BOX)]
+        got = [(h.reason, h.text) for h in pv.find(lines, RIDEGT, (), WORDS)]
+        self.assertEqual(got, [("repo_name", "RideGT")])
+
+    def test_the_macos_user_name_in_a_path_is_refused(self):
+        # The review's item 7: a /Users/<name>/ path was not refused; machine_names supplies it.
+        names = pv.machine_names()
+        self.assertTrue(names)
+        user = names[0]
+        got = [(h.reason, h.text) for h in pv.find([pv.Line(f"/Users/{user}/Downloads/app", BOX)], names)]
+        self.assertEqual([r for r, _ in got], ["repo_name"])
+
 
 class Secrets(unittest.TestCase):
     def test_every_digest_key_shape(self):
@@ -100,6 +122,11 @@ class Secrets(unittest.TestCase):
         self.assertEqual(got, [("error_screen", "runtime not ready")])
         self.assertEqual([r for r, _ in hits("Uncaught Error", names=())], ["error_screen"])
         self.assertEqual(hits("Every bus on campus, moving", names=()), [])
+        # The review's item 7: the "No script URL provided" screen a dead Metro leaves, and the
+        # other red box strings, are refused too.
+        self.assertEqual([r for r, _ in hits("No script URL provided", names=())], ["error_screen"])
+        self.assertEqual([r for r, _ in hits("Could not connect to development server", names=())], ["error_screen"])
+        self.assertEqual([r for r, _ in hits("Unable to resolve module ./foo", names=())], ["error_screen"])
 
     def test_email(self):
         got = hits("reach me at someone@example.com", names=())
@@ -125,6 +152,21 @@ class Refusals(unittest.TestCase):
 
     def test_labels_are_checked_as_text(self):
         self.assertEqual(pv.label_leaks(["RideGT running: the map", "the map"], RIDEGT, words=WORDS), ["'RideGT running: the map' names RideGT"])
+
+
+class FailsClosed(unittest.TestCase):
+    def test_an_ocr_error_entry_raises_so_the_demo_is_marked_unchecked(self):
+        # The review's item 4: the helper exits 0 with an error entry for an image it cannot read;
+        # `ocr` raises rather than reading it as blank, so `check` propagates and the demo is
+        # unchecked instead of published as though every pixel was read.
+        fake = mock.Mock(returncode=0, stdout=json.dumps([{"file": "a.png", "error": "unreadable image"}]), stderr="")
+        with mock.patch("capture.demo.tools.helper", return_value="/x/helper"), mock.patch("subprocess.run", return_value=fake):
+            with self.assertRaises(RuntimeError):
+                pv.ocr([pathlib.Path("a.png")])
+
+    def test_the_video_is_sampled_at_least_four_frames_a_second_and_at_scene_changes(self):
+        self.assertGreaterEqual(pv.SAMPLE_FPS, 4)
+        self.assertTrue(hasattr(pv, "SCENE_THRESHOLD"))
 
 
 if __name__ == "__main__":

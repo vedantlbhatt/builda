@@ -25,10 +25,7 @@ import urllib.request
 
 from analysis import digest
 
-from .detect import _is_env_file
-from .workspace import Workspace, clean_env, sandboxed
-
-_SECRET_FILE = re.compile(r"(?i)\.(pem|p8|p12|key|keystore|jks|mobileprovision)$|credentials|secret|id_rsa|id_ed25519")
+from .workspace import Sandbox, Workspace, is_secret_file
 
 
 class ServerError(Exception):
@@ -36,7 +33,9 @@ class ServerError(Exception):
 
 
 def check_copy(src: pathlib.Path) -> None:
-    if _is_env_file(src.name) or _SECRET_FILE.search(src.name):
+    # `secret` is not a file shape, but a `*-secret.json` a storyboard names to copy is worth
+    # refusing by name too, so the one secret-file list plus that word.
+    if is_secret_file(src.name) or re.search(r"(?i)secret", src.name):
         raise ServerError(f"refusing to copy {src.name} into the clone: env files, keys and credentials stay where they are")
 
 
@@ -50,13 +49,15 @@ def _clone_copy(src: pathlib.Path, dst: pathlib.Path) -> None:
 
 
 class Server:
-    def __init__(self, spec: dict, ws: Workspace, log_dir: pathlib.Path, allowed_domains: list[str] | None = None):
+    def __init__(self, spec: dict, ws: Workspace, log_dir: pathlib.Path, allowed_domains: list[str] | None = None, sandbox: Sandbox | None = None):
         self.name = str(spec.get("name") or "server")
         self.spec = spec
         self.ws = ws
         self.log = log_dir / f"server-{re.sub(r'[^A-Za-z0-9_.-]', '_', self.name)}.log"
         self.proc: subprocess.Popen | None = None
         self.allowed = allowed_domains or []
+        # No sandbox given means the person's own project, run unsandboxed after their yes.
+        self.sandbox = sandbox or Sandbox(work=ws.root, untrusted=False)
         self.how = ""
 
     def _sub(self, s: str) -> str:
@@ -76,13 +77,14 @@ class Server:
             stamp = self.ws.root / f".installed-{re.sub(r'[^A-Za-z0-9_.-]', '_', self.name)}"
             if not stamp.exists() or stamp.read_text() != install:
                 cwd = self.ws.src / str(self.spec.get("cwd") or "")
+                argv, how = self.sandbox.wrap(["/bin/sh", "-c", self._sub(install)], self.allowed)
                 with self.log.open("a") as f:
-                    f.write(f"\n== install: {install}\n")
+                    f.write(f"\n== install ({how}): {install}\n")
                     f.flush()
                     r = subprocess.run(
-                        ["/bin/sh", "-c", self._sub(install)],
+                        argv,
                         cwd=str(cwd), stdout=f, stderr=subprocess.STDOUT, timeout=1800, check=False,
-                        env=clean_env(self._env()),
+                        env=self.sandbox.env(self._env()),
                     )  # fmt: skip
                 if r.returncode != 0:
                     raise ServerError(f"{self.name}: install failed:\n{tail(self.log)}")
@@ -94,12 +96,12 @@ class Server:
     def start(self, timeout: float = 180.0) -> None:
         self.prepare()
         cwd = self.ws.src / str(self.spec.get("cwd") or "")
-        argv, self.how = sandboxed(["/bin/sh", "-c", "exec " + self._sub(self.spec["command"])], self.ws.root, self.allowed)
+        argv, self.how = self.sandbox.wrap(["/bin/sh", "-c", "exec " + self._sub(self.spec["command"])], self.allowed)
         f = self.log.open("a")
         f.write(f"\n== start ({self.how}): {self.spec['command']}\n")
         f.flush()
         self.proc = subprocess.Popen(
-            argv, cwd=str(cwd), stdout=f, stderr=subprocess.STDOUT, env=clean_env(self._env()),
+            argv, cwd=str(cwd), stdout=f, stderr=subprocess.STDOUT, env=self.sandbox.env(self._env()),
             start_new_session=True,
         )  # fmt: skip
         health = self.spec.get("health")

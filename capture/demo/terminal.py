@@ -23,7 +23,7 @@ from . import tools
 from .compose import probe
 from .detect import Plan
 from .result import BeatWindow, Capture, CaptureError, Still
-from .workspace import Workspace, clean_env
+from .workspace import Sandbox, Workspace
 
 WIDTH, HEIGHT = 1080, 1920
 THEME = "Catppuccin Mocha"
@@ -73,22 +73,29 @@ def _venv(ws: Workspace) -> pathlib.Path:
     return ws.root / "venv"
 
 
-def install(plan: Plan, ws: Workspace) -> dict[str, str]:
-    """Run the plan's install step in the clone; returns the PATH the tapes run with."""
+def install(plan: Plan, ws: Workspace, sandbox: Sandbox) -> dict[str, str]:
+    """Run the plan's install step in the clone (under the sandbox for an untrusted repository);
+    returns the PATH the tapes run with. A `pip install` goes into a venv in the work dir."""
     extra_path = []
     step = plan.step("install")
-    env = clean_env()
+    env = sandbox.env()
+    domains = ["registry.npmjs.org"]
     if step is not None:
         cmd = step.command
         if cmd.startswith("pip install"):
             venv = _venv(ws)
+            domains = ["pypi.org", "files.pythonhosted.org"]
             if not (venv / "bin" / "python").exists():
-                subprocess.run(["python3", "-m", "venv", str(venv)], check=True, timeout=300, env=env)
+                argv, _ = sandbox.wrap(["python3", "-m", "venv", str(venv)])
+                subprocess.run(argv, check=True, timeout=300, env=env)
             cmd = f"{venv}/bin/{cmd}"
             extra_path.append(str(venv / "bin"))
         log = ws.logs / "install.log"
+        argv, how = sandbox.wrap(["/bin/sh", "-c", cmd], domains)
         with log.open("w") as f:
-            r = subprocess.run(["/bin/sh", "-c", cmd], cwd=str(ws.src / step.cwd), stdout=f, stderr=subprocess.STDOUT, timeout=1800, check=False, env=env)
+            f.write(f"== install ({how}): {cmd}\n")
+            f.flush()
+            r = subprocess.run(argv, cwd=str(ws.src / step.cwd), stdout=f, stderr=subprocess.STDOUT, timeout=1800, check=False, env=env)
         if r.returncode != 0:
             raise CaptureError(f"installing the project failed ({cmd.split()[0]} exited {r.returncode}; {log})")
     nm = ws.src / "node_modules" / ".bin"
@@ -97,12 +104,13 @@ def install(plan: Plan, ws: Workspace) -> dict[str, str]:
     return {"PATH": os.pathsep.join([*extra_path, env.get("PATH", "")])}
 
 
-def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path) -> Capture:
+def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: Sandbox | None = None) -> Capture:
+    sandbox = sandbox or Sandbox(work=ws.root, untrusted=False)
     vhs = tools.vhs()
     ttyd = tools.ttyd()
-    path_env = install(plan, ws)
+    path_env = install(plan, ws, sandbox)
     tool_path = os.pathsep.join([str(ttyd.parent), os.path.dirname(tools.ffmpeg()), path_env["PATH"]])
-    env = clean_env({"PATH": tool_path})
+    env = sandbox.env({"PATH": tool_path})
     stills: list[Still] = []
     beats: list[BeatWindow] = []
     n = 0
@@ -117,7 +125,10 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path) -> Captur
             still = run_dir / f"still-{n:02d}.png"
         tp = run_dir / f"beat-{k:02d}.tape"
         tp.write_text(tape(ws.src, " && ".join(cmds), clip, still, b["hold"]))
-        r = subprocess.run([str(vhs), str(tp)], cwd=str(ws.src), capture_output=True, text=True, timeout=600, check=False, env=env)
+        # VHS types the repository's own command into a shell, so for an untrusted repository the
+        # whole VHS invocation (and the command it runs) is under the sandbox.
+        argv, _ = sandbox.wrap([str(vhs), str(tp)])
+        r = subprocess.run(argv, cwd=str(ws.src), capture_output=True, text=True, timeout=600, check=False, env=env)
         if r.returncode != 0 or not clip.exists():
             raise CaptureError(f"VHS could not record beat {k}: {(r.stderr or r.stdout).strip()[-400:]}")
         if still is not None and still.exists():

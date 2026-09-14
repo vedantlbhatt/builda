@@ -39,8 +39,12 @@ class Registered(unittest.TestCase):
         sub = argparse.ArgumentParser().add_subparsers()
         from capture.demo.cli import add_parser
 
+        # The publish side owns these actions; the generator must not redefine them. `--yes`
+        # is shared in meaning (confirm) but the two are separate parsers dispatched by
+        # `demo_publish.claims`, so the generator having its own --yes collides with nothing.
         flags = {o for act in add_parser(sub)._actions for o in act.option_strings}
-        self.assertFalse(flags & {"--publish", "--delete", "--yes", "--key", "--server"})
+        self.assertFalse(flags & {"--publish", "--delete", "--key", "--server"})
+        self.assertIn("--yes", flags)
 
 
 if __name__ == "__main__":

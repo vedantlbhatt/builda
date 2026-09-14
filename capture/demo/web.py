@@ -17,6 +17,7 @@ with `page.route` (section 4, "Phoning home").
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -27,7 +28,7 @@ from . import tools
 from .detect import Plan
 from .result import BeatWindow, Capture, CaptureError, Still
 from .servers import Server, ServerError, port_free
-from .workspace import Workspace
+from .workspace import Sandbox, Workspace
 
 #: Hosts a demo's browser never reaches: analytics, session replay and crash reporting.
 BLOCK_HOSTS = (
@@ -181,10 +182,32 @@ def _found_port(log: pathlib.Path, default: int, timeout: float = 60.0) -> int:
     return default
 
 
-def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path) -> Capture:
+def _venv_pip(command: str, ws: Workspace, sandbox: Sandbox) -> tuple[str, str]:
+    """A `pip install ...` rewritten to a venv in the work dir and the venv's bin dir for PATH.
+
+    FOUND BY THE REVIEW (item 6): the web path ran `pip install -r requirements.txt` with the
+    person's own `pip`, though `detect` promised a venv in the work dir. It now creates the venv
+    and installs into it, so a project's dependencies never land in the user's site packages."""
+    venv = ws.root / "venv"
+    if not (venv / "bin" / "python").exists():
+        argv, _ = sandbox.wrap(["python3", "-m", "venv", str(venv)])
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=300, check=False, env=sandbox.env())
+        if r.returncode != 0:
+            raise CaptureError(f"creating the venv failed: {r.stderr[-300:]}")
+    return command.replace("pip install", f"{venv}/bin/pip install", 1), str(venv / "bin")
+
+
+def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: Sandbox | None = None) -> Capture:
+    sandbox = sandbox or Sandbox(work=ws.root, untrusted=False)
+    venv_bin = None
     install = plan.step("install")
     if install is not None:
-        inst = Server({"name": "install", "cwd": install.cwd, "command": "true", "install": install.command}, ws, ws.logs)
+        cmd = install.command
+        domains = ["registry.npmjs.org"]
+        if cmd.strip().startswith("pip install"):
+            cmd, venv_bin = _venv_pip(cmd, ws, sandbox)
+            domains = ["pypi.org", "files.pythonhosted.org"]
+        inst = Server({"name": "install", "cwd": install.cwd, "command": "true", "install": cmd}, ws, ws.logs, allowed_domains=domains, sandbox=sandbox)
         try:
             inst.prepare()
         except ServerError as e:
@@ -193,17 +216,20 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path) -> Captur
     if step is None:
         raise CaptureError("no run command found for this web project")
     port = _port()
+    env = {"PORT": str(port), "HOST": "127.0.0.1", "BROWSER": "none", "NODE_ENV": "development"}
+    if venv_bin:
+        env["PATH"] = venv_bin + os.pathsep + os.environ.get("PATH", "")
     spec = {
         "name": "web",
         "cwd": step.cwd,
         "command": step.command.replace("$PORT", str(port)),
-        "env": {"PORT": str(port), "HOST": "127.0.0.1", "BROWSER": "none", "NODE_ENV": "development"},
+        "env": env,
     }
     for s in story.get("servers") or []:
         spec_extra = dict(s)
         if spec_extra.get("name") == "web":
             spec.update(spec_extra)
-    srv = Server(spec, ws, ws.logs, allowed_domains=["registry.npmjs.org"])
+    srv = Server(spec, ws, ws.logs, allowed_domains=["registry.npmjs.org"], sandbox=sandbox)
     servers = [srv]
     try:
         srv.start(timeout=0)

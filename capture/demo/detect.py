@@ -33,7 +33,6 @@ import json
 import os
 import pathlib
 import re
-import shutil
 import subprocess
 import tomllib
 
@@ -449,6 +448,33 @@ def _pick(seen: list[Seen], subdir: str | None = None) -> Seen | None:
     return rows[0] if rows else None
 
 
+_ENV_ASSIGN = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=\S*\s+")
+
+
+def strip_env_assignments(command: str) -> tuple[str, list[str]]:
+    """A transcript command with its leading `VAR=value` prefixes removed, and the names removed.
+
+    A command that WORKED in a transcript can carry inline environment (`DATABASE_URL=... npm run
+    dev`, `API_BASE=https://prod ...`): replaying it verbatim would point a demo at whatever that
+    named, a production backend included. The demo supplies its own environment (the allowlist
+    plus the storyboard's `build_env`), so these are dropped and named."""
+    names: list[str] = []
+    while True:
+        m = _ENV_ASSIGN.match(command)
+        if not m:
+            return command, names
+        names.append(m.group(1))
+        command = command[m.end():]
+
+
+def _replayed(seen: Seen, plan: Plan) -> str:
+    """`seen.command` with inline `VAR=value` prefixes stripped and a note left saying which."""
+    cmd, dropped = strip_env_assignments(seen.command)
+    if dropped:
+        plan.notes.append(f"replayed `{cmd}` without its inline {', '.join(dropped)} (the demo sets its own environment)")
+    return cmd
+
+
 # ----------------------------------------------------------------------------- detect
 
 
@@ -572,21 +598,22 @@ def detect(
 
 
 def _install_step(pm: str, app_dir: str, pkg: dict, roles: dict[str, list[Seen]]) -> list[Step]:
-    """Dependencies without lifecycle scripts (docs/research/demo-capture.md section 4): bun
-    skips untrusted dependency scripts on its own, pnpm 10 blocks them, npm and yarn are told
-    to. A project whose own postinstall is `patch-package` gets its patches applied as a step
+    """Dependencies without lifecycle scripts (docs/research/demo-capture.md section 4): every
+    package manager is told `--ignore-scripts`, so a dependency's (or the project's own) install,
+    postinstall or prepare script does not run while dependencies are fetched. What that skips is
+    named. A project whose own postinstall is `patch-package` gets its patches applied as a step
     of its own, because a project that patches a native module is not the project without it."""
     seen = _pick(roles["install"], app_dir)
     src = describe_seen(seen) if seen else f"the {pm} lockfile"
     cmd = {
-        "bun": "bun install --frozen-lockfile",
-        "pnpm": "pnpm install --frozen-lockfile",
+        "bun": "bun install --frozen-lockfile --ignore-scripts",
+        "pnpm": "pnpm install --frozen-lockfile --ignore-scripts",
         "yarn": "yarn install --frozen-lockfile --ignore-scripts",
         "npm": "npm ci --ignore-scripts --no-audit --no-fund",
     }[pm]
-    steps = [Step("install", cmd, app_dir, src)]
+    steps = [Step("install", cmd, app_dir, src + "; lifecycle scripts off (--ignore-scripts)")]
     post = ((pkg.get("scripts") or {}).get("postinstall") or "").strip()
-    if pm in ("npm", "yarn") and post:
+    if pm in ("npm", "yarn", "pnpm", "bun") and post:
         if re.fullmatch(r"(?:npx\s+)?patch-package(?:\s+[\w=-]+)*", post):
             steps.append(Step("patch", "npx --no-install patch-package", app_dir, "package.json scripts.postinstall"))
         else:
@@ -693,7 +720,7 @@ def _plan_web(plan: Plan, top: pathlib.Path, web_pkg, py_web, procfile_web, role
         scripts = pkg.get("scripts") or {}
         seen = _pick(roles["web"], d)
         if seen:
-            plan.steps.append(Step("run", seen.command, d, describe_seen(seen)))
+            plan.steps.append(Step("run", _replayed(seen, plan), d, describe_seen(seen)))
         else:
             for name in ("dev", "start", "serve", "preview"):
                 if name in scripts:
@@ -706,7 +733,7 @@ def _plan_web(plan: Plan, top: pathlib.Path, web_pkg, py_web, procfile_web, role
         return
     seen = _pick(roles["server"]) or _pick(roles["web"])
     if seen:
-        plan.steps.append(Step("run", seen.command, seen.subdir, describe_seen(seen)))
+        plan.steps.append(Step("run", _replayed(seen, plan), seen.subdir, describe_seen(seen)))
     elif procfile_web:
         plan.steps.append(Step("run", procfile_web, "", "Procfile web"))
     elif py_web and (top / "manage.py").exists():
@@ -744,7 +771,7 @@ def _plan_cli(plan: Plan, top: pathlib.Path, bins: list[str], roles) -> None:
 def _plan_library(plan: Plan, top: pathlib.Path, roles) -> None:
     seen = _pick(roles["test"])
     if seen:
-        plan.steps.append(Step("run", seen.command, seen.subdir, describe_seen(seen)))
+        plan.steps.append(Step("run", _replayed(seen, plan), seen.subdir, describe_seen(seen)))
     elif (top / "package.json").exists():
         pm = package_manager(top, "")
         plan.package_manager = pm
@@ -788,12 +815,18 @@ def analytics_names(top: pathlib.Path, app_dir: str) -> list[str]:
 
 
 def sandbox_status() -> str:
-    srt = shutil.which("srt")
+    from . import tools
+
+    srt = tools.srt()
     if srt:
-        return f"dev servers run under Anthropic's sandbox runtime ({srt})"
+        return (
+            f"a repository your transcripts have not resolved to runs every step under Anthropic's "
+            f"sandbox runtime ({srt}); a project you have worked in runs unsandboxed after your yes"
+        )
     return (
-        "Anthropic's sandbox runtime is NOT installed, so dev servers run unsandboxed "
-        "(npm install -g @anthropic-ai/sandbox-runtime to change that)"
+        "Anthropic's sandbox runtime is NOT installed: a repository your transcripts have not "
+        "resolved to would refuse to run (this tool installs srt into ~/.builder/tools when it "
+        "needs it); a project you have worked in runs unsandboxed after your yes"
     )
 
 

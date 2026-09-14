@@ -6,7 +6,10 @@ and in frames sampled from the video, and the demo is REFUSED, with the file and
 that text shows:
 
     repo_name   the repository's name: the origin's (`gt-transit`), its `owner/name`, or the
-                folder's (`RideGT`, `builder-overnight`), because a person recognises either
+                folder's (`RideGT`, `builder-overnight`), because a person recognises either; and
+                this Mac's own names (`machine_names`: the login name, the home folder), so a path
+                like `/Users/<name>/...` on screen is refused. A name split by OCR across two
+                lines is matched over the joined text too.
     token       anything shaped like a token or key: every shape `analysis.digest` masks in a
                 transcript (the one list of them in this codebase, imported, never copied),
                 plus any 32 or more letters and digits in one run
@@ -55,13 +58,23 @@ _TOKENISH = re.compile(r"(?<![A-Za-z0-9_\-])(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\
 #: A React Native crash screen is not a demo of anything, and must never become the "last good
 #: capture" a later run falls back to. FOUND ON THE SECOND RIDEGT RUN: an embedded debug bundle
 #: stopped at "[runtime not ready]: Error: Cannot create devtools websocket connections in
-#: embedded environments", filmed for four beats, and would have passed every other check.
+#: embedded environments", filmed for four beats, and would have passed every other check. The
+#: review added "No script URL provided" (the screen a dead Metro leaves, 9e479c6) and the other
+#: red box and dev menu strings.
 ERROR_SCREEN = re.compile(
     r"Uncaught Error|Render Error|runtime not ready|Unable to load script|No bundle URL present|"
-    r"Unhandled JS Exception|Invariant Violation|Connect to Metro to develop JavaScript"
+    r"Unhandled JS Exception|Invariant Violation|Connect to Metro to develop JavaScript|"
+    r"No script URL provided|Could not connect to development server|Unable to resolve module|"
+    r"Application has not been registered|RCTFatal|Failed to construct transformer|"
+    r"Metro has encountered an error|Element type is invalid|redbox|"
+    r"Reload\s+Dismiss|Loading from Metro"
 )
-#: How often the video is sampled for the check, frames per second.
-SAMPLE_FPS = 2
+#: How often the video is sampled for the check, frames per second. Raised from 2 to 4, and scene
+#: changes are sampled on top of it (`sample_frames`), so a name that shows only between the fixed
+#: sample points is still read (the review's item 7).
+SAMPLE_FPS = 4
+#: The scene-change score above which a frame is sampled regardless of the fixed cadence.
+SCENE_THRESHOLD = 0.2
 MIN_NAME = 3
 
 
@@ -131,12 +144,14 @@ def find(lines: list[Line], names, other_names=(), words: frozenset[str] | None 
     own = name_patterns(names, words)
     others = name_patterns(other_names, words)
     hits: list[Hit] = []
+    named: set[str] = set()
     for ln in lines:
         text = ln.text
         for reason, pats in (("repo_name", own), ("other_repo_name", others)):
             hit = next((name for name, w, sq, ordn in pats if _named(text, w, sq, ordn)), None)
             if hit:
                 hits.append(Hit(reason, hit, ln.box))
+                named.add(hit)
                 break
         for pat in digest._SECRET_PATTERNS:
             if pat.search(text):
@@ -150,7 +165,34 @@ def find(lines: list[Line], names, other_names=(), words: frozenset[str] | None 
         m = ERROR_SCREEN.search(text)
         if m:
             hits.append(Hit("error_screen", m.group(0), ln.box))
+    # A name OCR split across two lines ("gt" / "transit") is in neither line's text but is in
+    # the two joined; match the joined text too, so a wordmark that wraps still refuses (the
+    # review's item 7). Only a name that matches NO single line is added here, so a name a line
+    # already carries is not double counted, and the ordinary-word rule (`_named`) still keeps a
+    # one word dictionary name from matching a whole screen of prose. Box unknown, so (0,0,0,0).
+    texts = [ln.text for ln in lines]
+    joined = " ".join(texts)
+    for reason, pats in (("repo_name", own), ("other_repo_name", others)):
+        for name, w, sq, ordn in pats:
+            if name in named or any(_named(t, w, sq, ordn) for t in texts):
+                continue
+            if _named(joined, w, sq, ordn):
+                hits.append(Hit(reason, name, (0, 0, 0, 0)))
+                named.add(name)
     return hits
+
+
+def machine_names() -> tuple[str, ...]:
+    """Names of this Mac that a path on screen would reveal: the login name and the home
+    directory's name (`/Users/<name>/...`). FOUND BY THE REVIEW: a path holding the macOS user
+    name was not refused; it is now one of the private names every demo is checked against."""
+    import getpass
+
+    out: list[str] = []
+    for n in (getpass.getuser() if hasattr(getpass, "getuser") else None, pathlib.Path.home().name):
+        if n and n not in out:
+            out.append(n)
+    return tuple(out)
 
 
 def other_names(others: list[tuple[str, str | None]], own: tuple[str, ...]) -> tuple[str, ...]:
@@ -210,7 +252,12 @@ def refusals(results: list[dict], names, labels: dict[str, str] | None = None, o
 
 
 def ocr(files: list[pathlib.Path]) -> list[dict]:
-    """Vision text recognition through the compiled helper, in batches."""
+    """Vision text recognition through the compiled helper, in batches.
+
+    FAILS CLOSED (the review's item 4): the helper exits 0 with an `error` entry for an image it
+    cannot read or that Vision refuses, so a caller reading only `lines` would count it as read
+    with nothing on it. Any error entry raises here instead, so the demo is marked unchecked
+    rather than published as though every pixel had been read."""
     exe = tools.helper()
     out: list[dict] = []
     for i in range(0, len(files), 24):
@@ -219,11 +266,19 @@ def ocr(files: list[pathlib.Path]) -> list[dict]:
         if r.returncode != 0:
             raise RuntimeError(f"text recognition failed: {r.stderr.strip()[-300:]}")
         out.extend(json.loads(r.stdout))
+    errs = [x.get("file") for x in out if x.get("error")]
+    if errs:
+        raise RuntimeError(f"text recognition could not read {len(errs)} image(s): {[pathlib.Path(str(e)).name for e in errs[:3]]}")
     return out
 
 
 def sample_frames(video: pathlib.Path, into: pathlib.Path, fps: int = SAMPLE_FPS) -> list[tuple[pathlib.Path, int]]:
-    """(frame png, its time in ms) at `fps` frames a second."""
+    """(frame png, its time in ms): a fixed `fps` cadence AND every scene change on top of it.
+
+    The holds are sped up in the composed video, so a name shown only during a fast stretch could
+    fall between two fixed samples; sampling scene changes as well (`SCENE_THRESHOLD`) reads the
+    frame each cut lands on. The two sets are returned together (the caller OCRs and refuses over
+    all of them)."""
     into.mkdir(parents=True, exist_ok=True)
     r = subprocess.run(
         [tools.ffmpeg(), "-hide_banner", "-loglevel", "error", "-i", str(video), "-vf", f"fps={fps}",
@@ -232,8 +287,21 @@ def sample_frames(video: pathlib.Path, into: pathlib.Path, fps: int = SAMPLE_FPS
     )  # fmt: skip
     if r.returncode != 0:
         raise RuntimeError(f"sampling the video failed: {r.stderr.strip()[-300:]}")
-    frames = sorted(into.glob("f-*.png"))
-    return [(f, round(i * 1000 / fps)) for i, f in enumerate(frames)]
+    out = [(f, round(i * 1000 / fps)) for i, f in enumerate(sorted(into.glob("f-*.png")))]
+    # Scene changes, with their timestamps from `showinfo`. Best effort: a failure here leaves the
+    # fixed cadence in place rather than dropping the whole check.
+    s = subprocess.run(
+        [tools.ffmpeg(), "-hide_banner", "-nostats", "-i", str(video),
+         "-vf", f"select='gt(scene,{SCENE_THRESHOLD})',showinfo", "-vsync", "0", str(into / "s-%05d.png")],
+        capture_output=True, text=True, timeout=900, check=False,
+    )  # fmt: skip
+    if s.returncode == 0:
+        times = [float(m) for m in re.findall(r"pts_time:([0-9.]+)", s.stderr)]
+        for i, t in enumerate(times, 1):
+            p = into / f"s-{i:05d}.png"
+            if p.exists():
+                out.append((p, round(t * 1000)))
+    return out
 
 
 def check(stills: list[pathlib.Path], video: pathlib.Path | None, names, poster: pathlib.Path | None = None, other_names=()) -> tuple[list[dict], int]:

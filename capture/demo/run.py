@@ -16,7 +16,7 @@ from . import compose, detect, fallback, manifest, paths, privacy, storyboard, t
 from . import project as pj
 from . import transcripts as tx
 from .result import Capture, CaptureError
-from .workspace import Workspace, WorkspaceError, prepare
+from .workspace import Sandbox, Workspace, WorkspaceError, prepare
 
 OUR_FILES = ("manifest.json", "demo.mp4", "poster.jpg")
 
@@ -59,12 +59,33 @@ def image_cap() -> int:
         return 6 * 1024 * 1024
 
 
-def place_image(src: pathlib.Path, staging: pathlib.Path, stem: str) -> pathlib.Path:
+def _reencode(src: pathlib.Path, dest: pathlib.Path) -> bool:
+    """Re-encode `src` to `dest` with ffmpeg and `-map_metadata -1`, which drops every metadata
+    block (EXIF GPS, author, the PNG text chunks), so a checkout image's camera location does not
+    travel (the review's item 7). sips is NOT used here: it copies the EXIF block through a JPEG
+    re-encode. True on success."""
+    try:
+        ff = tools.ffmpeg()
+    except tools.ToolError:
+        return False
+    args = [ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(src), "-map_metadata", "-1", "-frames:v", "1"]
+    if dest.suffix.lower() in (".jpg", ".jpeg"):
+        args += ["-q:v", "2"]
+    args += [str(dest)]
+    r = subprocess.run(args, capture_output=True, timeout=120, check=False)
+    return r.returncode == 0 and dest.exists()
+
+
+def place_image(src: pathlib.Path, staging: pathlib.Path, stem: str, strip_meta: bool = False) -> pathlib.Path:
     """Copy one still into the demo, as a JPEG when the PNG is over the contract's cap (`sips`,
-    which every Mac has), so a demo this writes is a demo `--publish` can send."""
+    which every Mac has), so a demo this writes is a demo `--publish` can send. `strip_meta`
+    re-encodes the image so no camera metadata travels: on for fallback images from the checkout
+    or the transcripts, off for this run's own captures (which carry none)."""
     ext = ".png" if src.suffix.lower() == ".png" else ".jpg"
     dest = staging / f"{stem}{ext}"
     if src.stat().st_size <= image_cap():
+        if strip_meta and _reencode(src, dest) and dest.stat().st_size <= image_cap():
+            return dest
         shutil.copyfile(src, dest)
         return dest
     dest = staging / f"{stem}.jpg"
@@ -144,6 +165,79 @@ def check_app(app_arg: str, plan: detect.Plan, ws: Workspace) -> pathlib.Path:
     return app
 
 
+def is_own(evidence) -> bool:
+    """Whether this repository is one the person has worked in: its origin is among the
+    repositories this Mac's transcripts resolved to (`harvest` counts a match only when a
+    transcript's cwd resolves to exactly this identity). A project with no such history is
+    untrusted, whether it arrived as a `--repo` URL or a local checkout."""
+    return bool(evidence and evidence.transcripts_matched > 0)
+
+
+def _sandbox_for(project, evidence, plan, ws: Workspace) -> Sandbox:
+    """The sandbox a run uses. A project the transcripts resolved to runs unsandboxed after the
+    person's yes. Any other repository is untrusted: it runs every step under `srt` (installed
+    into the tools dir if need be), and an iOS one is refused because a simulator run cannot be
+    governed by the sandbox on this Mac (the review's item 1)."""
+    if is_own(evidence):
+        return Sandbox(work=ws.root, untrusted=False)
+    if plan.kind == "expo_ios":
+        raise CaptureError(
+            "this iOS project is not one your transcripts have resolved to, and an iOS build and "
+            "simulator run cannot be sandboxed on this Mac, so it is refused. Open it in Claude Code "
+            "first (so its transcripts resolve to it), or film a project you have worked in."
+        )
+    srt = tools.ensure_srt()  # ToolError (caught) when it cannot be installed: the run refuses
+    return Sandbox(work=ws.root, untrusted=True, srt=srt)
+
+
+def steps_preview(plan: detect.Plan, story: dict) -> list[str]:
+    """Every command the run will execute, for the yes prompt: the plan's steps, the storyboard's
+    servers, and (iOS) Metro and the simulator."""
+    out: list[str] = []
+    for s in plan.steps:
+        if s.role == "note":
+            continue
+        out.append(detect.no_dash(f"[{s.role}] {s.command}  (in {s.cwd or '.'})"))
+    for srv in story.get("servers") or []:
+        out.append(detect.no_dash(f"[server '{srv.get('name', 'server')}'] {srv.get('command', '')}"))
+    if plan.kind == "expo_ios" and (story.get("app", {}).get("configuration") or "Release") == "Debug":
+        out.append("[metro] npx expo start (from the clone), then the app on a headless simulator")
+    return out
+
+
+def _confirm_run(plan: detect.Plan, story: dict, sandbox: Sandbox, a: argparse.Namespace) -> bool:
+    """Print every step that will run and take a typed yes (or `--yes`). Running a project means
+    running its code; nothing runs until the person has seen the list and agreed (the review's
+    item 1)."""
+    say("")
+    if sandbox.untrusted:
+        say(f"This repository is NOT one your transcripts resolved to, so every step runs under the sandbox ({sandbox.srt}):")
+        say("  HOME and every package cache are inside the work dir; your SSH, cloud and GitHub credentials,")
+        say("  your other demo work dirs and ~/.claude are unreadable; network is on an allowlist.")
+    else:
+        say("This is a project you have worked in, so its steps run WITHOUT a sandbox, with an environment")
+        say("  allowlist (no .env file, no exported secret). While it runs, its build and server code runs")
+        say("  with your permissions and can read your files; nothing it produces leaves this Mac.")
+    say("It runs these, in the clone only:")
+    for line in steps_preview(plan, story):
+        say(f"    {line}")
+    if a.yes:
+        say("  running (--yes given)")
+        return True
+    if not sys.stdin.isatty():
+        say("Stopped before running anything: pass --yes to run without a terminal.")
+        return False
+    say("")
+    try:
+        answer = input("Run these steps? [y/N] ")
+    except EOFError:
+        answer = ""
+    if answer.strip().lower() in ("y", "yes"):
+        return True
+    say("Stopped before running anything.")
+    return False
+
+
 def main(a: argparse.Namespace) -> int:
     t0 = time.monotonic()
     try:
@@ -193,7 +287,9 @@ def main(a: argparse.Namespace) -> int:
     notes: list[str] = []
     reason = plan.refused
     allowed = {x.lower() for x in (a.allow_name or [])}
-    names = tuple(n for n in project.names if n.lower() not in allowed)
+    # This Mac's own names (the login and home folder names) are refused on screen too, so a path
+    # like /Users/<name>/... never travels (the review's item 7).
+    names = tuple(n for n in (*project.names, *privacy.machine_names()) if n.lower() not in allowed)
     others = tuple(
         n for n in privacy.other_names(evidence.others if evidence else [], project.names) if n.lower() not in allowed
     )
@@ -223,6 +319,9 @@ def main(a: argparse.Namespace) -> int:
                 say(f"  wrote a first storyboard to {ws.storyboard_path()}; edit its beats and run again")
             if a.until == "workspace":
                 return 0
+            sandbox = _sandbox_for(project, evidence, plan, ws)
+            if not _confirm_run(plan, story, sandbox, a):
+                return 2
             run_dir = paths.private_dir(ws.root / "runs" / time.strftime("%Y%m%d-%H%M%S"))
             if plan.kind == "expo_ios":
                 from . import ios
@@ -235,11 +334,11 @@ def main(a: argparse.Namespace) -> int:
             elif plan.kind == "web":
                 from . import web
 
-                cap = web.run(plan, ws, story, run_dir)
+                cap = web.run(plan, ws, story, run_dir, sandbox)
             else:
                 from . import terminal
 
-                cap = terminal.run(plan, ws, story, run_dir)
+                cap = terminal.run(plan, ws, story, run_dir, sandbox)
             notes.extend(cap.notes)
             (run_dir / "beats.json").write_text(json.dumps(
                 [{"label": b.label, "caption": b.caption, "start": b.start, "end": b.end, "video": str(b.video) if b.video else None} for b in cap.beats],
@@ -293,7 +392,7 @@ def main(a: argparse.Namespace) -> int:
                 say(f"  falling back to {len(picks)} image(s) from the {'checkout' if source == 'checkout' else 'transcripts'}")
             for i, (p, label) in enumerate(picks, 1):
                 try:
-                    placed = place_image(p, staging, f"still-{i:02d}")
+                    placed = place_image(p, staging, f"still-{i:02d}", strip_meta=True)
                 except CaptureError as e:
                     notes.append(str(e))
                     continue
@@ -355,5 +454,7 @@ def _summary(project, out: pathlib.Path, m: dict, reason: str | None, notes: lis
         lines.append(f"  allowed on screen because you said so: {', '.join(allowed)}")
     for n in notes:
         lines.append(f"  note: {n}")
-    lines.append(f"  took {secs / 60:.1f} minutes; nothing left this Mac")
+    # Precise, not a blanket claim: this command writes the demo to a local directory and sends
+    # nothing. Publishing is a separate command (`demo --publish`) that lists every file first.
+    lines.append(f"  took {secs / 60:.1f} minutes; the demo is written to {out} and nothing was sent anywhere (publishing is a separate command)")
     print("\n".join(detect.no_dash(line) for line in lines))

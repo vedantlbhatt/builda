@@ -55,7 +55,11 @@ class Clone(unittest.TestCase):
                 "app/app.json": '{"expo": {"name": "A", "extra": {"posthog": "' + POSTHOG + '"}}}',
                 "app/sentry.js": f"export const dsn = '{SENTRY}';\n",
                 "app/google-services.json": '{"api_key": [{"current_key": "AIzaFAKEFAKEFAKEFAKE"}]}',
+                "app/GoogleService-Info.plist": "<plist>API_KEY AIzaFAKEIOS</plist>\n",
                 "app/.env.example": "EXPO_PUBLIC_POSTHOG_KEY=put-yours-here\n",
+                "app/.env-production": "EXPO_PUBLIC_API_URL=https://prod\n",
+                "app/.envrc": "export DATABASE_URL=postgres://prod\n",
+                "app/AuthKey.p8": "-----BEGIN PRIVATE KEY-----\n",
                 ".gitignore": ".env\n",
             },
         )
@@ -90,6 +94,19 @@ class Clone(unittest.TestCase):
         # git itself agrees nothing was deleted by hand: the sparse checkout keeps status clean.
         status = subprocess.run(["git", "status", "--porcelain"], cwd=ws.src, capture_output=True, text=True).stdout
         self.assertNotIn(".env", status)
+
+    def test_every_secret_file_shape_is_left_out_of_the_clone(self):
+        # The review's item 5: one list covers all .env* variants, .envrc, the iOS Firebase plist
+        # (kept before) and key files. None of them is a file in the clone.
+        ws = wsp.prepare(self.project, None, "app")
+        for rel in ("app/GoogleService-Info.plist", "app/google-services.json", "app/.env-production", "app/.envrc", "app/AuthKey.p8"):
+            self.assertFalse((ws.src / rel).exists(), rel)
+        joined = "\n".join(ws.stripped)
+        self.assertIn("GoogleService-Info.plist", joined)
+        self.assertIn("AuthKey.p8", joined)
+        # And the checkout still has them all: nothing was deleted from the person's tree.
+        for rel in ("app/GoogleService-Info.plist", "app/AuthKey.p8", "app/.envrc"):
+            self.assertTrue((self.src / rel).exists(), rel)
 
     def test_analytics_keys_are_blanked_and_named(self):
         ws = wsp.prepare(self.project, None, "app")
@@ -130,9 +147,18 @@ class Environment(unittest.TestCase):
             import json
 
             settings = json.loads((work / "srt-settings.json").read_text())
-            self.assertIn("~/.ssh", settings["filesystem"]["denyRead"])
-            self.assertIn("~/.builder/credentials.json", settings["filesystem"]["denyRead"])
+            deny = settings["filesystem"]["denyRead"]
+            # Paths are absolute (~ expanded against the real home), so the deny holds even though
+            # the sandboxed step runs with HOME pointed at the work dir.
+            self.assertIn(os.path.expanduser("~/.ssh"), deny)
+            self.assertNotIn("~/.ssh", deny)
+            # The whole of ~/.builder is denied (the other demos' work dirs live under it), with
+            # THIS work dir re-allowed; the shared package caches are no longer write-allowed.
+            self.assertIn(os.path.expanduser("~/.builder"), deny)
+            self.assertIn(os.path.expanduser("~/.git-credentials"), deny)
+            self.assertIn(str(work), settings["filesystem"]["allowRead"])
             self.assertIn(str(work), settings["filesystem"]["allowWrite"])
+            self.assertNotIn(str(pathlib.Path.home() / "Library" / "Caches"), settings["filesystem"]["allowWrite"])
             self.assertEqual(settings["network"]["allowedDomains"], ["registry.npmjs.org"])
 
 

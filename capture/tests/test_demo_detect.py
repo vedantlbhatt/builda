@@ -200,6 +200,29 @@ class TranscriptPreference(unittest.TestCase):
         self.assertEqual([s.command for s in roles["server"]], ["python -m uvicorn main:app --port 5001"])
 
 
+class InlineEnv(unittest.TestCase):
+    def test_leading_var_value_prefixes_are_stripped_from_a_replayed_command(self):
+        cmd, dropped = detect.strip_env_assignments("DATABASE_URL=postgres://prod API_BASE=https://prod npm run dev")
+        self.assertEqual(cmd, "npm run dev")
+        self.assertEqual(dropped, ["DATABASE_URL", "API_BASE"])
+        self.assertEqual(detect.strip_env_assignments("npm run dev"), ("npm run dev", []))
+
+    def test_a_replayed_web_command_drops_inline_env_and_says_so(self):
+        root = fx.repo(self.base / "w", fx.WEB_APP)
+        project = pj.from_checkout(root)
+        ev = evidence(Seen("API_BASE=https://prod.example.com npm run dev", "", ok=2, last_ts=fx.T0))
+        p = detect.detect(project, root, None, ev, kind="web")
+        self.assertEqual(p.step("run").command, "npm run dev")
+        self.assertTrue(any("without its inline API_BASE" in n for n in p.notes), p.notes)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = pathlib.Path(self.tmp.name).resolve()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+
 class Render(unittest.TestCase):
     def test_the_plan_is_plain_words_with_no_dash(self):
         with tempfile.TemporaryDirectory() as t:
@@ -217,12 +240,16 @@ class Render(unittest.TestCase):
         self.assertIn("made without  EXPO_PUBLIC_POSTHOG_KEY", text)
 
     def test_sandbox_status_says_plainly_when_srt_is_missing(self):
+        import os
+        import tempfile
         from unittest import mock
 
-        with mock.patch("shutil.which", return_value=None):
-            self.assertIn("NOT installed", detect.sandbox_status())
-        with mock.patch("shutil.which", return_value="/usr/local/bin/srt"):
-            self.assertIn("run under Anthropic's sandbox runtime", detect.sandbox_status())
+        # An empty tools dir so `tools.srt()` finds nothing there; then only shutil.which decides.
+        with tempfile.TemporaryDirectory() as t, mock.patch.dict(os.environ, {"BUILDER_TOOLS_DIR": t}):
+            with mock.patch("shutil.which", return_value=None):
+                self.assertIn("NOT installed", detect.sandbox_status())
+            with mock.patch("shutil.which", return_value="/usr/local/bin/srt"):
+                self.assertIn("under Anthropic's sandbox runtime", detect.sandbox_status())
 
 
 if __name__ == "__main__":

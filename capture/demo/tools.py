@@ -45,10 +45,46 @@ VHS_VERSION = "0.11.0"
 #: this was written on (1217, 1223 and 1234 were there; 1.57 wants 1200, 1.61 wants 1228), so
 #: web demos start without a browser download. `ensure_chromium` installs one otherwise.
 PLAYWRIGHT_VERSION = "1.60.0"
+#: Anthropic's sandbox runtime, pinned. Installed into `tools/sandbox-runtime-<version>` with a
+#: LOCAL npm install (never `npm -g`) and with lifecycle scripts off, and used to wrap every step
+#: of an untrusted `--repo`. On macOS it drives `sandbox-exec`; no extra dependency is needed.
+SRT_VERSION = "0.0.76"
 
 
 class ToolError(Exception):
     pass
+
+
+def srt() -> str | None:
+    """The `srt` binary if it is available: the one installed under `tools/`, else one on PATH.
+    None when neither is there (an untrusted repository then refuses; `ensure_srt` installs it)."""
+    for d in sorted(paths.tools_dir().glob("sandbox-runtime-*"), reverse=True):
+        exe = d / "node_modules" / ".bin" / "srt"
+        if exe.exists():
+            return str(exe)
+    return shutil.which("srt")
+
+
+def ensure_srt() -> str:
+    """`srt`, installed into `tools/sandbox-runtime-<version>` with a local, scripts-off npm
+    install if it is not already there. Never `npm -g`. Raises `ToolError` if it cannot."""
+    found = srt()
+    if found:
+        return found
+    npm = shutil.which("npm")
+    if not npm:
+        raise ToolError("npm is not on PATH, so Anthropic's sandbox runtime cannot be installed")
+    prefix = paths.private_dir(paths.tools_dir() / f"sandbox-runtime-{SRT_VERSION}")
+    print(f"  installing @anthropic-ai/sandbox-runtime@{SRT_VERSION} into {prefix} (local, no scripts)", file=sys.stderr)
+    r = subprocess.run(
+        [npm, "install", "--prefix", str(prefix), "--ignore-scripts", "--no-audit", "--no-fund",
+         "--no-save", f"@anthropic-ai/sandbox-runtime@{SRT_VERSION}"],
+        capture_output=True, text=True, timeout=1800, check=False,
+    )  # fmt: skip
+    exe = prefix / "node_modules" / ".bin" / "srt"
+    if r.returncode != 0 or not exe.exists():
+        raise ToolError(f"installing the sandbox runtime failed:\n{(r.stderr or r.stdout)[-1500:]}")
+    return str(exe)
 
 
 def ffmpeg() -> str:

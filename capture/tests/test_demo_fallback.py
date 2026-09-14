@@ -139,8 +139,14 @@ class EndToEnd(unittest.TestCase):
                          [("still-01.png", "checkout", "cart page"), ("still-02.png", "checkout", "checkout done")])  # fmt: skip
         self.assertEqual(m["project_key"], self.key)
         self.assertEqual(m["privacy"], {"checked": True, "engine": "vision", "refused": []})
-        # Every still went through the check, with the repository's names.
-        self.assertEqual(self.checked[0], (["still-01.png", "still-02.png"], ("acme/widget", "widget", "shop")))
+        # Every still went through the check, with the repository's names and this Mac's own
+        # names (so a /Users/<name>/ path on screen is refused too, the review's item 7).
+        from capture.demo import privacy
+
+        files, names = self.checked[0]
+        self.assertEqual(files, ["still-01.png", "still-02.png"])
+        self.assertEqual(names[:3], ("acme/widget", "widget", "shop"))
+        self.assertTrue(set(privacy.machine_names()).issubset(set(names)))
         self.assertIn("no run command found", text)
         self.assertFalse(any(c in text for c in ("—", "–")), text)
 

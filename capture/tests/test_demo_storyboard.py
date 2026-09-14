@@ -30,7 +30,7 @@ device:
   grant:
     - location
 setup:
-  - open: "demo://sign-in?token=${DEMO_TOKEN}"
+  - open: "demo://sign-in?token=${BUILDER_DEMO_TOKEN}"
   - wait: 2
 beats:
   - label: the map, buses moving
@@ -153,13 +153,31 @@ class Rules(unittest.TestCase):
 
 
 class Environment(unittest.TestCase):
-    def test_expand_reads_the_environment_and_refuses_a_missing_name(self):
-        self.assertEqual(storyboard.expand("a://b?t=${T}", {"T": "tok"}), "a://b?t=tok")
+    def test_expand_reads_only_the_tools_own_variables(self):
+        # A minted token (the tool's own BUILDER_DEMO_ namespace) is read from the environment.
+        self.assertEqual(storyboard.expand("a://b?t=${BUILDER_DEMO_TOKEN}", {"BUILDER_DEMO_TOKEN": "tok"}), "a://b?t=tok")
         with self.assertRaisesRegex(storyboard.StoryboardError, "not set"):
-            storyboard.expand("a://b?t=${T}", {})
+            storyboard.expand("a://b?t=${BUILDER_DEMO_TOKEN}", {})
+
+    def test_a_non_tool_variable_is_never_read_from_the_environment(self):
+        # The review's item 2: a value from the repository holding ${GITHUB_TOKEN} must not be
+        # expanded, even if the variable is set. It is left as the literal text it is.
+        self.assertEqual(storyboard.expand("evil://leak?t=${GITHUB_TOKEN}", {"GITHUB_TOKEN": "ghp_secret"}), "evil://leak?t=${GITHUB_TOKEN}")
+
+    def test_a_storyboard_may_not_reference_a_non_tool_variable(self):
+        base = {"version": 1, "kind": "web", "beats": [{"label": "one", "actions": [{"open": "/x?t=${GITHUB_TOKEN}"}]}]}
+        with self.assertRaisesRegex(storyboard.StoryboardError, "tool's own variables"):
+            storyboard.validate(base)
 
     def test_redact_never_shows_the_value(self):
-        self.assertEqual(storyboard.redact("a://b?t=${T}"), "a://b?t=${T}")
+        self.assertEqual(storyboard.redact("a://b?t=${BUILDER_DEMO_TOKEN}"), "a://b?t=${BUILDER_DEMO_TOKEN}")
+
+    def test_a_repo_scheme_is_validated_before_it_becomes_a_deep_link(self):
+        self.assertTrue(storyboard.valid_scheme("widget"))
+        self.assertTrue(storyboard.valid_scheme("builder-app"))
+        self.assertFalse(storyboard.valid_scheme("evil://x"))
+        self.assertFalse(storyboard.valid_scheme("a b"))
+        self.assertFalse(storyboard.valid_scheme("${X}"))
 
 
 class Defaults(unittest.TestCase):
@@ -171,6 +189,19 @@ class Defaults(unittest.TestCase):
         sb = storyboard.validate(storyboard.default(plan))
         self.assertEqual([b["actions"][0]["open"] for b in sb["beats"]], ["widget://home", "widget://stats", "widget://settings", "widget://profile"])
         self.assertEqual(sb["beats"][0]["label"], "the home screen")
+        # The review's item 7: every default beat carries an expect, so a generated storyboard
+        # never films a screen it never checked.
+        self.assertTrue(all(b["expect"] for b in sb["beats"]))
+
+    def test_an_invalid_repo_scheme_leaves_the_beat_without_a_deep_link(self):
+        from capture.demo.detect import ExpoApp, Plan
+
+        # The review's item 2: a scheme read from the repository that is not a valid URL scheme
+        # (here it smuggles a variable reference) never becomes an `open`.
+        e = ExpoApp("mobile", "W", "evil${GITHUB_TOKEN}", "com.w", "mobile/app.json", False, ["/home"])
+        plan = Plan(project=None, commit="c", kind="expo_ios", kind_reason="", app_dir="mobile", package_manager="bun", expo=e, steps=[], evidence=None, routes=e.routes)
+        sb = storyboard.validate(storyboard.default(plan))
+        self.assertEqual(sb["beats"][0]["actions"], [])  # no open with a bad scheme
 
     def test_a_static_page_is_named_without_its_extension(self):
         from capture.demo.detect import Plan

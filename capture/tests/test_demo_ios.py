@@ -144,6 +144,19 @@ class DependenciesBeforeMetro(unittest.TestCase):
             (app / "bun.lock").rename(app / "yarn.lock")
             self.assertNotEqual(a, ios.dependency_fingerprint(app))
 
+    def test_a_monorepo_root_lockfile_is_fingerprinted_too(self):
+        """The review's item 9: in a monorepo the lockfile lives at the workspace root, not beside
+        the app, so a change there must reinstall the app's dependencies."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            app = self._app(root)
+            (root / "bun.lock").write_text("root lock one")
+            (app / "node_modules").mkdir()
+            ios.stamp_install(app, root)
+            self.assertIsNone(ios.needs_install(app, root))
+            (root / "bun.lock").write_text("root lock two")  # the ROOT lockfile changed
+            self.assertEqual(ios.needs_install(app, root), "the dependencies changed since the last install")
+
 
 if __name__ == "__main__":
     unittest.main()

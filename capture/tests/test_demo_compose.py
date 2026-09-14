@@ -124,7 +124,8 @@ class CommandLines(unittest.TestCase):
     def test_the_poster_is_the_first_beat_settled_before_its_fade(self):
         self.assertAlmostEqual(c.poster_time([5.0, 6.0]), 5.0 - c.FADE - 0.15)
         self.assertAlmostEqual(c.poster_time([10.0, 6.0], speed=2.0), 5.0 - c.FADE - 0.15)
-        self.assertEqual(c.poster_command("ffmpeg", "demo.mp4", 4.45, "poster.jpg")[-5:], ["-frames:v", "1", "-q:v", "3", "poster.jpg"])
+        pc = c.poster_command("ffmpeg", "demo.mp4", 4.45, "poster.jpg")
+        self.assertEqual(pc[-7:], ["-frames:v", "1", "-q:v", "3", "-map_metadata", "-1", "poster.jpg"])
 
     def test_the_recording_is_made_constant_frame_rate_before_any_cut(self):
         # The fourth Builda run: a cut starting inside a frameless stretch of simctl's variable

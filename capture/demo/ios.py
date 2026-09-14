@@ -321,7 +321,13 @@ class Driver:
             return
         from . import privacy
 
-        text = "\n".join(line.get("text", "") for r in privacy.ocr([shot]) for line in r.get("lines") or [])
+        try:
+            results = privacy.ocr([shot])
+        except (RuntimeError, tools.ToolError) as e:
+            # Vision could not read the shot (the review's item 4: it must fail closed): a beat
+            # whose screen cannot be read is a failed beat, not a passing one.
+            raise CaptureError(f"the storyboard did not replay: {label!r} could not be read to check /{pattern}/ ({e})") from e
+        text = "\n".join(line.get("text", "") for r in results for line in r.get("lines") or [])
         if not re.search(pattern, text):
             raise CaptureError(
                 f"the storyboard did not replay: {label!r} expects /{pattern}/ on screen and it is "
@@ -460,17 +466,25 @@ DEPENDENCY_FILES = ("package.json", "bun.lock", "bun.lockb", "package-lock.json"
 INSTALL_STAMP = ".builda-demo-install"
 
 
-def dependency_fingerprint(app_path: pathlib.Path) -> str:
-    """sha256 over the dependency files the app has, each named, so a rename changes it too."""
+def dependency_fingerprint(app_path: pathlib.Path, root: pathlib.Path | None = None) -> str:
+    """sha256 over the dependency files the app has, each named, so a rename changes it too. In a
+    monorepo the lockfile lives at the WORKSPACE ROOT, not beside the app, so the root's
+    dependency files are folded in too (the review's item 9); without them a `bun install` at the
+    root that added a package would leave the app's `node_modules` looking unchanged."""
     h = hashlib.sha256()
-    for name in DEPENDENCY_FILES:
-        p = app_path / name
-        if p.is_file():
-            h.update(name.encode() + b"\0" + p.read_bytes() + b"\0")
+    seen: set[pathlib.Path] = set()
+    for base in (root, app_path):
+        if base is None:
+            continue
+        for name in DEPENDENCY_FILES:
+            p = base / name
+            if p.is_file() and p.resolve() not in seen:
+                seen.add(p.resolve())
+                h.update(str(p).encode() + b"\0" + p.read_bytes() + b"\0")
     return h.hexdigest()
 
 
-def needs_install(app_path: pathlib.Path) -> str | None:
+def needs_install(app_path: pathlib.Path, root: pathlib.Path | None = None) -> str | None:
     """Why the app's dependencies must be installed before Metro can serve it, or None.
 
     FOUND ON A RE-RUN (2026-09-14): the Builda work dir was pulled to a commit that added
@@ -484,15 +498,15 @@ def needs_install(app_path: pathlib.Path) -> str | None:
     stamp = modules / INSTALL_STAMP
     if not stamp.is_file():
         return "an install from before the stamp"
-    if stamp.read_text().strip() != dependency_fingerprint(app_path):
+    if stamp.read_text().strip() != dependency_fingerprint(app_path, root):
         return "the dependencies changed since the last install"
     return None
 
 
-def stamp_install(app_path: pathlib.Path) -> None:
+def stamp_install(app_path: pathlib.Path, root: pathlib.Path | None = None) -> None:
     modules = app_path / "node_modules"
     if modules.is_dir():
-        (modules / INSTALL_STAMP).write_text(dependency_fingerprint(app_path) + "\n")
+        (modules / INSTALL_STAMP).write_text(dependency_fingerprint(app_path, root) + "\n")
 
 
 def start_metro(ws: Workspace, plan: Plan, story: dict, log_dir: pathlib.Path) -> tuple[Server, int]:
@@ -502,7 +516,7 @@ def start_metro(ws: Workspace, plan: Plan, story: dict, log_dir: pathlib.Path) -
     while not port_free(port):
         port += 1
     app_dir = plan.app_dir
-    why = needs_install(ws.src / app_dir)
+    why = needs_install(ws.src / app_dir, ws.src)
     if why:
         inst = plan.step("install")
         if inst is None:
@@ -513,8 +527,12 @@ def start_metro(ws: Workspace, plan: Plan, story: dict, log_dir: pathlib.Path) -
             raise CaptureError(f"installing dependencies failed: {r.stderr[-400:]}")
         patch = plan.step("patch")
         if patch:
-            subprocess.run(["/bin/sh", "-c", patch.command], cwd=str(ws.src / patch.cwd), env=clean_env(), capture_output=True, timeout=300, check=False)
-        stamp_install(ws.src / app_dir)
+            # A failed patch must NOT be stamped as a good install (the review's item 9): the
+            # next run would reuse a half patched node_modules. Stamp only when it succeeds.
+            pr = subprocess.run(["/bin/sh", "-c", patch.command], cwd=str(ws.src / patch.cwd), env=clean_env(), capture_output=True, text=True, timeout=300, check=False)
+            if pr.returncode != 0:
+                raise CaptureError(f"applying the project's patches failed, so the install is not stamped: {(pr.stderr or pr.stdout)[-400:]}")
+        stamp_install(ws.src / app_dir, ws.src)
     env = {"CI": "1", "EXPO_NO_TELEMETRY": "1", **{k: str(v) for k, v in (story.get("app", {}).get("build_env") or {}).items()}}
     spec = {
         "name": "metro",

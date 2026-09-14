@@ -22,8 +22,10 @@ def add_parser(sub) -> argparse.ArgumentParser:
         help="stills and a 10 to 30 second video of a project, running (docs/demos.md)",
         description=(
             "Make 4 to 6 stills and one 10 to 30 second video of a project, running, on this Mac. "
-            "Nothing is built or run in your checkout, no model is called, and nothing leaves the "
-            "machine: the demo is written to ~/.builder/demos/<key>/."
+            "Nothing is built or run in your checkout and no model is called; the project's own code "
+            "does run, so a repository your transcripts have not resolved to runs under a sandbox and "
+            "you are asked to confirm the steps first. The demo is written to ~/.builder/demos/<key>/; "
+            "sending it anywhere is a separate command (demo --publish)."
         ),
     )
     d.add_argument("path", nargs="?", default=None, help="a local checkout (default: the current directory)")
@@ -37,6 +39,7 @@ def add_parser(sub) -> argparse.ArgumentParser:
     d.add_argument("--sim", help="expo_ios: the simulator, a name or UDID (default 'Builda Demos', created when missing)")
     d.add_argument("--configuration", choices=("Debug", "Release"), help="expo_ios build configuration (default: the storyboard's, else Release)")
     d.add_argument("--until", choices=("workspace", "build"), help="stop after this stage")
+    d.add_argument("--yes", action="store_true", help="answer yes to running the project's steps; required with no terminal")
     d.add_argument("--no-video", action="store_true", help="stills only")
     d.add_argument(
         "--allow-name",

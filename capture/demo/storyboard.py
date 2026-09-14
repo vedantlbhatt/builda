@@ -62,6 +62,19 @@ MIN_STILLS, MAX_STILLS = 4, 6
 MIN_BEATS, MAX_BEATS = 3, 5
 LABEL_MAX, CAPTION_MAX = 80, 48
 _ENV_REF = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
+#: The ONLY variables `expand` ever reads from the environment: the tool's own, which is where a
+#: minted device's tokens live (`BUILDER_DEMO_ACCESS`, `BUILDER_DEMO_REFRESH`). A `${GITHUB_TOKEN}`
+#: or any other name is never expanded, so a value derived from the repository (an app.json scheme
+#: read into a default `open`) can never carry a real secret into `simctl openurl` (the review's
+#: item 2). Only these are accepted in a storyboard at all.
+TOOL_VAR = re.compile(r"^BUILDER_DEMO_[A-Z0-9_]*$")
+#: A URL scheme, RFC 3986: a letter then letters, digits, `+`, `.`, `-`. An app.json `scheme` is
+#: the repository's, so it is checked before it becomes a deep link.
+SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*$")
+
+
+def valid_scheme(s) -> bool:
+    return isinstance(s, str) and bool(SCHEME.match(s))
 
 
 class StoryboardError(ValueError):
@@ -253,6 +266,11 @@ def _check_action(where: str, a) -> dict:
         for name in _ENV_REF.findall(s):
             if k not in ("open", "type", "run"):
                 raise StoryboardError(f"{where}: ${{{name}}} is read from the environment only in open, type and run")
+            if not TOOL_VAR.match(name):
+                raise StoryboardError(
+                    f"{where}: ${{{name}}} is not one of the tool's own variables; only ${{BUILDER_DEMO_...}} "
+                    "(the minted device's tokens) are read from the environment, never a repository's secret"
+                )
     return {k: v}
 
 
@@ -388,14 +406,19 @@ def validate(data) -> dict:
 
 
 def expand(value: str, env: dict[str, str] | None = None) -> str:
-    """`${NAME}` from the environment. A missing name is an error, never an empty string: a
-    sign in link with an empty token signs nobody in and films the signed out app."""
+    """`${BUILDER_DEMO_...}` from the environment, and ONLY those (`TOOL_VAR`): a value that came
+    from the repository can hold a `${GITHUB_TOKEN}`, which is left as the literal text it is
+    rather than read out of the environment (the review's item 2). A missing tool variable is an
+    error, never an empty string: a sign in link with an empty token films the signed out app."""
     env = os.environ if env is None else env
 
     def sub(m: re.Match) -> str:
-        if m.group(1) not in env:
-            raise StoryboardError(f"${{{m.group(1)}}} is not set in the environment")
-        return env[m.group(1)]
+        name = m.group(1)
+        if not TOOL_VAR.match(name):
+            return m.group(0)  # not the tool's own variable: never expanded, kept literal
+        if name not in env:
+            raise StoryboardError(f"${{{name}}} is not set in the environment")
+        return env[name]
 
     return _ENV_REF.sub(sub, value)
 
@@ -408,10 +431,24 @@ def redact(value: str) -> str:
 # ----------------------------------------------------------------------------- defaults
 
 
-def _route_label(route: str) -> str:
+def _route_words(route: str) -> list[str]:
     route = re.sub(r"\.(html?|php|aspx?)$", "", route)
-    words = [w for w in re.split(r"[/_\-.]+", route) if w]
+    return [w for w in re.split(r"[/_\-.]+", route) if w]
+
+
+def _route_label(route: str) -> str:
+    words = _route_words(route)
     return ("the " + " ".join(words) + " screen") if words else "the first screen"
+
+
+def _expect_from(words: list[str]) -> str:
+    """A default `expect` for a generated beat: the route's or command's own words, matched case
+    insensitively so the screen has to show that section rather than a blank or a crash screen;
+    `.` (any text at all) when there are no words to key on. Every default beat carries one so a
+    generated storyboard never films a screen it never checked (the review's item 7); the person
+    editing the storyboard writes the real expected text."""
+    real = [re.escape(w) for w in words if len(w) >= 3 and not w.isdigit()]
+    return "(?i)" + "|".join(real) if real else "."
 
 
 def default(plan) -> dict:
@@ -420,15 +457,17 @@ def default(plan) -> dict:
     kind = plan.kind
     beats: list[dict] = []
     if kind == "expo_ios":
-        scheme = plan.expo.scheme if plan.expo else None
+        # The scheme is the repository's, so it is checked before it becomes a deep link; an
+        # invalid one leaves the beat without an `open` rather than reaching `simctl openurl`.
+        scheme = plan.expo.scheme if (plan.expo and valid_scheme(plan.expo.scheme)) else None
         routes = [r for r in plan.routes if not r.startswith(("/dev", "/debug", "/onboarding"))][:4]
         for r in routes:
-            beats.append({"label": _route_label(r), "actions": [{"open": f"{scheme}://{r.lstrip('/')}"}] if scheme else [], "hold": 2.0})
+            beats.append({"label": _route_label(r), "actions": [{"open": f"{scheme}://{r.lstrip('/')}"}] if scheme else [], "hold": 2.0, "expect": _expect_from(_route_words(r))})
         if not beats:
-            beats.append({"label": "the first screen", "actions": [], "hold": 3.0})
+            beats.append({"label": "the first screen", "actions": [], "hold": 3.0, "expect": "."})
     elif kind == "web":
         for r in (plan.routes or ["/"])[:4]:
-            beats.append({"label": "the home page" if r == "/" else _route_label(r).replace("screen", "page"), "actions": [{"open": r}], "hold": 2.0})
+            beats.append({"label": "the home page" if r == "/" else _route_label(r).replace("screen", "page"), "actions": [{"open": r}], "hold": 2.0, "expect": _expect_from(_route_words(r))})
     else:
         cmds = [s.command for s in plan.steps if s.role == "run"][:4]
         if kind == "cli" and cmds and len(cmds) < MIN_BEATS and not any("--help" in c for c in cmds):
@@ -441,5 +480,5 @@ def default(plan) -> dict:
                 label = "what the command can do, its help"
             else:
                 label = "running it on " + " ".join(words) if words else "running it"
-            beats.append({"label": label[:LABEL_MAX], "actions": [{"run": c}], "hold": 2.0})
+            beats.append({"label": label[:LABEL_MAX], "actions": [{"run": c}], "hold": 2.0, "expect": _expect_from(re.findall(r"[A-Za-z0-9]+", c))})
     return {"version": 1, "kind": kind, "app": {}, "device": {}, "setup": [], "beats": beats, "stills": []}

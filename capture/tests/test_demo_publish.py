@@ -206,6 +206,18 @@ class Publish(_Demo):
         self.assertIn("It replaced the demo that was there (three items on the phone).", out)
         self.assertEqual(len(self.server.media), 1)
 
+    def test_no_video_sends_the_stills_and_replaces_the_video(self):
+        # The owner, 2026-09-14: "just screenshots for now".
+        self.assertEqual(self.run_cli("--publish", "--yes")[0], 0)
+        rc, out, _ = self.run_cli("--publish", "--yes", "--no-video")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Published two images", out)
+        self.assertEqual(sorted(r["body"]["kind"] for r in self.server.media.values()), ["image", "image"])
+        self.write(manifest([VIDEO]))
+        rc, _, err = self.run_cli("--publish", "--yes", "--no-video")
+        self.assertEqual(rc, 2)
+        self.assertIn("no stills to send without its video", err)
+
     def test_without_a_terminal_or_a_yes_nothing_is_sent(self):
         rc, out, err = self.run_cli("--publish")
         self.assertEqual(rc, 1)

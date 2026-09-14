@@ -493,9 +493,15 @@ def _client(server: str) -> cl.Client:
     return cl.Client(server)
 
 
-def publish(key: str, server: str, yes: bool) -> int:
+def publish(key: str, server: str, yes: bool, stills_only: bool = False) -> int:
     try:
         _, assets = load(key)
+        if stills_only:
+            # The owner, 2026-09-14: "just screenshots for now". A publish replaces the whole
+            # set, so the video that was on the server goes with it.
+            assets = [a for a in assets if a.kind != "video"]
+            if not assets:
+                raise Refused("the demo has no stills to send without its video")
     except Refused as e:
         print(f"Not publishing: {e}", file=sys.stderr)
         return 2
@@ -605,6 +611,7 @@ def make_parser() -> argparse.ArgumentParser:
     which.add_argument("--project", help="the project's directory (default: the current one)")
     which.add_argument("--key", help="the project key, the repository's 64 hex salted hash")
     ap.add_argument("--yes", action="store_true", help="answer yes; with no terminal this is required")
+    ap.add_argument("--no-video", action="store_true", help="--publish: send the stills and not the video")
     ap.add_argument("--server", help="API base URL (or BUILDER_API_URL)")
     return ap
 
@@ -621,7 +628,7 @@ def main(argv: list[str]) -> int:
     try:
         if a.list:
             return listing(key, server)
-        return publish(key, server, a.yes) if a.publish else delete(key, server, a.yes)
+        return publish(key, server, a.yes, a.no_video) if a.publish else delete(key, server, a.yes)
     except cl.NotPaired as e:
         print(str(e), file=sys.stderr)
         return 3

@@ -149,6 +149,16 @@ section.
   (the research's section 3 ideas: zoom on each action from the driver's log, tap rings, a device
   frame, titled beats, Remotion or Motion Canvas over the raw capture) instead of a cut recording.
   Screenshots are the focus: shown in the app as prints, a gallery and the page's stack.
+- Owner, 11:50: "don't worry about screen recordings or any video demos, just screenshots for now.
+  The projects page should show a list of projects." DONE (983a56a, 154839d, this commit): both
+  demos republished as stills only (`demo --publish --no-video`: Builda 6, RideGT 4, no video rows);
+  `demo --no-video` films nothing (every beat a still). The first WEB demo, the Personal Website
+  (key 9c2dafeeb98b, not on the test account: the corpus is builder + RideGT), found four generator
+  bugs, all fixed with tests: routes were read from the checkout (an untracked portfolio.html became
+  a 404 still), the web driver never read `expect` (now read on the PICTURE with Vision, as on iOS),
+  the recording sat in a quarter of a grey frame, and first run storyboards skipped the label check
+  (a route named ridegt-fonts would have put another repository's name in a label). A web still can
+  take its own page size: the site's Projects page is a two column list at 820 points.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

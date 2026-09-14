@@ -1523,3 +1523,5 @@ Yeah. It's pretty important that you don't just use regular guy generate slot fo
     (Read as: put in a GitHub repo, automatically RUN the project, get screenshots and a demo video; every project in Builda carries its demo or screenshots; a stack of pictures beside the content that expands on a tap to see them all; demo videos autoplay in the background; react-bits and the dither and pixel look; research open source first.)
 
 31. Dude the demo shouldn't just be a screen recording it should be like an actual cool demo video but don't worry about that just focus on screenshots how is that development? Show me screenshots of that rn
+
+32. ok dont worry abotu screenrercodings or any video demos just screenshots for now. the proejcts page should show a lsit of prooejcts.

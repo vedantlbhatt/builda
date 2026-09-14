@@ -90,6 +90,16 @@ export const FINISHED_HORIZON_SECONDS = 3600 + FINISHED_SHOW_MS / 1000;
 export const HOLD_MAX_MS = 60_000;
 
 /**
+ * A live row with nothing new for this long is gone from mission control: it stopped without its
+ * final upload (or its feed did), and the Mac's next sync replaces it. FOUND IN THE now3 PASS
+ * (2026-09-14): a row silent since 7:36am still headlined Now as "1 not updating" at 11:30, while
+ * the project page said the same session ended at 7:36am. MEASURED: the gap between two records
+ * of one session is under 171 s at p99 (CLAUDE.md, ground truth) and "Not updating" starts at
+ * STALE_SECONDS (900); two hours is eight of those, far past any sitting's quiet.
+ */
+export const LIVE_GONE_SECONDS = 2 * 3600;
+
+/**
  * "22m", "1h 05m": LiveDisplay.swift `LiveCopy.duration`, so a tile and the widget say the same
  * minute. A worklet as well: a tile's elapsed figure writes every frame of its count with it, so
  * the frames and the resting string can never differ in shape.
@@ -649,8 +659,8 @@ export function noteFinishes(
 }
 
 /**
- * Which rows get a tile: every live row, except one whose turn the engine called done more than
- * ten minutes ago (its activity's `since_s`, aged: the engine only calls a turn done while its
+ * Which rows get a tile: every live row, except one silent for LIVE_GONE_SECONDS and one whose
+ * turn the engine called done more than ten minutes ago (its activity's `since_s`, aged: the engine only calls a turn done while its
  * activity is the wait that followed it, so that is when it finished); plus every FINAL row the phone saw finish in
  * the last ten minutes whose last record is inside FINISHED_HORIZON_SECONDS. A row is never
  * shown twice.
@@ -664,6 +674,7 @@ export function visibleRows(
   const out: SessionDetail[] = [];
   const ids = new Set<string>();
   for (const s of live) {
+    if (s.state !== 'final' && ageSecondsOf(s, nowMs) > LIVE_GONE_SECONDS) continue;
     const wire = toWire(s.live_state);
     if (tilePhase(s, wire, nowMs) === 'done' && s.state !== 'final') {
       const since = (s.live_state?.activity?.since_s ?? 0) + ageSecondsOf(s, nowMs);

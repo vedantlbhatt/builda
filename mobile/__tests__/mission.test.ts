@@ -32,6 +32,7 @@ import {
   etaLine,
   FINISHED_HORIZON_SECONDS,
   FINISHED_SHOW_MS,
+  LIVE_GONE_SECONDS,
   finishedMeta,
   holdOrder,
   HOLD_MAX_MS,
@@ -609,6 +610,13 @@ describe('a turn the engine called done is finished on a tile, never running', (
   test('it leaves ten minutes after the turn ended, like every finished tile', () => {
     expect(visibleRows([row('d', { live_state: doneState(8 * 60) })], [], new Map(), NOW).map((s) => s.id)).toEqual(['d']);
     expect(visibleRows([row('d', { live_state: doneState(10 * 60) })], [], new Map(), NOW)).toEqual([]);
+  });
+
+  test('a live row silent for two hours is gone: it stopped without its final upload', () => {
+    // FOUND IN THE now3 PASS (2026-09-14): silent since 7:36am, still "1 not updating" at 11:30.
+    const silent = (s: number) => visibleRows([row('s', { live_state: live({}, s) })], [], new Map(), NOW).map((x) => x.id);
+    expect(silent(3600)).toEqual(['s']); // not updating, still shown
+    expect(silent(LIVE_GONE_SECONDS + 60)).toEqual([]);
   });
 
   test('the live bar says finished too', () => {

@@ -142,6 +142,33 @@ class Rules(unittest.TestCase):
             with self.assertRaisesRegex(CaptureError, "expects /Walk"):
                 drv.expect("directions", r"Walk [0-9.]+ mi", pathlib.Path("s.png"))
 
+    def test_a_web_page_is_held_to_its_label_like_an_ios_screen(self):
+        # FOUND ON THE FIRST WEB DEMO (2026-09-14): the web driver never read `expect`, and a
+        # route the server answered 404 on became "the portfolio page".
+        from unittest import mock
+
+        from capture.demo import web
+        from capture.demo.result import CaptureError
+
+        def c(**kw):
+            return {"label": "the portfolio page", "refused": None, "pattern": "(?i)portfolio", "shot": "/w/still-03.png", **kw}
+
+        self.assertEqual(web._verify([c(pattern=None)]), [])
+        with self.assertRaisesRegex(CaptureError, "opened /portfolio.html and the server answered 404"):
+            web._verify([c(refused=["/portfolio.html", 404])])
+        # Read on the PICTURE: text below the fold is not on it.
+        shown = [{"file": "/w/still-03.png", "lines": [{"text": "My Portfolio"}]}]
+        with mock.patch("capture.demo.privacy.ocr", return_value=shown):
+            self.assertEqual(len(web._verify([c()])), 1)
+        error_page = [{"file": "/w/still-03.png", "lines": [{"text": "Error response"}, {"text": "File not found"}]}]
+        with mock.patch("capture.demo.privacy.ocr", return_value=error_page):
+            with self.assertRaisesRegex(CaptureError, "expects /\\(\\?i\\)portfolio/ on the page"):
+                web._verify([c()])
+        # Vision failing is a failed beat, never a passing one.
+        with mock.patch("capture.demo.privacy.ocr", side_effect=RuntimeError("no helper")):
+            with self.assertRaisesRegex(CaptureError, "could not be read"):
+                web._verify([c()])
+
     def test_the_shape(self):
         self.refused({"version": 2, "kind": "web", "beats": [{"label": "a"}]}, "version")
         self.refused({"version": 1, "kind": "desktop", "beats": [{"label": "a"}]}, "kind")

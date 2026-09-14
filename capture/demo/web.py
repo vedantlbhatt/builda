@@ -12,6 +12,10 @@ still of each beat once the page has SETTLED: the network idle, `document.fonts.
 image decoded, two animation frames, and two screenshots in a row identical (OpenVidStudio's
 settle rules, docs/research/demo-capture.md section 3). Requests to analytics hosts are aborted
 with `page.route` (section 4, "Phoning home").
+
+Every beat and still is then held to what its label says, as on iOS (`ios.Driver.expect`): a
+page the server refused (4xx, 5xx) stops the run, and `expect` must be on the settled picture,
+read with Vision (`_verify`).
 """
 
 from __future__ import annotations
@@ -47,8 +51,10 @@ import json, sys, time, hashlib
 from playwright.sync_api import sync_playwright
 
 job = json.load(open(sys.argv[1]))
-out = {"beats": [], "stills": [], "notes": []}
+out = {"beats": [], "stills": [], "notes": [], "checks": []}
 block = tuple(job["block_hosts"])
+# The last `open` the server refused, as [path, status]; reset at every beat.
+state = {"refused": None}
 
 def blocked(url):
     host = url.split("/")[2] if "://" in url else ""
@@ -77,7 +83,8 @@ def settle(page, timeout):
 def act(page, a):
     (k, v), = a.items()
     if k == "open":
-        page.goto(v if "://" in v else job["base"] + v, wait_until="domcontentloaded")
+        r = page.goto(v if "://" in v else job["base"] + v, wait_until="domcontentloaded")
+        state["refused"] = [v, r.status] if r is not None and r.status >= 400 else None
     elif k == "wait":
         time.sleep(float(v))
     elif k == "settle":
@@ -107,13 +114,24 @@ def act(page, a):
     elif k == "back":
         page.go_back()
 
+def check(label, pattern, shot, path):
+    """What `_verify` needs to hold the picture to its label: the refused open, and the settled
+    picture (a beat that is not a still keeps one for Vision)."""
+    if pattern and path is None:
+        path = f"{job['run_dir']}/check-{len(out['checks']) + 1:02d}.png"
+        open(path, "wb").write(shot)
+    out["checks"].append({"label": label, "refused": state["refused"], "pattern": pattern, "shot": path})
+
 with sync_playwright() as p:
     browser = p.chromium.launch()
     ctx = browser.new_context(
         viewport=job["viewport"], device_scale_factor=job["scale"], is_mobile=True, has_touch=True,
         color_scheme=job.get("color_scheme") or "light",
         record_video_dir=job["video_dir"],
-        record_video_size={"width": job["viewport"]["width"] * 2, "height": job["viewport"]["height"] * 2},
+        # The viewport's own size: Playwright records CSS pixels whatever the device scale and
+        # only ever scales DOWN, so twice the viewport put the page in the top left quarter of a
+        # grey frame (FOUND ON THE FIRST WEB DEMO, 2026-09-14). Softer than the 3x stills.
+        record_video_size={"width": job["viewport"]["width"], "height": job["viewport"]["height"]},
     )
     t0 = time.monotonic()
     ctx.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
@@ -121,6 +139,7 @@ with sync_playwright() as p:
     n = 0
     last = None
     for b in job["beats"]:
+        state["refused"] = None
         start = time.monotonic() - t0
         for a in b["actions"]:
             act(page, a)
@@ -135,11 +154,13 @@ with sync_playwright() as p:
         last = shot
         if b.get("film") == "settled":
             start = time.monotonic() - t0
+        path = None
         if b["still"]:
             n += 1
             path = f"{job['run_dir']}/still-{n:02d}.png"
             open(path, "wb").write(shot)
             out["stills"].append({"path": path, "label": b["label"]})
+        check(b["label"], b.get("expect"), shot, path)
         time.sleep(b["hold"])
         out["beats"].append({"label": b["label"], "caption": b["caption"], "start": start, "end": time.monotonic() - t0})
     video = page.video.path() if page.video else None
@@ -149,12 +170,15 @@ with sync_playwright() as p:
     ctx2.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
     page = ctx2.new_page()
     for s in job["stills"]:
+        state["refused"] = None
         for a in s["actions"]:
             act(page, a)
         n += 1
         path = f"{job['run_dir']}/still-{n:02d}.png"
-        open(path, "wb").write(settle(page, s["settle"]))
+        shot = settle(page, s["settle"])
+        open(path, "wb").write(shot)
         out["stills"].append({"path": path, "label": s["label"]})
+        check(s["label"], s.get("expect"), shot, path)
     ctx2.close()
     browser.close()
 json.dump(out, open(sys.argv[2], "w"))
@@ -195,6 +219,42 @@ def _venv_pip(command: str, ws: Workspace, sandbox: Sandbox) -> tuple[str, str]:
         if r.returncode != 0:
             raise CaptureError(f"creating the venv failed: {r.stderr[-300:]}")
     return command.replace("pip install", f"{venv}/bin/pip install", 1), str(venv / "bin")
+
+
+def _verify(checks: list[dict]) -> list[str]:
+    """Every picture is what its label says, or the run stops, as on iOS (`ios.Driver.expect`).
+
+    A page the server refused is never a state of the app, and `expect` is read from the settled
+    PICTURE with Vision, which fails closed: the page's text would pass a beat whose words sit
+    below the fold (a beat scrolled 200 points passed on a heading 900 points down). FOUND ON THE
+    FIRST WEB DEMO (2026-09-14): the web driver never read `expect` at all, though every
+    generated beat carries one so a storyboard "never films a screen it never checked", and the
+    Personal Website's "portfolio page" still was Python's 404 page. Returns the notes."""
+    for c in checks:
+        if c.get("refused"):
+            path, status = c["refused"]
+            raise CaptureError(
+                f"the storyboard did not replay: {c['label']!r} opened {path} and the server answered "
+                f"{status}, so that picture would not be what its label says"
+            )
+    wanted = [c for c in checks if c.get("pattern")]
+    if not wanted:
+        return []
+    from . import privacy
+
+    shots = [pathlib.Path(c["shot"]) for c in wanted]
+    try:
+        results = privacy.ocr(shots)
+    except (RuntimeError, tools.ToolError) as e:
+        raise CaptureError(f"the storyboard did not replay: {wanted[0]['label']!r} and the rest could not be read to check what they show ({e})") from e
+    text = {pathlib.Path(str(r.get("file"))).name: "\n".join(line.get("text", "") for line in r.get("lines") or []) for r in results}
+    for c, shot in zip(wanted, shots):
+        if not re.search(c["pattern"], text.get(shot.name, "")):
+            raise CaptureError(
+                f"the storyboard did not replay: {c['label']!r} expects /{c['pattern']}/ on the page and it is "
+                f"not there ({shot.name}), so that picture would not be what its label says"
+            )
+    return [f"every picture shows what its storyboard expects ({len(wanted)} read with Vision)"]
 
 
 def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: Sandbox | None = None) -> Capture:
@@ -247,7 +307,7 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
             "run_dir": str(run_dir),
             "block_hosts": list(BLOCK_HOSTS),
             "beats": [b for b in story["beats"] if b["video"]],
-            "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"]} for b in story["beats"] if not b["video"]] + story["stills"],
+            "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect")} for b in story["beats"] if not b["video"]] + story["stills"],
         }
         jp, rp = run_dir / "web-job.json", run_dir / "web-result.json"
         jp.write_text(json.dumps(job))
@@ -261,10 +321,12 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
     finally:
         for s in servers:
             s.stop()
+    checked = _verify(res.get("checks") or [])
     stills = [Still(pathlib.Path(s["path"]), s["label"]) for s in res["stills"]]
     beats = [BeatWindow(b["label"], b["caption"], b["start"], b["end"]) for b in res["beats"]]
     notes = [f"the dev server ran from the clone ({srv.how}) on {base}", f"requests to {len(BLOCK_HOSTS)} analytics hosts were aborted"]
     notes.extend(res.get("notes") or [])
+    notes.extend(checked)
     return Capture(stills=stills, video=pathlib.Path(res["video"]) if res.get("video") else None, beats=beats, notes=notes)
 
 

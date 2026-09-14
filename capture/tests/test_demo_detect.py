@@ -100,6 +100,17 @@ class Kinds(unittest.TestCase):
         self.assertIn("scripts.dev", p.step("run").source)
         self.assertEqual(p.routes, ["/", "/about"])
 
+    def test_a_page_the_commit_does_not_hold_is_not_a_route(self):
+        # The demo runs a clone at the commit; an untracked page there answers 404
+        # (FOUND ON THE FIRST WEB DEMO, 2026-09-14: the Personal Website's portfolio.html).
+        root = fx.repo(self.base / "site", {"index.html": "<h1>hi</h1>", "projects.html": "<h1>p</h1>"})
+        (root / "portfolio.html").write_text("<h1>draft</h1>")
+        p = detect.detect(pj.from_checkout(root), root, pj.resolve_commit(root, "HEAD"), None)
+        self.assertEqual(p.kind, "web")
+        self.assertEqual(p.routes, ["/", "/projects.html"])
+        # With no commit to ask, nothing is filtered.
+        self.assertIn("/portfolio.html", detect.web_routes(root))
+
     def test_cli_runs_its_readme_usage(self):
         p = self.plan(fx.CLI_APP)
         self.assertEqual(p.kind, "cli")

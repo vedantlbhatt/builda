@@ -330,16 +330,46 @@ def router_routes(app: pathlib.Path) -> list[str]:
 # ----------------------------------------------------------------------------- web, cli
 
 
-def web_routes(d: pathlib.Path) -> list[str]:
+def committed_under(d: pathlib.Path, commit: str | None) -> set[str] | None:
+    """The files `commit` holds under `d`, relative to it; None when git cannot say (no commit,
+    no repository), and then nothing is filtered."""
+    if not commit:
+        return None
+    try:
+        r = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", "-z", commit],
+            cwd=str(d),
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return {p for p in r.stdout.decode("utf-8", "surrogateescape").split("\0") if p}
+
+
+def web_routes(d: pathlib.Path, commit: str | None = None) -> list[str]:
     """Static page routes a framework's file layout declares: Next (`app/**/page.*`,
-    `pages/*`), SvelteKit (`src/routes/**/+page.svelte`), Astro (`src/pages`), else `/`."""
+    `pages/*`), SvelteKit (`src/routes/**/+page.svelte`), Astro (`src/pages`), else `/`.
+
+    Only from files `commit` holds. The demo runs a CLONE at that commit, and the layout is read
+    from the person's checkout, so a page only the working tree has is a route the clone answers
+    404 on. FOUND ON THE FIRST WEB DEMO (2026-09-14): the Personal Website's untracked
+    portfolio.html became a beat, and its still was Python's "File not found" page."""
+    held = committed_under(d, commit)
+
+    def committed(f: pathlib.Path) -> bool:
+        return held is None or f.relative_to(d).as_posix() in held
+
     routes: list[str] = []
     for base, pat in (("app", "page"), ("src/app", "page")):
         root = d / base
         if root.is_dir():
             for f in sorted(root.rglob(f"{pat}.*")):
                 parts = [p for p in f.parent.relative_to(root).parts if not p.startswith("(")]
-                if any("[" in p for p in parts):
+                if any("[" in p for p in parts) or not committed(f):
                     continue
                 routes.append("/" + "/".join(parts))
     for base in ("pages", "src/pages"):
@@ -351,17 +381,19 @@ def web_routes(d: pathlib.Path) -> list[str]:
                 rel = f.relative_to(root).with_suffix("")
                 if rel.parts[0] in ("api",) or rel.name.startswith(("_", "[")) or "[" in str(rel):
                     continue
+                if not committed(f):
+                    continue
                 path = "/" + "/".join(p for p in rel.parts if p != "index")
                 routes.append(path)
     root = d / "src" / "routes"
     if root.is_dir():
         for f in sorted(root.rglob("+page.svelte")):
             parts = [p for p in f.parent.relative_to(root).parts if not p.startswith("(")]
-            if not any("[" in p for p in parts):
+            if not any("[" in p for p in parts) and committed(f):
                 routes.append("/" + "/".join(parts))
     # A static site: its other top level pages.
     for f in sorted(d.glob("*.html")):
-        if f.name != "index.html":
+        if f.name != "index.html" and committed(f):
             routes.append("/" + f.name)
     routes = [re.sub(r"/+$", "", r) or "/" for r in routes]
     seen: set[str] = set()
@@ -729,7 +761,7 @@ def _plan_web(plan: Plan, top: pathlib.Path, web_pkg, py_web, procfile_web, role
                     break
             else:
                 plan.steps.append(Step("run", f"{pm} start", d, "Railpack's Node rule: the start script"))
-        plan.routes = web_routes(p.parent)
+        plan.routes = web_routes(p.parent, plan.commit)
         return
     seen = _pick(roles["server"]) or _pick(roles["web"])
     if seen:
@@ -746,7 +778,7 @@ def _plan_web(plan: Plan, top: pathlib.Path, web_pkg, py_web, procfile_web, role
         plan.steps.append(Step("run", "python3 -m http.server $PORT", "", "Railpack's static rule: index.html"))
     if (top / "requirements.txt").exists():
         plan.steps.insert(0, Step("install", "pip install -r requirements.txt", "", "requirements.txt, into a venv in the work dir"))
-    plan.routes = ["/", "/docs"] if py_web in ("fastapi",) else web_routes(top)
+    plan.routes = ["/", "/docs"] if py_web in ("fastapi",) else web_routes(top, plan.commit)
 
 
 def _plan_cli(plan: Plan, top: pathlib.Path, bins: list[str], roles) -> None:

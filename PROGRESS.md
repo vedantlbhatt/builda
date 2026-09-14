@@ -69,6 +69,9 @@ section.
   253k tokens re-sent per call, 98.6% of tokens and 72.7% of list price cost re-reads, a cache
   expiry after a 68 minute break rewrote 140,553 tokens). Running: the same chart on every
   session page, end to end (engine series, contract field, capture, server, phone).
+- Landed 21:55: Settings > Live Activities (05dd8e4). The owner swiped the app away and the
+  card stayed in the Dynamic Island; the only way down was iOS Settings. On by default, per
+  phone; off takes every card down at once (one from before launch too) and starts none.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Rebuilding it with every fix above as build 2.

@@ -113,7 +113,13 @@ section.
   dither edge and pausing off screen, a full screen gallery (Carousel, the video first with
   sound); expo-video loaded only when its native module exists. And the capture pass's
   defects (e340624), each with a test. The stack restarted and re-synced (28 corrected).
-  Running: the Builda demo re-shot on the fixed screens, and build 5 for the phone.
+  Build 5 (expo-video, the demos, the fixes) is on the install link. The Builda demo was
+  re-shot on the fixed screens and republished (a 14.0 s video, six stills, all a fresh
+  capture) after two generator fixes found on the way (9e479c6: a reused work dir now
+  reinstalls when its dependencies change, and a Metro that dies on its first bundle stops
+  the run with its log) and a storyboard scroll aimed at the chart's own words. A first try
+  at build 5 and the re-shoot in parallel ran the Mac out of memory: heavy jobs run one at a
+  time now, and idle simulators are shut down.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

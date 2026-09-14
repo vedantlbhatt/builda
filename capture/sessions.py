@@ -654,7 +654,9 @@ def build_payload(
 # ----------------------------------------------------------------------------- burn
 
 
-def session_burn(events: list[digest.Ev], turns: list, harness: str = "claude_code") -> dict:
+def session_burn(
+    events: list[digest.Ev], turns: list, harness: str = "claude_code", files_record_usage: bool | None = None
+) -> dict:
     """The contract v4 `burn` block (`SessionBurn`) for one sitting's events and usage:
     `analysis.burn.session_wire` over `burn.session_report`, THE ONE producer of the block.
     `burn_report` is the same report over one file; `session_report` takes events and turns
@@ -674,7 +676,9 @@ def session_burn(events: list[digest.Ev], turns: list, harness: str = "claude_co
     from analysis import burn as bn
     from analysis import patterns as pat
 
-    report = bn.session_report(pat.distinct_events(events), list(turns), harness=harness)
+    report = bn.session_report(
+        pat.distinct_events(events), list(turns), harness=harness, files_record_usage=files_record_usage
+    )
     return bn.session_wire(report)
 
 
@@ -696,7 +700,11 @@ def session_burn_of(s: Session, loader=None) -> dict | None:
         turns = bn.turns_for_window(paths, s.started_at, s.ended_at, **kw)
     except (OSError, ValueError):
         return None
-    return session_burn(s.events, turns, harness=analysis_name(s.harness))
+    try:
+        recorded = bn.files_record_usage(paths, **kw)
+    except (OSError, ValueError):
+        return None
+    return session_burn(s.events, turns, harness=analysis_name(s.harness), files_record_usage=recorded)
 
 
 def _one_parse():

@@ -297,7 +297,7 @@ def session_calls(
     `burn.load_turns` a caller building many payloads passes, so a file is parsed once."""
     paths = list(dict.fromkeys(pathlib.Path(x) for x in paths))
     turns = burn.turns_for_window(paths, start, end, loader=loader)
-    recorded = any(burn.records_usage(calls_of(loader(p))) for p in paths)
+    recorded = burn.files_record_usage(paths, loader=loader)
     return wire(
         turns,
         started_at=start,

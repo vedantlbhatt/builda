@@ -432,6 +432,21 @@ def records_usage(turns: Sequence[Turn]) -> bool:
     return any(t.total > 0 for t in turns)
 
 
+def files_record_usage(
+    paths: Iterable[pathlib.Path | str],
+    *,
+    loader: Callable[[pathlib.Path], Sequence[Turn]] | None = None,
+) -> bool:
+    """Whether a sitting's FILES record token counts, whatever its own window holds. A window
+    with no counted call in files that record them made no call; it is not a transcript
+    without counts, and saying so is a claim about the file that is false (FOUND IN REVIEW,
+    2026-09-13: `91d520d9` held four `<synthetic>` records in its window and its files 2,343
+    counted calls). The one definition: `calls.session_calls` and `session_report`'s callers
+    both ask it."""
+    load = loader or load_turns
+    return any(records_usage(load(pathlib.Path(p))) for p in paths)
+
+
 def turns_for_window(
     paths: Iterable[pathlib.Path | str],
     start: float,
@@ -1241,14 +1256,19 @@ def session_report(
     *,
     harness: str,
     spike_multiple: float = SPIKE_MULTIPLE,
+    files_record_usage: bool | None = None,
 ) -> dict:
     """`burn_report` over events and turns already in hand: one sitting of a pooled corpus,
     whose records came from several files (`turns_for_window` over every one of them), or
     the hook channel's in memory cut. The same report, so `explain` and `session_wire` read
     one shape whichever way the session was loaded. `harness` is what wrote the session
     (`digest.detect_harness`, or the capture pool's): it decides which refusal is true.
+
+    `files_record_usage` is `files_record_usage(paths)` when the caller has the files: a window
+    with no counts in files that record them is `nothing_inside_segments`, never
+    `no_token_counts`. None keeps the window's own answer (a caller with no files).
     """
-    has_usage = bool(events) and records_usage(turns)
+    has_usage = bool(events) and (records_usage(turns) or files_record_usage is True)
     segs = segments(events, turns) if events else []
     missing: list[str] = []
 

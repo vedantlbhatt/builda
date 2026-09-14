@@ -315,6 +315,30 @@ class Refusals(unittest.TestCase):
         self.assertIn("reason", rep["totals"]["tokens"])
         self.assertTrue(any("token counts" in m for m in rep["sample"]["missing"]))
 
+    def test_a_window_with_no_counts_in_files_that_record_them_is_nothing_inside(self):
+        """FOUND IN REVIEW (2026-09-13): `91d520d9` held four `<synthetic>` records in its window
+        and its files 2,343 counted calls, and burn told it "this transcript does not record token
+        counts", a claim about the file that is false, while the call chart beside it said no call
+        fell inside the session. Both ask the files now (`burn.files_record_usage`)."""
+        quiet = write_transcript(
+            [
+                user_prompt(0, "go"),
+                assistant(1, "msg_a", usage={"input_tokens": 0, "output_tokens": 0}),
+            ]
+        )
+        counted = write_transcript(
+            [user_prompt(0, "go"), assistant(1, "msg_b", usage={"input_tokens": 900, "output_tokens": 40})]
+        )
+        self.assertFalse(burn.files_record_usage([quiet]))
+        self.assertTrue(burn.files_record_usage([quiet, counted]))
+        events, turns = digest.load_events(quiet), burn.load_turns(quiet)
+        inside = burn.session_report(events, turns, harness="claude_code", files_record_usage=True)
+        self.assertEqual(burn.session_refusal(inside), burn.REFUSE_NOTHING_INSIDE)
+        self.assertIsNone(burn.session_wire(inside)["tokens"])
+        for flag in (False, None):
+            rep = burn.session_report(events, turns, harness="claude_code", files_record_usage=flag)
+            self.assertEqual(burn.session_refusal(rep), burn.REFUSE_NO_COUNTS)
+
     def test_too_few_segments_refuses_to_name_a_spike(self):
         """With three segments the median IS one of them, so every session would report a
         spike or none depending on parity."""

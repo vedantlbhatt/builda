@@ -159,6 +159,12 @@ section.
   the recording sat in a quarter of a grey frame, and first run storyboards skipped the label check
   (a route named ridegt-fonts would have put another repository's name in a label). A web still can
   take its own page size: the site's Projects page is a two column list at 820 points.
+- 12:55 FIXED (288a0bc), found from the capture's sign out at 12:31: a refresh whose answer is lost
+  (app reloaded or killed mid refresh, a dropped cellular response) left the client holding the
+  spent token, and presenting it again was reuse: every token revoked, the person signed out by
+  their own app. Now a spent token inside 60 s whose successor was never redeemed is a retry: the
+  unused successor is revoked and a new one issued. Server 463 passed, lint clean, API restarted.
+  An adversarial review of the change is running.
 - Owner, 12:40: "we show the same analysis every single time: every session, the profile, each project";
   wants it pruned. PLAN, NOT BUILT, waiting for the owner's go (artifact "Builda, pruned",
   https://claude.ai/code/artifact/3a60d1dc-691d-4028-9516-ca5bdfe70fa4): one home per question. Projects

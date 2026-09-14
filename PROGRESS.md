@@ -105,7 +105,11 @@ section.
   the storage and publish path (migration 0026, owner only media, a dev file backend, the
   contract channel, `capture demo --publish`; done 01:30, uncommitted beside the generator's
   capture/cli.py wiring). The stack restarted onto the media routes and the file backend
-  (`$OVERNIGHT_HOME/media`). Running: the phone side (stacks, gallery, the video, expo-video).
+  (`$OVERNIGHT_HOME/media`). Landed 03:40 with the generator (5cf2fa0); both demos published to
+  the owner's account on the local stack (Builda: a 12.6 s video and six stills; RideGT, built
+  in a clone and filmed from its own recordings through a local feed: 10.0 s and four stills).
+  The Builda demo is re-run after the defect fixes (it shows two of them). Running: the phone
+  side (stacks, gallery, the video, expo-video) and the defect fixes.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

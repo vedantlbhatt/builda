@@ -274,13 +274,20 @@ export function rewriteWords(b: CallTokensRead, span: number | null = null): str
   if (!list.length || b.lifetime_seconds == null || !b.points || b.per_point == null) return null;
   const top = list.reduce((a, r) => (r.written > a.written ? r : a));
   const lifetime = lifetimeWords(b.lifetime_seconds);
+  // The written count said beside the bar's own "new" (cache writes plus the few tokens sent
+  // uncached, the message itself) when that call has a bar of its own and the two differ: the
+  // readout said "118,886 new" and this note "118,884 tokens were written" for one call, two
+  // numbers for one fact to a reader (FOUND IN THE now3 PASS, 2026-09-14).
+  const own = b.per_point === 1 ? b.points[top.call - 1] : undefined;
+  const fresh = own ? own.cache_write + own.input : null;
+  const written = fresh !== null && fresh > top.written ? `${commas(top.written)} of its ${commas(fresh)} new tokens were` : `${commas(top.written)} tokens were`;
   const lines =
     top.away_seconds != null
       ? [
           `Call ${commas(top.call)} came ${mins(top.away_seconds)} after the conversation's previous call${beforeSession(top, b.points, b.per_point, span) ? ', before this session began' : ''}.`,
-          `The cache keeps a conversation for ${lifetime}, so it had expired, and ${commas(top.written)} tokens were written to it again.`,
+          `The cache keeps a conversation for ${lifetime}, so it had expired, and ${written} written to it again.`,
         ]
-      : [`Call ${commas(top.call)} came back after the cache had expired (it keeps a conversation for ${lifetime}), and ${commas(top.written)} tokens were written to it again.`];
+      : [`Call ${commas(top.call)} came back after the cache had expired (it keeps a conversation for ${lifetime}), and ${written} written to it again.`];
   const more = Math.max(0, (b.rewrite_calls ?? list.length) - 1);
   if (more) lines.push(`${capital(commas(more))} more call${more === 1 ? '' : 's'} came back to an expired cache the same way.`);
   return lines.join(' ');

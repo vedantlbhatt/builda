@@ -253,7 +253,7 @@ describe('the readout', () => {
 describe('the rewrite, in words', () => {
   test('call 1 came back before this session began, and the lifetime is the one the calls wrote with', () => {
     expect(rewriteWords(RIDEGT)).toBe(
-      "Call 1 came 1h 08m after the conversation's previous call, before this session began. The cache keeps a conversation for an hour, so it had expired, and 140,553 tokens were written to it again."
+      "Call 1 came 1h 08m after the conversation's previous call, before this session began. The cache keeps a conversation for an hour, so it had expired, and 140,553 of its 140,555 new tokens were written to it again."
     );
     const five = rewriteWords({ ...RIDEGT, lifetime_seconds: 300, rewrites: [{ call: 12, away_seconds: 610, written: 50_000 }] });
     expect(five).toBe(
@@ -308,7 +308,7 @@ describe('the rewrite, in words', () => {
     const stranger: CallTokensRead = { ...RIDEGT, rewrites: [{ call: 1, away_seconds: null, written: 140_553 }] };
     const v = ready(stranger);
     expect(v.rewrite).toBe(
-      'Call 1 came back after the cache had expired (it keeps a conversation for an hour), and 140,553 tokens were written to it again.'
+      'Call 1 came back after the cache had expired (it keeps a conversation for an hour), and 140,553 of its 140,555 new tokens were written to it again.'
     );
     expect(v.marks).toEqual([{ index: 0, call: 1, written: 140_553, label: 'cache expired' }]);
     expect(beforeSession({ call: 1, away_seconds: null }, RIDEGT.points!, 1, null)).toBe(false);

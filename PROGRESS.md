@@ -159,6 +159,11 @@ section.
   the recording sat in a quarter of a grey frame, and first run storyboards skipped the label check
   (a route named ridegt-fonts would have put another repository's name in a label). A web still can
   take its own page size: the site's Projects page is a two column list at 820 points.
+- 13:30 The overnight report (artifact "Builda, overnight", version 12): "Every screen, right now"
+  rebuilt from today's capture (shots/now3, 266 stills, a few a screen), the screenshots entry
+  rewritten for stills only, websites and GitHub links, the iPhone entry for the permanent link
+  and build 8, and a new entry for the sign out fix. 164 pictures the page no longer uses were
+  removed from it (the artifact holds 256 files at most).
 - 12:55 FIXED (288a0bc), found from the capture's sign out at 12:31: a refresh whose answer is lost
   (app reloaded or killed mid refresh, a dropped cellular response) left the client holding the
   spent token, and presenting it again was reuse: every token revoked, the person signed out by

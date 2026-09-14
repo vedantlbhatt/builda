@@ -57,14 +57,21 @@ section.
   no redraws after the sweep, copy without jargon. Plus the stack tools chapter, `burn._human`
   parity, Wrapped card 2's margin, `dev-auth?quiet=1`. Captures `shots/money/*-v2.png`.
   Artifact version 6 carries Projects and Money.
-- Projects review (20:15), being fixed by the Projects agent: PRIVACY, private projects were
-  labelled with 6 hex of the repo key, an HMAC under the public pepper (`capture/tuning.py`),
-  so a screenshot confirms a guessed repository in one try; they become phone local numbers.
-  Also: nicknames survived sign out; "since" dates read a UTC instant as a local day; the
-  week sentences said "no time" for a week another device uploaded; the swarm sampled only
-  recent notables on a cut axis; the drawings redrew every frame after landing. `repo_key`
-  itself reaches only its owner (traced). Real keys in `docs/projects.md` and two tests go
-  synthetic; both repository names were already public in CLAUDE.md, so history stays.
+- Landed 20:45: the Projects review's fixes (f062570). Private projects go by a phone local
+  number, never key characters (the key is an HMAC under the public pepper, so six hex
+  confirmed a guessed repository in one try); nicknames and numbers clear on sign out; local
+  days; week sentences scoped to what the Mac read; the swarm pages back over every session;
+  drawings stop redrawing once landed. Real keys in docs and tests are synthetic.
+- Landed 21:10: Money's cross page rounding (cd2abcf): a project reads the same dollars in the
+  chart as on its page; when those cannot make the total, one line under the chart says so.
+- Owner, 20:40: "make a graph showing token usage in a session, I'm confused how 99% is spent
+  reading the cache". Answered with a web page from one real RideGT session (206 calls, 55k to
+  253k tokens re-sent per call, 98.6% of tokens and 72.7% of list price cost re-reads, a cache
+  expiry after a 68 minute break rewrote 140,553 tokens). Running: the same chart on every
+  session page, end to end (engine series, contract field, capture, server, phone).
+- The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
+  a second tunnel serving an itms-services manifest (the device is in the development
+  profile, so no App Store Connect). Rebuilding it with every fix above as build 2.
 - Visualizations the owner liked the sound of (16:40): project rivers, the rank race and the
   session swarm are built (bf7407d); the Money Sankey is built and in review fixes. Still on
   the list, not started: day ridgelines, tool chords, commit constellation, session

@@ -544,6 +544,51 @@ def test_a_spent_token_past_the_grace_is_reuse(client, pairing_user):
     assert all(_chain(pairing_user))
 
 
+def test_a_revoke_all_waits_for_a_refresh_in_flight_and_takes_its_successor(client, pairing_user):
+    """FOUND BY AN ADVERSARIAL REVIEW (2026-09-14): under READ COMMITTED the revoke all saw
+    only rows committed when it started, so a thief's refresh that had inserted its next
+    token and not yet committed kept a live chain while the phone was signed out. The
+    refreshes of one device are serialised now; the revoke all runs after the thief's commit
+    and takes that token too."""
+    import threading
+
+    from builder.auth import redeem_refresh_token
+    from builder.db import db_session
+
+    code = _approved_grant(client, pairing_user)
+    t0 = client.post("/v1/auth/device/poll", json={"device_code": code}).json()["refresh_token"]
+    phone = client.post("/v1/auth/refresh", json={"refresh_token": t0}).json()["refresh_token"]
+    # The thief replays the spent token inside the grace: the phone's successor is revoked.
+    thief = client.post("/v1/auth/refresh", json={"refresh_token": t0}).json()["refresh_token"]
+
+    # The thief's next refresh, held open: its successor inserted and not committed.
+    held = db_session()
+    db = held.__enter__()
+    _, thief_next, _ = redeem_refresh_token(db, thief)
+
+    outcome: dict = {}
+
+    def phone_presents() -> None:
+        try:
+            with db_session() as d:
+                redeem_refresh_token(d, phone)
+            outcome["status"] = 200
+        except HTTPException as e:
+            outcome["status"] = e.status_code
+
+    worker = threading.Thread(target=phone_presents)
+    worker.start()
+    worker.join(0.5)
+    assert worker.is_alive(), "the phone's refresh waits for the one in flight"
+    held.__exit__(None, None, None)  # the thief commits
+    worker.join(10)
+    assert not worker.is_alive()
+    assert outcome == {"status": 401}
+    assert all(_chain(pairing_user)), "the successor committed while the revoke all waited"
+    r = client.post("/v1/auth/refresh", json={"refresh_token": thief_next})
+    assert r.status_code == 401
+
+
 def test_revoked_device_is_401_within_the_token_ttl(client, pairing_user):
     code = _approved_grant(client, pairing_user)
     pair = client.post("/v1/auth/device/poll", json={"device_code": code}).json()

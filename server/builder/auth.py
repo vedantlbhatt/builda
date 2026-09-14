@@ -162,6 +162,24 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     exception, so an UPDATE followed by `raise HTTPException` inside the same transaction
     was undone on the way out: reuse was detected, reported, and never actually revoked.
     """
+    found = db.execute(
+        text("SELECT device_id FROM device_tokens WHERE refresh_hash = :h"),
+        {"h": sha256(raw)},
+    ).first()
+    if found is None:
+        raise HTTPException(401, "unknown refresh token")
+
+    # One refresh at a time per device, until this transaction ends. FOUND BY AN ADVERSARIAL
+    # REVIEW (2026-09-14): under READ COMMITTED the revoke all below sees only rows committed
+    # when it starts, so a successor a concurrent refresh had inserted and not yet committed
+    # survived it: a thief refreshing at that moment kept a live chain and the phone was
+    # signed out. Queued behind this lock, the revoke all runs after that refresh commits and
+    # takes its successor too. An advisory lock, not a row lock: it needs no viewer, and
+    # `reuse()` can run before `set_viewer`. The row is read again under the lock.
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:d, 0))"),
+        {"d": str(found.device_id)},
+    )
     row = db.execute(
         text(
             """
@@ -170,10 +188,7 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
             """
         ),
         {"h": sha256(raw)},
-    ).first()
-
-    if row is None:
-        raise HTTPException(401, "unknown refresh token")
+    ).one()
 
     def reuse() -> HTTPException:
         db.execute(
@@ -206,19 +221,16 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
         raise HTTPException(401, "device revoked")
 
     if retry:
-        # The retry of a lost answer: the successor nobody has redeemed is revoked, in one
-        # compare-and-set that also re-checks the window, and a new successor takes its place.
-        # Zero rows means the successor was redeemed (the answer arrived after all) or the
-        # window closed while this ran: reuse.
+        # The retry of a lost answer: the successor nobody has redeemed is revoked and a new
+        # one takes its place. Under the device lock nothing else can redeem it meanwhile; the
+        # compare-and-set stays as the second guard. Zero rows means it was redeemed after
+        # all: reuse.
         replaced = db.execute(
             text(
                 "UPDATE device_tokens SET revoked_at = now() "
-                "WHERE prev_id = :i AND used_at IS NULL AND revoked_at IS NULL "
-                "AND (SELECT used_at FROM device_tokens WHERE id = :i) "
-                ">= now() - make_interval(secs => :g) "
-                "RETURNING id"
+                "WHERE prev_id = :i AND used_at IS NULL AND revoked_at IS NULL RETURNING id"
             ),
-            {"i": str(row.id), "g": REFRESH_RETRY_GRACE_SECONDS},
+            {"i": str(row.id)},
         ).all()
         if len(replaced) != 1:
             raise reuse()
@@ -244,12 +256,13 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
 
 def _within_retry_grace(db, token_id) -> bool:
     """The spent token was spent inside `REFRESH_RETRY_GRACE_SECONDS` and its successor has
-    never been redeemed nor revoked: the shape of a retry after a lost answer."""
+    never been redeemed nor revoked: the shape of a retry after a lost answer. Measured at
+    this statement, not at the transaction's start (`now()` is the start)."""
     return bool(
         db.execute(
             text(
                 "SELECT 1 FROM device_tokens t WHERE t.id = :i "
-                "AND t.used_at >= now() - make_interval(secs => :g) "
+                "AND t.used_at >= statement_timestamp() - make_interval(secs => :g) "
                 "AND EXISTS (SELECT 1 FROM device_tokens s WHERE s.prev_id = t.id "
                 "AND s.used_at IS NULL AND s.revoked_at IS NULL)"
             ),

@@ -27,6 +27,8 @@ Comparing a 30 day window against all history would report the trend of the corp
 
 from __future__ import annotations
 
+from . import plain
+
 import dataclasses
 from collections.abc import Mapping, Sequence
 
@@ -126,9 +128,9 @@ def compare(before: Mapping, now: Mapping, *, metrics: Sequence[str] | None = No
             Trend(
                 metric=metric,
                 label=LABEL.get(metric, metric.replace("_", " ")),
-                before=round(a, 3),
-                now=round(b, 3),
-                move=round(move, 3),
+                before=plain.rounded(a, 3),
+                now=plain.rounded(b, 3),
+                move=plain.rounded(move, 3),
                 direction=direction,
                 good=good,
                 sessions_before=n_before,
@@ -152,7 +154,7 @@ def window_words(days: int) -> str:
         return f"on the {days} days before"
     if days <= 45:
         return "on last month"
-    return f"on the {round(days / 30)} months before"
+    return f"on the {plain.rounded(days / 30)} months before"
 
 
 def headline(trends: Sequence[Trend], window_days: int = 30) -> str | None:
@@ -165,7 +167,7 @@ def headline(trends: Sequence[Trend], window_days: int = 30) -> str | None:
     pick = judged[0] if judged else next((t for t in trends if not t.steady), None)
     if pick is None:
         return None
-    pct = round(abs(pick.move) * 100)
+    pct = int(plain.half_up(abs(pick.move), scale=2))
     verb = "up" if pick.direction == "up" else "down"
     tail = "" if pick.good is None else (", which is the way you want it" if pick.good else "")
     return f"{pick.label.capitalize()} is {verb} {pct}% {window_words(window_days)}{tail}."

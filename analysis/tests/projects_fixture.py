@@ -185,7 +185,10 @@ def block() -> dict:
     model tests read it from `spec/fixtures/projects/block.json`."""
     return pj.block(two_projects(), 30)
 
-LABELS = {A: "RideGT", B: "builder", C: "site"}
+#: The projects' names in the fixture: invented, like every sample the phone carries (the
+#: phone's tests read the sentences this fixture writes; a real repository's name has no place in
+#: a fixture, `mobile/__tests__/sampleNames.test.ts`).
+LABELS = {A: "tramline", B: "lantern", C: "site"}
 
 
 def comparison(metric: str, *, high=A, low=B, hv=None, lv=None, hs=40, ls=6, reason=None, projects=2) -> dict:

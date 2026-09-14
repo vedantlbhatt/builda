@@ -53,6 +53,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SWIFT = ROOT / "mobile/modules/builder-live/ios/BuilderSessionAttributes.swift"
 SURFACE = ROOT / "mobile/src/live/surface.ts"
 FORMAT = ROOT / "mobile/src/live/format.ts"
+#: Where a card's repository words live since private projects got their numbers.
+REPO_LABEL = ROOT / "mobile/src/copy/repoLabel.ts"
 FIXTURE = ROOT / "spec/fixtures/live/content_state.json"
 GENERATOR = ROOT / "scripts/gen_live_fixtures.py"
 
@@ -134,7 +136,7 @@ def test_the_constants_are_the_phones():
     assert int(ts("RELEVANCE_DONE")) == live_push.RELEVANCE_DONE
     assert int(ts("PAYLOAD_LIMIT_BYTES")) == live_push.PAYLOAD_LIMIT_BYTES
     assert int(ts("REPO_MAX")) == live_push.REPO_MAX
-    assert ts("PRIVATE_REPO") == f"'{live_push.PRIVATE_REPO}'"
+    assert ts("PRIVATE_REPO", REPO_LABEL.read_text()) == f"'{live_push.PRIVATE_REPO}'"
     assert ts("BACKGROUND_REASON") == f"'{live_push.BACKGROUND_REASON}'"
 
 

@@ -38,6 +38,8 @@ import datetime as dt
 import re
 from collections.abc import Sequence
 
+from . import plain
+
 #: Both sides of a comparison need this many observations. Five is not a lot; it is the
 #: point below which one different session swings the whole ratio.
 MIN_GROUP = 5
@@ -74,7 +76,8 @@ DAY_BOUNDARY_HOUR = 4
 #: Running the tests, imported rather than re-written: three regexes that drift produce
 #: three different answers to "how often do you test" and no way to tell which is right.
 from .quality import TEST_CMD as _TEST_CMD
-_COMMIT_CMD = re.compile(r"\bgit commit\b")
+#: And committing, the digest's one pattern (`git -c k=v commit` included), for the same reason.
+from .digest import COMMIT_CMD as _COMMIT_CMD
 
 
 @dataclasses.dataclass(frozen=True)
@@ -128,15 +131,15 @@ def _local_hour(ts: float, tz_offset_minutes: int) -> int:
 
 
 def _pct(x: float) -> str:
-    return f"{round(x * 100)}%"
+    return plain.pct(x)
 
 
 def _lift(a: float, b: float) -> float:
-    return round(a / b, 2) if b > 0 else 0.0
+    return plain.rounded(a / b, 2) if b > 0 else 0.0
 
 
 def _mins(seconds: float) -> str:
-    m = round(seconds / 60)
+    m = plain.rounded(seconds / 60)
     if m < 60:
         return f"{m} minute{'' if m == 1 else 's'}"
     return f"{m // 60}h {m % 60:02d}m"
@@ -391,13 +394,13 @@ def _what_a_shipping_session_looks_like(sessions: Sequence[SessionEvents]) -> Fi
             "group": "the half of your sessions opened with the most detail",
             "n": len(with_brief),
             "shipped": sum(with_brief),
-            "share": round(a, 3),
+            "share": plain.rounded(a, 3),
         },
         right={
             "group": "the half opened shortest",
             "n": len(without),
             "shipped": sum(without),
-            "share": round(b, 3),
+            "share": plain.rounded(b, 3),
         },
         lift=_lift(a, b),
         basis="first_prompt_length_vs_commits",
@@ -426,29 +429,74 @@ def _checkpoint(e) -> bool:
 MIN_CHECKPOINT_DENSITY = 1 / 20
 
 
+def _could_have_changed_something(e) -> bool:
+    """A tool call that ends a stretch of "nothing written, tested or committed": a
+    checkpoint, a file it names and changed with no count (`_touched`, a `sed -i`), or a
+    call that could have changed a file the digest cannot see (`burn._could_write_unseen`,
+    the rule that makes burn's stretches unreadable rather than barren: a `python3 - <<PY`
+    script, a build, a helper agent). Proven nothing, or not said.
+    """
+    from . import burn
+
+    return _checkpoint(e) or _touched(e) or burn._could_write_unseen(e)
+
+
+def _active_between(events: Sequence, i: int, j: int) -> float:
+    """Seconds of ACTIVE time from `events[i]` to `events[j]`: every gap between two events
+    credited up to `ACTIVE_GAP_CAP`, the sessionizer's own rule for the session's figure
+    (`measure_boundaries.ACTIVE_GAP_CAP`, 120 s), so a stretch is on the clock the page's
+    duration is on. Fewer events than the sessionizer's records only merge gaps, and a
+    merged gap credits no more than its parts, so a stretch can never outrun the session."""
+    from capture.reference import mb
+
+    cap = mb.ACTIVE_GAP_CAP
+    total = 0.0
+    for k in range(i, j):
+        gap = events[k + 1].ts - events[k].ts
+        if gap > 0:
+            total += min(gap, cap)
+    return total
+
+
 def _runs_with_nothing_to_show(s: SessionEvents) -> list[tuple[int, float]]:
-    """(tool calls, seconds) for every stretch between two checkpoints."""
-    runs, n, start, last = [], 0, None, 0.0
-    for e in s.events:
+    """(tool calls, active seconds) for every stretch in which no call wrote, tested,
+    committed or could have changed a file this parser cannot see.
+
+    FOUND IN THE DEFECTS PASS (2026-09-14): a RideGT sitting (60256e3a) of 3h 12m active,
+    +507 lines and 13 commits carried "3 stretches with nothing written, tested or
+    committed, 3h 09m in total". Three rules disagreed with its own page. Its stretches were
+    cut only at checkpoints, so 229 of its 324 calls that could have written unseen (a
+    `python3 - <<PY` rewriting a file) counted as nothing; `git -c user.name=... commit`
+    was not a commit (`digest.COMMIT_CMD`), so four of its seven commits sat inside them;
+    and a stretch was WALL CLOCK from its first call to the next checkpoint, idle gaps of
+    up to 15 minutes and 25 of the person's prompts included, where the page's 3h 12m is
+    active time. MEASURED over the overnight corpus's 160 counted sittings: the note was on
+    17 of them for 11.9 hours in all, 9 claiming over half their sitting's active time and
+    one (05f4bf27) more than all of it, 2,682 s of a 1,841 s sitting.
+    """
+    events = s.events
+    runs: list[tuple[int, float]] = []
+    n, start, last = 0, None, None
+    for i, e in enumerate(events):
         if e.kind != "tool":
             continue
-        last = e.ts
-        if _checkpoint(e):
+        if _could_have_changed_something(e):
             if n and start is not None:
-                runs.append((n, e.ts - start))
-            n, start = 0, None
+                runs.append((n, _active_between(events, start, i)))
+            n, start, last = 0, None, i
             continue
         n += 1
+        last = i
         if start is None:
-            start = e.ts
-    if n and start is not None:
+            start = i
+    if n and start is not None and last is not None:
         # The trailing run ends at the LAST TOOL CALL, never at the session end. Using
         # `ended_at` credits every idle second after the agent stopped to the stretch:
         # FOUND BY RUNNING IT, a sitting whose last 50 calls finished in 100 seconds and
         # whose window ran two more hours reported a two hour stretch of going nowhere.
         # The boundary rules deliberately extend `endedAt` by the trailing gap
         # (CLAUDE.md), which is right for active time and wrong for this.
-        runs.append((n, last - start))
+        runs.append((n, _active_between(events, start, last)))
     return runs
 
 
@@ -491,8 +539,8 @@ def _the_spin(sessions: Sequence[SessionEvents]) -> Finding | None:
             "group": f"runs of {SPIN_TOOL_CALLS}+ calls with no write, test or commit",
             "n": len(spins),
             "worst_tool_calls": worst_calls,
-            "worst_seconds": round(worst_secs),
-            "total_seconds": round(lost),
+            "worst_seconds": plain.rounded(worst_secs),
+            "total_seconds": plain.rounded(lost),
         },
         right={
             "group": "an ordinary stretch between two checkpoints",
@@ -554,7 +602,7 @@ def _stuck_in_a_loop(sessions: Sequence[SessionEvents]) -> Finding | None:
             "group": f"runs of {STUCK_FAILURES}+ consecutive failures",
             "n": len(loops),
             "longest_run": longest,
-            "total_seconds": round(lost),
+            "total_seconds": plain.rounded(lost),
         },
         right={"group": "tool calls in the corpus", "n": total_calls},
         lift=_lift(len(loops) * STUCK_FAILURES, max(total_calls / 100, 1)),
@@ -595,9 +643,9 @@ def _fighting_one_file(sessions: Sequence[SessionEvents]) -> Finding | None:
             "group": f"files written {REWORK_WRITES}+ times in one session",
             "n": total,
             "count": fought,
-            "share": round(share, 3),
+            "share": plain.rounded(share, 3),
             "worst_file_writes": worst[0],
-            "worst_file_seconds": round(worst[1]),
+            "worst_file_seconds": plain.rounded(worst[1]),
         },
         right={"group": "files written fewer times", "n": total, "count": once},
         lift=_lift(worst[0], REWORK_WRITES - 1),
@@ -633,7 +681,7 @@ def _when_the_work_lands(sessions: Sequence[SessionEvents]) -> Finding | None:
         text=(
             f"Starting after {NIGHT_FROM}:00 is your "
             f"{'best' if better else 'most expensive'} hour for hour: those "
-            f"{len(late)} sessions landed {round(la)} lines an hour against {round(da)} "
+            f"{len(late)} sessions landed {plain.rounded(la)} lines an hour against {plain.rounded(da)} "
             f"for the {len(day)} you started in daylight."
             + (
                 ""
@@ -644,12 +692,12 @@ def _when_the_work_lands(sessions: Sequence[SessionEvents]) -> Finding | None:
         left={
             "group": f"started after {NIGHT_FROM}:00",
             "n": len(late),
-            "lines_per_active_hour": round(la, 1),
+            "lines_per_active_hour": plain.rounded(la, 1),
         },
         right={
             "group": "started in daylight",
             "n": len(day),
-            "lines_per_active_hour": round(da, 1),
+            "lines_per_active_hour": plain.rounded(da, 1),
         },
         lift=lift,
         basis="lines_added_per_active_hour_by_start_hour",
@@ -703,13 +751,13 @@ def _short_prompts_get_corrected(sessions: Sequence[SessionEvents]) -> Finding |
             "group": f"under {SHORT_PROMPT_WORDS} words",
             "n": len(short),
             "corrected": sc,
-            "share": round(ss, 3),
+            "share": plain.rounded(ss, 3),
         },
         right={
             "group": f"{SHORT_PROMPT_WORDS} words or more",
             "n": len(long),
             "corrected": lc,
-            "share": round(ls, 3),
+            "share": plain.rounded(ls, 3),
         },
         lift=_lift(ss, ls),
         basis="prompt_text_and_the_next_human_act",
@@ -753,7 +801,7 @@ def _verification_habit(sessions: Sequence[SessionEvents]) -> Finding | None:
             "group": "edit bursts that ended in a test",
             "n": total,
             "count": tested,
-            "share": round(share, 3),
+            "share": plain.rounded(share, 3),
         },
         right={"group": "edit bursts that did not", "n": total, "count": untested},
         lift=_lift(share, 1 - share) if share < 1 else float(total),
@@ -804,13 +852,13 @@ def _what_the_quiet_sessions_cost(sessions: Sequence[SessionEvents]) -> Finding 
         left={
             "group": "sessions that ended with no commit",
             "n": n_quiet,
-            "usd": round(quiet, 2),
-            "share_of_spend": round(share, 3),
+            "usd": plain.rounded(quiet, 2),
+            "share_of_spend": plain.rounded(share, 3),
         },
         right={
             "group": "sessions that ended with a commit",
             "n": n_shipped,
-            "usd": round(shipped, 2),
+            "usd": plain.rounded(shipped, 2),
         },
         lift=_lift(share, 1 - share) if share < 1 else float(n_quiet),
         basis="list_price_by_commit_outcome",
@@ -858,16 +906,16 @@ def _the_cheaper_model_shipped(sessions: Sequence[SessionEvents]) -> Finding | N
         left={
             "group": f"sittings {cheap} wrote most of",
             "n": cheap_row["n"],
-            "usd": round(cheap_row["usd"], 2),
+            "usd": plain.rounded(cheap_row["usd"], 2),
             "commits": cheap_row["commits"],
-            "usd_per_commit": round(cheap_rate, 2),
+            "usd_per_commit": plain.rounded(cheap_rate, 2),
         },
         right={
             "group": f"sittings {dear} wrote most of",
             "n": dear_row["n"],
-            "usd": round(dear_row["usd"], 2),
+            "usd": plain.rounded(dear_row["usd"], 2),
             "commits": dear_row["commits"],
-            "usd_per_commit": round(dear_rate, 2),
+            "usd_per_commit": plain.rounded(dear_rate, 2),
         },
         lift=_lift(dear_rate, cheap_rate),
         basis="list_price_per_commit_by_dominant_model",

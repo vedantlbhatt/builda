@@ -195,7 +195,9 @@ class Wording(unittest.TestCase):
             self.assertNotRegex(note.text, r"[—–―−]")
 
     def test_minutes_are_said_the_way_a_person_says_them(self):
-        self.assertEqual(fb._mins(30), "under a minute")
+        self.assertEqual(fb._mins(29), "under a minute")
+        # Half a minute is a tie, and a tie rounds UP (`plain.half_up`, the one rule).
+        self.assertEqual(fb._mins(30), "1 minute")
         self.assertEqual(fb._mins(60), "1 minute")
         self.assertEqual(fb._mins(600), "10 minutes")
         self.assertEqual(fb._mins(3900), "1h 05m")
@@ -236,6 +238,142 @@ class TheParsersBlindSpot(unittest.TestCase):
             events.append(ev(101 + i * 2, t + 5, "result_error", "boom"))
             t += 60
         self.assertIsNotNone(by(fb.notes(sess(events)), "failed_in_a_row"))
+
+
+#: The commands of RideGT sitting 60256e3a's three "stretches with nothing written, tested or
+#: committed", as its transcript has them (paths and URLs shortened). The first four only read;
+#: the scripts rewrote files the digest cannot see; the `git -c` lines are commits.
+_READS = [
+    'curl -s --max-time 25 "https://example.test/api/debug/cache-report?hours=1"',
+    "git log --oneline 698c16e..HEAD | cat",
+    "sed -n '1,120p' gmaps_api_optimizations.md",
+    "cd backend && grep -rn \"shadow\" --include=*.py -l | head -20",
+]
+_SCRIPT = "cd backend ⏎ python3 - <<'PY' ⏎ import pathlib ⏎ p=pathlib.Path('services/route_service.py') ⏎ s=p.read_text() ⏎ p.write_text(s.replace('a','b')) ⏎ PY"
+_COMMIT = "cd /r && git add -A backend/ && git -c user.name=vedantlbhatt commit -m 'shadow walk check'"
+
+
+def _sitting_60256e3a(*, scripts: bool = True, commits: bool = True):
+    """The shape of the sitting that contradicted its page: 3h 12m active, +507 lines and 13
+    commits on the page, 21 visible checkpoints in 324 calls, and three long stretches between
+    them (44, 94 and 56 calls over 70, 55 and 64 minutes of wall clock) holding the person's
+    prompts, idle gaps of up to 15 minutes, file rewrites through scripts and `git -c` commits.
+    `scripts`/`commits` False swaps those calls for reads, the same stretches truly empty."""
+    events: list[Ev] = []
+    t = T0
+    n = 0
+
+    def add(kind, text="", **kw):
+        nonlocal n
+        events.append(ev(n, t, kind, text, **kw))
+        n += 1
+
+    def visible_work(k):
+        nonlocal t
+        for i in range(k):
+            add("tool", "", tool="Edit", added=24, path=f"/repo/backend/f{i}.py")
+            t += 40
+            add("tool", "cd backend && pytest -q tests/", tool="Bash")
+            t += 60
+
+    def stretch(calls, wall_minutes, *, gaps, commit_at=()):
+        nonlocal t
+        step = (wall_minutes * 60 - sum(gaps)) / calls
+        for i in range(calls):
+            if i % 5 == 0:
+                add("prompt", "check the cache report again")
+                t += 20
+            if i in commit_at and commits:
+                add("tool", _COMMIT, tool="Bash")
+            elif scripts and i % 7 == 3:
+                add("tool", _SCRIPT, tool="Bash")
+            else:
+                add("tool", _READS[i % len(_READS)], tool="Bash")
+            t += step + (gaps[i % len(gaps)] if i < len(gaps) else 0)
+
+    visible_work(6)
+    stretch(44, 70, gaps=[900, 680, 632, 573, 284])
+    visible_work(4)
+    stretch(94, 55, gaps=[331, 293, 271, 241, 223])
+    visible_work(4)
+    stretch(56, 64, gaps=[350, 262, 240, 171, 114], commit_at=(12, 30, 41))
+    visible_work(7)
+    return pt.SessionEvents(
+        session_id="60256e3a",
+        started_at=events[0].ts,
+        ended_at=events[-1].ts,
+        active_seconds=11567.0,
+        attended_seconds=10233.0,
+        tz_offset_minutes=-240,
+        events=events,
+    )
+
+
+class TheSittingThatContradictedItsPage(unittest.TestCase):
+    """RideGT sitting 60256e3a: a page saying 3h 12m, +507 lines and 13 commits, over a note
+    saying "3 stretches with nothing written, tested or committed, 3h 09m in total". Each of
+    the three rules below is one reason the note could say that; together they make sure it
+    cannot again."""
+
+    def test_the_sitting_that_had_the_note_has_none(self):
+        s = _sitting_60256e3a()
+        self.assertIsNone(by(fb.notes(s), "went_nowhere"))
+
+    def test_git_with_its_own_options_is_a_commit(self):
+        """Four of that sitting's seven commits were `git -c user.name=... commit`, which
+        `\\bgit commit\\b` did not match, so they sat inside stretches of "nothing committed"."""
+        from analysis import digest as dg
+
+        for text in (
+            _COMMIT,
+            "git -C /repo commit -m x",
+            "git --no-pager commit",
+            "git commit -m 'plain'",
+        ):
+            e = ev(1, T0, "tool", text, tool="Bash")
+            self.assertTrue(pt._committed(e), text)
+            self.assertEqual(dg.stats([e])["git_commits_run"], 1, text)
+        for text in ("git log --grep=commit", "git -c commit.gpgsign=false log", "git status"):
+            self.assertFalse(pt._committed(ev(1, T0, "tool", text, tool="Bash")), text)
+
+    def test_a_commit_ends_the_stretch(self):
+        s = _sitting_60256e3a(scripts=False)
+        runs = [calls for calls, _ in pt._runs_with_nothing_to_show(s)]
+        # The third stretch (56 calls) is cut at its three commits (calls 12, 30 and 41).
+        self.assertEqual(runs, [44, 94, 12, 17, 10, 14])
+
+    def test_a_script_that_could_have_written_a_file_ends_the_stretch(self):
+        """`python3 - <<PY` rewriting a file is a Bash call with no line count in it: it is
+        burn's `_could_write_unseen`, which makes a stretch unreadable, never barren."""
+        busy = busywork(25) + [ev(50, T0 + 800, "tool", _SCRIPT, tool="Bash")]
+        busy += busywork(25, start=T0 + 830, n0=51)
+        self.assertEqual([c for c, _ in pt._runs_with_nothing_to_show(sess(seen(busy)))], [25, 25])
+        self.assertIsNone(by(fb.notes(sess(seen(busy))), "went_nowhere"))
+
+    def test_a_stretch_is_counted_on_the_pages_clock(self):
+        """Every gap credited up to `ACTIVE_GAP_CAP`, the sessionizer's own rule for the
+        duration the page shows: a 15 minute gap inside a stretch is 2 minutes of it."""
+        from capture.reference import mb
+
+        busy = busywork(50, seconds_each=30)
+        busy[25:] = [ev(e.n, e.ts + 900, e.kind, e.text, tool=e.tool) for e in busy[25:]]
+        (calls, secs), = pt._runs_with_nothing_to_show(sess(busy))
+        self.assertEqual(calls, 50)
+        self.assertAlmostEqual(secs, 48 * 30 + mb.ACTIVE_GAP_CAP)
+
+    def test_the_truly_empty_stretches_are_still_said_and_never_outrun_the_sitting(self):
+        """The same shape with every script and commit swapped for a read: stretches that
+        provably changed nothing are still a note, on the active clock, and together they
+        stay inside the sitting's own active time and leave room for its work."""
+        s = _sitting_60256e3a(scripts=False, commits=False)
+        got = by(fb.notes(s), "went_nowhere")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.numbers["runs"], 3)
+        whole = pt._active_between(s.events, 0, len(s.events) - 1)
+        self.assertLess(got.seconds, whole)
+        self.assertLess(got.seconds, s.active_seconds)
+        # Wall clock said 3h 09m of the 3h 12m; its fifteen idle gaps now credit two minutes each.
+        self.assertLess(got.seconds, 3 * 3600)
 
 
 class TheWire(unittest.TestCase):

@@ -291,6 +291,30 @@ def test_feedback_round_trips_and_is_not_wiped_by_a_client_that_does_not_compute
     assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == SAMPLE_FEEDBACK
 
 
+def test_a_producer_that_computed_burn_takes_back_a_stored_note(client, paired):
+    """FOUND IN THE DEFECTS PASS (2026-09-14): a sitting kept a note from a rule since fixed
+    ("3 stretches with nothing written, tested or committed, 3h 09m" of a 3h 12m sitting
+    that landed 13 commits), because a corrected re-upload with no note was read as a
+    client that does not compute feedback. `burn` and `feedback` come from one pass of the
+    same package, so a payload carrying burn says its missing note is a finding.
+    """
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    stale = [{"id": "went_nowhere", "seconds": 11341, "count": 3}]
+    _upload(client, headers, _payload(client_session_id=csid, feedback=stale, burn=SAMPLE_BURN))
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == stale
+
+    # The Mac's resync (neither burn nor feedback) still leaves it alone...
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == stale
+
+    # ...and the corrected producer's re-upload, burn and no note, takes it back.
+    r = _upload(client, headers, _payload(client_session_id=csid, burn=SAMPLE_BURN))
+    assert r["accepted"] == 1, r
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] is None
+
+
 def test_a_sitting_with_nothing_worth_saying_reads_back_as_null_not_an_empty_list(client, paired):
     """Null and [] are the same thing on this card and must not be two things in the
     client. The key is always present, so an older server is still distinguishable."""

@@ -13,6 +13,24 @@ enum LiveType {
   }
 }
 
+/// THE ONE WAY A TIME OF DAY IS WRITTEN, the app's (`src/copy/time.ts` `clockWords`): "9:12am",
+/// "12:40am". Lower case, no space, no leading zero on the hour, in the phone's own time zone.
+///
+/// FOUND IN THE CAPTURE PASS (2026-09-14): the Lock Screen said "waiting since 3:54 AM" (the
+/// system's `Text(date, style: .time)`) while every screen of the app writes "3:51pm". A clock
+/// time on a surface is an instant, not a timer, so a fixed string is the right thing to draw.
+/// `__tests__/timeOfDay.test.ts` holds this and the TypeScript to one shape and refuses a system
+/// time style anywhere in the extension.
+enum LiveClock {
+  static func words(_ date: Date, calendar: Calendar = .current) -> String {
+    let c = calendar.dateComponents([.hour, .minute], from: date)
+    let h = ((c.hour ?? 0) % 24 + 24) % 24
+    let m = max(0, min(59, c.minute ?? 0))
+    let twelve = h % 12 == 0 ? 12 : h % 12
+    return "\(twelve):\(m < 10 ? "0" : "")\(m)\(h < 12 ? "am" : "pm")"
+  }
+}
+
 // MARK: - Ring
 
 /// Apple Fitness geometry: an arc on a hairline-colour track, round caps, starting at 12
@@ -135,7 +153,7 @@ struct VerdictLabel: View {
     HStack(spacing: 4) {
       VerdictGlyph(verdict: verdict, size: size + 1, color: color)
       if let since {
-        (Text(verdict.rawValue + " " + LiveCopy.since + " ") + Text(since, style: .time))
+        Text(verdict.rawValue + " " + LiveCopy.since + " " + LiveClock.words(since))
           .font(LiveType.font(size, .medium)).foregroundStyle(color)
       } else {
         Text(verdict.rawValue).font(LiveType.font(size, .medium)).foregroundStyle(color)
@@ -207,8 +225,9 @@ struct CreatureMark: View {
 /// The tool's real mark, the owner's SVG drawn as SwiftUI paths (`HarnessMarks.swift`, generated
 /// by scripts/gen_harness_logos.py): Claude, Codex and Gemini in their own colours, which read on
 /// the dark card and the light widget alike; Cursor, Cline and opencode in `tint`, the colour of
-/// the name beside them. A harness with no mark (Aider, an id this build does not know) draws
-/// nothing, and the name carries it. Never the only signal: the name is always there or read out.
+/// the name beside them. Aider, which has no mark of its own, draws the phone's pixel glyph for it
+/// (the `>_` prompt, generated from `src/pixel/harness.ts`) in `tint`; an id this build does not
+/// know draws nothing, and the name carries it. Never the only signal: the name is always there or read out.
 /// `flat` is for a card or a widget that is no longer updating, where everything else has gone
 /// faint and a brand colour would be the loudest thing on it: a colour mark loses its colour and
 /// steps back (grey, not a hue at partial opacity, so nothing turns brown), and a monochrome mark

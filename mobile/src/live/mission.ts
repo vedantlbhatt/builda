@@ -25,6 +25,7 @@ import type { LiveActivity, LiveEta, LiveState, Phase } from '../generated/live'
 import { etaRefusal } from '../copy/live';
 import { commas } from '../copy/numbers';
 import { spoken } from '../copy/plain';
+import { repoLabel, type RepoNames } from '../copy/repoLabel';
 import { HARNESS_NAMES, isHarness } from '../pixel/harness';
 import { layout } from '../theme';
 import { timeOfDay } from '../copy/time';
@@ -33,7 +34,6 @@ import type { LiveStateWire } from './sentence';
 import {
   missionOrder as surfaceMissionOrder,
   phaseOf,
-  PRIVATE_REPO,
   sentenceOf,
   sinceEpochOf,
   STALE_SECONDS,
@@ -439,9 +439,11 @@ export function harnessName(harness: string): string {
 /**
  * Everything one tile shows, at `nowMs`. The phase and the sentence are the surfaces' rules; a
  * stale row speaks the timeless sentence (no "for four minutes" it cannot vouch for) and says
- * when its numbers were taken instead.
+ * when its numbers were taken instead. The repository is `copy/repoLabel`'s: its public name, the
+ * owner's name for the project or "Private project 2" as the Projects tab says it, else "private
+ * repo" (`names` is `data/repoNames.useRepoNames()`; none, or not read yet, is "private repo").
  */
-export function tileModel(s: SessionDetail, nowMs: number): TileModel {
+export function tileModel(s: SessionDetail, nowMs: number, names?: RepoNames | null): TileModel {
   const wire = toWire(s.live_state);
   const stale = isStale(s, nowMs);
   const phase = tilePhase(s, wire, nowMs);
@@ -480,7 +482,7 @@ export function tileModel(s: SessionDetail, nowMs: number): TileModel {
     eta = etaLine(s.live_state?.eta, age, verdict);
   }
 
-  const repo = s.repo_name ?? PRIVATE_REPO;
+  const repo = repoLabel(s, names);
   const dim = kind === 'stalled' || stale;
   const label = [
     repo,
@@ -733,7 +735,14 @@ export interface SummaryHead {
  * loudest number is the one that asks for you, so a wait leads when there is one; otherwise how
  * many run, with "Nothing needs you." under it; otherwise how many finished. Rows the Mac stopped
  * reporting on are their own line, and while there are any the band does not claim that nothing
- * needs you: a wait nobody can see is not the absence of one. Null when there is nothing at all.
+ * needs you: a wait nobody can see is not the absence of one. When every row that is not finished
+ * has stopped reporting, the band leads with that ("1 not updating"): whether they still run is
+ * exactly what is not known. Null when there is nothing at all.
+ *
+ * FOUND IN THE DEFECTS PASS (2026-09-14): with one stale tile the Now band read "0 running" over
+ * "1 not updating". The model said "1 running" and the drawn count was stuck on its first frame
+ * (`MissionTile.LiveNum`, fixed there), but "1 running" over the one tile that says it is not
+ * updating was the band claiming what the tile refuses to.
  */
 export function summaryHead(models: readonly Pick<TileModel, 'kind' | 'stale'>[]): SummaryHead | null {
   const c = countsOf(models);
@@ -743,6 +752,8 @@ export function summaryHead(models: readonly Pick<TileModel, 'kind' | 'stale'>[]
   let head: Omit<SummaryHead, 'label'>;
   if (c.needsYou > 0) {
     head = { figure: c.needsYou, word: 'needs you', lines: [`${c.running} running`, finished, notUpdating].filter((x): x is string => x !== null) };
+  } else if (quiet > 0 && quiet === c.running) {
+    head = { figure: quiet, word: 'not updating', lines: [finished].filter((x): x is string => x !== null) };
   } else if (c.running > 0) {
     const nothing = quiet > 0 ? null : 'Nothing needs you.';
     head = { figure: c.running, word: 'running', lines: [nothing, finished, notUpdating].filter((x): x is string => x !== null) };
@@ -849,11 +860,11 @@ export function finishedMeta(s: SessionDetail, dayLabel: (iso: string) => string
 
 /**
  * The empty state's one line about the session that finished last: "builder finished today at
- * 9:37pm · ran 47m". A private repository says so in full.
+ * 9:37pm · ran 47m". A private repository is named as the tile names it (`repoLabel`).
  */
-export function lastFinishedLine(s: SessionDetail, dayLabel: (iso: string) => string): string {
+export function lastFinishedLine(s: SessionDetail, dayLabel: (iso: string) => string, names?: RepoNames | null): string {
   const meta = finishedMeta(s, dayLabel);
-  const repo = s.repo_name ?? PRIVATE_REPO;
+  const repo = repoLabel(s, names);
   return meta ? `${repo} finished ${meta}` : `${repo} finished`;
 }
 
@@ -890,8 +901,8 @@ export interface BarModel {
  * ETA; an empty track while it waits on you; full once past the typical run; after a finish, full
  * when something landed and empty when nothing did.
  */
-export function barModel(s: SessionDetail, nowMs: number): BarModel {
-  const t = tileModel(s, nowMs);
+export function barModel(s: SessionDetail, nowMs: number, names?: RepoNames | null): BarModel {
+  const t = tileModel(s, nowMs, names);
   const eta = s.live_state?.eta ?? null;
   const typical = eta?.typical_s;
   const elapsedS = eta?.elapsed_s;
@@ -950,8 +961,16 @@ export function barModel(s: SessionDetail, nowMs: number): BarModel {
  * `LiveState` per row, the slim body) with numbers of the size this repository and RideGT
  * produce (engine doc 3.5: RideGT's median run is 20.9 active minutes; builder has five
  * finished sessions, so it is refused an ETA). Every sentence comes out of the engine's
- * renderer; nothing here is prose. The screen labels it a sample.
+ * renderer; nothing here is prose. The screen labels it a sample, and the repositories have
+ * invented names (`SAMPLE_REPOS`): a sample never shows the name of a real one.
  */
+/**
+ * The sample's repositories. Invented, and nobody's: the first pass drew the owner's own "RideGT"
+ * and "builder" on tiles under a line that said they were not the owner's (FOUND IN THE CAPTURE
+ * PASS, 2026-09-14, 70-live-sample-grid-02). The shapes are still those two repositories'.
+ */
+export const SAMPLE_REPOS = { transit: 'tramline', tool: 'lantern' } as const;
+
 export const SAMPLE_KINDS = ['grid', 'all', 'empty', 'loading', 'error', 'stale', 'refused', 'signedout', 'review'] as const;
 export type SampleKind = (typeof SAMPLE_KINDS)[number];
 
@@ -1083,7 +1102,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
   if (kind === 'loading') return { live: [], finals: [], seen: new Map(), inputs: { ...ok, synced: false } };
   if (kind === 'error') return { live: [], finals: [], seen: new Map(), inputs: { ...ok, synced: false, error: offline } };
 
-  const finished = sampleRow('sample-finished', 'builder', 'claude_code', 52, nowMs, {
+  const finished = sampleRow('sample-finished', SAMPLE_REPOS.tool, 'claude_code', 52, nowMs, {
     state: 'final',
     end_reason: 'idle_gap',
     ended_at: new Date(nowMs - 16 * 60_000).toISOString(),
@@ -1103,7 +1122,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
     return { live: [], finals: [earlier], seen: new Map(), inputs: ok };
   }
 
-  const needs = sampleRow('sample-needs-you', 'builder', 'claude_code', 47, nowMs, {
+  const needs = sampleRow('sample-needs-you', SAMPLE_REPOS.tool, 'claude_code', 47, nowMs, {
     live_state: sampleState(
       nowMs,
       {
@@ -1115,7 +1134,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
       BUILDER_REFUSED
     ),
   });
-  const circling = sampleRow('sample-circling', 'RideGT', 'codex', 28, nowMs, {
+  const circling = sampleRow('sample-circling', SAMPLE_REPOS.transit, 'codex', 28, nowMs, {
     live_state: sampleState(
       nowMs,
       {
@@ -1145,7 +1164,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
       BUILDER_REFUSED
     ),
   });
-  const converging = sampleRow('sample-converging', 'RideGT', 'claude_code', 12, nowMs, {
+  const converging = sampleRow('sample-converging', SAMPLE_REPOS.transit, 'claude_code', 12, nowMs, {
     live_state: sampleState(
       nowMs,
       {
@@ -1162,7 +1181,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
       rideGtEta(12)
     ),
   });
-  const starting = sampleRow('sample-starting', 'builder', 'gemini_cli', 3, nowMs, {
+  const starting = sampleRow('sample-starting', SAMPLE_REPOS.tool, 'gemini_cli', 3, nowMs, {
     live_state: sampleState(
       nowMs,
       {
@@ -1173,7 +1192,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
       BUILDER_REFUSED
     ),
   });
-  const stalled = sampleRow('sample-stalled', 'builder', 'opencode', 64, nowMs, {
+  const stalled = sampleRow('sample-stalled', SAMPLE_REPOS.tool, 'opencode', 64, nowMs, {
     live_state: sampleState(
       nowMs,
       {
@@ -1184,7 +1203,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
       BUILDER_REFUSED
     ),
   });
-  const background = sampleRow('sample-background', 'RideGT', 'claude_code', 33, nowMs, {
+  const background = sampleRow('sample-background', SAMPLE_REPOS.transit, 'claude_code', 33, nowMs, {
     live_state: sampleState(
       nowMs,
       {
@@ -1206,7 +1225,7 @@ export function missionSample(kind: SampleKind, nowMs: number): MissionSample {
   if (kind === 'review') {
     // A turn the engine called done while the row is still live: the tile says finished, not
     // looked at yet, and the summary counts it as finished, never running (`tilePhase`).
-    const done = sampleRow('sample-review', 'RideGT', 'claude_code', 26, nowMs, {
+    const done = sampleRow('sample-review', SAMPLE_REPOS.transit, 'claude_code', 26, nowMs, {
       live_state: sampleState(
         nowMs,
         {

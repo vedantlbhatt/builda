@@ -5,6 +5,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import type { SessionDetail } from '../data/api';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
+import { loadRepoNames } from '../data/repoNames';
 import { ANIMAL_KEY } from '../onboarding/keys';
 import { resolveAnimal } from '../pixel/animals';
 import { CREW_WINDOW } from '../session/useCrew';
@@ -71,7 +72,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   const finished = (await Promise.all(gone.map((id) => cache.getDetail(id)))).filter(
     (s): s is SessionDetail => s !== null && s.state === 'final'
   );
-  const [animal, details, activities, profile, saved] = await Promise.all([
+  const [animal, details, activities, profile, saved, names] = await Promise.all([
     cache.getKv(ANIMAL_KEY).catch(() => null),
     cache.getLockScreenDetails(),
     cache.getLiveActivities(),
@@ -79,6 +80,9 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
     // The rows the Sessions list steps each session's creature against, so a card's creature
     // is the one its row and its tile wear.
     cache.listSessions(CREW_WINDOW).catch((): SessionDetail[] => []),
+    // What a card calls a private project: the number the Projects tab gives it. A card's
+    // repository is fixed for its life, so it is read before any card starts.
+    loadRepoNames().catch(() => null),
   ]);
   last = await syncLiveActivities(live, liveStatesOf(live), {
     creature: resolveAnimal(animal),
@@ -88,6 +92,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
     details,
     activities,
     pushTokens: true,
+    names,
     nowMs,
   });
   return last;

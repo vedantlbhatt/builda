@@ -23,9 +23,9 @@ describe('one mark for every thing the catalog can name', () => {
     expect(Object.keys(STACK_MARKS)).toEqual([...IDS]);
   });
 
-  test('62 of the 80 draw a real logo, and the coverage the file states is the one it holds', () => {
+  test('61 of the 80 draw a real logo, and the coverage the file states is the one it holds', () => {
     expect({ ...STACK_LOGO_COVERAGE } as { logos: number; catalog: number }).toEqual({ logos: LOGOS.length, catalog: IDS.length });
-    expect([LOGOS.length, IDS.length]).toEqual([62, 80]);
+    expect([LOGOS.length, IDS.length]).toEqual([61, 80]);
     expect(LOGOS.length + MONOGRAMS.length).toBe(IDS.length);
   });
 
@@ -51,11 +51,23 @@ describe('one mark for every thing the catalog can name', () => {
     const twice = [...shared.entries()].filter(([, ids]) => ids.length > 1).map(([slug, ids]) => [slug, ids]);
     expect(twice).toEqual([
       ['react', ['react', 'react_native']],
-      ['expo', ['expo', 'eas']],
       ['bun', ['bun_test', 'bun']],
     ]);
     const gen = readFileSync(join(import.meta.dir, '../../scripts/gen_stack_logos.py'), 'utf8');
-    for (const id of ['react_native', 'eas', 'bun_test']) expect(gen).toMatch(new RegExp(`"${id}": "[a-z]+",\\s+# `));
+    for (const id of ['react_native', 'bun_test']) expect(gen).toMatch(new RegExp(`"${id}": "[a-z]+",\\s+# `));
+  });
+
+  test('two things that can both be counted on one page never share a mark (shots/now2/25-stack-02: EAS in Expo\'s logo read "Expo 26" beside Expo\'s 12)', () => {
+    expect(markOf('eas')?.kind).toBe('monogram');
+    // The two that still share one are each one thing to a person: React Native is React, and
+    // `bun test` is Bun's own runner.
+    const expo = LOGOS.filter(([, m]) => m.slug === 'expo').map(([id]) => id);
+    expect(expo).toEqual(['expo']);
+  });
+
+  test('no monogram reads as another word: a lower case l is a capital I in the app\'s type ("Al" read "AI")', () => {
+    for (const [id, m] of MONOGRAMS) expect({ id, l: m.text.includes('l') }).toEqual({ id, l: false });
+    expect(markOf('alembic')).toMatchObject({ kind: 'monogram', text: 'AL' });
   });
 });
 

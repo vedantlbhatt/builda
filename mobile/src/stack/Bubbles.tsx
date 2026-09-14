@@ -30,13 +30,11 @@ import { useClock, useReducedSV } from '../insights/reveal';
 import { hue as themeHue } from '../theme';
 import { select, usePressFeedback } from '../ui';
 import { SparkBurst } from '../ui/bits/effects';
-import { packBubbles, type Bubble } from './layout';
+import { bubbleFace, packBubbles, type Bubble } from './layout';
 import { brandInk, discOf } from './marks';
 import { MarkView } from './Mark';
 import type { StackThing } from './model';
 
-/** Bubbles at least this big carry their count under the mark. */
-const COUNTED_R = 34;
 /** How long one bubble takes to grow in, and the step between one and the next. */
 const GROW_MS = 640;
 const STEP_MS = 70;
@@ -132,9 +130,8 @@ const BubbleView = memo(function BubbleView({
   const reduced = useReducedSV();
   const fb = usePressFeedback(0.94);
   const { r } = bubble;
-  const counted = r >= COUNTED_R;
-  const markSize = Math.round(counted ? r * 0.62 : r * 0.92);
-  const font = Math.round(r * 0.34);
+  // Every bubble carries its count (`bubbleFace`): a mark with no number reads as never counted.
+  const { markSize, font } = bubbleFace(r);
 
   // Grows from a third to whole with the spring's give; its colour snaps in over the first
   // quarter, because a hue half faded over the warm ground reads brown (DESIGN-V2 1.3).
@@ -157,7 +154,7 @@ const BubbleView = memo(function BubbleView({
       >
         <Animated.View style={[styles.disc, { width: r * 2, height: r * 2, borderRadius: r, backgroundColor: disc.fill }, fb.animatedStyle]}>
           <MarkView mark={thing.mark} size={markSize} color={disc.mark} />
-          {counted ? <Num spec={thing.count} textStyle={figure(font, disc.mark)} delay={delay + 180} style={styles.count} /> : null}
+          <Num spec={thing.count} textStyle={figure(font, disc.mark)} delay={delay + 180} style={styles.count} />
         </Animated.View>
       </Pressable>
     </Animated.View>

@@ -83,7 +83,7 @@ export function glossaryView(v: ReportVocab | null | undefined, now: number = Da
       : `${count(found, 'term')} from ${count(v.sessions, 'session')}.`;
   const cutNote =
     v.shell_calls_cut > 0
-      ? `${n(v.shell_calls_cut)} of ${count(v.shell_calls, 'shell command')} were cut short in the digest, so a term may have come up unseen.`
+      ? `${n(v.shell_calls_cut)} of ${count(v.shell_calls, 'shell command')} were too long to be read whole, so a term may have come up unseen.`
       : null;
   return { months, found, locked: lockedLine(v), summary, cutNote, refusal: null };
 }

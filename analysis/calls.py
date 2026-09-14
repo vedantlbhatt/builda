@@ -49,6 +49,7 @@ import math
 import pathlib
 from typing import Callable, Iterable, Mapping, Sequence
 
+from . import plain
 from . import burn, pricing
 
 #: A sitting with more calls than this is drawn in points of consecutive calls, summed.
@@ -170,7 +171,7 @@ def _points(calls: Sequence[burn.Turn], started_at: float, per: int) -> list[dic
         group = calls[i : i + per]
         out.append(
             {
-                "at": max(0, round(group[0].ts - started_at)),
+                "at": max(0, plain.rounded(group[0].ts - started_at)),
                 "cache_read": sum(t.cache_read for t in group),
                 "cache_write": sum(t.cache_create for t in group),
                 "input": sum(t.input_tokens for t in group),
@@ -265,7 +266,7 @@ def wire(
         before = (previous or {}).get(t.msg_id)
         away = None if before is None else t.ts - before
         if is_rewrite(t, away, lifetime):
-            found.append({"call": n, "away_seconds": round(away), "written": t.cache_create})
+            found.append({"call": n, "away_seconds": plain.rounded(away), "written": t.cache_create})
     kept = sorted(found, key=lambda r: (-r["written"], r["call"]))[:MAX_REWRITES]
     usd = _price(calls)
     return {

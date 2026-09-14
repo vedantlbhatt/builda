@@ -35,6 +35,7 @@ import Animated from 'react-native-reanimated';
 
 import type { CardModel } from '../card/RecapCard';
 import type { SessionDetail } from '../data/api';
+import { useRepoNames } from '../data/repoNames';
 import { describeEnd } from '../analysis/format';
 import { AnalysisView } from '../analysis/AnalysisView';
 import { DiffBar } from '../insights/Bars';
@@ -100,7 +101,9 @@ export function SessionPage(props: SessionPageProps) {
   const now = useMemo(() => Date.now(), []);
   const hues = useMemo(() => sessionHues(creature), [creature]);
   const hue = creatureHue(creature);
-  const hero = useMemo(() => heroOf(s, now), [s, now]);
+  // A private project is named as the Projects tab names it ("Private project 2"), `copy/repoLabel`.
+  const names = useRepoNames();
+  const hero = useMemo(() => heroOf(s, now, names), [s, now, names]);
   const ledger = useMemo(() => ledgerOf(s), [s]);
   const words = useMemo(() => wordsOf(s), [s]);
   const burn = useMemo(() => burnView(s), [s]);

@@ -26,6 +26,8 @@ is the claim nobody could check and everybody would resent.
 
 from __future__ import annotations
 
+from . import plain
+
 import collections
 import dataclasses
 import datetime as dt
@@ -81,7 +83,7 @@ class Contributions:
     @property
     def assisted_share(self) -> float | None:
         """None below `MIN_COMMITS`: a share over three commits is not a share."""
-        return round(self.assisted / self.total, 3) if self.total >= MIN_COMMITS else None
+        return plain.rounded(self.assisted / self.total, 3) if self.total >= MIN_COMMITS else None
 
 
 def _windows(sessions: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:

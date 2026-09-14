@@ -40,6 +40,8 @@ the same number over a sitting and a true one over a year.
 
 from __future__ import annotations
 
+from . import plain
+
 import collections
 import dataclasses
 import json
@@ -148,14 +150,14 @@ class Fanout:
         Never below 1.0 when anything ran, which is the property agent-over-wall did not
         have and the reason this denominator is the union rather than the stretch.
         """
-        return round(self.agent_seconds / self.busy_seconds, 2) if self.busy_seconds > 0 else 0.0
+        return plain.rounded(self.agent_seconds / self.busy_seconds, 2) if self.busy_seconds > 0 else 0.0
 
     @property
     def busy_share(self) -> float:
         """How much of the stretch had an agent in it. The other half of the question
         agent-over-wall was trying to answer, kept separate because it is a different
         one: 0.61 of nineteen hours had an agent running, and up to eight at a time."""
-        return round(self.busy_seconds / self.wall_seconds, 2) if self.wall_seconds > 0 else 0.0
+        return plain.rounded(self.busy_seconds / self.wall_seconds, 2) if self.wall_seconds > 0 else 0.0
 
     @property
     def produced(self) -> int:

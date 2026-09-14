@@ -16,42 +16,17 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { Band, BandWords } from '../insights/Band';
 import { BandFigure, figure, GUTTER, Kicker, type, Words } from '../insights/kit';
-import { GROUND, ON_HUE, SPECTRUM, type Hue, type HueName } from '../insights/palette';
+import { GROUND, ON_HUE, type Hue } from '../insights/palette';
 import { Block, Section } from '../insights/reveal';
-import { BUCKET_COLOR, modelColors } from '../insights/sections/Money';
 import { maskDollars } from '../you/numbers';
 import { Sankey } from './Sankey';
-import { layoutSankey, sentenceOf, type FlowPaint, type MoneyFlow } from './flow';
+import { layoutSankey, sentenceOf, type MoneyFlow } from './flow';
 
 export const FLOW_TITLE = 'How it flowed';
 
-/** The spectrum hue whose ink (or partner) is `ink`, so a colour the page already uses keeps its partner tone. */
-export function hueOfInk(ink: string): Hue {
-  for (const h of Object.values(SPECTRUM)) {
-    if (h.ink === ink) return h;
-    if (h.partner === ink) return { ink: h.partner, partner: h.partner, light: h.light };
-  }
-  return { ink, partner: ink === GROUND.text ? GROUND.dim : ink, light: ink };
-}
-
-/**
- * The flow's colours: the buckets as the first chapter's bar has them (the bulk in that
- * chapter's ink), each model in its family's hue as the ring has it, each project in the hue it
- * wears on the Projects tab.
- */
-export function flowPaint(cost: Hue, projectHue: (key: string) => HueName): FlowPaint {
-  return {
-    bucket: (key) => (key === 'cache_read' ? cost : hueOfInk(BUCKET_COLOR[key] ?? GROUND.dim)),
-    models: (families) => modelColors([...families]).map(hueOfInk),
-    project: (key) => SPECTRUM[projectHue(key)],
-  };
-}
-
-/** The chapter's hue: far from its neighbours, the builder's own and every hue drawn inside it. */
-export function flowHue(avoid: readonly HueName[]): HueName {
-  const order: HueName[] = ['cobalt', 'brass', 'orchid', 'coral', 'iris', 'tide', 'heather', 'ember'];
-  return order.find((h) => !avoid.includes(h)) ?? 'cobalt';
-}
+// The flow's colours and its band's hue are decided with every other hue on the page, in
+// `hues.ts` (pure, so the tests hold them); re-exported here where the screen has always found them.
+export { flowHue, flowPaint, hueOfInk } from './hues';
 
 export function FlowChapter({ flow, hue, index, width, masked }: { flow: MoneyFlow; hue: Hue; index: string; width: number; masked: boolean }) {
   const inner = width - GUTTER * 2;

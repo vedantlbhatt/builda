@@ -385,3 +385,42 @@ describe('one sync at a time', () => {
     expect(detailCalls.filter((id) => id === 'one-pass').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('the Sessions list reads further back (session/listReach.ts)', () => {
+  test('the sync keeps its first page for the list; a page further back is saved and its strips read', async () => {
+    await cache.clear();
+    expect(cache.syncedFirstPage()).toBeNull();
+    const top = [session('top1', { started_at: '2026-09-13T10:00:00-04:00' }), session('top2', { started_at: '2026-09-12T10:00:00-04:00' })];
+    const older = [session('old1', { started_at: '2026-08-21T10:00:00-04:00' }), session('old2', { started_at: '2026-08-20T10:00:00-04:00', notable: false })];
+    const asked: { before: string | null | undefined; notable_only: boolean | undefined }[] = [];
+    const detailCalls: string[] = [];
+    const api = {
+      sessions: async (o: { before?: string | null; notable_only?: boolean }) => {
+        asked.push({ before: o.before, notable_only: o.notable_only });
+        return o.before ? { sessions: older, next_before: null } : { sessions: top, next_before: '2026-09-12T10:00:00-04:00' };
+      },
+      liveSessions: async () => ({ sessions: [] }),
+      session: async (id: string) => {
+        detailCalls.push(id);
+        return { ...[...top, ...older].find((s) => s.id === id)!, strip: null, stats: null };
+      },
+    } as unknown as Api;
+    await cache.sync(api);
+    expect(cache.syncedFirstPage()).toEqual({ startedAt: ['2026-09-13T10:00:00-04:00', '2026-09-12T10:00:00-04:00'], nextBefore: '2026-09-12T10:00:00-04:00' });
+
+    const page = await cache.readPage(api, { before: '2026-09-12T10:00:00-04:00', notableOnly: false, limit: 50 });
+    expect(page.next_before).toBeNull();
+    expect(asked[asked.length - 1]).toEqual({ before: '2026-09-12T10:00:00-04:00', notable_only: false });
+    await cache.fillDetails(api, page.rows.map((s) => s.id));
+    expect(detailCalls.filter((id) => id.startsWith('old')).sort()).toEqual(['old1', 'old2']);
+    // Read once: a second fill asks for nothing it already has.
+    await cache.fillDetails(api, page.rows.map((s) => s.id));
+    expect(detailCalls.filter((id) => id.startsWith('old'))).toHaveLength(2);
+
+    expect((await cache.listFinished('notable', null, 100)).map((s) => s.id)).toEqual(['top1', 'top2', 'old1']);
+    expect((await cache.listFinished('every', null, 100)).map((s) => s.id)).toEqual(['top1', 'top2', 'old1', 'old2']);
+    expect((await cache.listFinished('every', '2026-09-12T10:00:00-04:00', 100)).map((s) => s.id)).toEqual(['top1', 'top2']);
+    await cache.clear();
+    expect(cache.syncedFirstPage()).toBeNull();
+  });
+});

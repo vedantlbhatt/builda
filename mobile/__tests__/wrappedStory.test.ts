@@ -39,6 +39,7 @@ import {
   creaturePlan,
   EMPTY_COPY,
   flapLayout,
+  gridLabel,
   heroOf,
   MONO_ADVANCE,
   nextSqueeze,
@@ -115,6 +116,41 @@ function allFaces() {
   }
   return decks.flatMap((d) => deckItems(d.wrapped, d.quotes, d.state, SAMPLE_SOURCES));
 }
+
+describe('every grid tile says what its number counts (shots/now2/30-wrapped-grid-02, -03)', () => {
+  test('a counted hero carries the words that name it, over the sample decks and every card Python renders', () => {
+    const items = allFaces().map((it) => ({ id: it.card.id, face: it.face, card: it.card }));
+    if (existsSync(FIXTURE)) {
+      const fx = JSON.parse(readFileSync(FIXTURE, 'utf8')) as unknown;
+      if (Array.isArray(fx)) {
+        for (const e of fx as { card: ReportWrappedCard }[]) {
+          const face = faceOf(e.card, null, 'off', 0);
+          if (face) items.push({ id: e.card.id, face, card: e.card });
+        }
+      }
+    }
+    let counted = 0;
+    for (const it of items) {
+      const h = heroOf(it.face, it.card);
+      const label = gridLabel(h, it.face);
+      if (h.kind !== 'count') {
+        expect(label).toBeNull();
+        continue;
+      }
+      // A duration counts in its own words ("3h 06m"): its unit is in the number.
+      if (it.card.unit === 'seconds') continue;
+      counted += 1;
+      expect({ id: it.id, label: typeof label === 'string' && label.length > 0 }).toEqual({ id: it.id, label: true });
+      expect(hasDash(label!)).toBe(false);
+    }
+    expect(counted).toBeGreaterThan(20);
+  });
+
+  test('the crash out\'s count says it is prompts read, not the answer', () => {
+    const it = allFaces().find((x) => x.card.id === 'crash_out' && x.face.quote === null && x.face.answered)!;
+    expect(gridLabel(heroOf(it.face, it.card), it.face)).toMatch(/^prompts? read$/);
+  });
+});
 
 describe('what each answer is drawn as', () => {
   test('a counted answer counts to exactly the words the copy layer wrote', () => {

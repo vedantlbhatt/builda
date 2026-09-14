@@ -43,7 +43,13 @@ export const TRACK_HEIGHT: Record<Preset, number> = {
   hero: 72,
 };
 
-export const CORNER: Record<Preset, number> = { sparkline: 2, row: 3, mini: 2, hero: 6 };
+/**
+ * The track's clipping radius. None on the bar presets: their moves lane runs to both ends, and a
+ * mark at the first or last moment sits in the corner a radius clips, so it was drawn at half its
+ * width with a rounded top (FOUND IN THE DEFECTS PASS, 2026-09-14: the first mark of Sessions rows
+ * and of the session page's strip), and the end bars lost a corner. A floor a point tall needs none.
+ */
+export const CORNER: Record<Preset, number> = { sparkline: 2, row: 3, mini: 0, hero: 0 };
 
 /**
  * How tall an activity bar stands, per density bucket.

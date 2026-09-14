@@ -16,7 +16,7 @@ import type { BuilderProfileResponse } from '../src/data/api';
 import type { PricedModel, ReportBurn, ReportMoney, ReportProjects } from '../src/generated/report';
 import fixture from '../src/insights/fixtures/report-2026-09-13.json';
 import { isRefused, NO_REPORT } from '../src/insights/model';
-import { SPECTRUM } from '../src/insights/palette';
+import { GROUND, HUE_NAMES, SPECTRUM, type HueName } from '../src/insights/palette';
 import {
   edgeY,
   endingOf,
@@ -37,7 +37,9 @@ import {
   type MoneyFlow,
   type Ribbon,
 } from '../src/money/flow';
+import { bucketHues, flowPaint, modelHueNames, NO_COMMIT_HUE, reservedForProjects } from '../src/money/hues';
 import { apportion, columnUnits, dollarsOf, dollarUnit, roundFlow, roundRows, roundTable, shownUnits } from '../src/money/round';
+import { PROJECT_HUES } from '../src/projects/model';
 import { moneyPage } from '../src/you/chapters';
 
 const NOW = Date.parse('2026-09-13T20:00:00Z');
@@ -225,7 +227,8 @@ describe('every stream is a number the report carries', () => {
     expect(strings(f).some((s) => s.includes('$18'))).toBe(false);
     expect(f.notes.join(' ')).toContain('Private project\u00a02 has 5 priced sessions, too few for the report to say how many ended with a commit.');
     // Its scope is said without the corpus figure beside it: no $167 to subtract $149 from.
-    expect(f.notes.join(' ')).toContain('This chart splits only the projects with enough sessions to split; Where it went, further down, counts every priced session together.');
+    // A chapter's name after a semicolon read as a capital in the middle of a sentence (22-money-05).
+    expect(f.notes.join(' ')).toContain('This chart splits only the projects with enough sessions to split. The Where it went chapter, further down, counts every priced session together.');
     expect(f.notes.join(' ')).not.toContain('$167');
     expect(f.nodes.find((x) => x.id === 'outcome:unsplit')?.label).toBe('too few to tell');
   });
@@ -400,7 +403,7 @@ describe('the layout loses and invents no width', () => {
     for (const l of L.labels.filter((x) => x.id.startsWith('bucket:'))) expect(l.x + l.w).toBeLessThanOrEqual(L.trunk!.x1);
   });
 
-  test('a label on a stream is flagged, so its figure is set in white rather than its own ink', () => {
+  test('a label on a stream is flagged, so its figure is set in white rather than its own ink (unless the ground is cut back under it)', () => {
     expect(L.labels.find((l) => l.id === 'model:claude-opus-5')?.onStream).toBe(true);
     expect(L.labels.find((l) => l.id === 'bucket:cache_read')?.onStream).toBe(true);
   });
@@ -581,7 +584,8 @@ describe('apportion and roundFlow', () => {
     expect(dollarsOf(0, 1, 0.43)).toBe('under $1');
     expect(dollarsOf(2516, 1, 2515.61)).toBe('$2,516');
     expect(dollarsOf(4217, 0.01, 42.17)).toBe('$42.17');
-    expect([dollarUnit(2515.61), dollarUnit(42.17), shownUnits(2515.61, 1), shownUnits(42.165, 0.01)]).toEqual([1, 0.01, 2516, 4216]);
+    // 42.165 as written rounds half up to $42.17: the one rounding rule (`copy/numbers.ts`, 2026-09-14).
+    expect([dollarUnit(2515.61), dollarUnit(42.17), shownUnits(2515.61, 1), shownUnits(42.165, 0.01)]).toEqual([1, 0.01, 2516, 4217]);
   });
 });
 
@@ -711,5 +715,86 @@ describe('controlled rounding of the streams', () => {
     expect(columnUnits([2324.47, 161.53], 2486, 1)).toEqual([2324, 162]);
     expect(columnUnits([2263.23, 241.41, 10.98], 2516, 1)).toEqual([2263, 242, 11]);
     expect(columnUnits([2234.05, 241.41, 10.98], 2486, 1)).toEqual([2234, 241, 11]);
+  });
+});
+
+// ------------------------------------------------------------------ one hue, one meaning (2026-09-14)
+
+describe('one hue means one thing on the Money page: the flow wears the page\'s hues', () => {
+  // The account's own report: Opus and Fable, project 1 tide and project 2 ember on the Projects tab.
+  const b = builder();
+  const page = moneyPage(b, NOW)!;
+  const families = page.models.map((m) => m.family);
+  const buckets = bucketHues(families);
+  const own: Record<string, HueName> = { [KEY_A]: 'tide', [KEY_B]: 'ember' };
+  const apart = projectHuesApart(own, PROJECT_HUES, modelHueNames(families), reservedForProjects(families));
+  const f = moneyFlow(b, page, flowPaint(buckets, (k) => apart[k]!), {}) as MoneyFlow;
+
+  test('no project wears a model\'s hue or no commit\'s, and no kind of token wears a hue; each keeps its own when it can', () => {
+    // FOUND IN THE CAPTURE (22-money-04): project 1 stepped to brass, the yellow of cache writes, and
+    // project 2 kept ember, the orange of cache reads. The kinds of token now wear the ground's white.
+    for (const x of f.nodes.filter((n) => n.kind === 'bucket')) expect(x.hue.ink).toBe(GROUND.text);
+    void buckets;
+    const worn = new Set<HueName>([...modelHueNames(families), NO_COMMIT_HUE]);
+    for (const k of [KEY_A, KEY_B]) expect({ k, clash: worn.has(apart[k]!) }).toEqual({ k, clash: false });
+    expect(apart[KEY_B]).toBe('ember');
+    expect(apart[KEY_A]).not.toBe(apart[KEY_B]);
+  });
+
+  test('every node that is a key by colour wears a colour no other kind of node wears', () => {
+    // Nodes of one family share a hue on purpose (Fable 5 and 5.1: the family's ink and partner);
+    // the endings "with a commit" and "too few to tell" are neutrals drawn with their words beside them.
+    const byInk = new Map<string, Set<string>>();
+    for (const x of f.nodes) {
+      if (x.kind === 'outcome' && x.id !== 'outcome:none') continue;
+      // Every kind of token is one meaning here, "tokens": they wear one neutral and are named in words.
+      const meaning = x.kind === 'model' ? `model:${page.models.find((m) => `model:${m.key}` === x.id)?.family}` : x.kind === 'bucket' ? 'tokens' : x.id;
+      const hue = HUE_NAMES.find((h) => SPECTRUM[h].ink === x.hue.ink || SPECTRUM[h].partner === x.hue.ink) ?? x.hue.ink;
+      if (!byInk.has(hue)) byInk.set(hue, new Set());
+      byInk.get(hue)!.add(meaning);
+    }
+    for (const [hue, meanings] of byInk) expect({ hue, meanings: [...meanings] }).toEqual({ hue, meanings: [...meanings].slice(0, 1) });
+  });
+
+  test('"no commit" wears heather, the Where it went chapter\'s hue for the same dollars', () => {
+    expect(f.nodes.find((x) => x.id === 'outcome:none')!.hue.ink).toBe(SPECTRUM[NO_COMMIT_HUE].ink);
+    // Without a hue from the page, the ending stays the neutral it was.
+    const plain = moneyFlow(b, page, PAINT, {}) as MoneyFlow;
+    expect(plain.nodes.find((x) => x.id === 'outcome:none')!.hue.ink).toBe(GROUND.dim);
+  });
+});
+
+describe('a label a ribbon runs under has the ground cut back under its words', () => {
+  const b = builder();
+  const page = moneyPage(b, NOW)!;
+  const families = page.models.map((m) => m.family);
+  const apart = projectHuesApart({ [KEY_A]: 'tide', [KEY_B]: 'ember' } as Record<string, HueName>, PROJECT_HUES, modelHueNames(families), reservedForProjects(families));
+  const f = moneyFlow(b, page, flowPaint(bucketHues(families), (k) => apart[k]!), {}) as MoneyFlow;
+  const L = layoutSankey(f, 362);
+  const label = (id: string) => L.labels.find((l) => l.id === id)!;
+
+  test('the two the capture found crossed are cut back: Fable 5\'s "$241" and "too few to tell"', () => {
+    // FOUND IN THE CAPTURE (22-money-08, 09): Opus 5's stream ran through "$241", and the dashed
+    // outline of the stream the report does not split ran through "$162".
+    expect(label('model:claude-fable-5').knockout).toBe(true);
+    expect(label('outcome:unsplit').knockout).toBe(true);
+  });
+
+  test('the token stream\'s grain is not a ribbon: its words read on it and are not cut back', () => {
+    expect(label('bucket:cache_read').onStream).toBe(true);
+    expect(label('bucket:cache_read').knockout).toBe(false);
+  });
+
+  test('a label clear of every ribbon is not cut back', () => {
+    // The last project's name hangs under its node, on the ground.
+    for (const l of L.labels) {
+      if (l.knockout) continue;
+      const x0 = l.align === 'left' ? l.x : l.x + l.w - 40;
+      for (let x = x0; x <= x0 + 40; x += 4) {
+        const y = l.y + l.h - GEOMETRY.figureLine / 2;
+        const hit = L.links.some((k) => onRibbon(k.ribbon, x, y, 0) !== null) || L.fans.some((k) => onRibbon(k.ribbon, x, y, 0) !== null);
+        expect({ id: l.id, x, hit }).toEqual({ id: l.id, x, hit: false });
+      }
+    }
   });
 });

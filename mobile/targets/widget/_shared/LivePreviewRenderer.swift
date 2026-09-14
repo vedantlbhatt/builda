@@ -55,6 +55,7 @@ public final class BuilderPreviewRenderer: NSObject {
       ("lock-done-unreviewed", F.builder, F.doneUnreviewed, false),
       ("lock-done-nothing", F.builder, F.doneNothing, false),
       ("lock-nothing-yet", F.privateRepo, F.nothingYet, false),
+      ("lock-unnamed-aider", F.unnamedRepo, F.nothingYet, false),
       ("lock-stale", F.rideGT, F.working, true),
       ("lock-long", F.longRun, F.workingNoEta, false),
     ]
@@ -67,7 +68,7 @@ public final class BuilderPreviewRenderer: NSObject {
     for (i, c) in BuilderPalette.crewRing.enumerated() {
       var s = F.working
       s.creature = c
-      let a = BuilderSessionAttributes(sessionId: "fixture-\(c)", repo: "RideGT", agent: agents[i], startedEpoch: F.t - 12 * 60)
+      let a = BuilderSessionAttributes(sessionId: "fixture-\(c)", repo: "tramline", agent: agents[i], startedEpoch: F.t - 12 * 60)
       out.append(("lock-crew-\(c)", AnyView(LockFrame { LockScreenLiveView(d: F.display(a, s), isStale: false) })))
     }
     var bit = F.needsYou
@@ -81,6 +82,7 @@ public final class BuilderPreviewRenderer: NSObject {
       ("no-eta", F.builder, F.workingNoEta, false),
       ("circling", F.rideGT, F.circling, false),
       ("private", F.privateRepo, F.nothingYet, false),
+      ("unnamed", F.unnamedRepo, F.nothingYet, false),
       ("stale", F.rideGT, F.working, true),
       ("long", F.longRun, F.workingNoEta, false),
       ("done", F.builder, F.done, false),
@@ -163,15 +165,20 @@ private struct MinimalFrame: View {
 
 /// The leading region is about 100pt wide on the device beside the camera (measured on the
 /// 16 Pro, 2026-09-13); the first mock gave it 150, so the previews never showed "privat...".
+///
+/// The system's `.belowIfTooWide` (BuilderLiveActivity.swift), which the first mock left out: the
+/// leading content sits beside the camera when its own width fits the region there, and otherwise
+/// on a row of its own under the camera at the island's width. FOUND IN THE CAPTURE PASS
+/// (2026-09-14): the mock cut "private repo" to "priva...repo" in a fixed 118pt with the rest of
+/// the row empty, a layout the device never draws; "Private project 2" is longer again.
 @available(iOS 17.0, *)
 private struct ExpandedFrame: View {
   let d: LiveDisplay
   let isStale: Bool
   var body: some View {
     VStack(spacing: 8) {
-      HStack(alignment: .top, spacing: 0) {
-        IslandExpandedLeading(d: d, isStale: isStale).frame(width: 118, height: 36, alignment: .topLeading)
-        Spacer(minLength: 0)
+      IslandTopRows(beside: 118, row: 36) {
+        IslandExpandedLeading(d: d, isStale: isStale)
         IslandExpandedTrailing(d: d, isStale: isStale).frame(width: 100, height: 36)
       }
       IslandExpandedBottom(d: d, isStale: isStale)
@@ -203,5 +210,32 @@ private struct WidgetFrame: View {
       .padding(12)
       .background(scheme == .dark ? Color.black : Color(white: 0.86))
       .environment(\.colorScheme, scheme)
+  }
+}
+
+/// The expanded island's top: the leading content (first view) beside the camera when its ideal
+/// width fits `beside`, else under the camera row at the full width, as `.belowIfTooWide` places
+/// it; the trailing content (second view) at the top right either way.
+@available(iOS 17.0, *)
+private struct IslandTopRows: Layout {
+  let beside: CGFloat
+  let row: CGFloat
+
+  private func below(_ subviews: Subviews) -> Bool {
+    subviews[0].sizeThatFits(.unspecified).width > beside
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    CGSize(width: proposal.width ?? 335, height: below(subviews) ? row * 2 : row)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let trailing = subviews[1].sizeThatFits(.unspecified)
+    subviews[1].place(at: CGPoint(x: bounds.maxX - trailing.width, y: bounds.minY), proposal: ProposedViewSize(trailing))
+    if below(subviews) {
+      subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY + row), proposal: ProposedViewSize(width: bounds.width, height: row))
+    } else {
+      subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY), proposal: ProposedViewSize(width: beside, height: row))
+    }
   }
 }

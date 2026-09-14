@@ -8,6 +8,8 @@ import Foundation
 /// is not a sentence the phone's renderer can produce. builder has five finished sessions, so
 /// its ETA is refused (the engine needs ten); RideGT has 148, typical 21 minutes. Each session
 /// wears a different crew creature, so the renders show the hues side by side (DESIGN-V2 2.2).
+/// The repositories carry the sample's invented names (`mission.SAMPLE_REPOS`: "lantern" in
+/// builder's shape, "tramline" in RideGT's), never those real ones.
 ///
 /// Computed, not stored: nothing here is global state (and Swift 6 would refuse stored statics
 /// of these types).
@@ -20,21 +22,28 @@ enum LiveFixtures {
   static var t: Double { now.timeIntervalSince1970 }
 
   static var builder: BuilderSessionAttributes {
-    BuilderSessionAttributes(sessionId: "fixture-builder", repo: "builder", agent: "claude_code", startedEpoch: t - 47 * 60)
+    BuilderSessionAttributes(sessionId: "fixture-builder", repo: "lantern", agent: "claude_code", startedEpoch: t - 47 * 60)
   }
 
   static var rideGT: BuilderSessionAttributes {
-    BuilderSessionAttributes(sessionId: "fixture-ridegt", repo: "RideGT", agent: "claude_code", startedEpoch: t - 12 * 60)
+    BuilderSessionAttributes(sessionId: "fixture-tramline", repo: "tramline", agent: "claude_code", startedEpoch: t - 12 * 60)
   }
 
   /// Nearly three hours in: the timer reads h:mm:ss, the widest it gets inside ActivityKit's 8h.
   static var longRun: BuilderSessionAttributes {
-    BuilderSessionAttributes(sessionId: "fixture-long", repo: "builder", agent: "claude_code", startedEpoch: t - (2 * 3600 + 57 * 60 + 7))
+    BuilderSessionAttributes(sessionId: "fixture-long", repo: "lantern", agent: "claude_code", startedEpoch: t - (2 * 3600 + 57 * 60 + 7))
   }
 
-  /// An anonymous upload: no repo name reaches the phone.
+  /// A private repository: no name reaches the phone, and the card says the number the phone
+  /// gave the project, as the Projects tab does (`copy/repoLabel.ts`), the number held to its
+  /// words by a no-break space.
   static var privateRepo: BuilderSessionAttributes {
-    BuilderSessionAttributes(sessionId: "fixture-private", repo: "private repo", agent: "claude_code", startedEpoch: t - 60)
+    BuilderSessionAttributes(sessionId: "fixture-private", repo: "Private project\u{00A0}2", agent: "claude_code", startedEpoch: t - 60)
+  }
+
+  /// A sitting whose repository did not resolve, or one the phone has not numbered: "private repo".
+  static var unnamedRepo: BuilderSessionAttributes {
+    BuilderSessionAttributes(sessionId: "fixture-unnamed", repo: "private repo", agent: "aider", startedEpoch: t - 60)
   }
 
   static func state(_ phase: String, _ sentence: String, progress: Double = -1, files: Int = -1,
@@ -130,13 +139,13 @@ enum LiveFixtures {
   /// each in its own creature.
   static var widgetFour: WidgetSnapshot {
     snapshot([
-      row("fixture-builder", "builder", "claude_code", "needsYou", "Waiting on you", "none", "octopus",
+      row("fixture-builder", "lantern", "claude_code", "needsYou", "Waiting on you", "none", "octopus",
           minutes: 47, files: 5, since: t - 4 * 60),
-      row("fixture-ridegt", "RideGT", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
+      row("fixture-tramline", "tramline", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
           minutes: 12, progress: 12.0 / 21.0, files: 3, eta: t + 9 * 60),
-      row("fixture-ridegt-2", "RideGT", "codex", "working", "Stuck on the same failing command", "circling", "dog",
+      row("fixture-tramline-2", "tramline", "codex", "working", "Stuck on the same failing command", "circling", "dog",
           minutes: 31, progress: 0.9, files: 4, eta: t + 2 * 60, since: t - 6 * 60),
-      row("fixture-builder-2", "builder", "gemini_cli", "working", "Reading the docs", "none", "fox", minutes: 3, files: 0),
+      row("fixture-builder-2", "lantern", "gemini_cli", "working", "Reading the docs", "none", "fox", minutes: 3, files: 0),
     ], running: 5)
   }
 
@@ -144,9 +153,9 @@ enum LiveFixtures {
   /// widget's three lines have to hold.
   static var widgetCircling: WidgetSnapshot {
     snapshot([
-      row("fixture-ridegt-2", "gt-transit", "codex", "working", "Going back and forth on a source file, fourth pass", "circling", "dog",
+      row("fixture-tramline-2", "tramline-web", "codex", "working", "Going back and forth on a source file, fourth pass", "circling", "dog",
           minutes: 31, progress: 0.9, files: 4, eta: t + 2 * 60),
-      row("fixture-ridegt", "RideGT", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
+      row("fixture-tramline", "tramline", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
           minutes: 12, progress: 12.0 / 21.0, files: 3, eta: t + 9 * 60),
     ])
   }
@@ -157,14 +166,14 @@ enum LiveFixtures {
   /// line that says what is wrong.
   static var widgetLongest: WidgetSnapshot {
     snapshot([
-      row("fixture-longest", "gt-transit", "codex", "working", "Going back and forth on a database migration, seventh pass",
+      row("fixture-longest", "tramline-web", "codex", "working", "Going back and forth on a database migration, seventh pass",
           "circling", "dog", minutes: 31, progress: 0.9, files: 4, eta: t + 2 * 60),
     ])
   }
 
   static var widgetWorking: WidgetSnapshot {
     snapshot([
-      row("fixture-ridegt", "RideGT", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
+      row("fixture-tramline", "tramline", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
           minutes: 12, progress: 12.0 / 21.0, files: 3, eta: t + 9 * 60),
     ])
   }
@@ -173,11 +182,11 @@ enum LiveFixtures {
   /// order (the engine's 30 over a converging run's 5), beside two sessions still running.
   static var widgetFinished: WidgetSnapshot {
     snapshot([
-      row("fixture-builder", "builder", "claude_code", "done", "Finished, with twelve files changed", "none", "crab",
+      row("fixture-builder", "lantern", "claude_code", "done", "Finished, with twelve files changed", "none", "crab",
           minutes: 47, files: 12, since: t - 3 * 60),
-      row("fixture-ridegt", "RideGT", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
+      row("fixture-tramline", "tramline", "claude_code", "working", "Rewriting a source file, third attempt", "converging", "whale",
           minutes: 12, progress: 12.0 / 21.0, files: 3, eta: t + 9 * 60),
-      row("fixture-cline", "gt-transit", "cline", "needsYou", "Waiting on you", "none", "cat",
+      row("fixture-cline", "tramline-web", "cline", "needsYou", "Waiting on you", "none", "cat",
           minutes: 20, files: 2, since: t - 2 * 60),
     ], running: 2)
   }

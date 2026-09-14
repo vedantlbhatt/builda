@@ -65,11 +65,21 @@ function snapshot(): Facts {
   return facts;
 }
 
-async function countSessions(): Promise<{ counts: HarnessCounts; total: number; partial: boolean }> {
+/**
+ * Every session on the account, counted by tool. EVERY one: `GET /v1/sessions` lists only the ones
+ * you were there for at least 20 minutes unless it is told otherwise (`notable_only`), and the
+ * first version of this counted those. FOUND IN THE CAPTURE PASS (2026-09-14, shots/now2/
+ * 50-onboarding-04 and -05): "81 sessions uploaded to your account" and "81 sessions have reached
+ * your account" on an account holding 183, of which 81 were that subset. The sentences say
+ * uploaded and reached, so the number is every session the Mac uploaded.
+ */
+export async function countSessions(
+  a: { sessions: typeof api.sessions } = api
+): Promise<{ counts: HarnessCounts; total: number; partial: boolean }> {
   const all: { harness: string }[] = [];
   let before: string | null = null;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await api.sessions({ limit: PAGE, before });
+    const res = await a.sessions({ limit: PAGE, before, notable_only: false });
     all.push(...res.sessions);
     before = res.next_before;
     if (!before) return { counts: harnessCounts(all), total: all.length, partial: false };

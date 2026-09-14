@@ -102,7 +102,7 @@ export function stackView(s: ReportStack | null | undefined, now: number = Date.
       : `${count(total, 'thing')} across ${count(groups.length, 'category', 'categories')}, from ${from.join(' and ')}.`;
   const cutNote =
     s.shell_calls_cut > 0
-      ? `${n(s.shell_calls_cut)} of ${count(s.shell_calls, 'shell command')} were cut short in the digest, so a tool may have run unseen.`
+      ? `${n(s.shell_calls_cut)} of ${count(s.shell_calls, 'shell command')} were too long to be read whole, so a tool may have run unseen.`
       : null;
   return { groups, total, summary, cutNote, refusal: null };
 }

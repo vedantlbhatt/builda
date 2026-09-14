@@ -37,7 +37,7 @@ import { radius } from '../theme';
 import { SplitText } from '../ui/bits/text';
 import { PRESS_SCALE } from '../ui/motionSpec';
 import { fitFigure, WORD_RATIO, type FigurePart } from './figure';
-import { bloomSize, CELL_MS, FAIL_INK, pathWidth, roleInk } from './paint';
+import { bloomSize, CELL_MS, FAIL_INK, PATH_INK, pathWidth, roleInk } from './paint';
 import { elapsedLabel, ISLANDS_NOTE, ROLES_NOTE, roleWord, type LedgerRow, type LegendItem } from './view';
 
 // ------------------------------------------------------------------ the band
@@ -157,7 +157,24 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
  * and redrawn on the UI thread every frame with no React render. A hidden copy of the widest label
  * it will pass holds the width, so nothing on the band moves while it counts.
  */
-export function ReplayFigure({ playhead, widest, width, color = ON_HUE, max = 96, min = 48 }: { playhead: SharedValue<number>; widest: string; width: number; color?: string; max?: number; min?: number }) {
+export function ReplayFigure({
+  playhead,
+  at,
+  widest,
+  width,
+  color = ON_HUE,
+  max = 96,
+  min = 48,
+}: {
+  playhead: SharedValue<number>;
+  /** Where the playhead is as React last saw it (`Playback.position`): the words before a frame has run. */
+  at: number;
+  widest: string;
+  width: number;
+  color?: string;
+  max?: number;
+  min?: number;
+}) {
   const size = fitSize(widest, width, max, min);
   const face = figure(size, color);
   const props = useAnimatedProps(() => {
@@ -175,7 +192,7 @@ export function ReplayFigure({ playhead, widest, width, color = ON_HUE, max = 96
         allowFontScaling={false}
         scrollEnabled={false}
         underlineColorAndroid="transparent"
-        defaultValue={elapsedLabel(0)}
+        defaultValue={elapsedLabel(at)}
         animatedProps={props}
         style={[StyleSheet.absoluteFill, face, styles.input]}
       />
@@ -184,7 +201,7 @@ export function ReplayFigure({ playhead, widest, width, color = ON_HUE, max = 96
 }
 
 /** A small readout of the same clock, for the controls under the map. */
-export function ReplayReadout({ playhead, widest }: { playhead: SharedValue<number>; widest: string }) {
+export function ReplayReadout({ playhead, at, widest }: { playhead: SharedValue<number>; at: number; widest: string }) {
   const props = useAnimatedProps(() => {
     const text = elapsedLabel(playhead.value);
     return { text } as unknown as Partial<React.ComponentProps<typeof TextInput>>;
@@ -200,7 +217,7 @@ export function ReplayReadout({ playhead, widest }: { playhead: SharedValue<numb
         allowFontScaling={false}
         scrollEnabled={false}
         underlineColorAndroid="transparent"
-        defaultValue={elapsedLabel(0)}
+        defaultValue={elapsedLabel(at)}
         animatedProps={props}
         style={[StyleSheet.absoluteFill, type.lead, styles.tabular, styles.input]}
       />
@@ -218,12 +235,13 @@ const SWATCH_PATH = pathWidth(SWATCH);
  * One legend swatch, drawn the way the map draws that mark, blooming in through the sandpile's
  * size steps as its block plays, `delay` after the block starts.
  */
-function Swatch({ kind, delay, sample, accent }: { kind: LegendItem['swatch']; delay: number; sample: string; accent: string }) {
+function Swatch({ kind, delay, sample, stuck }: { kind: LegendItem['swatch']; delay: number; sample: string; stuck: string }) {
   const clock = useClock();
   const pw = SWATCH_PATH;
   const bg = GROUND.bg;
   const text = GROUND.text;
   const fail = FAIL_INK;
+  const path = PATH_INK;
   const picture = useDerivedValue(() => {
     const a = phase(clock.value, delay, CELL_MS);
     const k = bloomSize(a);
@@ -243,14 +261,14 @@ function Swatch({ kind, delay, sample, accent }: { kind: LegendItem['swatch']; d
           line.setColor(Skia.Color(bg));
           line.setStrokeWidth(pw + 3);
           canvas.drawLine(3, SWATCH - 4, 3 + (SWATCH - 6) * k, 4, line);
-          line.setColor(Skia.Color(accent));
+          line.setColor(Skia.Color(path));
           line.setStrokeWidth(pw);
           canvas.drawLine(3, SWATCH - 4, 3 + (SWATCH - 6) * k, 4, line);
           return;
         }
         if (kind === 'hot' || kind === 'knot') {
           fill.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, 3, true));
-          fill.setColor(Skia.Color(kind === 'knot' ? accent : sample));
+          fill.setColor(Skia.Color(kind === 'knot' ? stuck : sample));
           canvas.drawRect(Skia.XYWHRect(x - 3, x - 3, s + 6, s + 6), fill);
           fill.setMaskFilter(null);
         }
@@ -260,7 +278,7 @@ function Swatch({ kind, delay, sample, accent }: { kind: LegendItem['swatch']; d
           canvas.drawRect(Skia.XYWHRect(x + 1, x + 1, s - 2, s - 2), line);
           return;
         }
-        fill.setColor(Skia.Color(kind === 'fail' ? fail : kind === 'knot' ? accent : sample));
+        fill.setColor(Skia.Color(kind === 'fail' ? fail : kind === 'knot' ? stuck : sample));
         canvas.drawRect(Skia.XYWHRect(x, x, s, s), fill);
         if (kind === 'cursor' && k >= 1) {
           line.setColor(Skia.Color(text));
@@ -270,7 +288,7 @@ function Swatch({ kind, delay, sample, accent }: { kind: LegendItem['swatch']; d
       },
       { width: SWATCH, height: SWATCH },
     );
-  }, [kind, delay, sample, accent, pw, bg, text, fail]);
+  }, [kind, delay, sample, stuck, pw, bg, text, fail, path]);
   return (
     <Canvas style={styles.swatch}>
       <Picture picture={picture} />
@@ -281,15 +299,15 @@ function Swatch({ kind, delay, sample, accent }: { kind: LegendItem['swatch']; d
 /**
  * The legend in words, then the colour key: the kinds of file on this map, each word in its hue,
  * then what an island is. `sample` is the ink a swatch borrows (the map's most common kind), so
- * the key looks like the map above it.
+ * the key looks like the map above it; `stuck` is the stuck files' ink (`paint.stuckHue`).
  */
-export function Legend({ items, roles, accent }: { items: readonly LegendItem[]; roles: readonly PlainRole[]; accent: string }) {
+export function Legend({ items, roles, stuck }: { items: readonly LegendItem[]; roles: readonly PlainRole[]; stuck: string }) {
   const sample = roleInk(roles[0] ?? 'unknown').ink;
   return (
     <View style={styles.legend} accessibilityRole="summary">
       {items.map((it, i) => (
         <View key={it.swatch} style={styles.legendRow}>
-          <Swatch kind={it.swatch} delay={120 + i * 90} sample={sample} accent={accent} />
+          <Swatch kind={it.swatch} delay={120 + i * 90} sample={sample} stuck={stuck} />
           <Words style={[type.dim, styles.legendText]}>{it.text}</Words>
         </View>
       ))}
@@ -381,6 +399,7 @@ export function ReplayControls({
   onToggle,
   onReplay,
   playhead,
+  at,
   widest,
   total,
   accent,
@@ -390,6 +409,8 @@ export function ReplayControls({
   onToggle: () => void;
   onReplay: () => void;
   playhead: SharedValue<number>;
+  /** Where the playhead is as React last saw it: the readout's words before a frame has run. */
+  at: number;
   widest: string;
   total: string;
   accent: { fill: string; onFill: string; text: string };
@@ -406,7 +427,7 @@ export function ReplayControls({
       </Pressable>
       {/* VoiceOver reads the position off the scrubber, which can also move it; this is for eyes. */}
       <View style={styles.readout} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <ReplayReadout playhead={playhead} widest={widest} />
+        <ReplayReadout playhead={playhead} at={at} widest={widest} />
         <Text allowFontScaling={false} style={[type.dim, styles.tabular]}>{`of ${total}`}</Text>
       </View>
       <Pressable

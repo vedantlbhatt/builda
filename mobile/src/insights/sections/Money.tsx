@@ -11,6 +11,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { bucketColor, bucketHues, BURN_GREYS, modelColors } from '../../money/hues';
 import { maskDollars, MASKED_DOLLARS } from '../../you/numbers';
 import { Band, BandWords } from '../Band';
 import { GrowBar, StackBar } from '../Bars';
@@ -18,37 +19,24 @@ import { Donut } from '../Charts';
 import { BandFigure, figure, GUTTER, Kicker, Refusal, Swatch, type, Words } from '../kit';
 import { isRefused, NOT_WHAT_YOU_PAY, type MoneyModel } from '../model';
 import { Num } from '../Num';
-import { GROUND, ON_HUE, SPECTRUM, type HueName } from '../palette';
+import { GROUND, ON_HUE, SPECTRUM } from '../palette';
 import { Block, Section } from '../reveal';
 
 const HUE = SPECTRUM.ember;
 
-/** A model family keeps one hue wherever it is drawn; a second row of one family takes the partner. */
-const FAMILY_HUE: Record<string, HueName> = { opus: 'iris', fable: 'tide', sonnet: 'cobalt', haiku: 'brass', mythos: 'orchid' };
-
-/** Each model's colour, in the order given: the family's ink, then its partner for a second row of it. */
-export function modelColors(families: string[]): string[] {
-  const seen = new Map<string, number>();
-  return families.map((f) => {
-    const k = seen.get(f) ?? 0;
-    seen.set(f, k + 1);
-    const hue = SPECTRUM[FAMILY_HUE[f] ?? 'heather'];
-    return k === 0 ? hue.ink : hue.partner;
-  });
-}
-
-/** The four token buckets: the bulk in the chapter's ink, the rest in hues far from it. */
-export const BUCKET_COLOR: Record<string, string> = {
-  cache_read: HUE.ink,
-  cache_write: SPECTRUM.brass.ink,
-  output: SPECTRUM.tide.ink,
-  input: GROUND.text,
-};
+/**
+ * Each model's colour, the kinds of token's and the burn's greys live in `money/hues.ts`, which
+ * decides every hue the money screens wear so that one hue means one thing on each of them.
+ * `modelColors` is re-exported here because a project's money chapter imports it from this file.
+ */
+export { modelColors };
 
 export function MoneySection({ money, width, masked, onToggleMask }: { money: MoneyModel; width: number; masked: boolean; onToggleMask: () => void }) {
   const inner = width - GUTTER * 2;
   const b = money.body;
   const say = (s: string) => (masked ? maskDollars(s) : s);
+  // The kinds of token wear no hue (`money/hues.ts`): one neutral bar, told apart by its gaps.
+  const buckets = bucketHues();
   return (
     <Section style={styles.section}>
       <Band hue={HUE} index="06" title="Money and burn">
@@ -105,11 +93,12 @@ export function MoneySection({ money, width, masked, onToggleMask }: { money: Mo
               {b.tokens.label}
             </Text>
           </View>
-          <StackBar height={16} delay={140} segments={b.tokens.buckets.map((x) => ({ key: x.key, value: x.tokens, color: BUCKET_COLOR[x.key] ?? GROUND.dim }))} />
+          <StackBar height={16} delay={140} segments={b.tokens.buckets.map((x) => ({ key: x.key, value: x.tokens, color: bucketColor(x.key, buckets) }))} />
+          {/* The kinds of token are told apart by the bar's gaps and their words, never a swatch:
+              no hue on this chapter means a kind of token (`money/hues.TOKEN_HUE`). */}
           <View style={styles.legend}>
             {b.tokens.buckets.map((x) => (
               <View key={x.key} style={styles.legendLine}>
-                <Swatch color={BUCKET_COLOR[x.key] ?? GROUND.dim} />
                 <Text maxFontSizeMultiplier={1.4} style={[type.dim, { color: GROUND.text, flex: 1 }]}>
                   {x.label}
                 </Text>
@@ -161,8 +150,13 @@ export function MoneySection({ money, width, masked, onToggleMask }: { money: Mo
 /**
  * Where the tokens that changed nothing went: the floor as one bar of three parts (nothing
  * written, cannot judge, wrote something) and what those stretches were doing, one bar a cause.
- * Said as shares and never as a fault. The Money page draws the same block in its own chapter's
- * ink, so it lives here once.
+ * Said as shares and never as a fault. The Money page and a project's page draw the same block,
+ * so it lives here once.
+ *
+ * The three parts are greys (`money/hues.BURN_GREYS`): what changed nothing in the grey of the
+ * flow's grey stream, which is the same tokens. FOUND IN THE CAPTURE (2026-09-14, 21-analysis-15):
+ * drawn in the chapter's ink, it was the orange of cache reads in the key right above it. The
+ * chapter's ink is kept for the causes, each a bar under its own words, never a key.
  */
 export function BurnBody({ burn, ink }: { burn: NonNullable<MoneyModel['burn']>; ink: string }) {
   if (isRefused(burn)) return <Refusal>{burn.refusal}</Refusal>;
@@ -174,16 +168,16 @@ export function BurnBody({ burn, ink }: { burn: NonNullable<MoneyModel['burn']>;
           height={16}
           delay={100}
           segments={[
-            { key: 'barren', value: burn.share, color: ink },
-            { key: 'unread', value: burn.unreadableShare ?? 0, color: GROUND.dim },
-            { key: 'rest', value: Math.max(0, 1 - burn.share - (burn.unreadableShare ?? 0)), color: GROUND.border },
+            { key: 'barren', value: burn.share, color: BURN_GREYS.barren },
+            { key: 'unread', value: burn.unreadableShare ?? 0, color: BURN_GREYS.unread },
+            { key: 'rest', value: Math.max(0, 1 - burn.share - (burn.unreadableShare ?? 0)), color: BURN_GREYS.rest },
           ]}
         />
       </View>
       <View style={styles.legend}>
-        <LegendLine color={ink} text="stretches where nothing was written, tested or committed" />
-        {burn.unreadableShare ? <LegendLine color={GROUND.dim} text="stretches the transcripts cannot judge" /> : null}
-        <LegendLine color={GROUND.border} text="stretches that wrote, tested or committed something" />
+        <LegendLine color={BURN_GREYS.barren} text="stretches where nothing was written, tested or committed" />
+        {burn.unreadableShare ? <LegendLine color={BURN_GREYS.unread} text="stretches the transcripts cannot judge" /> : null}
+        <LegendLine color={BURN_GREYS.rest} text="stretches that wrote, tested or committed something" />
       </View>
       {burn.unreadableLine ? <Words style={[type.meta, styles.caption]}>{burn.unreadableLine}</Words> : null}
       {burn.causes.length ? (

@@ -19,7 +19,7 @@ import { BandFigure, figure, GUTTER, Kicker, Refusal, Swatch, type, Words } from
 import { Num } from '../insights/Num';
 import { GROUND, SPECTRUM, type Hue } from '../insights/palette';
 import { Block, Section } from '../insights/reveal';
-import { CAUSE_HUE, burnBand, burnLedger, fillKey, type BurnChart, type SpikeRow } from './burnChart';
+import { CAUSE_HUE, burnBand, burnLedger, burnRuleWords, fillKey, type BurnChart, type SpikeRow } from './burnChart';
 import type { BurnView } from './burnView';
 import type { SessionBurn } from '../generated/contract';
 import { barColor, SpikeChart } from './SpikeChart';
@@ -97,7 +97,7 @@ export function BurnSection({
             ))}
           </View>
           <Words style={[type.meta, styles.after]}>
-            {[`The dashed line is burn's own bar: a stretch at ${chart.threshold} times the typical one is a spike.`, key].filter(Boolean).join(' ')}
+            {[burnRuleWords(chart.threshold), key].filter(Boolean).join(' ')}
           </Words>
         </Block>
       ) : view.spikesNote ? (

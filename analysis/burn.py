@@ -63,6 +63,7 @@ import re
 import statistics
 from typing import Callable, Iterable, Mapping, Sequence
 
+from . import plain
 from . import digest, patterns
 
 #: A segment is a spike when its cost is at least this multiple of the session's median
@@ -1073,7 +1074,7 @@ class Segment:
                 {
                     **c,
                     "tokens": tokens,
-                    "share": round(tokens / total, 3) if tokens is not None else None,
+                    "share": plain.rounded(tokens / total, 3) if tokens is not None else None,
                 }
             )
         return out
@@ -1210,7 +1211,7 @@ def _metric(value, unit: str, n: int, basis: str, reason: str | None = None, **e
 
 
 def _round(x, digits: int):
-    return None if x is None else round(x, digits)
+    return None if x is None else plain.rounded(x, digits)
 
 
 def _usage_refusal(harness: str) -> str:
@@ -1642,7 +1643,7 @@ def _share_words(share: float) -> str:
         return "under 1%"
     if 0.995 <= share < 1:
         return "over 99%"
-    return f"{share:.0%}"
+    return plain.pct(share)
 
 
 def _count(n: int, noun: str) -> str:
@@ -1766,13 +1767,22 @@ def _work_clause(report: Mapping) -> str:
     and removed when either is counted; else the files or commits the segments show; else,
     when a segment ran something the transcript cannot see into, that it cannot say; and
     "nothing was written" only when no segment did (each proven barren, `_verdict`).
+
+    A side that counted none is not said. The transcript sees a removal only in an edit's
+    patch, never in a `Write` that replaced a file or a script that rewrote one, so its 0 is
+    what it could see, not what happened. FOUND IN THE DEFECTS PASS (2026-09-14): "added 507
+    lines and removed 0" on a RideGT sitting (60256e3a) whose commits deleted 57.
     """
     t = report["totals"]
     added = t["lines_added"]["value"] or 0
     removed = t["lines_removed"]["value"] or 0
     segs = report.get("segments") or []
-    if added or removed:
+    if added and removed:
         return f", added {_count(added, 'line')} and removed {removed:,}"
+    if added:
+        return f" and added {_count(added, 'line')}"
+    if removed:
+        return f" and removed {_count(removed, 'line')}"
     files = (t.get("files_touched") or {}).get("value") or 0
     commits = sum(r.get("commits") or 0 for r in segs)
     if files:
@@ -1808,8 +1818,8 @@ def _human(n: int) -> str:
     CAPTURE (2026-09-13): the CLI wrote "3766.5M" where the phone wrote "3,766.5M" for the
     same count; one grouping rule now, so the two agree to the byte
     (`mobile/src/copy/numbers.ts human`, pinned by `__tests__/copyNumbers.test.ts`)."""
-    if n >= 1_000_000 or round(n / 1_000) >= 1_000:
-        return f"{n / 1_000_000:,.1f}M"
+    if n >= 1_000_000 or plain.half_up(n, scale=-3) >= 1_000:
+        return f"{plain.half_up(n, 1, scale=-6):,}M"
     if n >= 1_000:
-        return f"{n / 1_000:.0f}k"
+        return f"{plain.half_up(n, scale=-3)}k"
     return str(n)

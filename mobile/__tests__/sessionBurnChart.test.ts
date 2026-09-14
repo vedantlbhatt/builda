@@ -12,7 +12,7 @@ import type { SessionDetail } from '../src/data/api';
 import type { SessionBurn, SessionBurnSpike } from '../src/generated/contract';
 import { CONTRACT_ENUMS } from '../src/generated/contract';
 import { SPIKE_MULTIPLE } from '../src/map/frames';
-import { burnBand, burnChart, burnLedger, CAUSE_HUE, CAUSE_LABEL, fillKey, fillOf, meters, stretchNote } from '../src/session/burnChart';
+import { burnBand, burnChart, burnLedger, burnRuleWords, CAUSE_HUE, CAUSE_LABEL, fillKey, fillOf, meters, stretchNote } from '../src/session/burnChart';
 import { burnView } from '../src/session/burnView';
 import { sampleOutcome } from '../src/session/samples';
 import { REPO } from './pythonRef';
@@ -201,6 +201,20 @@ describe('the words', () => {
     // Never the burn chapter's own hue, so a bar never reads as the band it sits under.
     expect(Object.values(CAUSE_HUE)).not.toContain('ember');
     expect(new Set(Object.values(CAUSE_HUE)).size).toBe(CONTRACT_ENUMS.burn_cause.length);
+  });
+
+  test('the dashed line is said in words a person uses, and never runs through the typical bar', () => {
+    // FOUND IN THE DEFECTS PASS (2026-09-14): "The dashed line is burn's own bar: ... is a spike",
+    // and on 60256e3a (34.3x) the rule crossed the "1×" over the typical bar.
+    const words = burnRuleWords(SPIKE_MULTIPLE);
+    expect(words).toBe('The dashed line is 3 times a typical stretch: a stretch that reaches it counts as costly.');
+    expect(words).not.toMatch(/burn|spike/i);
+    expect(hasDash(words)).toBe(false);
+    const chart = readFileSync(join(REPO, 'mobile', 'src', 'session', 'SpikeChart.tsx'), 'utf8');
+    expect(chart).toContain('const ruleFrom = chart.bars[0] && !chart.bars[0].spike ? slot : 0;');
+    expect(chart).toContain('for (let x = ruleFrom; x < width; x += 8)');
+    const section = readFileSync(join(REPO, 'mobile', 'src', 'session', 'BurnSection.tsx'), 'utf8');
+    expect(section).not.toContain("burn's own bar");
   });
 
   test('over the parity fixture\'s real shaped sessions, every string the chart says is dash free', () => {

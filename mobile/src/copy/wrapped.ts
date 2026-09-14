@@ -381,8 +381,9 @@ function kindOfWork(card: ReportWrappedCard, x: ReportWrappedExtras): Words | nu
     const top = [...roles].sort((a, b) => b.lines - a.lines || order(a.role) - order(b.role));
     const r1 = top[0]!;
     if (card.value_id !== r1.role) return null;
-    let said = `${pyRound((100 * r1.lines) / lines)}% of agent lines went to ${ROLE_WORD[r1.role]} files`;
-    if (top.length > 1) said += `, ${pyRound((100 * top[1]!.lines) / lines)}% to ${ROLE_WORD[top[1]!.role]} files`;
+    // `plain.pct` of the share, as `wrapped._kind_of_work` says it: the point moved in decimal.
+    let said = `${pct(r1.lines / lines)} of agent lines went to ${ROLE_WORD[r1.role]} files`;
+    if (top.length > 1) said += `, ${pct(top[1]!.lines / lines)} to ${ROLE_WORD[top[1]!.role]} files`;
     return [ROLE_DISPLAY[r1.role], `${said}.`];
   }
   return null;

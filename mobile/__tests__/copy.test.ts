@@ -18,7 +18,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
 
-import { DASH, DASH_CHARS } from '../src/copy/plain';
+import { DASH, DASH_CHARS, DOT_JOIN, dotted, keepDots } from '../src/copy/plain';
 
 const MOBILE = join(import.meta.dir, '..');
 const ROOTS = ['app', 'src'];
@@ -154,5 +154,26 @@ describe('no dashes in anything a person reads (app/ and src/)', () => {
     const hits = files.flatMap((f) => findDashes(relative(MOBILE, f), readFileSync(f, 'utf8')));
     const lines = hits.map((h) => `${h.file}:${h.line}: ${h.text}`);
     expect(lines).toEqual([]);
+  });
+});
+
+describe('facts that share a line never start a line with the dot', () => {
+  test('the space before each dot does not break, so a wrap falls after "· "', () => {
+    const nb = String.fromCharCode(0xa0);
+    expect(DOT_JOIN).toBe(`${nb}· `);
+    expect(dotted(['Private project 1', 'yesterday', null, '', false, 'on its own'])).toBe(`Private project 1${nb}· yesterday${nb}· on its own`);
+    expect(dotted([])).toBe('');
+    // Wherever the line wraps, the dot is the last character of a line, never the first.
+    const line = dotted(['8.1 times a typical stretch', '52k tokens a line']);
+    for (const piece of line.split(' ')) expect(piece.startsWith('·')).toBe(false);
+  });
+
+  test('the text components apply it to words they are handed, and leave everything else alone', () => {
+    const nb = String.fromCharCode(0xa0);
+    expect(keepDots('Analysed by Opus 5 · confidence 72% · yesterday')).toBe(`Analysed by Opus 5${nb}· confidence 72%${nb}· yesterday`);
+    expect(keepDots(['a · b', 3, null])).toEqual([`a${nb}· b`, 3, null]);
+    expect(keepDots('no dots here')).toBe('no dots here');
+    const el = { type: 'Text' };
+    expect(keepDots(el)).toBe(el);
   });
 });

@@ -23,13 +23,14 @@
  * saved sessions, and a sentence with the one thing that fills the page when there are none yet.
  */
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import type { Profile, SessionDetail } from '../data/api';
 import * as cache from '../data/cache';
 import { api, SAMPLE_SESSION } from '../data/client';
+import { useRepoNames } from '../data/repoNames';
 import { Band, BandWords } from '../insights/Band';
 import { CreatureMark } from '../insights/Creature';
 import { BandFigure, figure as figureStyle, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
@@ -49,10 +50,10 @@ import { useAccent } from '../theme/accent';
 import { AnimatedList } from '../ui/bits/components';
 import { useReduceMotion } from '../ui/motion';
 import { crewBase, type CrewCreature } from './crew';
+import { extendReach, LIST_MAX, LIST_PAGE, listEnd, mergeReach, reachOfPage, sentence, type ListMode, type Reach } from './listReach';
 import { rowOf } from './page';
 import { Door } from './parts';
 import { ROW_FIGURE } from './type';
-import { CREW_WINDOW } from './useCrew';
 import { QUIET_WEEK, weekFigure, weekOf } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
 
@@ -64,6 +65,8 @@ const TRACED_ROWS = 10;
 const MARK = 32;
 const MARK_GAP = 14;
 const STRIP_SWEEP_MS = 620;
+/** Points from the end of the list at which a scroll that stops there reads the next page: about a screen. */
+const END_REACH = 900;
 
 export function SessionsScreen() {
   const { width } = useWindowDimensions();
@@ -80,18 +83,72 @@ export function SessionsScreen() {
   // The first sync has answered (or failed): only then is an empty list a finding.
   const [synced, setSynced] = useState(false);
 
+  // What the list holds and how far back it has read (`listReach.ts`): the sessions you were there
+  // for at least 20 minutes by default, read a page further back each time it is scrolled to its
+  // end. Refs as well as state: the loads below run from timers and focus callbacks.
+  const [mode, setModeState] = useState<ListMode>('notable');
+  const modeRef = useRef<ListMode>('notable');
+  const reachRef = useRef<Record<ListMode, Reach | null>>({ notable: null, every: null });
+  const [reach, setReachState] = useState<Reach | null>(null);
+  const [older, setOlder] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
+  const olderBusy = useRef(false);
+  const shownRef = useRef<SessionDetail[]>([]);
+  const signedInRef = useRef<boolean | null>(null);
+
+  const showRows = useCallback((rows: SessionDetail[]) => {
+    shownRef.current = rows;
+    setSessions(rows);
+  }, []);
+  const setReach = useCallback((m: ListMode, r: Reach | null) => {
+    reachRef.current[m] = r;
+    if (modeRef.current === m) setReachState(r);
+  }, []);
+  /** The saved rows of a mode, down to its reach; the newest page's worth while the server has not answered. */
+  const readList = useCallback((m: ListMode) => {
+    const r = reachRef.current[m];
+    return cache.listFinished(m, r?.from ?? null, r ? LIST_MAX : LIST_PAGE);
+  }, []);
+  /** The saved rows of a mode on screen, unless the list moved to the other while they were read. */
+  const showMode = useCallback(
+    async (m: ListMode) => {
+      const rows = await readList(m);
+      if (modeRef.current === m) showRows(rows);
+    },
+    [readList, showRows],
+  );
+  /**
+   * The top of the list as the server has it now, merged into the reach the list had: the sync's own
+   * first page for the default list, and a page of every session for the other.
+   */
+  const refreshTop = useCallback(
+    async (m: ListMode, prevNewest: string | null) => {
+      if (m === 'notable') {
+        const first = cache.syncedFirstPage();
+        if (first) setReach(m, mergeReach(reachRef.current[m], reachOfPage(first.startedAt.map((started_at) => ({ started_at })), first.nextBefore), prevNewest));
+        return;
+      }
+      const page = await cache.readPage(api, { before: null, notableOnly: false, limit: LIST_PAGE });
+      setReach(m, mergeReach(reachRef.current[m], reachOfPage(page.rows, page.next_before), prevNewest));
+      // The strips of the rows the sync never reads (it reads the default list's): they draw as they land.
+      void cache.fillDetails(api, page.rows.map((s) => s.id)).then(() => showMode(m));
+    },
+    [setReach, showMode],
+  );
+
   const load = useCallback(async (withProfile: boolean) => {
+    const m = modeRef.current;
     // Cache first, always. On a cold launch over cellular this is the difference between real
     // content immediately and a spinner; with the network gone, saved rows beat an empty screen.
-    const [cached, savedLive, savedProfile] = await Promise.all([cache.listSessions(CREW_WINDOW), cache.listLive(), withProfile ? cache.getProfile() : Promise.resolve(null)]);
-    if (cached.length) setSessions(cached);
+    const [cached, savedLive, savedProfile] = await Promise.all([readList(m), cache.listLive(), withProfile ? cache.getProfile() : Promise.resolve(null)]);
+    if (cached.length && modeRef.current === m) showRows(cached);
     setLive(savedLive);
     if (savedProfile) setProfile(savedProfile);
 
     const isIn = await api.isSignedIn();
     setSignedIn(isIn);
+    signedInRef.current = isIn;
     if (!isIn) {
-      setSessions(cached.length ? cached : [SAMPLE_SESSION]);
+      showRows(cached.length ? cached : [SAMPLE_SESSION]);
       setLive([]);
       setProfileRead(true);
       return;
@@ -103,8 +160,15 @@ export function SessionsScreen() {
       setError(e instanceof Error ? e.message : 'could not reach the server');
     }
     setSynced(true);
+    if (m === 'notable' || withProfile) {
+      try {
+        await refreshTop(m, shownRef.current[0]?.started_at ?? null);
+      } catch {
+        // The saved rows stay, and the end of the list does not claim to be all of them.
+      }
+    }
     // Whatever the sync managed to save is shown, banner or not.
-    setSessions(await cache.listSessions(CREW_WINDOW));
+    await showMode(m);
     setLive(await cache.listLive());
     if (withProfile) {
       // The week on the band is the profile's graph, never the list's sum (`week.ts`).
@@ -117,7 +181,62 @@ export function SessionsScreen() {
       }
       setProfileRead(true);
     }
-  }, []);
+  }, [readList, refreshTop, showMode, showRows]);
+
+  /** A page further back than the list reaches, saved, then its strips. */
+  const loadOlder = useCallback(async () => {
+    const m = modeRef.current;
+    const r = reachRef.current[m];
+    if (olderBusy.current || signedInRef.current !== true || (r && !r.more)) return;
+    const before = r?.from ?? shownRef.current[shownRef.current.length - 1]?.started_at ?? null;
+    if (!before) return;
+    olderBusy.current = true;
+    setOlder({ loading: true, error: null });
+    try {
+      const page = await cache.readPage(api, { before, notableOnly: m === 'notable', limit: LIST_PAGE });
+      if (modeRef.current !== m) return;
+      setReach(m, extendReach(r ?? { from: before, more: true }, page.rows, page.next_before));
+      await showMode(m);
+      setOlder({ loading: false, error: null });
+      await cache.fillDetails(api, page.rows.map((s) => s.id));
+      await showMode(m);
+    } catch (e) {
+      setOlder({ loading: false, error: e instanceof Error && e.message ? e.message : 'could not reach the server' });
+    } finally {
+      olderBusy.current = false;
+    }
+  }, [setReach, showMode]);
+
+  // Scrolled to within a screen of its end, the list reads the next page on its own; after a
+  // failure it waits for the door to be tapped, so a dead connection is not asked again every flick.
+  const onScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+      if (contentOffset.y + layoutMeasurement.height < contentSize.height - END_REACH) return;
+      const r = reachRef.current[modeRef.current];
+      if (r?.more && !older.error) void loadOlder();
+    },
+    [loadOlder, older.error],
+  );
+
+  const switchMode = useCallback(
+    async (m: ListMode) => {
+      modeRef.current = m;
+      setModeState(m);
+      setReachState(reachRef.current[m]);
+      setOlder({ loading: false, error: null });
+      const saved = await readList(m);
+      if (modeRef.current !== m) return;
+      showRows(saved);
+      try {
+        await refreshTop(m, saved[0]?.started_at ?? null);
+      } catch (e) {
+        setOlder({ loading: false, error: e instanceof Error && e.message ? e.message : 'could not reach the server' });
+      }
+      await showMode(m);
+    },
+    [readList, refreshTop, showMode, showRows],
+  );
 
   // On focus, not on mount: coming back from Settings after signing in shows the person's own
   // sessions without a pull. While focused, the list re-syncs on the live list's own beat so a
@@ -161,6 +280,25 @@ export function SessionsScreen() {
   const inner = width - GUTTER * 2;
   const stripWidth = inner - MARK - MARK_GAP;
   const open = useCallback((id: string) => router.push(`/session/${id}`), [router]);
+  // The project names, read once for the whole list rather than once a row (`data/repoNames`).
+  const names = useRepoNames();
+  // The end of the list, once every row is on screen: what it holds, how far back, and the door on.
+  const end =
+    signedIn === true && stage >= 1
+      ? listEnd({ mode, shown: sessions.length, oldest: sessions[sessions.length - 1]?.started_at ?? null, reach, now, failed: older.error })
+      : null;
+  const onDoor = useCallback(
+    (act: 'older' | 'every' | 'notable') => {
+      if (act === 'older') {
+        setOlder({ loading: false, error: null });
+        void loadOlder();
+        return;
+      }
+      void switchMode(act);
+      scrollRef.current?.scrollTo({ y: 0, animated: !reduced });
+    },
+    [loadOlder, switchMode, scrollRef, reduced],
+  );
 
   return (
     <Animated.ScrollView
@@ -170,6 +308,8 @@ export function SessionsScreen() {
       contentContainerStyle={styles.content}
       onScroll={onScroll}
       scrollEventThrottle={16}
+      onMomentumScrollEnd={onScrollEnd}
+      onScrollEndDrag={onScrollEnd}
       onLayout={onLayout}
       refreshControl={signedIn === false ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={accent.ink} />}
     >
@@ -232,7 +372,7 @@ export function SessionsScreen() {
         {shown.length > 0 ? (
           <View style={styles.group}>
             <View style={styles.kicker}>
-              <Kicker>{signedIn === false ? 'the sample' : 'finished'}</Kicker>
+              <Kicker>{signedIn === false ? 'the sample' : mode === 'every' ? 'every session' : 'finished'}</Kicker>
             </View>
             <AnimatedList
               scroll={false}
@@ -243,6 +383,7 @@ export function SessionsScreen() {
                 <FinishedRow
                   session={item}
                   creature={crew(item)}
+                  names={names}
                   index={index}
                   width={stripWidth}
                   now={now}
@@ -252,18 +393,27 @@ export function SessionsScreen() {
                 />
               )}
             />
+            {end ? (
+              <View style={styles.end}>
+                <Words style={type.dim}>{end.words}</Words>
+                {end.note ? <Words style={[type.meta, styles.endNote]}>{end.note}</Words> : null}
+                {end.door ? (
+                  <Door
+                    title={end.door.title}
+                    line={end.door.line}
+                    color={accent.ink}
+                    small
+                    busy={end.door.act === 'older' && older.loading}
+                    onPress={() => onDoor(end.door!.act)}
+                  />
+                ) : null}
+              </View>
+            ) : null}
           </View>
         ) : null}
       </RevealPage>
     </Animated.ScrollView>
   );
-}
-
-/** A message as a sentence: its first letter up, one full stop at the end. */
-function sentence(message: string): string {
-  const t = message.trim();
-  const up = t.charAt(0).toUpperCase() + t.slice(1);
-  return /[.!?]$/.test(up) ? up : `${up}.`;
 }
 
 /** This week: the hours counting up, the days it took, and the week as seven bars in the band's ink. */
@@ -344,6 +494,7 @@ function WeekGround({ week, ink, width }: { week: ReturnType<typeof weekOf> | nu
 function FinishedRow({
   session: s,
   creature,
+  names,
   index,
   width,
   now,
@@ -353,6 +504,8 @@ function FinishedRow({
 }: {
   session: SessionDetail;
   creature: CrewCreature;
+  /** A private project as the Projects tab names it ("Private project 2"), `copy/repoLabel`. */
+  names: ReturnType<typeof useRepoNames>;
   index: number;
   width: number;
   now: number;
@@ -360,7 +513,7 @@ function FinishedRow({
   trace: boolean;
   onRecap: () => void;
 }) {
-  const row = rowOf(s, now);
+  const row = rowOf(s, now, names);
   const hue = creatureHue(creature);
   // Finished in the last hour and not yet posted: the recap a push would have opened, for the
   // person who dismissed the banner or never got one. A word in the accent, an act.
@@ -444,5 +597,7 @@ const styles = StyleSheet.create({
   stripWaiting: { height: TRACK_HEIGHT.mini, borderBottomWidth: 1, borderBottomColor: GROUND.border },
   stripSlot: { marginLeft: MARK + MARK_GAP, marginTop: 12, gap: 10 },
   recap: { alignSelf: 'flex-start' },
+  end: { marginHorizontal: GUTTER, marginTop: 8, paddingTop: 18, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: GROUND.border, gap: 2 },
+  endNote: { marginTop: 6, marginBottom: 4 },
 });
 

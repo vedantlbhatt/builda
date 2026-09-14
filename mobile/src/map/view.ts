@@ -357,6 +357,21 @@ export function mapHeadline(state: LiveState, hot: number): MapHeadline {
   return { files, hot, said };
 }
 
+// ------------------------------------------------------------------ the replay's opening
+
+/**
+ * Where a replay opens: at the start, or under Reduce Motion on its last frame. One answer for
+ * the playhead the map and the scrubber read and for the position the clock's words start from,
+ * so the counter says what the playhead shows before a frame has run. FOUND IN THE CAPTURE
+ * (2026-09-14, 74-timelapse-01 and 02, Reduce Motion): the map showed the whole session and the
+ * scrubber's playhead sat at its right end while both clocks read "0s", because they started
+ * from 0 and only a moving playhead ever rewrote them.
+ */
+export function openingOf(span: number, startAtEnd: boolean): { playhead: number; position: number; ended: boolean } {
+  const at = startAtEnd ? span : 0;
+  return { playhead: at, position: at, ended: startAtEnd };
+}
+
 // ------------------------------------------------------------------ the legend
 
 export type LegendSwatch = 'changed' | 'read' | 'hot' | 'path' | 'cursor' | 'fail' | 'knot';
@@ -374,6 +389,8 @@ export interface LegendOptions {
   reduceMotion: boolean;
   /** There is a path of two files or more on screen. */
   path: boolean;
+  /** The stuck files' colour as a word ("pink", `paint.HUE_WORD[paint.stuckHue(...)]`). */
+  stuck: string;
 }
 
 /** The legend in words, in the order the eye meets the marks. */
@@ -399,7 +416,7 @@ export function legend(screen: 'map' | 'timelapse', o: LegendOptions): LegendIte
   items.push({ swatch: 'cursor', text: `Outlined: the file it is on ${now}.` });
   if (screen === 'timelapse') items.push({ swatch: 'fail', text: 'Red: its last call on that file failed.' });
   if (o.knot) {
-    const how = o.reduceMotion ? 'Outlined in your colour' : 'Pulsing in your colour';
+    const how = o.reduceMotion ? `Outlined in ${o.stuck}` : `Pulsing in ${o.stuck}`;
     items.push({
       swatch: 'knot',
       text: screen === 'map' ? `${how}: the files it keeps rewriting.` : `${how}: the files it was stuck on, while it was stuck.`,

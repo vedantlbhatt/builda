@@ -62,14 +62,16 @@ describe('the money view', () => {
     expect(dollars(1502.2)).toBe('$1,502');
     expect(dollars(22.1)).toBe('$22.10');
     expect(dollars(6.83)).toBe('$6.83');
-    expect(dollars(0.125)).toBe('$0.12');
+    expect(dollars(0.125)).toBe('$0.13'); // a tie rounds up, on both sides (copy/numbers.ts, plain.half_up)
     expect(dollars(100)).toBe('$100');
   });
 
   test('the rest of the view', () => {
     expect(perActiveHour(MONEY)).toBe('$22.10 an active hour');
-    expect(withoutACommit(MONEY)).toBe('$19.80 on sessions that ended with no commit, 1% of the spend');
-    expect(withoutACommit({ ...MONEY, share_without_a_commit: 0.004 })).toBe('$19.80 on sessions that ended with no commit, under 1% of the spend');
+    // The Money page's words, on every page: the share of every dollar when every priced session
+    // had a commit count, else of the dollars that had one, and never "of the spend".
+    expect(withoutACommit(MONEY)).toBe('$19.80 on sessions that ended with no commit, 1% of every dollar at API list prices');
+    expect(withoutACommit({ ...MONEY, share_without_a_commit: 0.004 })).toBe('$19.80 on sessions that ended with no commit, under 1% of the dollars on sessions with a commit count');
     expect(modelLine(MONEY.by_model[0]!)).toBe('Opus 4.8: $1,502 over 97 sessions, $6.83 a commit');
     expect(modelLine({ ...MONEY.by_model[0]!, usd_per_commit: null })).toBe('Opus 4.8: $1,502 over 97 sessions');
     expect(totalTokens(MONEY.tokens)).toBe('4,112.2M'); // 4,112,171,116

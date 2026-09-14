@@ -203,12 +203,12 @@ public struct RecapCardView: View {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(StripPalette.accent(dark: dark))
                     .frame(width: 16, height: 16)
-                Text("builder")
+                Text("Builda")
                     .font(.system(size: 26 * scale, weight: .semibold, design: .rounded))
                     .foregroundStyle(StripPalette.text(dark: dark))
             }
             Spacer()
-            Text(shortCode)
+            Text(footLine)
                 .font(.system(size: 22 * scale, weight: .regular, design: .monospaced))
                 .foregroundStyle(StripPalette.textDim(dark: dark))
         }
@@ -260,8 +260,12 @@ public struct RecapCardView: View {
 
     // MARK: - Formatting
 
-    private var shortCode: String {
-        "builder.dev/s/" + String(model.clientSessionID.prefix(6))
+    /// The product's one line about itself (the phone's first onboarding page, and the phone card's
+    /// `CARD_FOOT`), never an address: this said "builder.dev/s/" and six characters of the id, a
+    /// link on a domain the product does not have to a page that does not exist. The product is
+    /// Builda (brief.md, "Owner, 10:50").
+    private var footLine: String {
+        "your build sessions, read back to you"
     }
 
     private var dateLine: String {

@@ -1,4 +1,5 @@
 import { labelize, pct } from '../analysis/format';
+import { pyFixed, pyRound } from '../copy/numbers';
 import type { BuilderProfile } from '../data/api';
 import { ANALYSIS_ENUMS, type Dimension } from '../generated/analysis';
 
@@ -55,12 +56,12 @@ export function trendGlyph(trend: number | null | undefined): '▲' | '▼' | ''
  */
 export function trendLabel(trend: number | null | undefined): string {
   const g = trendGlyph(trend);
-  return g ? `${g} ${Math.abs(trend as number).toFixed(1)}` : '';
+  return g ? `${g} ${pyFixed(Math.abs(trend as number), 1)}` : '';
 }
 
 /** "0-100" mean as a whole number, the way the per-session dimension is shown. */
 export function meanLabel(mean: number): string {
-  return `${Math.round(Math.min(100, Math.max(0, mean)))}`;
+  return `${pyRound(Math.min(100, Math.max(0, mean)))}`;
 }
 
 /**

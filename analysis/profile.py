@@ -54,6 +54,7 @@ import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
+from . import plain
 from . import pricing
 
 PROFILE_VERSION = 1
@@ -349,6 +350,32 @@ def is_attended(f: SessionFact) -> bool:
     return not f.unattended and f.attended_seconds > 0
 
 
+def tool_calls_per_prompt(sessions: Iterable[SessionFact]) -> dict:
+    """Tool calls for every prompt, over the sittings a person was at, on BOTH sides of the
+    division. THE rule for the corpus metric (`iteration_depth`, which the trends and the
+    server read) and for the "prompts a session" card's second number (`wrapped`) alike.
+
+    FOUND IN THE CAPTURE (2026-09-14): the metric divided EVERY sitting's tool calls, an
+    unattended run's included, by the prompts only attended sittings send, while the card
+    divided the attended sittings' calls by the same prompts. One page said 11.7 (the card)
+    and 12.4 (You against you, over the same window) for one number. A run nobody was at
+    sends no prompt, so none of its tool calls answered one.
+    """
+    attended = [s for s in sessions if is_attended(s)]
+    prompts = sum(s.prompt_count for s in attended)
+    tools = sum(sum(s.tool_calls.values()) for s in attended)
+    known = [s for s in attended if s.tool_basis != TOOLS_ABSENT]
+    if prompts >= MIN_PROMPTS and known:
+        return _metric(plain.rounded(tools / prompts, 1), "tool calls per prompt", prompts, known[0].tool_basis)
+    return _metric(
+        None,
+        "tool calls per prompt",
+        prompts,
+        TOOLS_ABSENT if not known else known[0].tool_basis,
+        "no tool counts" if not known else f"{prompts} prompts, {MIN_PROMPTS} needed",
+    )
+
+
 def longest_run(days: Sequence[dt.date]) -> int:
     """The longest run of consecutive calendar days in `days`. 0 for none.
 
@@ -532,7 +559,7 @@ def _metric(value, unit: str, n: int, basis: str, reason: str | None = None, **e
 
 
 def _round(x: float | None, digits: int) -> float | None:
-    return None if x is None else round(x, digits)
+    return None if x is None else plain.rounded(x, digits)
 
 
 def _median(xs: Sequence[float]) -> float | None:
@@ -686,7 +713,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
 
     totals = {
         "total_sessions": n_sessions,
-        "total_hours": round(active_hours, 2),
+        "total_hours": plain.rounded(active_hours, 2),
         "total_prompts": prompt_total,
         "total_lines_added": lines_total,
         # Summed like the added lines, over the same writes (`lines_removed_agent`).
@@ -705,11 +732,11 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         words = [len(t.split()) for t in texts]
         short = sum(1 for w in words if w < SHORT_PROMPT_WORDS)
         m["avg_prompt_chars"] = _metric(
-            round(sum(chars) / len(chars), 1), "chars", len(chars), "prompt_text"
+            plain.rounded(sum(chars) / len(chars), 1), "chars", len(chars), "prompt_text"
         )
         m["median_prompt_chars"] = _metric(_median(chars), "chars", len(chars), "prompt_text")
         m["short_prompt_share"] = _metric(
-            round(short / len(words), 3),
+            plain.rounded(short / len(words), 3),
             "share",
             len(words),
             "prompt_text",
@@ -731,7 +758,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     tool_first = len(classified) - prose_first
     if len(classified) >= MIN_PROMPTS_FOR_RATIO and tool_first > 0:
         m["planning_ratio"] = _metric(
-            round(prose_first / tool_first, 2),
+            plain.rounded(prose_first / tool_first, 2),
             "ratio",
             len(classified),
             "prose_before_first_tool",
@@ -756,26 +783,12 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         )
 
     # ---- iteration depth
-    if prompt_total >= MIN_PROMPTS and tool_known:
-        m["iteration_depth"] = _metric(
-            round(tool_total / prompt_total, 1),
-            "tool calls per prompt",
-            prompt_total,
-            tool_known[0].tool_basis,
-        )
-    else:
-        m["iteration_depth"] = _metric(
-            None,
-            "tool calls per prompt",
-            prompt_total,
-            TOOLS_ABSENT if not tool_known else tool_known[0].tool_basis,
-            "no tool counts" if not tool_known else f"{prompt_total} prompts, {MIN_PROMPTS} needed",
-        )
+    m["iteration_depth"] = tool_calls_per_prompt(ss)
 
     # ---- autonomy
     if active >= MIN_ACTIVE_SEC_FOR_AUTONOMY and (attended + autonomous) > 0:
         m["autonomy_score"] = _metric(
-            round(autonomous / (attended + autonomous), 3), "share", n_sessions, "two_clocks"
+            plain.rounded(autonomous / (attended + autonomous), 3), "share", n_sessions, "two_clocks"
         )
     else:
         m["autonomy_score"] = _metric(
@@ -783,7 +796,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             "share",
             n_sessions,
             "two_clocks",
-            f"{round(active)}s of active time, {round(MIN_ACTIVE_SEC_FOR_AUTONOMY)}s needed",
+            f"{plain.rounded(active)}s of active time, {plain.rounded(MIN_ACTIVE_SEC_FOR_AUTONOMY)}s needed",
         )
 
     # ---- steer rate
@@ -796,7 +809,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             1 for p in all_prompts if p.text and is_corrective(p.text) and not p.after_interrupt
         )
         m["steer_rate"] = _metric(
-            round((interrupts + corrective) / len(all_prompts), 3),
+            plain.rounded((interrupts + corrective) / len(all_prompts), 3),
             "share",
             len(all_prompts),
             "interrupts_and_correction_markers",
@@ -825,7 +838,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     ) or lines_total >= MIN_LINES_FOR_VELOCITY
     if lines_known and lines_total > 0 and active >= MIN_ACTIVE_SEC_FOR_VELOCITY and enough_writes:
         m["code_velocity"] = _metric(
-            round(lines_total / active_hours, 1),
+            plain.rounded(lines_total / active_hours, 1),
             "lines per active hour",
             n_sessions,
             lines_basis,
@@ -848,7 +861,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
                     "a rate, and the writes behind it cannot be counted here"
                 )
                 if lines_known and not enough_writes
-                else f"{round(active)}s of active time, {round(MIN_ACTIVE_SEC_FOR_VELOCITY)}s needed"
+                else f"{plain.rounded(active)}s of active time, {plain.rounded(MIN_ACTIVE_SEC_FOR_VELOCITY)}s needed"
                 if lines_known
                 else "no line counts"
             ),
@@ -860,7 +873,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     basis = tool_known[0].tool_basis if tool_known else TOOLS_ABSENT
     if len(diverse) >= MIN_SESSIONS_FOR_DIVERSITY and basis == TOOLS_ALL:
         m["tool_diversity"] = _metric(
-            round(sum(len(s.tool_calls) for s in diverse) / len(diverse), 1),
+            plain.rounded(sum(len(s.tool_calls) for s in diverse) / len(diverse), 1),
             "distinct tools per session",
             len(diverse),
             basis,
@@ -872,8 +885,10 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             len(diverse),
             basis,
             (
-                "tool names are bucketed to an allowlist here, so distinct names would "
-                "undercount every corpus"
+                # Words a person reads on the phone (`sample.missing`): FOUND IN THE CAPTURE
+                # (2026-09-14), "bucketed to an allowlist" was on screen.
+                "the server keeps only the names of common tools and files the rest under "
+                "one, so a count of different tools would come out low for everyone"
                 if basis == TOOLS_ALLOWLIST
                 else f"{len(diverse)} sessions with {MIN_TOOL_CALLS_FOR_DIVERSITY}+ tool calls"
             ),
@@ -887,7 +902,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # tool call" was high by every call the uploader dropped (docs/overnight-integration.md
     # 5.1).
     top_tools = [
-        {"tool": t, "calls": c, "share": round(c / tool_total, 3)}
+        {"tool": t, "calls": c, "share": plain.rounded(c / tool_total, 3)}
         for t, c in sorted(mix.items(), key=lambda kv: (-kv[1], kv[0]))
         if t not in TOOL_BUCKETS
     ][:5]
@@ -897,7 +912,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     tests_total = sum(s.test_runs or 0 for s in tests_known)
     if tests_known and active >= MIN_ACTIVE_SEC_FOR_VELOCITY:
         m["test_runs_per_hour"] = _metric(
-            round(tests_total / active_hours, 2),
+            plain.rounded(tests_total / active_hours, 2),
             "test runs per active hour",
             tests_total,
             TEST_RUNS_LOWER_BOUND,
@@ -910,7 +925,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             TEST_RUNS_LOWER_BOUND if tests_known else "absent",
             "test runs are not counted server side"
             if not tests_known
-            else f"{round(active)}s of active time, {round(MIN_ACTIVE_SEC_FOR_VELOCITY)}s needed",
+            else f"{plain.rounded(active)}s of active time, {plain.rounded(MIN_ACTIVE_SEC_FOR_VELOCITY)}s needed",
         )
 
     # ---- ships_rate: the share of sittings that ended with something landing
@@ -925,7 +940,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     if len(committed_known) >= MIN_SESSIONS_FOR_SHARE:
         shipped = sum(1 for s in committed_known if ended_with_a_commit(s))
         m["ships_rate"] = _metric(
-            round(shipped / len(committed_known), 3),
+            plain.rounded(shipped / len(committed_known), 3),
             "share of sessions that ended with a commit",
             len(committed_known),
             COMMITS_GIT_LOG,
@@ -997,7 +1012,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     price_basis = "stale_prices" if stale else pricing.BASIS_LIST_PRICE
     if priced:
         m["spend_usd"] = _metric(
-            round(spend, 2),
+            plain.rounded(spend, 2),
             "US dollars at API list prices",
             len(priced),
             price_basis,
@@ -1014,7 +1029,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         priced_hours = sum(f.active_seconds for f, _ in priced) / 3600.0
         m["spend_per_hour_usd"] = (
             _metric(
-                round(spend / priced_hours, 2),
+                plain.rounded(spend / priced_hours, 2),
                 "US dollars per active hour at list prices",
                 len(priced),
                 price_basis,
@@ -1049,12 +1064,12 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         quiet_usd = sum(usd for _, usd in quiet)
         total_usd = sum(usd for _, usd in shipped_known)
         m["spend_without_a_commit_usd"] = _metric(
-            round(quiet_usd, 2),
+            plain.rounded(quiet_usd, 2),
             "US dollars on sittings that ended with no commit",
             len(shipped_known),
             price_basis,
             sessions=len(quiet),
-            share_of_spend=round(quiet_usd / total_usd, 3) if total_usd > 0 else None,
+            share_of_spend=plain.rounded(quiet_usd / total_usd, 3) if total_usd > 0 else None,
         )
     else:
         m["spend_without_a_commit_usd"] = _metric(
@@ -1098,7 +1113,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     )
     if len(burned) >= MIN_SESSIONS and burn_total > 0:
         m["barren_token_share"] = _metric(
-            round(barren_total / burn_total, 3),
+            plain.rounded(barren_total / burn_total, 3),
             "share",
             len(burned),
             BARREN_BASIS,
@@ -1140,7 +1155,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     night = sum(v for h, v in by_hour.items() if h >= NIGHT_START_HOUR or h < NIGHT_END_HOUR)
     if active >= MIN_ACTIVE_SEC_FOR_SHARES:
         m["night_share"] = _metric(
-            round(night / active, 3),
+            plain.rounded(night / active, 3),
             "share",
             n_sessions,
             "active_seconds_by_local_hour",
@@ -1149,7 +1164,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         peak = max(by_hour.items(), key=lambda kv: (kv[1], -kv[0]))
         m["peak_hour"] = _metric(peak[0], "local hour", n_sessions, "active_seconds_by_local_hour")
     else:
-        why = f"{round(active)}s of active time, {round(MIN_ACTIVE_SEC_FOR_SHARES)}s needed"
+        why = f"{plain.rounded(active)}s of active time, {plain.rounded(MIN_ACTIVE_SEC_FOR_SHARES)}s needed"
         m["night_share"] = _metric(None, "share", n_sessions, "active_seconds_by_local_hour", why)
         m["peak_hour"] = _metric(
             None, "local hour", n_sessions, "active_seconds_by_local_hour", why
@@ -1166,7 +1181,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             < NIGHT_END_HOUR
         )
         m["night_commit_share"] = _metric(
-            round(night_commits / len(commit_times), 3),
+            plain.rounded(night_commits / len(commit_times), 3),
             "share",
             len(commit_times),
             "commit_timestamps",
@@ -1178,7 +1193,10 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             "share",
             0,
             "commit_timestamps",
-            "commit times are not stored: the strip marks are deduped for rendering",
+            # On the phone as it is (`sample.missing`): FOUND IN THE CAPTURE (2026-09-14),
+            # "the strip marks are deduped for rendering" was on screen.
+            "the server does not keep the time of each commit, only a mark on each session's "
+            "timeline, and marks that land close together are drawn as one",
         )
 
     # ---- days, streak
@@ -1225,8 +1243,8 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         else "no active time"
         if not days
         else "no session had you present, and an unattended run never decides a record",
-        attended_seconds=round(busiest[1]) if busiest else None,
-        active_seconds=round(active_by_day[busiest[0]]) if busiest else None,
+        attended_seconds=plain.rounded(busiest[1]) if busiest else None,
+        active_seconds=plain.rounded(active_by_day[busiest[0]]) if busiest else None,
     )
 
     # ---- the day the most code landed
@@ -1258,7 +1276,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # A model that wrote no output tokens is not part of the mix: the locally generated
     # error and interrupt placeholders carry a model label and no usage at all.
     model_mix = [
-        {"model": mid, "output_tokens": n, "share": round(n / total_out, 4)}
+        {"model": mid, "output_tokens": n, "share": plain.rounded(n / total_out, 4)}
         for mid, n in sorted(tokens.items(), key=lambda kv: (-kv[1], kv[0]))
         if n > 0
     ]
@@ -1298,7 +1316,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             # renders the name from the key (`pricing.FAMILIES`, generated into copy.ts).
             "model": pricing.family(model_id),
             "model_id": model_id,
-            "usd": round(row["usd"], 2),
+            "usd": plain.rounded(row["usd"], 2),
             "output_tokens": row["output_tokens"],
             "sessions": row["sessions"],
             "commits": row["commits"],
@@ -1308,7 +1326,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             # whole spend over commits it only partly earned is how a mixed session makes
             # every model in it look cheap.
             "usd_per_commit": (
-                round(row["usd_dominated"] / row["commits"], 2) if row["commits"] > 0 else None
+                plain.rounded(row["usd_dominated"] / row["commits"], 2) if row["commits"] > 0 else None
             ),
             "commits_basis": "sittings_this_model_wrote_most_of",
         }
@@ -1329,8 +1347,8 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         {
             "rank": i + 1,
             "session_id": s.session_id,
-            "attended_seconds": round(s.attended_seconds),
-            "active_seconds": round(s.active_seconds),
+            "attended_seconds": plain.rounded(s.attended_seconds),
+            "active_seconds": plain.rounded(s.active_seconds),
             "started_at": dt.datetime.fromtimestamp(s.started_at, dt.UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             ),
@@ -1344,7 +1362,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         "prompts": prompt_total,
         "prompts_with_text": len(texts),
         "tool_calls": tool_total,
-        "active_hours": round(active_hours, 2),
+        "active_hours": plain.rounded(active_hours, 2),
         # Days you BUILT, which is not the same as how long the transcripts go back and
         # was being read as though it were. Somebody with two active days a month apart
         # and somebody with two consecutive days both report `days: 2`, and only one of
@@ -1472,7 +1490,7 @@ def archetype(metrics: Mapping[str, dict], sample: Mapping) -> dict:
             scored.append({**rule, "value": None, "score": None})
             continue
         scored.append(
-            {**rule, "value": value, "score": round(min(value / rule["threshold"], 2.0) / 2, 3)}
+            {**rule, "value": value, "score": plain.rounded(min(value / rule["threshold"], 2.0) / 2, 3)}
         )
 
     ranked = sorted(
@@ -1506,7 +1524,7 @@ def archetype(metrics: Mapping[str, dict], sample: Mapping) -> dict:
     damp = min(1.0, sample.get("sessions", 0) / 10.0)
     return {
         "name": top["name"],
-        "confidence": round(min(1.0, 0.4 + 0.6 * margin) * damp, 2),
+        "confidence": plain.rounded(min(1.0, 0.4 + 0.6 * margin) * damp, 2),
         "reason": None,
         "metric": top["metric"],
         "value": top["value"],
@@ -1560,7 +1578,7 @@ def _barren_by_cause(burned: Sequence[SessionFact], barren_total: int) -> list[d
         {
             "cause": cause,
             "tokens": tokens[cause],
-            "share": round(tokens[cause] / barren_total, 3),
+            "share": plain.rounded(tokens[cause] / barren_total, 3),
             "segments": segments[cause],
         }
         for cause in sorted(tokens, key=lambda c: (-tokens[c], c))
@@ -1619,7 +1637,11 @@ BASELINES: dict[str, dict] = {
     "iteration_depth": {
         "value": 16.4,
         "scale": 8.0,
-        "source": "CLAUDE.md reference corpus: 23,838 tool calls over 1,456 typed prompts",
+        "source": (
+            "CLAUDE.md reference corpus: 23,838 tool calls over 1,456 typed prompts, every "
+            "sitting's calls counted, a run nobody was at included, so it sits a little high "
+            "against the attended only metric (`tool_calls_per_prompt`)"
+        ),
     },
     "night_share": {
         "value": 0.25,
@@ -1655,10 +1677,10 @@ def _n(x: float) -> str:
     """A number a person reads out loud: one decimal at most, no trailing .0, thousands
     separated. Rounded FIRST: 4.96 checked for a whole number before rounding printed
     "5.0" (FOUND IN REVIEW)."""
-    x = round(x, 1)
-    if x == int(x):
-        return f"{int(x):,}"
-    return f"{x:,.1f}"
+    d = plain.half_up(x, 1)
+    if d == d.to_integral_value():
+        return f"{int(d):,}"
+    return f"{d:,}"
 
 
 def _count(n: float, one: str, many: str | None = None) -> str:
@@ -1667,14 +1689,16 @@ def _count(n: float, one: str, many: str | None = None) -> str:
 
 
 def _pct(x: float) -> str:
-    return f"{round(x * 100)}%"
+    """A share as a whole percent: `plain.pct`, THE rounding rule (a tie up, read as written)."""
+    return plain.pct(x)
 
 
 def in_ten(share: float) -> int:
     """A share as "N in 10", rounded half UP. `round(0.45 * 10)` is Python's half to even,
     4, and printed "4 in 10" beside a "45%" that rounds the other way; 0.55 and 0.65 both
-    read "6 in 10" (FOUND IN REVIEW). The one rule every "in 10" sentence reads."""
-    return int(share * 10 + 0.5 + 1e-9)
+    read "6 in 10" (FOUND IN REVIEW). The one rule every "in 10" sentence reads, and now the
+    one rule every number reads (`plain.half_up`)."""
+    return int(plain.half_up(share, scale=1))
 
 
 #: A template slot: `{name}` is a number said by `_n`; `{name:noun}` is the number and its
@@ -1743,7 +1767,7 @@ def headline_facts(profile: Mapping) -> list[dict]:
                 "text": text,
                 "value": value,
                 "unit": unit,
-                "unusualness": round(unusual, 3),
+                "unusualness": plain.rounded(unusual, 3),
                 "baseline": None,
                 **extra,
             }

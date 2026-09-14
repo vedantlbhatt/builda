@@ -654,7 +654,7 @@ def _archetype_sentence(name: str, v: float, at_least: bool = False) -> str:
     sentence says what the basis says: "at least".
     """
     if name == "quality_guardian":
-        every = round(60 / v)
+        every = plain.rounded(60 / v)
         about = "at least" if at_least else "about"
         cadence = (
             "more than one a minute"
@@ -722,7 +722,7 @@ def _builder_type(P: Mapping) -> dict:
         # Capped at 99: no rule met its threshold, and 99.6% rounding to "100% of the way
         # there" on a card that says nothing dominates would contradict itself. Not a floor,
         # which reads 2.4 / 3.0 as 79 through float error.
-        part = min(round(100 * closest["value"] / closest["threshold"]), 99)
+        part = min(plain.rounded(100 * closest["value"] / closest["threshold"]), 99)
         floor = "at least " if _is_lower_bound(extras["metric_basis"]) else ""
         return _answer(
             cid,
@@ -794,7 +794,7 @@ def _shipped(
         # author filter, so a teammate's commit counts too (2 of 247 on the corpus).
         sentence = (
             f"{pf._n(c.assisted)} of those commits landed during a session or in the "
-            f"{round(co.LOOKBACK_SEC / 60)} minutes before one."
+            f"{plain.rounded(co.LOOKBACK_SEC / 60)} minutes before one."
         )
     else:
         display = _count(lines, "line")
@@ -1131,7 +1131,7 @@ def _prompt_length(quotable: Sequence[_Prompt]) -> dict:
             cid, unit, basis, len(words), "below_own_words_floor", {"median": None},
             needed=pf.MIN_PROMPTS,
         )  # fmt: skip
-    mean = round(sum(words) / len(words), 1)
+    mean = plain.rounded(sum(words) / len(words), 1)
     median = pf._median(words)
     if median < pf.SHORT_PROMPT_WORDS:
         label = "Mostly terse."
@@ -1174,7 +1174,7 @@ def _deep_sessions(facts: Sequence[pf.SessionFact]) -> dict:
             len(attended),
             {"avg_minutes": None, "longest_minutes": longest},
         )
-    avg = round(sum(f.attended_seconds for f in deep) / len(deep) / 60)
+    avg = plain.rounded(sum(f.attended_seconds for f in deep) / len(deep) / 60)
     sentence = (
         f"Averaging {_minutes(avg)} of focus each."
         if len(deep) > 1
@@ -1203,8 +1203,8 @@ def _time_put_in(facts: Sequence[pf.SessionFact], P: Mapping) -> dict:
             {"attended_hours": None, "attended_overlap_hours": None},
         )  # fmt: skip
     hours = t["total_hours"]
-    attended = round(sum(f.attended_seconds for f in facts) / 3600, 1)
-    overlap = round(_attended_overlap_seconds(facts) / 3600, 1)
+    attended = plain.rounded(sum(f.attended_seconds for f in facts) / 3600, 1)
+    overlap = plain.rounded(_attended_overlap_seconds(facts) / 3600, 1)
     sentence = f"{pf._n(attended)} of those hours {WITH_YOU}."
     if overlap > 0:
         sentence = (
@@ -1354,7 +1354,7 @@ def _cryptic_prompt(quotable: Sequence[_Prompt]) -> tuple[dict, dict | None]:
     after = _tool_calls_after(p)
     card = _answer(
         cid,
-        round(share, 2),
+        plain.rounded(share, 2),
         unit,
         cryptic_display(length),
         cryptic_sentence(length, after, corrected),
@@ -1387,20 +1387,17 @@ def _prompts_per_session(facts: Sequence[pf.SessionFact]) -> dict:
     attended = _attended(facts)
     counts = [f.prompt_count for f in attended]
     median = pf._median(counts)
-    # Over the SAME sessions the value is: the profile's `iteration_depth` divides every
-    # session's tool calls, an unattended run's included, by prompts only attended ones
-    # sent (FOUND IN REVIEW: 12.1 on the corpus against 11.4 over the sessions the card
-    # counts; the 26 unattended sittings add 633 tool calls and no prompt).
-    prompts = sum(counts)
-    tools = sum(sum(f.tool_calls.values()) for f in attended)
-    # The profile's own bars for this ratio: some session with tool counts, and
-    # `MIN_PROMPTS` prompts under it.
-    known = any(f.tool_basis != pf.TOOLS_ABSENT for f in attended)
-    depth = round(tools / prompts, 1) if prompts >= pf.MIN_PROMPTS and known else None
+    # Over the SAME sessions the value is, by the profile's one rule for it
+    # (`profile.tool_calls_per_prompt`, attended sittings on both sides), so this card and
+    # the trend and the server's metric are one number (FOUND IN REVIEW: 12.1 on the corpus
+    # against 11.4 over the sessions the card counts, the 26 unattended sittings adding 633
+    # tool calls and no prompt; FOUND AGAIN IN THE CAPTURE, 2026-09-14: 11.7 here beside
+    # the trend's 12.4 for the same window, until the profile took this rule).
+    depth = pf.tool_calls_per_prompt(attended)["value"]
     extras = {"median": median, "tool_calls_per_prompt": depth}
     if len(attended) < pf.MIN_SESSIONS:
         return _attended_floor(cid, unit, basis, len(attended), extras)
-    mean = round(sum(counts) / len(counts), 1)
+    mean = plain.rounded(sum(counts) / len(counts), 1)
     sentence = (
         f"{_count(depth, 'tool call')} for every prompt you send."
         if depth is not None
@@ -1566,7 +1563,7 @@ def _kind_of_work(sessions: Sequence[pat.SessionEvents], commit_subjects: Sequen
     total = len(commit_subjects)
     counts = collections.Counter(k for k in map(classify_subject, commit_subjects) if k)
     classified = sum(counts.values())
-    coverage = round(classified / total, 3) if total else None
+    coverage = plain.rounded(classified / total, 3) if total else None
     # Which gate the commit labels failed (`KIND_REFUSALS`), and the floor it names: the
     # labelled count, or the coverage in percent.
     if not total:
@@ -1574,7 +1571,7 @@ def _kind_of_work(sessions: Sequence[pat.SessionEvents], commit_subjects: Sequen
     elif classified < KIND_MIN_SUBJECTS:
         commit_code, commit_needed = "too_few_labelled", KIND_MIN_SUBJECTS
     elif classified / total < KIND_MIN_COVERAGE:
-        commit_code, commit_needed = "low_label_coverage", round(KIND_MIN_COVERAGE * 100)
+        commit_code, commit_needed = "low_label_coverage", plain.rounded(KIND_MIN_COVERAGE * 100)
     else:
         commit_code, commit_needed = None, None
 
@@ -1618,9 +1615,9 @@ def _kind_of_work(sessions: Sequence[pat.SessionEvents], commit_subjects: Sequen
     if lines >= lang.MIN_LINES:
         top = sorted(roles, key=lambda r: (-roles[r], plain.ROLES.index(r)))
         r1 = top[0]
-        said = f"{round(100 * roles[r1] / lines)}% of agent lines went to {ROLE_WORD[r1]} files"
+        said = f"{plain.pct(roles[r1] / lines)} of agent lines went to {ROLE_WORD[r1]} files"
         if len(top) > 1:
-            said += f", {round(100 * roles[top[1]] / lines)}% to {ROLE_WORD[top[1]]} files"
+            said += f", {plain.pct(roles[top[1]] / lines)} to {ROLE_WORD[top[1]]} files"
         return _answer(cid, r1, unit, ROLE_DISPLAY[r1], said + ".", KIND_BASIS_LINES, lines, extras)
 
     return _refuse(cid, unit, KIND_BASIS_NEITHER, total, "neither_kind_basis", extras, needed=commit_needed)

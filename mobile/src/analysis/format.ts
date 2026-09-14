@@ -1,5 +1,6 @@
 import type { EndReason, SessionDetail } from '../data/api';
 import type { SessionAnalysis } from '../generated/analysis';
+import { percentOf, pyFixed, pyRound } from '../copy/numbers';
 import { dayLabel } from '../theme';
 
 /**
@@ -12,7 +13,7 @@ import { dayLabel } from '../theme';
 /** 0-1 → "72%". Clamped: a model that writes 1.2 gets 100%, not a lie with a decimal. */
 export function pct(fraction: number): string {
   const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
-  return `${Math.round(f * 100)}%`;
+  return `${percentOf(f)}%`;
 }
 
 /** Enum values are snake_case on the wire; people read "plan mode", not "plan_mode". */
@@ -23,9 +24,9 @@ export function labelize(value: string): string {
 /** "2.5 h" / "8 h" / "40 min". Used where a sentence needs an amount, not a clock reading. */
 export function hoursText(seconds: number): string {
   const s = Math.max(0, seconds);
-  if (s < 3600) return `${Math.round(s / 60)} min`;
-  const h = Math.round((s / 3600) * 10) / 10;
-  return `${h % 1 === 0 ? h.toFixed(0) : h.toFixed(1)} h`;
+  if (s < 3600) return `${pyRound(s / 60)} min`;
+  const h = pyRound(s / 3600, 1);
+  return `${h % 1 === 0 ? pyFixed(h, 0) : pyFixed(h, 1)} h`;
 }
 
 type EndFields = Pick<SessionDetail, 'end_reason' | 'autonomous_seconds' | 'state'>;

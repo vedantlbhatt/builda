@@ -99,8 +99,9 @@ describe('a count up writes every frame the way its resting string is written', 
   });
 
   test('a share counts to the percent Python writes, not to the raw share', () => {
-    // 0.125 is "12%" by half even rounding and 13 by Math.round: the count must land on 12.
-    for (const share of [0.125, 0.435, 0.825, 0.221, 0.189, 0.0, 1.0, 0.005]) {
+    // 0.285 is "29%" by the one rounding rule, and `0.285 * 100` is 28.499999999999996, which a
+    // frame would write as 28: the count must land on 29.
+    for (const share of [0.125, 0.285, 0.435, 0.825, 0.221, 0.189, 0.0, 1.0, 0.005]) {
       const s = numSpec(share * 100, pct(share));
       expect(formatWith(s.fmt, s.value)).toBe(pct(share));
     }
@@ -386,5 +387,99 @@ describe('the spectrum, as this page wears it', () => {
   test('alpha is appended, not guessed', () => {
     expect(withAlpha('#FFB300', 1)).toBe('#FFB300FF');
     expect(withAlpha('#FFB300', 0)).toBe('#FFB30000');
+  });
+});
+
+// ------------------------------------------------------------------ one figure per fact
+
+describe('one figure per fact on one page (FOUND IN THE CAPTURE, 2026-09-14)', () => {
+  const report = B.report!;
+
+  test('night work on the clock is the Mac’s, over the window every other chapter reads', () => {
+    const trend = report.trends.find((t) => t.metric === 'night_share')!;
+    // The server's metric (0.221, every session it holds) is not what the clock says.
+    expect(model.time.clock.nightShare).toBe(trend.now);
+    expect(model.time.clock.night?.final).toBe(pct(trend.now));
+    expect(model.trends.trends.find((t) => t.key === 'night_share')?.nowText).toBe(model.time.clock.night?.final);
+    // The hour beside it is still the server's, and the page says whose each one is.
+    // The fixture's report read Aug 11 to Sep 13 (not inside its 30 day window), and says so.
+    expect(model.time.clock.basis).toBe(
+      "The night share is your Mac's, over Aug 11 to Sep 13, like the rest of this page. The hour you build most is the server's, over all 171 sessions it holds, because your Mac does not send one.",
+    );
+  });
+
+  test('with no night trend in the report, the clock says the server’s and says so', () => {
+    const noTrend = { ...B, report: { ...report, trends: report.trends.filter((t) => t.metric !== 'night_share') } } as BuilderProfileResponse;
+    const m = analysisModel(noTrend, P, NOW);
+    expect(m.time.clock.nightShare).toBe(0.221);
+    expect(m.time.clock.basis).toMatch(/^Both are the server's/);
+  });
+
+  test('What stands out never repeats a number a chapter above says from the Mac', () => {
+    const ids = model.standsOut.facts.map((f) => f.key);
+    for (const id of ['autonomy_score', 'code_velocity', 'iteration_depth', 'model_mix', 'night_share']) expect(ids).not.toContain(id);
+    // What only the server says stays: the tool you call most, its streak, its peak hour, the hours in all.
+    expect(ids).toEqual(['longest_streak_days', 'top_tool', 'peak_hour', 'totals']);
+    expect(model.standsOut.factsSource).toBe(
+      "Ranked by the server, most unusual first, over all 171 sessions it holds. 5 more it ranked are left out, because the chapters above say them from your Mac's report, over the 158 sessions it read.",
+    );
+    const text = strings(model.standsOut).join(' ');
+    expect(text).not.toMatch(/tool calls per prompt|runs without you|of output tokens|lines an hour/);
+  });
+
+  test('with no report, every fact the server ranked is shown', () => {
+    const noReport = { ...B, report: null } as BuilderProfileResponse;
+    expect(analysisModel(noReport, P, NOW).standsOut.facts.map((f) => f.key)).toEqual(B.corpus!.facts.map((f) => f.id));
+  });
+
+  test('instructions that landed clean are the two counts rounded once, a tie up', () => {
+    const p = report.prompting!;
+    const c = model.agentWork.clean;
+    if (isRefused(c)) throw new Error('clean refused');
+    expect(c.num.final).toBe(pct(p.clean! / p.attempts));
+    // The capture's own numbers: 120 of 647 is 18.5%, which is 19%, never 18.
+    const capture = { ...B, report: { ...report, prompting: { clean: 120, costly: 527, reason: null, attempts: 647, clean_share: 0.185 } } } as BuilderProfileResponse;
+    const cc = analysisModel(capture, P, NOW).agentWork.clean;
+    if (isRefused(cc)) throw new Error('clean refused');
+    expect(cc.num.final).toBe('19%');
+  });
+
+  test('what kind of work: each bar is its share of every line, not of the biggest role', () => {
+    const k = model.shipping.kind;
+    if (isRefused(k)) throw new Error('kind refused');
+    const total = k.roles.reduce((s, r) => s + r.lines, 0);
+    for (const r of k.roles) expect(r.share).toBeCloseTo(r.lines / total, 12);
+    expect(k.roles.reduce((s, r) => s + r.share, 0)).toBeCloseTo(1, 12);
+    // Source files, the biggest, are about 70% of the track, never all of it.
+    expect(k.roles[0]!.share).toBeLessThan(0.75);
+    const src = readFileSync(join(__dirname, '../src/insights/sections/Shipping.tsx'), 'utf8');
+    expect(src).toMatch(/<GrowBar frac=\{r\.share\}/);
+    expect(src).not.toMatch(/k\.roles\[0\]\.lines/);
+  });
+});
+
+describe('tool calls a prompt: one rule, and an old report says what differs', () => {
+  test('a report from before the one rule labels its trend beside the card’s number', () => {
+    const t = model.trends.trends.find((x) => x.key === 'iteration_depth')!;
+    const depth = B.report!.wrapped!.cards.find((c) => c.id === 'prompts_per_session')!.extras.tool_calls_per_prompt!;
+    expect(t.nowText).not.toBe(n(depth));
+    expect(t.note).toBe(`Counts runs nobody was at, which the ${n(depth)} a prompt above leaves out.`);
+    for (const other of model.trends.trends.filter((x) => x.key !== 'iteration_depth')) expect(other.note).toBeNull();
+  });
+
+  test('a report computed by the one rule says one number and no note', () => {
+    const r = B.report!;
+    const depth = r.wrapped!.cards.find((c) => c.id === 'prompts_per_session')!.extras.tool_calls_per_prompt!;
+    const same = { ...B, report: { ...r, trends: r.trends.map((t) => (t.metric === 'iteration_depth' ? { ...t, now: depth } : t)) } } as BuilderProfileResponse;
+    const t = analysisModel(same, P, NOW).trends.trends.find((x) => x.key === 'iteration_depth')!;
+    expect(t.nowText).toBe(n(depth));
+    expect(t.note).toBeNull();
+  });
+
+  test('a move is said by the one rounding rule, as trends.headline says it', () => {
+    const t = { ...B.report!.trends[0]!, move: 0.145, direction: 'up' as const };
+    const m = analysisModel({ ...B, report: { ...B.report!, trends: [t] } } as BuilderProfileResponse, P, NOW);
+    expect(m.trends.trends[0]!.words).toBe('up 15%');
+    expect(m.trends.trends[0]!.move?.final).toBe('up 15%');
   });
 });

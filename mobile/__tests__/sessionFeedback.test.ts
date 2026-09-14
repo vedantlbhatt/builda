@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import contract from '../../privacy/upload-contract.json';
 import type { FeedbackNoteWire } from '../src/generated/contract';
-import { heading, minutes, NOTE_IDS, renderable, sentence } from '../src/session/feedback';
+import { heading, minutes, NOTE_IDS, NOWHERE_MAX_SHARE, pageFactsOf, renderable, sentence } from '../src/session/feedback';
+import { feedbackSentence } from '../src/session/summary';
 
 const note = (over: Partial<FeedbackNoteWire> = {}): FeedbackNoteWire => ({
   id: 'went_nowhere',
@@ -106,10 +107,11 @@ describe('minutes, the way a person says them', () => {
     expect(minutes(4500)).toBe('1h 15m');
   });
 
-  test('a tie rounds to even, as Python rounds it, so the phone and the Mac say one duration', () => {
-    // 150 seconds is 2.5 minutes: Python's round() says 2, Math.round said 3.
-    expect(minutes(150)).toBe('2 minutes');
+  test('a tie rounds UP on both sides (the one rule, `plain.half_up`), so the phone and the Mac say one duration', () => {
+    // 150 seconds is 2.5 minutes, a tie: 3, where Python's own round() said 2.
+    expect(minutes(150)).toBe('3 minutes');
     expect(minutes(210)).toBe('4 minutes');
+    expect(minutes(149)).toBe('2 minutes');
   });
 });
 
@@ -124,5 +126,46 @@ describe('the plural of a stretch', () => {
     expect(sentence(note({ count: 3, seconds: 2400 }))).toBe(
       '3 stretches with nothing written, tested or committed, 40 minutes in total.'
     );
+  });
+});
+
+describe('a note never contradicts its own page (shots/now2/61-session-binned-03)', () => {
+  // 60256e3a as the server still holds it: 3h 12m active, +507 lines, 13 commits, and the old
+  // rule's note of 3 stretches, 3h 09m "with nothing written, tested or committed".
+  const binned = {
+    active_seconds: 11567,
+    stats: { commit_count: 13, lines_added_agent: 507 },
+    feedback: [{ id: 'went_nowhere', count: 3, seconds: 11341 }] as FeedbackNoteWire[],
+  };
+
+  test('the old rule\'s note on that sitting is not drawn, and the paragraph does not point at it', () => {
+    expect(renderable(binned.feedback, pageFactsOf(binned))).toEqual([]);
+    expect(feedbackSentence(binned as never)).toBeNull();
+    // Without the page, the note alone still renders: the guard is the page's, not the note's.
+    expect(renderable(binned.feedback)).toHaveLength(1);
+  });
+
+  test('a note that leaves most of the sitting to what landed is drawn, and so is any note on a sitting that landed nothing', () => {
+    const short = { ...binned, feedback: [{ id: 'went_nowhere', count: 2, seconds: 1500 }] as FeedbackNoteWire[] };
+    expect(renderable(short.feedback, pageFactsOf(short)).map((n) => n.seconds)).toEqual([1500]);
+    const idle = { ...binned, stats: { commit_count: 0, lines_added_agent: 0 } };
+    expect(renderable(idle.feedback, pageFactsOf(idle))).toHaveLength(1);
+    // The bound is half the active time, exactly: at it, drawn; past it, not.
+    const at = (seconds: number) => renderable([{ id: 'went_nowhere', count: 1, seconds }], { activeSeconds: 1000, landed: true }).length;
+    expect(at(1000 * NOWHERE_MAX_SHARE)).toBe(1);
+    expect(at(1000 * NOWHERE_MAX_SHARE + 1)).toBe(0);
+  });
+
+  test('the other notes are not held to it: a failure streak or a rewritten file is not a claim that nothing landed', () => {
+    const notes = [
+      { id: 'failed_in_a_row', count: 6, seconds: 11000 },
+      { id: 'one_file_over_and_over', count: 5, seconds: 11000 },
+    ] as FeedbackNoteWire[];
+    expect(renderable(notes, pageFactsOf(binned))).toHaveLength(2);
+  });
+
+  test('an unknown active time or unknown stats never hides a note', () => {
+    expect(renderable(binned.feedback, pageFactsOf({ active_seconds: null, stats: binned.stats }))).toHaveLength(1);
+    expect(renderable(binned.feedback, pageFactsOf({ active_seconds: 11567, stats: null }))).toHaveLength(1);
   });
 });

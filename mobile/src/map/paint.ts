@@ -90,6 +90,55 @@ export const FAIL_INK = DATA.del;
 /** A cell not touched yet in the replay: the outline of a slot. */
 export const SLOT_INK = GROUND.border;
 
+// ------------------------------------------------------------------ one hue, one meaning
+
+/*
+ * Every spectrum hue but coral is a kind of file here (`ROLE_HUE`), and the page's band and its
+ * controls wear the builder's own hue. So the marks that are not a kind of file take what is left.
+ * FOUND IN THE CAPTURE (2026-09-14, 73-map and 74-timelapse): the path, the stuck files, their
+ * rings and the scrubber's bars were all drawn in the builder's hue, the purple of the band, of
+ * the play key and of every build file, so one purple meant five things.
+ *
+ *   the line the agent leaves  the ground's white (`PATH_INK`), the colour of the outline round the
+ *                              file it is on, which is where the line ends.
+ *   the stuck files            `stuckHue`: coral, the one hue no kind of file wears, unless the
+ *                              builder wears it; then the first hue no kind on this map wears.
+ *   the scrubber               neutrals: changes in the dim grey, reads in the faint, failures in
+ *                              the red, the stuck stretch bracketed in the stuck files' hue.
+ */
+
+/** The live path and the replay's trail: the ground's white. */
+export const PATH_INK = GROUND.text;
+
+/** The order the stuck files look for a hue in: coral first, then the warm hues, the kinds of file last. */
+export const STUCK_ORDER: readonly HueName[] = ['coral', 'orchid', 'ember', 'amber', 'heather', 'tide', 'brass', 'iris', 'cobalt'];
+
+/**
+ * The stuck files' hue on a map whose kinds of file are `roles`, on a page whose band wears
+ * `accent`: the first of `STUCK_ORDER` that neither wears. With every hue taken (nine kinds and a
+ * builder), the first that no kind wears, then coral.
+ */
+export function stuckHue(accent: HueName, roles: readonly PlainRole[]): HueName {
+  const kinds = new Set(roles.map((r) => ROLE_HUE[r]).filter((h): h is HueName => h !== null));
+  return STUCK_ORDER.find((h) => h !== accent && !kinds.has(h)) ?? STUCK_ORDER.find((h) => !kinds.has(h)) ?? 'coral';
+}
+
+/** A hue as a person names it, for the legend ("Pulsing in pink"). */
+export const HUE_WORD: Readonly<Record<HueName, string>> = {
+  amber: 'gold',
+  brass: 'yellow',
+  tide: 'cyan',
+  cobalt: 'blue',
+  iris: 'purple',
+  heather: 'lilac',
+  orchid: 'magenta',
+  coral: 'pink',
+  ember: 'orange',
+};
+
+/** The scrubber's bars: what changed in the dim grey, what was only read in the faint one. */
+export const SCRUB_INK = { change: GROUND.dim, read: GROUND.faint } as const;
+
 // ------------------------------------------------------------------ the draw on
 
 /** The draw on's longest spread from the first cell to the last, ms. */

@@ -191,6 +191,11 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
             <Refusal>{view.priceNote}</Refusal>
           </View>
         ) : null}
+        {view.totalNote ? (
+          <View style={styles.after}>
+            <Paragraph style={type.meta}>{view.totalNote}</Paragraph>
+          </View>
+        ) : null}
         {view.priceBasis ? (
           <View style={styles.after}>
             <Paragraph style={type.meta}>{view.priceBasis}</Paragraph>

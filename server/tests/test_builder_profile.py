@@ -330,7 +330,7 @@ def test_what_the_server_cannot_see_is_null_with_a_reason_rather_than_zero(clien
         assert m[key]["value"] is None, key
         assert missing[key], key
     assert "not stored server side" in missing["steer_rate"]
-    assert "allowlist" in missing["tool_diversity"]
+    assert "only the names of common tools" in missing["tool_diversity"]
     # And no fact is ever built on a metric that is null.
     ids = {f["id"] for f in corpus["facts"]}
     assert ids.isdisjoint({"steer_rate", "planning_ratio", "avg_prompt_chars"})
@@ -442,6 +442,9 @@ def test_spend_is_priced_from_the_stored_token_buckets(client, paired):
     from builder.builder_profile import _profile_module
 
     pricing = _profile_module().pricing
+    # THE rounding rule for a number a person reads (`analysis.plain.rounded`, a tie up):
+    # an hour at $40.125 is $40.13, where Python's own `round` said $40.12.
+    rounded = _profile_module().plain.rounded
     uid, headers = paired
     _upload(client, headers, _priced(3), _priced(2))
 
@@ -455,11 +458,11 @@ def test_spend_is_priced_from_the_stored_token_buckets(client, paired):
         + BUCKETS["cache_w1h"] * p.cache_write_1h
     ) / 1_000_000
     spend = m["spend_usd"]
-    assert spend["value"] == round(2 * one, 2), spend
+    assert spend["value"] == rounded(2 * one, 2), spend
     assert spend["n"] == 2 and spend["reason"] is None
     assert spend["basis"] in (pricing.BASIS_LIST_PRICE, "stale_prices")
     assert spend["prices_read_on"] == str(pricing.PRICES_READ_ON)
-    assert m["spend_per_hour_usd"]["value"] == round(2 * one / 2, 2)
+    assert m["spend_per_hour_usd"]["value"] == rounded(2 * one / 2, 2)
 
 
 def test_a_corpus_with_no_token_buckets_refuses_as_not_reported(client, paired):

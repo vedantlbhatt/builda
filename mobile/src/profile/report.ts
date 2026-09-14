@@ -6,6 +6,7 @@ import type {
   ReportQuality,
   ReportTrend,
 } from '../generated/report';
+import { percentOf, pyFixed, pyRound } from '../copy/numbers';
 
 /**
  * Turning the measured report into the words on the screen. NO REACT IN HERE, on purpose:
@@ -21,7 +22,8 @@ import type {
 /** How a trend reads out loud: "up 152%", "down 62%", "steady". */
 export function trendWords(t: ReportTrend): string {
   if (t.direction === 'steady') return 'steady';
-  return `${t.direction} ${Math.round(Math.abs(t.move) * 100)}%`;
+  // The one rounding rule (`copy/numbers`), as `trends.headline` says the same move.
+  return `${t.direction} ${percentOf(Math.abs(t.move))}%`;
 }
 
 /**
@@ -44,15 +46,15 @@ export function trendValues(t: ReportTrend): string {
 
 function num(v: number): string {
   if (v === 0) return '0';
-  if (Math.abs(v) >= 100) return String(Math.round(v));
-  if (Math.abs(v) >= 1) return v.toFixed(1);
-  return v.toFixed(2);
+  if (Math.abs(v) >= 100) return pyFixed(v, 0);
+  if (Math.abs(v) >= 1) return pyFixed(v, 1);
+  return pyFixed(v, 2);
 }
 
 /** m and h, never "0.03 hours". Seconds below a minute round up to one. */
 export function shortDuration(seconds: number): string {
   if (seconds < 60) return '1m';
-  const m = Math.round(seconds / 60);
+  const m = pyRound(seconds / 60);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   const rest = m % 60;

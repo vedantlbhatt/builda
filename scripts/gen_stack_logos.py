@@ -87,7 +87,6 @@ SLUGS: dict[str, str] = {
     "vercel": "vercel",
     "cloudflare": "cloudflare",
     "github_actions": "githubactions",
-    "eas": "expo",  # Expo Application Services wears Expo's mark on expo.dev; it has none of its own
     "fly": "flydotio",
     "prometheus": "prometheus",
     "grafana": "grafana",
@@ -131,12 +130,16 @@ MONOGRAMS: dict[str, tuple[str, str]] = {
     "swiftui": ("SUI", "not in Simple Icons; Swift's mark is a different thing"),
     "react_native_maps": ("RNM", "not in Simple Icons"),
     "aws": ("AWS", "not in Simple Icons"),
+    # Expo Application Services wears Expo's mark on expo.dev and has none of its own. Drawn in it,
+    # the Stack page showed "Expo 26" beside Expo's own 12 (shots/now2/25-stack-02), one mark for
+    # two things with two counts. Its own letters, then.
+    "eas": ("EAS", "no mark of its own; Expo's would read as Expo, whose own count is on the same page"),
     "playwright": ("Pw", "not in Simple Icons"),
     "xctest": ("XCT", "no mark of its own; Xcode's would name a different tool"),
     "maestro": ("Ma", "not in Simple Icons; its `maestro` is Mastercard's debit card"),
     "make": ("Mk", "not in Simple Icons"),
     "cocoapods": ("CP", "Simple Icons' CocoaPods mark is CC BY-NC 4.0, NonCommercial"),
-    "alembic": ("Al", "not in Simple Icons"),
+    "alembic": ("AL", "not in Simple Icons; \"Al\" read as \"AI\" (a lower case l is a capital I in the app's type)"),
     "openai": ("OAI", "not in Simple Icons"),
     "valhalla": ("Va", "not in Simple Icons"),
     "transloc": ("TL", "not in Simple Icons"),

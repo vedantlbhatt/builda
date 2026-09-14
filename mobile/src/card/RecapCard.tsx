@@ -3,13 +3,13 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { human } from '../copy/numbers';
 import { timeOfDay } from '../copy/time';
-import type { SessionDetail } from '../data/api';
 import { HarnessLogo } from '../pixel/HarnessLogo';
 import { HARNESS_LOGOS } from '../pixel/harnessLogos';
 import { TimelineStrip } from '../strip/TimelineStrip';
 import { decodeMarks } from '../strip/decode';
 import { colors, duration, MONO_FAMILY, type Scheme } from '../theme';
 import { useAccent } from '../theme/accent';
+import { CARD_FOOT, headline, type CardModel } from './model';
 
 /**
  * The share card, on the phone.
@@ -33,123 +33,17 @@ import { useAccent } from '../theme/accent';
  * builder's colour, their creature's (`useAccent`). FOUND IN THE FINAL CAPTURE (2026-09-13): it
  * was the one thing left in the retired amber (`surface.accent`) at the foot of every session,
  * in the type from before the rebuild. The strip keeps its data colours: those are the spec's.
- */
-
-export interface CardModel {
-  repoName: string | null;
-  startedAt: number;
-  activeSeconds: number;
-  wallSeconds: number;
-  title: string | null;
-  choreTitle: boolean;
-  prompts: number;
-  filesTouched: number;
-  agentLines: number;
-  commits: number;
-  tokensReported: boolean;
-  totalTokens: number;
-  modelName: string | null;
-  agentLineBucket: string;
-  attribConfidence: string;
-  isPersonalRecord: boolean;
-  strip: string;
-  marks: number[][];
-  shortCode: string;
-  harness: string;
-}
-
-const CHORE_PATTERN =
-  /^(Check|Run|Debug the|Disable|Enable|List|Add file|Say|Clarify|Analyze|Toggle)\b/;
-
-const BUCKET_COPY: Record<string, string> = {
-  almost_all_agent: 'Nearly every line came from',
-  nine_in_ten: '9 of every 10 lines came from',
-  three_in_four: '3 of every 4 lines came from',
-  about_half: 'About half the lines came from',
-  mostly_you: 'Most of these lines are yours',
-};
-
-/**
- * The most remarkable TRUE fact available, in a fixed order of interest.
  *
- * Neither obvious option works alone. A duration is evaluable but not remarkable, and the
- * harness's own title is usually a chore-log entry — reading all 82 on the reference
- * machine turned up "Check backend service running on port 5001" and "Say hi in three
- * words". Leading with either produces a card that reads like a screenshotted ticket.
+ * THE FOOT says Builda, the product's name since the owner renamed it (brief.md, "Owner, 10:50"),
+ * and under the card's own figures the product's one line about itself, never an address: it
+ * said "builder" beside "builder.dev/s/78b653", a link on a domain the product does not have to a
+ * page that does not exist (the server has no public session route). FOUND IN THE CAPTURE PASS
+ * (2026-09-14). The header names a private project as the Projects tab does, by the number this
+ * phone gave it, never by the owner's own name for it: the naming field promises only this phone
+ * knows that, and a card leaves the phone (`copy/repoLabel`, the outside reach).
  */
-export function headline(m: CardModel): string {
-  if (m.isPersonalRecord) return `${duration(m.activeSeconds)}, longest session yet`;
 
-  if (
-    m.attribConfidence !== 'none' &&
-    m.agentLineBucket !== 'unknown' &&
-    m.agentLines >= 200 &&
-    m.modelName
-  ) {
-    const copy = BUCKET_COPY[m.agentLineBucket];
-    if (copy) {
-      // "at least" is not decoration: human edits are counted as events with no line
-      // count, so this is a lower bound. The hedge is also the more impressive phrasing.
-      return m.agentLineBucket === 'mostly_you'
-        ? copy
-        : `${copy} ${m.modelName}, at least`;
-    }
-  }
-
-  if (m.commits >= 5) return `${m.commits} commits`;
-  if (m.agentLines >= 1000) return `+${m.agentLines.toLocaleString()} lines`;
-  if (m.activeSeconds >= 2700) return `${duration(m.activeSeconds)} in one sitting`;
-  if (m.title && !m.choreTitle && m.title.length <= 60) return m.title;
-  return duration(m.activeSeconds);
-}
-
-export function toCardModel(s: SessionDetail, shortCode: string): CardModel {
-  const stats = (s.stats ?? {}) as Record<string, number | string | boolean | null>;
-  const models = (stats.models as { model_id: string }[] | undefined) ?? [];
-  const rawModel = models[0]?.model_id ?? null;
-
-  const started = new Date(s.started_at).getTime() / 1000;
-  const ended = new Date(s.ended_at).getTime() / 1000;
-
-  return {
-    repoName: s.repo_name,
-    startedAt: started,
-    activeSeconds: s.active_seconds,
-    wallSeconds: Math.max(ended - started, s.active_seconds),
-    title: s.title,
-    choreTitle: s.title ? CHORE_PATTERN.test(s.title) : false,
-    prompts: Number(stats.human_prompt_count ?? 0),
-    filesTouched: Number(stats.files_touched ?? 0),
-    agentLines: Number(stats.lines_added_agent ?? 0),
-    commits: Number(stats.commit_count ?? 0),
-    tokensReported: Boolean(stats.tokens_reported),
-    totalTokens:
-      Number(stats.tok_in ?? 0) +
-      Number(stats.tok_out ?? 0) +
-      Number(stats.tok_cache_read ?? 0) +
-      Number(stats.tok_cache_w5m ?? 0) +
-      Number(stats.tok_cache_w1h ?? 0),
-    modelName: shortModelName(rawModel),
-    agentLineBucket: String(stats.agent_line_bucket ?? 'unknown'),
-    attribConfidence: String(stats.attrib_confidence ?? 'none'),
-    isPersonalRecord: false,
-    strip: s.strip?.cols ?? '',
-    marks: s.strip?.marks ?? [],
-    shortCode,
-    harness: s.harness,
-  };
-}
-
-/** "claude-opus-5[1m]" -> "Opus 5". The suffix is preserved on the wire, not on a card. */
-function shortModelName(raw: string | null): string | null {
-  if (!raw) return null;
-  let s = raw.split('[')[0] ?? raw;
-  s = s.replace('claude-', '');
-  return s
-    .split('-')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(' ');
-}
+export { CARD_FOOT, headline, toCardModel, type CardModel } from './model';
 
 const HARNESS_LABEL: Record<string, string> = {
   claude_code: 'Claude Code',
@@ -199,7 +93,7 @@ export function RecapCard({ model, width, scheme = 'dark', accent }: Props) {
   return (
     <View style={[styles.card, { width, height, backgroundColor: c.card, padding: 76 * s }]}>
       <View style={[styles.header, { alignItems: 'center' }]}>
-        <Text style={{ ...mono, fontSize: 30 * s, fontWeight: '600', color: c.text }}>{model.repoName ?? 'private repo'}</Text>
+        <Text style={{ ...mono, fontSize: 30 * s, fontWeight: '600', color: c.text }}>{model.repoLabel}</Text>
         <Text style={{ fontSize: 26 * s, fontWeight: '500', color: c.textDim, marginLeft: 16 * s }}>
           {date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
         </Text>
@@ -254,9 +148,9 @@ export function RecapCard({ model, width, scheme = 'dark', accent }: Props) {
 
       <View style={[styles.header, { marginTop: 'auto', alignItems: 'center' }]}>
         <View style={{ width: 16 * s, height: 16 * s, backgroundColor: mark, marginRight: 10 * s }} />
-        <Text style={{ fontSize: 26 * s, fontWeight: '800', letterSpacing: -0.3 * s, color: c.text }}>builder</Text>
+        <Text style={{ fontSize: 26 * s, fontWeight: '800', letterSpacing: -0.3 * s, color: c.text }}>Builda</Text>
         <View style={{ flex: 1 }} />
-        <Text style={{ ...mono, fontSize: 22 * s }}>{model.shortCode}</Text>
+        <Text style={{ ...mono, fontSize: 22 * s }}>{CARD_FOOT}</Text>
       </View>
     </View>
   );

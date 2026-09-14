@@ -19,12 +19,13 @@
  */
 
 import { commas } from '../copy/numbers';
+import { repoLabel, type RepoNames } from '../copy/repoLabel';
 import { renderTitle } from '../copy/title';
 import type { SessionDetail } from '../data/api';
 import { numSpec, type NumSpec } from '../insights/format';
 import { HARNESS_NAMES, isHarness } from '../pixel/harness';
 import { dayLabel, duration } from '../theme';
-import { heading, renderable, type Note } from './feedback';
+import { heading, pageFactsOf, renderable, type Note } from './feedback';
 import { burnNamesCommits, sessionTitle, summarySentences, type SessionTitle } from './summary';
 import { whenLabel } from './when';
 
@@ -46,7 +47,12 @@ export interface HeroModel {
   live: boolean;
 }
 
-export function heroOf(s: SessionDetail, now: number): HeroModel {
+/**
+ * `names` is `data/repoNames.useRepoNames()`: the repository is named as the Projects tab names
+ * it (`copy/repoLabel`), "Private project 2" rather than "private repo" once the phone has
+ * numbered it.
+ */
+export function heroOf(s: SessionDetail, now: number, names?: RepoNames | null): HeroModel {
   const live = (s.state ?? 'final') === 'live';
   const started = Date.parse(s.started_at);
   const ended = Date.parse(s.ended_at);
@@ -58,7 +64,7 @@ export function heroOf(s: SessionDetail, now: number): HeroModel {
     title: sessionTitle(s),
     active: numSpec(s.active_seconds, duration(s.active_seconds), { kind: 'duration' }),
     caption: live ? 'active so far' : elapsed ? `active of ${elapsed} elapsed` : 'active',
-    repo: s.repo_name ?? 'private repo',
+    repo: repoLabel(s, names),
     harness: s.harness,
     harnessName: harnessLabel(s.harness),
     live,
@@ -107,7 +113,10 @@ export function ledgerOf(s: SessionDetail): LedgerModel {
   const p = st?.human_prompt_count;
   if (typeof p === 'number' && p > 0) lines.push({ key: 'prompts', num: numSpec(p, commas(p)), label: p === 1 ? 'prompt you sent' : 'prompts you sent', tone: null });
 
-  const diff = added !== null && removed !== null && added + removed > 0 ? { addedShare: added / (added + removed) } : null;
+  // Only when BOTH sides counted a line: the transcript sees a removal only in an edit's patch, so
+  // a 0 on one side is not a count, and a bar split at its very end drew "removed 0" beside a
+  // paragraph that no longer says it (60256e3a, whose commits deleted 57 lines; 2026-09-14).
+  const diff = added !== null && removed !== null && added > 0 && removed > 0 ? { addedShare: added / (added + removed) } : null;
   return { lines, diff };
 }
 
@@ -119,7 +128,7 @@ export interface WordsModel {
 }
 
 export function wordsOf(s: SessionDetail): WordsModel {
-  const notes = renderable(s.feedback);
+  const notes = renderable(s.feedback, pageFactsOf(s));
   return { sentences: summarySentences(s), notes, notesHeading: heading(notes) };
 }
 
@@ -163,8 +172,8 @@ export function untitledName(iso: string, now: number): string {
   return `${cap} ${part} session`;
 }
 
-export function rowOf(s: SessionDetail, now: number): RowModel {
+export function rowOf(s: SessionDetail, now: number, names?: RepoNames | null): RowModel {
   const title = renderTitle(s.title_ids) ?? (s.title?.trim() || null) ?? untitledName(s.started_at, now);
-  const meta = [s.repo_name ?? 'private repo', dayLabel(s.started_at, now), s.unattended ? 'on its own' : null].filter(Boolean).join(' · ');
+  const meta = [repoLabel(s, names), dayLabel(s.started_at, now), s.unattended ? 'on its own' : null].filter(Boolean).join(' · ');
   return { id: s.id, title, figure: duration(s.active_seconds), meta, harness: s.harness, harnessName: harnessLabel(s.harness) };
 }

@@ -401,8 +401,8 @@ private struct SessionRows: View {
   }
 }
 
-/// The harness in a row: the owner's mark at 11pt and, when there is room, the short name. A
-/// harness with no mark (Aider) is its name alone.
+/// The harness in a row: the owner's mark at 11pt (Aider's is the phone's pixel glyph) and, when
+/// there is room, the short name. A harness this build has no mark for is its name alone.
 @available(iOS 17.0, *)
 private struct RowHarness: View {
   let d: LiveDisplay

@@ -15,7 +15,7 @@ import { sampleOutcome } from '../src/session/samples';
 import { sessionTitle, summarySentences, timeSentence } from '../src/session/summary';
 import { timeOfDay } from '../src/copy/time';
 import { whenLabel } from '../src/session/when';
-import { HERO, layoutStrip, legendOf, MINI, TRACK_HEIGHT } from '../src/strip/layout';
+import { CORNER, HERO, layoutStrip, legendOf, MINI, TRACK_HEIGHT } from '../src/strip/layout';
 
 const BASE = {
   id: 'abc123',
@@ -131,6 +131,14 @@ describe('the ledger', () => {
     expect(ledgerOf({ ...FINAL, stats: null }).lines).toEqual([]);
   });
 
+  test('a side that counted no line draws no diff bar: its 0 is what the transcript could see, not a count (60256e3a)', () => {
+    // FOUND IN THE DEFECTS PASS (2026-09-14): +507 over a bar split at its very start, "removed 0"
+    // drawn, on a sitting whose commits deleted 57 lines.
+    const l = ledgerOf({ ...FINAL, stats: { ...BASE.stats, lines_added_agent: 507, lines_removed_agent: 0 } });
+    expect(l.lines.map((x) => x.key)).toEqual(['added', 'commits', 'prompts']);
+    expect(l.diff).toBeNull();
+  });
+
   test('zero is left out: a measured zero is no finding here, and the words say what happened', () => {
     const l = ledgerOf({ ...FINAL, stats: { ...BASE.stats, lines_added_agent: 0, lines_removed_agent: 0, commit_count: 0, human_prompt_count: 0 } });
     expect(l.lines).toEqual([]);
@@ -234,6 +242,21 @@ describe('the strip, laid out once for every drawing', () => {
     for (const r of l.rects) expect(r.y + r.h).toBeCloseTo(floorY, 9);
     // A prompting column is a full height tick; full density agent work is the full lane too.
     expect(Math.max(...l.rects.map((r) => r.h))).toBe(MINI.activity);
+  });
+
+  test('a mark at the first or last moment is drawn whole: no corner radius clips the bar presets', () => {
+    // FOUND IN THE DEFECTS PASS (2026-09-14): the track's rounded clip cut the first mark of every
+    // Sessions row and of the session page's strip to half its width, with a rounded top.
+    expect(CORNER.mini).toBe(0);
+    expect(CORNER.hero).toBe(0);
+    for (const preset of ['mini', 'hero'] as const) {
+      const l = layoutStrip(strip(), [{ ms: 0, kind: 0 }, { ms: 1000, kind: 0 }], 1000, preset, 'dark', 300);
+      const g = preset === 'mini' ? MINI : HERO;
+      expect(l.marks.map((m) => [m.x, m.w])).toEqual([
+        [0, g.mark],
+        [300 - g.mark, g.mark],
+      ]);
+    }
   });
 
   test('the row preset is a flat texture, merged into runs, with no floor', () => {

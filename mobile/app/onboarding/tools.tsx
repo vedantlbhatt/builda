@@ -23,6 +23,7 @@ import { useAccent } from '../../src/theme/accent';
 import { space } from '../../src/theme';
 import { LogoLoop, type LoopItem } from '../../src/ui/bits/effects/LogoLoop';
 import { T } from '../../src/ui';
+import { useReduceMotion } from '../../src/ui/motion';
 
 /** The marks in the drifting row (32pt, a whole-cell size for Aider's pixel glyph), and the room between them. */
 const LOOP_MARK = 32;
@@ -53,6 +54,7 @@ export default function ToolsStep() {
   const inset = useBandInset();
   const { width } = useWindowDimensions();
   const landed = useLanded(true, LAND_FALLBACK_MS);
+  const reduced = useReduceMotion();
   const found = useMemo(() => foundFor(facts.counts), [facts.counts]);
   const marks = useMemo(() => marksInOrder(HARNESS_MARKS, found), [found]);
   const [selected, setSelected] = useState<Harness[] | null>(null);
@@ -163,8 +165,10 @@ export default function ToolsStep() {
           </BandWords>
         </View>
       )}
-      {/* Edge to edge, so the marks drift in from one side of the screen and off the other. */}
-      <View style={{ marginHorizontal: -GUTTER, marginTop: space.md }}>
+      {/* Edge to edge, so the marks drift in from one side of the screen and off the other. Still
+          (Reduce Motion), the row wraps and stands inside the gutter: edge to edge it began at the
+          screen's own edge and cut the first mark in half (shots/now2/50-onboarding-04). */}
+      <View style={{ marginHorizontal: reduced ? 0 : -GUTTER, marginTop: space.md }}>
         <LogoLoop items={loop} gap={LOOP_GAP} height={LOOP_MARK} accessibilityLabel={readsList(HARNESS_MARKS.map((m) => m.name))} />
       </View>
     </StepBand>

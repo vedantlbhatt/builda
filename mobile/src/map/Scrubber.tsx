@@ -1,9 +1,10 @@
 /**
  * The time lapse's scrubber: the session as TRACK_BINS bars of activity on the warm ground, each
- * stacked by what happened (changes in the session's ink, failures in the one red, reads in the
- * session's partner tone: the map's own meanings), what has played in those colours and what has
- * not in `border`, a bracket over the knot and one over the burst, a tick under each spike, and
- * the playhead.
+ * stacked by what happened (changes in the dim grey, failures in the one red, reads in the faint
+ * grey: `paint.SCRUB_INK`, neutrals, because every hue on the map above is a kind of file, the
+ * builder's own is the band and the play key, and the stuck files have theirs), what has played in
+ * those colours and what has not in `border`, a bracket over the knot in the stuck files' hue and
+ * one over the burst in white, a tick under each spike, and the playhead.
  *
  * It draws on when its block arrives: the bars grow from the baseline left to right on the
  * page's spring, a bar every 8 ms, then stand still; the playhead and the brackets land last.
@@ -26,6 +27,7 @@ import { DATA, GROUND } from '../insights/palette';
 import { useClock } from '../insights/reveal';
 import { select } from '../ui/haptics';
 import type { TrackBin } from './frames';
+import { SCRUB_INK } from './paint';
 
 /**
  * The scrubber's height: a 15pt label line, the brackets under it (clear of the playhead's
@@ -57,9 +59,8 @@ export interface ScrubberProps {
   playhead: SharedValue<number>;
   knot: Stretch | null;
   burst: Stretch | null;
-  /** The session's hue: changes in its ink, reads in its partner. */
-  ink: string;
-  partner: string;
+  /** The stuck files' ink (`paint.stuckHue`): the bracket over the knot and its word. */
+  stuck: string;
   onScrubStart: () => void;
   onScrubEnd: () => void;
   /** VoiceOver's value and its two steps. */
@@ -67,7 +68,7 @@ export interface ScrubberProps {
   onStep: (direction: 1 | -1) => void;
 }
 
-export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink, partner, onScrubStart, onScrubEnd, valueText, onStep }: ScrubberProps) {
+export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, stuck, onScrubStart, onScrubEnd, valueText, onStep }: ScrubberProps) {
   const clock = useClock();
   const n = bins.length;
   const barW = width / Math.max(1, n);
@@ -83,7 +84,7 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink
       return [edit, fail, total - edit - fail];
     });
   }, [bins]);
-  const inks = useMemo(() => [ink, DATA.del, partner], [ink, partner]);
+  const inks = useMemo(() => [SCRUB_INK.change, DATA.del, SCRUB_INK.read], []);
   const unplayed = GROUND.border;
   const text = GROUND.text;
   const dim = GROUND.dim;
@@ -112,6 +113,7 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink
     const off = Skia.Color(unplayed);
     const on = Skia.Color(text);
     const tickColor = Skia.Color(dim);
+    const knotColor = Skia.Color(stuck);
     const last = ease(phase(t, landed - 200, 300));
     return createPicture(
       (canvas) => {
@@ -131,8 +133,9 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink
           }
         }
         if (last <= 0) return;
-        paint.setColor(on);
+        paint.setColor(knotColor);
         if (knotX) canvas.drawRect(Skia.XYWHRect(knotX[0]!, BRACKET_Y, (knotX[1]! - knotX[0]!) * last, 2), paint);
+        paint.setColor(on);
         if (burstX) canvas.drawRect(Skia.XYWHRect(burstX[0]!, BRACKET_Y, (burstX[1]! - burstX[0]!) * last, 2), paint);
         paint.setColor(tickColor);
         for (const x of spikeX) canvas.drawRect(Skia.XYWHRect(x - 1, TICK_Y + 4 * (1 - last), 2, 4 * last), paint);
@@ -145,7 +148,7 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink
       },
       { width, height: SCRUBBER_HEIGHT },
     );
-  }, [width, span, stacks, barW, knotX, burstX, spikeX, inks, landed]);
+  }, [width, span, stacks, barW, knotX, burstX, spikeX, inks, landed, stuck]);
 
   // ---------------------------------------------------------------- the finger
   const seek = (x: number, feel: boolean) => {
@@ -186,12 +189,12 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink
     });
   const gesture = Gesture.Exclusive(pan, tap);
 
-  const label = (x: number, word: string, key: string) => (
+  const label = (x: number, word: string, key: string, color?: string) => (
     <Text
       key={key}
       allowFontScaling={false}
       numberOfLines={1}
-      style={[type.label, styles.label, { left: Math.max(0, Math.min(width - 48, x)) }]}
+      style={[type.label, styles.label, { left: Math.max(0, Math.min(width - 48, x)) }, color ? { color } : null]}
     >
       {word}
     </Text>
@@ -211,7 +214,7 @@ export function Scrubber({ width, bins, spikes, span, playhead, knot, burst, ink
         <Canvas style={{ width, height: SCRUBBER_HEIGHT }}>
           <Picture picture={picture} />
         </Canvas>
-        {knotX ? label(knotX[0]!, 'stuck', 'knot') : null}
+        {knotX ? label(knotX[0]!, 'stuck', 'knot', stuck) : null}
         {burstX && (!knotX || burstX[0]! - knotX[0]! > 52) ? label(burstX[0]!, 'burst', 'burst') : null}
       </View>
     </GestureDetector>

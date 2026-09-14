@@ -58,3 +58,27 @@ export const DASH = /[—–―−]|\s-{1,2}\s/;
 export function hasDash(text: string): boolean {
   return DASH.test(text);
 }
+
+/**
+ * THE ONE WAY FACTS SHARE A LINE: "gt-transit · yesterday · on its own". The space before each
+ * dot is a no break space (U+00A0), so the dot stays at the end of the fact before it and a line
+ * that wraps breaks after "· ", never before it: no line can start with a dot. FOUND IN THE
+ * CAPTURE PASS (2026-09-14): a meta line wrapped and its second line began with "·". Empty and
+ * missing facts are left out rather than joined as nothing.
+ */
+export const DOT_JOIN = `${String.fromCharCode(0xa0)}· `;
+
+export function dotted(parts: readonly (string | null | undefined | false)[]): string {
+  return parts.filter((p): p is string => typeof p === 'string' && p.trim() !== '').join(DOT_JOIN);
+}
+
+/**
+ * Words already joined with " · " (a string the engine or a model wrote), given the same no break
+ * space before each dot as `dotted`, so the text components can apply the rule to whatever they
+ * are handed. A string, or the strings in an array of children; anything else is left as it is.
+ */
+export function keepDots<N>(node: N): N {
+  if (typeof node === 'string') return (node.includes(' · ') ? node.split(' · ').join(DOT_JOIN) : node) as N;
+  if (Array.isArray(node)) return node.map((c) => keepDots(c)) as N;
+  return node;
+}

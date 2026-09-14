@@ -282,8 +282,8 @@ function StepperBlock() {
 function SpotlightBlock({ width }: { width: number }) {
   const half = (width - layout.tileGap) / 2;
   const tiles: readonly { hue: HueName; creature: Animal; repo: string; line: string }[] = [
-    { hue: 'tide', creature: 'whale', repo: 'builder', line: 'Rewriting the auth middleware.' },
-    { hue: 'orchid', creature: 'cat', repo: 'gt-transit', line: 'Stuck on one failing import.' },
+    { hue: 'tide', creature: 'whale', repo: 'lantern', line: 'Rewriting the auth middleware.' },
+    { hue: 'orchid', creature: 'cat', repo: 'tramline', line: 'Stuck on one failing import.' },
   ];
   return (
     <Block title="SpotlightCard" note="press and slide: a pool of pixels in the tile's hue">
@@ -394,15 +394,15 @@ interface Decision {
 }
 
 const DECISIONS: readonly Decision[] = [
-  { id: 'd1', creature: 'fox', title: 'Kept the retry inside the client', meta: 'builder, 2m ago' },
-  { id: 'd2', creature: 'whale', title: 'Moved the cache key to the session id', meta: 'builder, 9m ago' },
-  { id: 'd3', creature: 'bee', title: 'Dropped the second parser', meta: 'gt-transit, 21m ago' },
-  { id: 'd4', creature: 'owl', title: 'Split the migration in two', meta: 'gt-transit, 40m ago' },
+  { id: 'd1', creature: 'fox', title: 'Kept the retry inside the client', meta: 'lantern, 2m ago' },
+  { id: 'd2', creature: 'whale', title: 'Moved the cache key to the session id', meta: 'lantern, 9m ago' },
+  { id: 'd3', creature: 'bee', title: 'Dropped the second parser', meta: 'tramline, 21m ago' },
+  { id: 'd4', creature: 'owl', title: 'Split the migration in two', meta: 'tramline, 40m ago' },
 ];
 
 const MORE: readonly Decision[] = [
-  { id: 'd5', creature: 'octopus', title: 'Pinned the SDK to 53', meta: 'builder, just now' },
-  { id: 'd6', creature: 'crab', title: 'Wrote the test before the fix', meta: 'builder, just now' },
+  { id: 'd5', creature: 'octopus', title: 'Pinned the SDK to 53', meta: 'lantern, just now' },
+  { id: 'd6', creature: 'crab', title: 'Wrote the test before the fix', meta: 'lantern, just now' },
 ];
 
 function ListBlock() {

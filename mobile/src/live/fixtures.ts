@@ -7,12 +7,14 @@
  * five finished sessions, so the engine refuses it an ETA ("5 finished sessions on this
  * repository, 10 needed"); RideGT has 148 with a median of 20.9 active minutes. The ids are
  * fixed, so opening the link with state=working and then state=needsYou moves the SAME session
- * into needs you, which is what makes the alert fire.
+ * into needs you, which is what makes the alert fire. The repositories carry the sample's
+ * invented names (`mission.SAMPLE_REPOS`), never those two real ones.
  *
  * Pure, so the debug route and `__tests__/liveSurface.test.ts` share one set.
  */
 
 import type { SessionDetail } from '../data/api';
+import { SAMPLE_REPOS } from './mission';
 import type { LiveStateWire } from './sentence';
 
 export const DEBUG_STATES = ['working', 'needsYou', 'done', 'stalled'] as const;
@@ -173,7 +175,7 @@ export function debugSessions(state: DebugState, n: number, nowMs: number): Debu
   const liveStates: Record<string, LiveStateWire> = {};
 
   // 1. This repository, 47 minutes in: the session that builds the live surfaces.
-  const builder = detail('debug-builder', 'builder', 'claude_code', 47, nowMs, { files_touched: 23, lines_added_agent: 1180, commit_count: 2 });
+  const builder = detail('debug-builder', SAMPLE_REPOS.tool, 'claude_code', 47, nowMs, { files_touched: 23, lines_added_agent: 1180, commit_count: 2 });
   if (state === 'done') {
     finished.push({
       ...builder,
@@ -217,7 +219,7 @@ export function debugSessions(state: DebugState, n: number, nowMs: number): Debu
 
   // 2. RideGT, twelve minutes into a run that typically takes 21: an ETA the engine stands behind.
   if (n >= 2) {
-    const s = detail('debug-ridegt', 'RideGT', 'claude_code', 12, nowMs, { files_touched: 9, lines_added_agent: 214 });
+    const s = detail('debug-tramline', SAMPLE_REPOS.transit, 'claude_code', 12, nowMs, { files_touched: 9, lines_added_agent: 214 });
     sessions.push(s);
     liveStates[s.id] = {
       session_id: s.id,
@@ -236,7 +238,7 @@ export function debugSessions(state: DebugState, n: number, nowMs: number): Debu
 
   // 3. RideGT under Codex, stuck on one failing command for six minutes.
   if (n >= 3) {
-    const s = detail('debug-ridegt-codex', 'RideGT', 'codex', 28, nowMs, { files_touched: 11, lines_added_agent: 96 });
+    const s = detail('debug-tramline-codex', SAMPLE_REPOS.transit, 'codex', 28, nowMs, { files_touched: 11, lines_added_agent: 96 });
     sessions.push(s);
     liveStates[s.id] = {
       session_id: s.id,
@@ -255,7 +257,7 @@ export function debugSessions(state: DebugState, n: number, nowMs: number): Debu
 
   // 4. This repository again, three minutes into a Gemini session that is reading the docs.
   if (n >= 4) {
-    const s = detail('debug-builder-gemini', 'builder', 'gemini_cli', 3, nowMs, { files_touched: 4 });
+    const s = detail('debug-builder-gemini', SAMPLE_REPOS.tool, 'gemini_cli', 3, nowMs, { files_touched: 4 });
     sessions.push(s);
     liveStates[s.id] = {
       session_id: s.id,

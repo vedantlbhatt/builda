@@ -54,6 +54,7 @@ import {
   STAGE,
   STORY_COPY,
   flapLayout,
+  gridLabel,
   heroOf,
   type CardType,
   type CardVariant,
@@ -667,7 +668,7 @@ export function GridCard({ item, hue, width, height, number }: { item: DeckItem;
         <Text maxFontSizeMultiplier={1.2} numberOfLines={3} style={styles.gridQuestion}>
           {item.face.question}
         </Text>
-        <GridAnswer hero={hero} inner={inner} />
+        <GridAnswer hero={hero} label={gridLabel(hero, item.face)} inner={inner} />
       </View>
       <View style={styles.fill} onLayout={onArt}>
         {art && box && field && spec ? (
@@ -680,13 +681,21 @@ export function GridCard({ item, hue, width, height, number }: { item: DeckItem;
   );
 }
 
-function GridAnswer({ hero, inner }: { hero: StoryHero; inner: number }) {
+function GridAnswer({ hero, label, inner }: { hero: StoryHero; label: string | null; inner: number }) {
   if (hero.kind === 'count') {
     const size = fitSize(hero.spec.final, inner, 44, 18);
     return (
-      <Text allowFontScaling={false} style={figure(size, ON_BAND, HERO_WEIGHT)}>
-        {hero.spec.final}
-      </Text>
+      <View>
+        <Text allowFontScaling={false} style={figure(size, ON_BAND, HERO_WEIGHT)}>
+          {hero.spec.final}
+        </Text>
+        {/* What the number counts, as the story card says it under its own. */}
+        {label ? (
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.gridLabel}>
+            {label}
+          </Text>
+        ) : null}
+      </View>
     );
   }
   if (hero.kind === 'refusal') {
@@ -724,4 +733,5 @@ const styles = StyleSheet.create({
   gridQuestion: { fontSize: 12, lineHeight: 15, fontWeight: '600', color: ON_BAND },
   gridWords: { fontSize: 20, lineHeight: 22, fontWeight: '800', letterSpacing: -0.4, color: ON_BAND },
   gridRefusal: { fontSize: 12, lineHeight: 15, fontWeight: '700', color: ON_BAND },
+  gridLabel: { fontSize: 13, lineHeight: 16, fontWeight: '700', letterSpacing: -0.1, color: ON_BAND, marginTop: 1 },
 });

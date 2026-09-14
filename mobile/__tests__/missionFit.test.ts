@@ -39,6 +39,8 @@ describe('the measure a word is set in', () => {
     expect(unbreakableRuns('not updating')).toEqual(['not', 'updating']);
     expect(unbreakableRuns('gt-transit')).toEqual(['gt-', 'transit']);
     expect(unbreakableRuns('apps/web  builder')).toEqual(['apps/', 'web', 'builder']);
+    // A no-break space holds a private project's number to its words: one run, not two.
+    expect(unbreakableRuns('Private project\u00a02')).toEqual(['Private', 'project\u00a02']);
     expect(unbreakableRuns('')).toEqual([]);
   });
 
@@ -92,7 +94,7 @@ describe('every state word, every tile, every phone, every text size', () => {
   });
 
   test('a repository name and a sentence are held to the same rule', () => {
-    const repos = ['builder', 'gt-transit', 'private repo', 'RideGT', 'overnightanalysisworkspace'];
+    const repos = ['builder', 'gt-transit', 'private repo', 'Private project\u00a02', 'Private project\u00a012', 'RideGT', 'overnightanalysisworkspace'];
     const sentences = ['Stuck on the same failing command for twenty minutes', 'Rewriting a source file, third attempt', 'Waiting on you for four minutes'];
     for (const screen of SCREENS) {
       for (const variant of VARIANTS) {

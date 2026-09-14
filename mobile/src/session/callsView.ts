@@ -26,7 +26,7 @@
 import { countsRead } from '../copy/burn';
 import { PRICES_READ_ON } from '../copy/catalog';
 import { dollars, readOn } from '../copy/money';
-import { capital, commas, floorMins, human, mins } from '../copy/numbers';
+import { capital, commas, floorMins, human, mins, shareWords } from '../copy/numbers';
 import type { CallRewriteRead, CallTokensRead, SessionDetail } from '../data/api';
 import type { SessionCallPoint } from '../generated/contract';
 import type { HueName } from '../theme';
@@ -132,6 +132,8 @@ export type CallsView =
       shares: ShareBar[];
       /** Why the price bar is missing, when it is. */
       priceNote: string | null;
+      /** Why these totals differ from burn's band above, when they do (never, as measured). */
+      totalNote: string | null;
       /** "What these tokens would cost at API list prices, read Sep 6. On a subscription ..." */
       priceBasis: string | null;
       /** Two or three sentences: why re-reading dominates, from this session's numbers. */
@@ -196,11 +198,17 @@ export function axisOf(bars: readonly CallBar[], calls: number): { index: number
   return [...new Set(at)].map((i) => ({ index: i, label: i === 0 ? 'call 1' : i === n - 1 ? commas(calls) : commas(bars[i]!.first) }));
 }
 
-/** "one bar per call", "each bar the average of 6 calls", "each bar the average of 6 calls, the last of 4". */
+/**
+ * "one bar per call", "each bar the average of 6 calls", "each bar the average of 6 calls, the last
+ * of 4", and "and the last bar a single call" where it holds one (it read "the last of 1", 60256e3a).
+ */
 export function eachBarWords(per: number, calls: number): string {
   if (per <= 1) return 'one bar per call';
   const rest = calls % per;
-  return rest ? `each bar the average of ${commas(per)} calls, the last of ${commas(rest)}` : `each bar the average of ${commas(per)} calls`;
+  if (!rest) return `each bar the average of ${commas(per)} calls`;
+  return rest === 1
+    ? `each bar the average of ${commas(per)} calls, and the last bar a single call`
+    : `each bar the average of ${commas(per)} calls, the last of ${commas(rest)}`;
 }
 
 /** How long a lifetime is, as a person says it: "an hour", "five minutes". */
@@ -278,40 +286,80 @@ export function rewriteWords(b: CallTokensRead, span: number | null = null): str
   return lines.join(' ');
 }
 
+/** A share as the whole percent `shareWords` prints for it ("over 99%" is 100 here, set back to words at the end). */
+function ownPercent(share: number): number {
+  const said = shareWords(share);
+  const m = /^(\d+)%$/.exec(said);
+  if (m) return Number(m[1]);
+  return said.startsWith('over') ? 100 : 0;
+}
+
 /**
- * Whole percents for parts of one total that add up to 100 (largest remainder), in the house's
- * words at the ends: a part under half a percent is "under 1%" and takes no share of the
- * remainder, a part the rounding leaves at 0 is "under 1%" too, and a part short of all of it is
- * "over 99%", never "100%". FOUND IN REVIEW (2026-09-13): each part rounded on its own, so 6 of
- * 149 token bars and 27 price bars did not add up (`7b2550af` read 75%, 13% and 13%).
+ * Whole percents for parts of one total, in the house's words at the ends: a part under half a
+ * percent is "under 1%", a part the rounding leaves at 0 is "under 1%" too, and a part short of
+ * all of it is "over 99%", never "100%".
+ *
+ * Each part is first said as `shareWords` says a share anywhere else on the page, and moved by a
+ * point only when the whole numbers would otherwise miss what they stand for by a point or more:
+ * three parts of 75%, 12.5% and 12.5% are 75%, 13% and 12%, never 75%, 13% and 13%. FOUND IN
+ * REVIEW (2026-09-13): each part rounded on its own, so 6 of 149 token bars and 27 price bars did
+ * not add up (`7b2550af` read 75%, 13% and 13%). FOUND IN THE DEFECTS PASS (2026-09-14): the
+ * largest remainder that replaced it gave a part under half a percent none of the remainder, so
+ * a re-read of 98.49% took the point that part left and read 99% on a bar under a band and a
+ * paragraph saying 98% of the same 134,156,212 tokens (`60256e3a`). Parts said "under 1%" hold
+ * what the whole numbers leave, so 98%, 1% and "under 1%" is left as it is.
+ *
+ * `pinned`: a part that must read exactly as `shareWords` says it, because the same share is said
+ * elsewhere on the screen; the other parts take any point that has to move.
  */
-export function percentWords(values: readonly number[]): string[] {
+export function percentWords(values: readonly number[], pinned: number | null = null): string[] {
   const total = values.reduce((t, v) => t + Math.max(0, v), 0);
   if (!(total > 0)) return values.map(() => '0%');
   const share = values.map((v) => Math.max(0, v) / total);
   const tiny = share.map((s) => s > 0 && s < 0.005);
-  const quota = share.map((s, i) => (tiny[i] ? 0 : s * 100));
-  const pct = quota.map((q) => Math.floor(q));
-  let rest = 100 - pct.reduce((t, p) => t + p, 0);
-  const order = quota
-    .map((q, i) => ({ i, r: q - Math.floor(q), q }))
-    .filter((x) => !tiny[x.i] && share[x.i]! > 0)
-    .sort((a, b) => b.r - a.r || b.q - a.q || a.i - b.i);
-  for (const x of order) {
-    if (rest <= 0) break;
-    pct[x.i]! += 1;
-    rest -= 1;
+  const numeric = share.map((s, i) => s > 0 && !tiny[i]);
+  const quota = share.map((s) => s * 100);
+  const pct = share.map((s, i) => (numeric[i] ? ownPercent(s) : 0));
+  // What the whole numbers stand for: everything but the parts said in words.
+  const target = quota.reduce((t, q, i) => t + (numeric[i] ? q : 0), 0);
+  const movable = pct.map((_, i) => i).filter((i) => numeric[i] && i !== pinned);
+  for (let guard = 0; guard < values.length * 2; guard++) {
+    const said = pct.reduce((t, p) => t + p, 0);
+    if (said - target >= 1 - 1e-9) {
+      // One point too many: from the part rounded up the most (a tie, the last of them).
+      const i = movable.filter((k) => pct[k]! > 0).sort((a, b) => pct[b]! - quota[b]! - (pct[a]! - quota[a]!) || b - a)[0];
+      if (i === undefined) break;
+      pct[i]! -= 1;
+    } else if (target - said >= 1 - 1e-9) {
+      // One point short: to the part rounded down the most (a tie, the first of them).
+      const i = movable.sort((a, b) => quota[b]! - pct[b]! - (quota[a]! - pct[a]!) || a - b)[0];
+      if (i === undefined) break;
+      pct[i]! += 1;
+    } else {
+      break;
+    }
   }
   return pct.map((p, i) => {
+    if (i === pinned && share[i]! > 0) return shareWords(share[i]!);
     if (share[i]! > 0 && (tiny[i] || p === 0)) return 'under 1%';
     if (p >= 100 && share[i]! < 1) return 'over 99%';
     return `${p}%`;
   });
 }
 
-function segments(read: number, fresh: number, reply: number, harness: string): ShareSegment[] {
+/**
+ * A bar's three parts. `pinRead`: the re-read reads exactly as `shareWords` says it, because the
+ * burn band and the paragraph above say the same share of the same tokens (MEASURED, 2026-09-14:
+ * burn's total and this block's are equal on all 152 of the overnight stack's sessions that carry
+ * both), so the page says one number for it.
+ */
+function segments(read: number, fresh: number, reply: number, harness: string, pinRead = false): ShareSegment[] {
   const parts = ([['read', read], ['fresh', fresh], ['reply', reply]] as const).filter(([, v]) => v > 0);
-  const said = percentWords(parts.map(([, v]) => v));
+  const pin = pinRead ? parts.findIndex(([p]) => p === 'read') : -1;
+  const said = percentWords(
+    parts.map(([, v]) => v),
+    pin >= 0 ? pin : null,
+  );
   const words: Record<CallPart, string> = { read: 're-read', fresh: 'new', reply: `${modelWord(harness)}'s reply` };
   return parts.map(([part, v], i) => ({ part, value: v, share: said[i]!, text: `${words[part]} ${said[i]}` }));
 }
@@ -324,6 +372,34 @@ function priced(b: CallTokensRead): b is CallTokensRead & { usd_cache_read: numb
 /** A share bar's own word for one part, so a sentence says the number the bar shows. */
 function wordFor(bar: ShareBar | undefined, part: CallPart): string | null {
   return bar?.segments.find((g) => g.part === part)?.share ?? null;
+}
+
+/**
+ * How an expired cache mark is drawn over its bar, so it can never be read as the bar's height:
+ * its words at the top, a DOTTED leader in the chart's neutral ink (never a bar's hue, never a
+ * bar's width) from the words down to a small caret, and the caret's tip `MARK_GAP` points above
+ * the bar's own top, so the bar ends where it ends. FOUND IN THE DEFECTS PASS (2026-09-14): the
+ * mark was a solid one point stem in the bar's amber from the bar's top to the words, beside bars
+ * a point and a half wide, so call 211 of `78b653a5` read as the tallest bar, about 330k, where it
+ * sent 118,886, and "9h 34m away" on `60256e3a` read as a bar of about 950k.
+ */
+export const MARK_GAP = 3;
+export const CARET_H = 4;
+export const CARET_W = 7;
+
+export interface MarkShape {
+  /** The dotted leader's two ends, top first; null when the bar's top is too near the words for one. */
+  leader: [number, number] | null;
+  /** The caret: its flat top and its tip, which points at the bar and never touches it. */
+  caret: { top: number; tip: number };
+}
+
+/** `top`: where the words end; `peak`: the bar's drawn top (y grows downward). */
+export function markShape(top: number, peak: number): MarkShape {
+  const tip = peak - MARK_GAP;
+  const caretTop = tip - CARET_H;
+  const leaderEnd = caretTop - 2;
+  return { leader: leaderEnd - top >= 3 ? [top, leaderEnd] : null, caret: { top: caretTop, tip } };
 }
 
 /**
@@ -354,7 +430,7 @@ export function placeMarkLabels(
 }
 
 /** The chapter, from a session's block. */
-export function callsView(s: Pick<SessionDetail, 'call_tokens' | 'harness'> & Partial<Pick<SessionDetail, 'started_at' | 'ended_at'>>): CallsView {
+export function callsView(s: Pick<SessionDetail, 'call_tokens' | 'harness'> & Partial<Pick<SessionDetail, 'started_at' | 'ended_at' | 'burn'>>): CallsView {
   const b = s.call_tokens;
   if (b == null) return { kind: 'absent', sentence: CALLS_ABSENT };
   if (b.reason != null || !b.points || !b.points.length || b.calls == null || b.per_point == null) {
@@ -383,9 +459,16 @@ export function callsView(s: Pick<SessionDetail, 'call_tokens' | 'harness'> & Pa
   const read = bars.reduce((t, x) => t + x.read, 0);
   const fresh = bars.reduce((t, x) => t + x.fresh, 0);
   const reply = bars.reduce((t, x) => t + x.reply, 0);
-  const tokens: ShareBar = { key: 'tokens', label: 'Tokens', total: human(read + fresh + reply), segments: segments(read, fresh, reply, s.harness) };
+  const tokens: ShareBar = { key: 'tokens', label: 'Tokens', total: human(read + fresh + reply), segments: segments(read, fresh, reply, s.harness, true) };
   const shares: ShareBar[] = [tokens];
   let priceNote: string | null = null;
+  // Burn's band above counts the same session's tokens; where the two totals ever part, the
+  // shares are of two totals and the page says so rather than showing two figures in silence.
+  const burnTokens = s.burn && s.burn.reason == null && typeof s.burn.tokens === 'number' ? s.burn.tokens : null;
+  const totalNote =
+    burnTokens !== null && human(burnTokens) !== tokens.total
+      ? `Counted call by call, so these can differ from the ${human(burnTokens)} tokens under where the tokens went.`
+      : null;
   let priceBasis: string | null = null;
   if (priced(b)) {
     const usdFresh = b.usd_cache_write + b.usd_input;
@@ -417,6 +500,7 @@ export function callsView(s: Pick<SessionDetail, 'call_tokens' | 'harness'> & Pa
     initial: bars.length - 1,
     shares,
     priceNote,
+    totalNote,
     priceBasis,
     // The shares as the bars above say them, so a sentence never prints a second number.
     explain: explainCalls(bars, per, wordFor(tokens, 'read'), wordFor(shares[1], 'read')),

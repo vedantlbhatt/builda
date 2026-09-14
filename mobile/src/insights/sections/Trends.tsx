@@ -96,6 +96,11 @@ function TrendCell({ t, width, delay }: { t: TrendModel; width: number; delay: n
           {t.verdict}
         </Text>
       ) : null}
+      {t.note ? (
+        <Text maxFontSizeMultiplier={1.3} style={type.meta}>
+          {t.note}
+        </Text>
+      ) : null}
     </View>
   );
 }

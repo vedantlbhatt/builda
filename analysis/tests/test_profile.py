@@ -147,6 +147,36 @@ class MetricsFromEvents(unittest.TestCase):
         self.assertEqual(p["totals"]["total_tool_calls"], 5)
         self.assertEqual(p["metrics"]["iteration_depth"]["value"], 1.0)
 
+    def test_tool_calls_per_prompt_reads_the_attended_sittings_on_both_sides(self):
+        """FOUND IN THE CAPTURE (2026-09-14): 11.7 on the card and 12.4 on the trend for one
+        window. An unattended run sends no prompt, so its tool calls answer none of them: 5
+        prompts and 5 calls with a person there, 40 calls in a run nobody was at, is 1 call a
+        prompt, never 9."""
+        at = prompt_session(["a", "b", "c", "d", "e"], session_id="at")
+        run_events = [ev(100 + i, T0 + 7200 + i * 30, "tool", "ls", tool="Bash") for i in range(40)]
+        run = dataclasses.replace(
+            session(run_events, session_id="run", start=T0 + 7200, attended=0.0, autonomous=HOUR),
+            unattended=True,
+        )
+        p = pf.corpus_profile([at, run])
+        self.assertEqual(p["totals"]["total_tool_calls"], 45)
+        self.assertEqual(p["metrics"]["iteration_depth"]["value"], 1.0)
+        self.assertEqual(pf.tool_calls_per_prompt([at, run])["value"], 1.0)
+
+    def test_the_card_and_the_metric_are_one_number(self):
+        from analysis import wrapped as wr
+
+        facts = [prompt_session(["a"] * (3 + i), session_id=f"s{i}", start=T0 + i * 7200) for i in range(pf.MIN_SESSIONS + 1)]
+        run_events = [ev(900 + i, T0 + 90_000 + i * 30, "tool", "ls", tool="Bash") for i in range(60)]
+        facts.append(
+            dataclasses.replace(
+                session(run_events, session_id="run", start=T0 + 90_000, attended=0.0, autonomous=HOUR),
+                unattended=True,
+            )
+        )
+        card = wr._prompts_per_session(facts)
+        self.assertEqual(card["extras"]["tool_calls_per_prompt"], pf.corpus_profile(facts)["metrics"]["iteration_depth"]["value"])
+
     def test_code_velocity_refuses_zero_rather_than_reporting_it(self):
         events = [ev(i, T0 + i * 60, "tool", "ls", tool="Bash") for i in range(10)]
         p = pf.corpus_profile([session(events, attended=2 * HOUR)])
@@ -312,7 +342,30 @@ class Refusals(unittest.TestCase):
         ]
         m = pf.corpus_profile(facts)["metrics"]["tool_diversity"]
         self.assertIsNone(m["value"])
-        self.assertIn("allowlist", m["reason"])
+        self.assertIn("only the names of common tools", m["reason"])
+
+    def test_the_reasons_a_person_reads_carry_no_engine_words(self):
+        """`sample.missing` is printed on the phone as it is (What this cannot see). FOUND IN
+        THE CAPTURE (2026-09-14): "bucketed to an allowlist" and "the strip marks are deduped
+        for rendering" were on screen."""
+        facts = [
+            pf.SessionFact(
+                session_id=str(i),
+                started_at=T0 + i * HOUR,
+                ended_at=T0 + (i + 1) * HOUR,
+                active_seconds=HOUR,
+                attended_seconds=HOUR,
+                autonomous_seconds=0,
+                tool_calls={"Bash": 20, "Read": 5},
+                tool_basis=pf.TOOLS_ALLOWLIST,
+            )
+            for i in range(4)
+        ]
+        missing = pf.corpus_profile(facts)["sample"]["missing"]
+        self.assertIn("night_commit_share", missing)
+        for key, reason in missing.items():
+            for word in ("allowlist", "bucket", "dedup", "digest", "render", "corpus", "strip"):
+                self.assertNotIn(word, reason.lower(), f"{key}: {reason}")
 
     def test_a_model_with_no_output_tokens_is_not_in_the_mix(self):
         s = session([], tokens={"claude-opus-5": 100, "<synthetic>": 0})
@@ -1429,9 +1482,11 @@ class ParallelSittingsAndPricedHours(unittest.TestCase):
     def test_dollars_an_hour_are_over_the_hours_that_were_priced(self):
         """One priced Claude Code hour at list price, one Cursor hour with no token counts
         (Cursor writes {0, 0} on every row). MEASURED before the fix: $2.50 spent and
-        $1.25 an hour, the Cursor hour in the denominator; after: $2.50 an hour."""
+        $1.25 an hour, the Cursor hour in the denominator; after: $2.51 an hour. The hour
+        costs $2.505 ($0.005 of input, $2.50 of output), and its cents round half UP
+        (`plain.half_up`), where Python's `round` said $2.50 off the double under 2.505."""
         cc = self.fact("cc", T0, T0 + HOUR)
         cursor = self.fact("cu", T0 + 2 * HOUR, T0 + 3 * HOUR, tokens=False)
         m = pf.corpus_profile([cc, cursor])["metrics"]
-        self.assertEqual((m["spend_usd"]["value"], m["spend_usd"]["n"]), (2.5, 1))
-        self.assertEqual((m["spend_per_hour_usd"]["value"], m["spend_per_hour_usd"]["n"]), (2.5, 1))
+        self.assertEqual((m["spend_usd"]["value"], m["spend_usd"]["n"]), (2.51, 1))
+        self.assertEqual((m["spend_per_hour_usd"]["value"], m["spend_per_hour_usd"]["n"]), (2.51, 1))

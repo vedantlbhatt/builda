@@ -15,6 +15,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { SessionDetail } from '../data/api';
+import { useRepoNames } from '../data/repoNames';
 import { CreaturePrint } from '../insights/Creature';
 import { GROUND, ON_HUE } from '../insights/palette';
 import { Block } from '../insights/reveal';
@@ -58,7 +59,8 @@ export function LiveBar({ session, creature, animate, style }: LiveBarProps) {
 }
 
 function BarBody({ session, now, creature, animate }: { session: SessionDetail; now: number; creature: Animal; animate?: boolean }) {
-  const m = barModel(session, now);
+  const names = useRepoNames();
+  const m = barModel(session, now, names);
   const hue = useMemo(() => creatureHue(creature), [creature]);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const onLayout = useCallback((e: LayoutChangeEvent) => {

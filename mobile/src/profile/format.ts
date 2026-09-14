@@ -5,6 +5,7 @@
  * that turn a wire value into a sentence, and a wrong one here states a wrong thing
  * confidently, which is the failure mode this repo cares about most.
  */
+import { pyFixed } from '../copy/numbers';
 
 /**
  * `velocity_machine` reads as a bug. `Velocity Machine` reads as a title.
@@ -65,5 +66,5 @@ export function ruleSentence(a: {
 /** Enough precision to be checkable, never more than the measurement has. */
 function trim(v: number): string {
   if (Number.isInteger(v)) return String(v);
-  return Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(v < 1 ? 2 : 1);
+  return Math.abs(v) >= 100 ? pyFixed(v, 0) : pyFixed(v, v < 1 ? 2 : 1);
 }

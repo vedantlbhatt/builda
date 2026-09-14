@@ -730,7 +730,9 @@ class Copy(unittest.TestCase):
     def test_twice_is_said_once_the_ratio_says_two(self):
         self.assertEqual(pj.times_words(2.0), "twice")
         self.assertEqual(pj.times_words(2.04), "twice")
-        self.assertEqual(pj.times_words(2.15), "2.1 times")  # the double below 2.15, as Python rounds it
+        # 2.15 as written, a tie rounded UP (`plain.half_up`), never the double just below it
+        # that Python's `round` read as 2.1.
+        self.assertEqual(pj.times_words(2.15), "2.2 times")
         self.assertEqual(pj.times_words(10.08), "10.1 times")
 
 

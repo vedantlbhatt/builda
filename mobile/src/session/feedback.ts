@@ -69,11 +69,63 @@ export function sentence(n: FeedbackNoteWire): string | null {
   }
 }
 
-/** Every note this client can actually render, most expensive first. */
-export function renderable(notes: FeedbackNoteWire[] | null | undefined): Note[] {
+/**
+ * What the page says about the whole sitting, which a note about part of it must not contradict:
+ * its active seconds, and whether it landed anything (a line written or a commit).
+ */
+export interface PageFacts {
+  activeSeconds?: number | null;
+  landed?: boolean;
+}
+
+/**
+ * The most of a sitting's active time a "went nowhere" note may claim when the same page says the
+ * sitting landed lines or commits. Past it the two sentences cannot both be true of one sitting,
+ * and the note is not drawn.
+ *
+ * FOUND IN THE DEFECTS PASS (2026-09-14, shots/now2/61-session-binned-03): 60256e3a, 3h 12m
+ * active (11,567 s) with +507 lines and 13 commits, said "3 stretches with nothing written, tested
+ * or committed, 3h 09m in total": 11,341 s, 98% of the sitting. The engine's rule is fixed
+ * (`analysis/patterns._runs_with_nothing_to_show` cuts a stretch at any call that could have
+ * changed a file and measures it on the active clock; MEASURED over the overnight corpus's 160
+ * counted sittings, the note went from 17 of them, 9 claiming over half their sitting, to none).
+ * But a stored note outlives the rule that wrote it: the server keeps a note when a later upload
+ * carries none (`COALESCE` in `server/builder/routes/sync.py`, because null there also means "this
+ * client does not compute feedback"), so the old sentence stayed on the page after a corrected
+ * re-upload of that very session. UNMEASURED JUDGEMENT CALL at half: the corrected rule writes no
+ * note this bound would drop, and a note that leaves the sitting less than half of itself for
+ * everything the page says it landed is a contradiction, not a finding.
+ */
+export const NOWHERE_MAX_SHARE = 0.5;
+
+function contradicts(n: FeedbackNoteWire, page: PageFacts | undefined): boolean {
+  if (n.id !== 'went_nowhere' || !page?.landed) return false;
+  const active = page.activeSeconds;
+  if (typeof active !== 'number' || !(active > 0)) return false;
+  return n.seconds > active * NOWHERE_MAX_SHARE;
+}
+
+/** The page facts a session's notes are held to (`PageFacts`). */
+export function pageFactsOf(s: {
+  active_seconds?: number | null;
+  stats?: { commit_count?: number | null; lines_added_agent?: number | null } | null;
+}): PageFacts {
+  const st = s.stats;
+  return {
+    activeSeconds: s.active_seconds ?? null,
+    landed: (st?.commit_count ?? 0) > 0 || (st?.lines_added_agent ?? 0) > 0,
+  };
+}
+
+/**
+ * Every note this client can actually render, most expensive first. With `page`, a note that
+ * contradicts what the page says about the whole sitting is left out (`NOWHERE_MAX_SHARE`).
+ */
+export function renderable(notes: FeedbackNoteWire[] | null | undefined, page?: PageFacts): Note[] {
   if (!notes) return [];
   const out: Note[] = [];
   for (const n of notes) {
+    if (contradicts(n, page)) continue;
     const text = sentence(n);
     if (text) out.push({ id: n.id, text, seconds: n.seconds });
   }

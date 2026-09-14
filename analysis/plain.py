@@ -11,6 +11,9 @@ will drift"):
   * `has_dash`: the one definition of a dash, which no string a person reads may carry
     (docs/analysis.md; docs/approved-roadmap.md rule 2).
   * `ROLE_NOUN`: the words for a role, one file, several, and the whole collection.
+  * `half_up`, `rounded` and `pct`: THE rounding rule for every number a person reads, a
+    tie away from zero, off the number as it is written. `mobile/src/copy/numbers.ts`
+    (`scaledHalfUp`) holds the same rule, so the phone and the Mac agree to the digit.
 
 MEASURED over the corpus's 50,177 PROJECT agent lines (2026-09-13, after the review:
 generated files excluded as `languages.split` excludes them, Claude Code's own files as
@@ -21,8 +24,10 @@ measurement, 65.3% source over 64,652 lines, counted scratchpad and memory files
 
 from __future__ import annotations
 
+import math
 import posixpath
 import re
+from decimal import ROUND_HALF_UP, Decimal
 
 from . import languages, shipped
 
@@ -196,4 +201,55 @@ ROLE_NOUN: dict[str, tuple[str, str, str]] = {
 }
 
 
-__all__ = ["DASH", "DASH_CHARS", "ROLES", "ROLE_NOUN", "has_dash", "ordinal", "role_of", "spoken"]
+# ------------------------------------------------------------------ rounding
+
+
+def half_up(x: float, digits: int = 0, *, scale: int = 0) -> Decimal:
+    """`x` times ten to the `scale`, rounded to `digits` places with a tie AWAY from zero.
+    THE rounding rule for every number a person reads, here and on the phone
+    (`mobile/src/copy/numbers.ts` `scaledHalfUp`, which is the same arithmetic).
+
+    It reads the number as it is WRITTEN, its shortest `repr`, never the binary fraction
+    under it, and it moves the decimal point in decimal (`scale`) rather than multiplying
+    in binary. FOUND IN THE CAPTURE (2026-09-14): "18% of instructions landed clean" for
+    a share sent as 0.185, where every other percentage rounds half up. `round(0.185 * 100)`
+    is 18 twice over: a tie goes to the even digit, and 0.185 is stored a hair under itself.
+    A person reads 18.5% and says 19%, and so does this.
+    """
+    x = float(x)
+    if not math.isfinite(x):
+        raise ValueError(f"cannot round {x!r}")
+    d = Decimal(repr(x)).scaleb(scale)
+    return d.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
+
+
+def rounded(x: float, digits: int | None = None) -> float | int:
+    """`round(x, digits)` with `half_up`'s tie rule, for a number that travels to be read.
+    The same types `round` gives: an int for `digits` None, an int given back as it is (a
+    count rounded to places is still that count, so `0` never travels as `0.0`), else a
+    float."""
+    if isinstance(x, int) and not isinstance(x, bool):
+        return x if digits is None or digits >= 0 else int(half_up(x, digits))
+    if digits is None:
+        return int(half_up(x))
+    return float(half_up(x, digits))
+
+
+def pct(share: float) -> str:
+    """A share as a whole percent, "19%": `half_up` of the share times a hundred."""
+    return f"{int(half_up(share, scale=2))}%"
+
+
+__all__ = [
+    "DASH",
+    "DASH_CHARS",
+    "ROLES",
+    "ROLE_NOUN",
+    "half_up",
+    "has_dash",
+    "ordinal",
+    "pct",
+    "role_of",
+    "rounded",
+    "spoken",
+]

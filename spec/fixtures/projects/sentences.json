@@ -17,11 +17,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "You take the wheel back twice as often in RideGT as in builder."
+  "sentence": "You take the wheel back twice as often in tramline as in lantern."
  },
  {
   "kind": "comparison",
@@ -41,11 +41,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "You take the wheel back in RideGT, and not once in builder."
+  "sentence": "You take the wheel back in tramline, and not once in lantern."
  },
  {
   "kind": "comparison",
@@ -65,11 +65,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "RideGT runs without you more: 55% of its time, against 12% in builder."
+  "sentence": "tramline runs without you more: 55% of its time, against 12% in lantern."
  },
  {
   "kind": "comparison",
@@ -89,11 +89,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Each prompt sets off 4.2 times as many tool calls in RideGT as in builder."
+  "sentence": "Each prompt sets off 4.2 times as many tool calls in tramline as in lantern."
  },
  {
   "kind": "comparison",
@@ -113,11 +113,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Prompts in RideGT set off tool calls, and prompts in builder set off none."
+  "sentence": "Prompts in tramline set off tool calls, and prompts in lantern set off none."
  },
  {
   "kind": "comparison",
@@ -137,11 +137,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "You send 2.6 times as many prompts a session in RideGT as in builder."
+  "sentence": "You send 2.7 times as many prompts a session in tramline as in lantern."
  },
  {
   "kind": "comparison",
@@ -161,11 +161,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "You send prompts in RideGT, and sessions in builder had none."
+  "sentence": "You send prompts in tramline, and sessions in lantern had none."
  },
  {
   "kind": "comparison",
@@ -185,11 +185,11 @@
    "reason": "floors_only"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Both are only lower bounds, at least 10.4 in RideGT and at least 4.8 in builder. Either could be higher by any amount, so they cannot be compared."
+  "sentence": "Both are only lower bounds, at least 10.4 in tramline and at least 4.8 in lantern. Either could be higher by any amount, so they cannot be compared."
  },
  {
   "kind": "comparison",
@@ -209,11 +209,11 @@
    "reason": "floors_only"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Both are only lower bounds, at least 4,261.8 in RideGT and at least 424.9 in builder. Either could be higher by any amount, so they cannot be compared."
+  "sentence": "Both are only lower bounds, at least 4,261.8 in tramline and at least 424.9 in lantern. Either could be higher by any amount, so they cannot be compared."
  },
  {
   "kind": "comparison",
@@ -233,11 +233,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "An hour of RideGT costs 2.8 times what an hour of builder does, at API list prices."
+  "sentence": "An hour of tramline costs 2.8 times what an hour of lantern does, at API list prices."
  },
  {
   "kind": "comparison",
@@ -257,11 +257,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Tests are already green more often in RideGT: 91% of runs, against 60% in builder."
+  "sentence": "Tests are already green more often in tramline: 91% of runs, against 60% in lantern."
  },
  {
   "kind": "comparison",
@@ -281,11 +281,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "Sessions in RideGT end with a commit more often: 62%, against 20% in builder."
+  "sentence": "Sessions in tramline end with a commit more often: 62%, against 20% in lantern."
  },
  {
   "kind": "comparison",
@@ -305,11 +305,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "More of RideGT happens between 10pm and 4am: 47% of its time, against under 1% in builder."
+  "sentence": "More of tramline happens between 10pm and 4am: 47% of its time, against under 1% in lantern."
  },
  {
   "kind": "comparison",
@@ -329,11 +329,11 @@
    "reason": null
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "More of site happens between 10pm and 4am: over 99% of its time, against 20% in builder."
+  "sentence": "More of site happens between 10pm and 4am: over 99% of its time, against 20% in lantern."
  },
  {
   "kind": "comparison",
@@ -353,11 +353,11 @@
    "reason": "within_noise"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "RideGT and builder are close on this: 42% against 38%."
+  "sentence": "tramline and lantern are close on this: 42% against 39%."
  },
  {
   "kind": "comparison",
@@ -377,11 +377,11 @@
    "reason": "within_noise"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "RideGT and builder are close on this: $138 against $134."
+  "sentence": "tramline and lantern are close on this: $138 against $134."
  },
  {
   "kind": "comparison",
@@ -401,11 +401,11 @@
    "reason": "within_noise"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "RideGT and builder are close on this: $38.26 against $34.12."
+  "sentence": "tramline and lantern are close on this: $38.26 against $34.12."
  },
  {
   "kind": "comparison",
@@ -425,11 +425,11 @@
    "reason": "within_noise"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "RideGT and builder are close on this: 91% against 80%."
+  "sentence": "tramline and lantern are close on this: 91% against 80%."
  },
  {
   "kind": "comparison",
@@ -449,11 +449,11 @@
    "reason": "within_noise"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
-  "sentence": "RideGT and builder are close on this: 5 against 4.2."
+  "sentence": "tramline and lantern are close on this: 5 against 4.2."
  },
  {
   "kind": "comparison",
@@ -473,8 +473,8 @@
    "reason": "fewer_than_two_projects"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
   "sentence": "No project has 5 sessions in this window with this number yet."
@@ -497,8 +497,8 @@
    "reason": "fewer_than_two_projects"
   },
   "labels": {
-   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "RideGT",
-   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "builder",
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "tramline",
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "lantern",
    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "site"
   },
   "sentence": "Only one project has 5 sessions in this window with this number, so there is nothing to compare it with."

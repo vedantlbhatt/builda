@@ -15,6 +15,7 @@
  */
 
 import type { PricedModel, ReportModelCost, ReportMoney, ReportTokens } from '../generated/report';
+import { everyPricedSessionCounted } from '../money/counted';
 import { FAMILIES, PRICE_STALE_DAYS, SPEND_REFUSALS } from './catalog';
 import { capital, commas, count, fill, human, pyFixed, shareWords } from './numbers';
 
@@ -99,13 +100,27 @@ export function perActiveHour(money: ReportMoney): string | null {
 }
 
 /**
+ * What the share of the no commit dollars is OF, in the Money page's words: "of every dollar at
+ * API list prices" when every priced session had a commit count (the share's denominator is then
+ * every priced dollar), else what the share is really over, the dollars on sessions with a commit
+ * count (`money/counted.ts`). One rule for the analysis page, the Money page and a project's page.
+ * FOUND IN THE CAPTURE (2026-09-14, 21-analysis-15 against 22-money-06): the analysis page said
+ * "7% of the spend" where the Money page said "7% of every dollar at API list prices" for the
+ * same 7%, and "the spend" is a word for money somebody paid.
+ */
+export function noCommitShareOf(money: Pick<ReportMoney, 'usd' | 'usd_without_a_commit' | 'share_without_a_commit'>): string {
+  return everyPricedSessionCounted(money) ? 'of every dollar at API list prices' : 'of the dollars on sessions with a commit count';
+}
+
+/**
  * The postable one: what the sessions that ended with no commit cost. "$19.80 on sessions
- * that ended with no commit, 1% of the spend". Null below the engine's session floor.
+ * that ended with no commit, 1% of every dollar at API list prices". Null below the engine's
+ * session floor.
  */
 export function withoutACommit(money: ReportMoney): string | null {
   if (money.usd_without_a_commit == null) return null;
   const share = money.share_without_a_commit;
-  const tail = share == null ? '' : `, ${shareWords(share)} of the spend`;
+  const tail = share == null ? '' : `, ${shareWords(share)} ${noCommitShareOf(money)}`;
   return `${dollars(money.usd_without_a_commit)} on sessions that ended with no commit${tail}`;
 }
 

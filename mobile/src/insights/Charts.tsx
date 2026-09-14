@@ -10,9 +10,9 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useDerivedValue } from 'react-native-reanimated';
 
-import { DRAW_MS, ease, phase, spring } from './motion';
+import { DRAW_MS, ease, phase, SECTION_CLOCK_MS, spring } from './motion';
 import { GROUND } from './palette';
-import { useClock } from './reveal';
+import { useClock, useLanded } from './reveal';
 
 const DEG = Math.PI / 180;
 
@@ -42,6 +42,7 @@ export interface DayClockProps {
  */
 export function DayClock({ size, peakHour, night, ink, partner, delay = 0 }: DayClockProps) {
   const clock = useClock();
+  const landed = useLanded();
   const c = size / 2;
   const outer = c - 30;
   const band = outer - 20;
@@ -49,7 +50,8 @@ export function DayClock({ size, peakHour, night, ink, partner, delay = 0 }: Day
   const text = GROUND.text;
 
   const picture = useDerivedValue(() => {
-    const t = clock.value;
+    // At rest, the resting picture from a render (`useLanded`), never the last animated frame.
+    const t = landed ? SECTION_CLOCK_MS : clock.value;
     return createPicture(
       (canvas) => {
         const p = Skia.Paint();
@@ -105,7 +107,7 @@ export function DayClock({ size, peakHour, night, ink, partner, delay = 0 }: Day
       },
       { width: size, height: size },
     );
-  }, [size, peakHour, night, ink, partner, delay]);
+  }, [size, peakHour, night, ink, partner, delay, landed]);
 
   const label = (s: string, x: number, y: number) => (
     <Text key={s} allowFontScaling={false} style={[styles.dialLabel, { left: x - 22, top: y - 7 }]}>
@@ -137,6 +139,7 @@ export interface Slice {
 /** Parts of a whole round a ring, sweeping from 12 o'clock in order, a small gap between. */
 export function Donut({ slices, size, stroke = 22, delay = 0 }: { slices: readonly Slice[]; size: number; stroke?: number; delay?: number }) {
   const clock = useClock();
+  const landed = useLanded();
   const total = slices.reduce((s, x) => s + Math.max(0, x.value), 0);
   const parts = useMemo(() => {
     let at = 0;
@@ -153,7 +156,7 @@ export function Donut({ slices, size, stroke = 22, delay = 0 }: { slices: readon
   const gap = parts.length > 1 ? 1.6 : 0;
 
   const picture = useDerivedValue(() => {
-    const p = ease(phase(clock.value, delay, 1100));
+    const p = landed ? 1 : ease(phase(clock.value, delay, 1100));
     return createPicture(
       (canvas) => {
         const paint = Skia.Paint();
@@ -175,7 +178,7 @@ export function Donut({ slices, size, stroke = 22, delay = 0 }: { slices: readon
       },
       { width: size, height: size },
     );
-  }, [parts, size, stroke, r, gap, delay]);
+  }, [parts, size, stroke, r, gap, delay, landed]);
 
   return (
     <View style={{ width: size, height: size }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -194,10 +197,11 @@ export function Donut({ slices, size, stroke = 22, delay = 0 }: { slices: readon
  */
 export function PassRing({ passed, failed, size, stroke = 16, pass, fail, delay = 0 }: { passed: number; failed: number; size: number; stroke?: number; pass: string; fail: string; delay?: number }) {
   const clock = useClock();
+  const landed = useLanded();
   const total = passed + failed;
   const r = (size - stroke) / 2;
   const picture = useDerivedValue(() => {
-    const p = ease(phase(clock.value, delay, 1100));
+    const p = landed ? 1 : ease(phase(clock.value, delay, 1100));
     return createPicture(
       (canvas) => {
         const paint = Skia.Paint();
@@ -224,7 +228,7 @@ export function PassRing({ passed, failed, size, stroke = 16, pass, fail, delay 
       },
       { width: size, height: size },
     );
-  }, [passed, failed, total, size, stroke, r, pass, fail, delay]);
+  }, [passed, failed, total, size, stroke, r, pass, fail, delay, landed]);
   return (
     <View style={{ width: size, height: size }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Canvas style={{ width: size, height: size }}>
@@ -240,6 +244,7 @@ export function PassRing({ passed, failed, size, stroke = 16, pass, fail, delay 
  */
 export function StopwatchRing({ seconds, dial, size, ink, delay = 0 }: { seconds: number; dial: 'minute' | 'hour' | 'day'; size: number; ink: string; delay?: number }) {
   const clock = useClock();
+  const landed = useLanded();
   const span = dial === 'minute' ? 60 : dial === 'hour' ? 3600 : 86400;
   const ticks = dial === 'day' ? 24 : 12;
   const frac = Math.min(1, Math.max(0, seconds / span));
@@ -247,8 +252,7 @@ export function StopwatchRing({ seconds, dial, size, ink, delay = 0 }: { seconds
   const r = (size - stroke) / 2 - 8;
   const c = size / 2;
   const picture = useDerivedValue(() => {
-    const t = clock.value;
-    const p = ease(phase(t, delay, 1000));
+    const p = landed ? 1 : ease(phase(clock.value, delay, 1000));
     return createPicture(
       (canvas) => {
         const paint = Skia.Paint();
@@ -272,7 +276,7 @@ export function StopwatchRing({ seconds, dial, size, ink, delay = 0 }: { seconds
       },
       { width: size, height: size },
     );
-  }, [frac, ticks, size, r, c, ink, delay]);
+  }, [frac, ticks, size, r, c, ink, delay, landed]);
   return (
     <View style={{ width: size, height: size }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Canvas style={{ width: size, height: size }}>
@@ -284,12 +288,21 @@ export function StopwatchRing({ seconds, dial, size, ink, delay = 0 }: { seconds
 
 // ------------------------------------------------------------------ before and now
 
+/** The slope's end dots at rest, in points: the window now a size up from the window before. */
+const SLOPE_NOW_R = 4.5;
+const SLOPE_BEFORE_R = 3.5;
+
 /**
  * A trend as a slope: before on the left, now on the right, both measured from zero so a small
  * move looks small. The line traces from before to now; the now point arrives when it does.
+ *
+ * At rest every mark is a plain prop (`useLanded`): FOUND IN THE CAPTURE (2026-09-14), two slopes
+ * sat for good on the frame 860 ms in, the line whole under the ease out and the end dot not yet
+ * begun, because nothing redrew the canvas after a dropped last frame.
  */
 export function Slope({ before, now, width, height, ink, delay = 0 }: { before: number; now: number; width: number; height: number; ink: string; delay?: number }) {
   const clock = useClock();
+  const landed = useLanded();
   const top = Math.max(before, now, 1e-9);
   const pad = 6;
   const y = (v: number) => height - pad - (Math.max(0, v) / top) * (height - pad * 2);
@@ -304,16 +317,16 @@ export function Slope({ before, now, width, height, ink, delay = 0 }: { before: 
     return p;
   }, [x0, y0, x1, y1]);
   const end = useDerivedValue(() => ease(phase(clock.value, delay, DRAW_MS)));
-  const nowR = useDerivedValue(() => 4.5 * spring(phase(clock.value, delay + DRAW_MS * 0.8, 500)));
-  const beforeR = useDerivedValue(() => 3.5 * ease(phase(clock.value, delay, 250)));
+  const nowR = useDerivedValue(() => SLOPE_NOW_R * spring(phase(clock.value, delay + DRAW_MS * 0.8, 500)));
+  const beforeR = useDerivedValue(() => SLOPE_BEFORE_R * ease(phase(clock.value, delay, 250)));
   return (
     <View style={{ width, height }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Canvas style={{ width, height }}>
         <Line p1={vec(0, height - pad)} p2={vec(width, height - pad)} color={GROUND.border} strokeWidth={1} />
         <Group>
-          <Path path={path} style="stroke" strokeWidth={2.5} strokeCap="round" color={ink} start={0} end={end} />
-          <Circle cx={x0} cy={y0} r={beforeR} color={GROUND.dim} />
-          <Circle cx={x1} cy={y1} r={nowR} color={ink} />
+          <Path path={path} style="stroke" strokeWidth={2.5} strokeCap="round" color={ink} start={0} end={landed ? 1 : end} />
+          <Circle cx={x0} cy={y0} r={landed ? SLOPE_BEFORE_R : beforeR} color={GROUND.dim} />
+          <Circle cx={x1} cy={y1} r={landed ? SLOPE_NOW_R : nowR} color={ink} />
         </Group>
       </Canvas>
     </View>

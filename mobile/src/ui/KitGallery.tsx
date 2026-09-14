@@ -419,7 +419,7 @@ function HarnessBlock() {
         <Spec>a tools row: the glyph in its hue</Spec>
         <View style={styles.inline}>
           <PixelAnimalIcon animal="whale" size={16} />
-          <T role="row">builder</T>
+          <T role="row">lantern</T>
           <HarnessLabel harness="claude_code" ink="dim" />
         </View>
         <Spec>a session row: the glyph stays dim</Spec>
@@ -436,10 +436,10 @@ const TYPE_SAMPLES: Record<(typeof ROLES)[number], string> = {
   title: 'Your longest session',
   headline: 'Stuck on the same failing import',
   body: 'Mostly conversational. You work in dialogue with the agent.',
-  row: 'builder',
+  row: 'lantern',
   meta: 'Claude Code, 22m, 14 files',
   label: 'lines added',
-  mono: 'claude-opus-5 ~/src/builder',
+  mono: 'claude-opus-5 ~/src/lantern',
 };
 
 function TypeBlock() {
@@ -505,7 +505,7 @@ function RowsBlock() {
       <Surface padding={0}>
         <Row title="Sessions" meta="212 found on this Mac" chevron onPress={() => {}} hairline
           leading={<SymbolIcon name="clock" />} />
-        <Row title="builder" monoTitle meta="Claude Code" value="1h 42m" onPress={() => {}} hairline
+        <Row title="lantern" monoTitle meta="Claude Code" value="1h 42m" onPress={() => {}} hairline
           leading={<SymbolIcon name="folder" />} />
         <Row title="Notifications" value="on" chevron onPress={() => {}} hairline
           leading={<SymbolIcon name="bell" />} />
@@ -894,7 +894,7 @@ function LightPanel() {
       }}
     >
       <Surface padding={0}>
-        <Row title="builder" monoTitle meta="Claude Code" value="22m" chevron onPress={() => {}} hairline
+        <Row title="lantern" monoTitle meta="Claude Code" value="22m" chevron onPress={() => {}} hairline
           leading={<SymbolIcon name="folder" />} />
         <Row title="Notifications" value="on" chevron onPress={() => {}} leading={<SymbolIcon name="bell" />} />
       </Surface>

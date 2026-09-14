@@ -31,6 +31,8 @@ is the same string whatever anybody's directories are called.
 
 from __future__ import annotations
 
+from . import plain
+
 import posixpath
 from collections.abc import Sequence
 
@@ -219,7 +221,7 @@ def split(sessions: Sequence) -> dict:
     if "other" in by_lang:
         tail.append(("other", by_lang["other"]))
     out = [
-        {"name": n, "lines": v, "files": len(files[n]), "share": round(v / total, 3)}
+        {"name": n, "lines": v, "files": len(files[n]), "share": plain.rounded(v / total, 3)}
         for n, v in head
     ]
     if tail:
@@ -229,7 +231,7 @@ def split(sessions: Sequence) -> dict:
                 "name": "other",
                 "lines": rest,
                 "files": sum(len(files[n]) for n, _ in tail),
-                "share": round(rest / total, 3),
+                "share": plain.rounded(rest / total, 3),
             }
         )
     return {

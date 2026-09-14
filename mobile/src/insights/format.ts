@@ -132,9 +132,10 @@ export function fixedFormatOf(final: string): NumFormat | null {
 /**
  * A count to `value` that rests on `final`, with the frames shaped like `final`.
  *
- * A plain number counts to the number `final` WRITES, not to the raw value: 0.125 is "12%" by
- * Python's half even rounding and 13 by `Math.round`, so a count to 12.5 would land on "13%" and
- * then snap to "12%". Counting to 12 lands where it rests. Durations, clock hours and token counts
+ * A plain number counts to the number `final` WRITES, not to the raw value: 0.285 is "29%" by the
+ * one rounding rule (the share as written, a tie up), while `0.285 * 100` is the double
+ * 28.499999999999996, so a count to it would land on "28%" and then snap to "29%". Counting to
+ * 29 lands where it rests. Durations, clock hours and token counts
  * name their own format and count the raw value, which their formats write exactly as the
  * helpers do.
  */

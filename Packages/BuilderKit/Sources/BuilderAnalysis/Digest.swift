@@ -469,7 +469,10 @@ public enum SessionDigest {
 
     // MARK: - Stats
 
-    private static let gitCommit = regex(#"\bgit commit\b"#)
+    /// `analysis/digest.py` `COMMIT_CMD`, character for character: `git` with its own options
+    /// before the subcommand (`git -c user.name=x commit`) commits too. `\bgit commit\b` missed
+    /// 23 of 172 commit calls in the overnight corpus (2026-09-14).
+    private static let gitCommit = regex(#"\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}[A-Za-z][\w-]*(?:=\S+)?))*\s+commit(?![\w.=-])"#)
     private static let testRun = regex(#"\b(pytest|bun test|npm test|swift test|jest|cargo test|go test|make test)\b"#)
 
     public static func stats(_ events: [Event]) -> Stats {

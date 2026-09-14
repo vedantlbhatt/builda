@@ -50,6 +50,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Sequence
 
+from . import plain
 from . import languages as lang_mod
 from . import playbook as pb_mod
 from . import quality as q_mod
@@ -237,9 +238,9 @@ def _trend(t) -> dict:
     return {
         "metric": t.metric,
         "label": t.label,
-        "before": round(float(t.before), 4),
-        "now": round(float(t.now), 4),
-        "move": round(float(t.move), 4),
+        "before": plain.rounded(float(t.before), 4),
+        "now": plain.rounded(float(t.now), 4),
+        "move": plain.rounded(float(t.move), 4),
         "direction": t.direction,
         "good": t.good,
         "sessions_before": t.sessions_before,
@@ -272,10 +273,10 @@ def _agents(fanout) -> dict | None:
         "agents": fanout.agents,
         "produced": fanout.produced,
         "max_concurrent": fanout.max_concurrent,
-        "agent_seconds": round(fanout.agent_seconds, 1),
-        "wall_seconds": round(fanout.wall_seconds, 1),
-        "busy_seconds": round(fanout.busy_seconds, 1),
-        "parallelism": round(fanout.parallelism, 2),
+        "agent_seconds": plain.rounded(fanout.agent_seconds, 1),
+        "wall_seconds": plain.rounded(fanout.wall_seconds, 1),
+        "busy_seconds": plain.rounded(fanout.busy_seconds, 1),
+        "parallelism": plain.rounded(fanout.parallelism, 2),
         "by_type": [
             {"name": name, "agents": n} for name, n in by_type[:MAX_AGENT_TYPES]
         ],

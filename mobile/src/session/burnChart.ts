@@ -134,6 +134,15 @@ export function meters(s: SessionBurnSpike): CauseMeter[] {
   return out;
 }
 
+/**
+ * What the dashed line is, in words a person uses: "burn's own bar" and "a spike" were this
+ * codebase's words for it (FOUND IN THE DEFECTS PASS, 2026-09-14). A stretch counts as costly
+ * when it reaches the line (`burn.session_report`: tokens >= median * SPIKE_MULTIPLE).
+ */
+export function burnRuleWords(threshold: number): string {
+  return `The dashed line is ${said(threshold)} times a typical stretch: a stretch that reaches it counts as costly.`;
+}
+
 /** The key line under the chart: what a dotted and an outlined bar mean, only when one is drawn. */
 export function fillKey(fills: readonly BarFill[]): string | null {
   const dotted = fills.includes('dotted');

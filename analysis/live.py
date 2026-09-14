@@ -568,7 +568,7 @@ def _activity_of(e: digest.Ev, paths: _Paths) -> tuple[str, str]:
 
 
 def _secs(x: float) -> int:
-    return int(round(max(0.0, x)))
+    return int(plain.rounded(max(0.0, x)))
 
 
 def _last_output_ts(events: Sequence[digest.Ev]) -> float:
@@ -1125,7 +1125,7 @@ def _eta(
         typical_s=_secs(typical),
         p25_s=_secs(p25),
         p75_s=_secs(p75),
-        remaining_s=max(0, round(typical - elapsed)),
+        remaining_s=max(0, plain.rounded(typical - elapsed)),
     )
     return out
 

@@ -5,6 +5,7 @@ import { ScrollView, Text } from 'react-native';
 import { timeOfDay } from '../../src/copy/time';
 import type { SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
+import { loadRepoNames } from '../../src/data/repoNames';
 import { activityFor, endAllLiveActivities, liveActivitiesAvailable, renderLivePreviews, syncLiveActivities, type SyncResult } from '../../src/live/activity';
 import { crewFor } from '../../src/live/crew';
 import { debugSessions, DEBUG_TODAY, parseDebugLive, type DebugLiveRequest } from '../../src/live/fixtures';
@@ -240,6 +241,9 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
   const liveStates = Object.fromEntries(p.sessions.map((x) => [x.session.id, x.live]));
   const finished = p.finished.map((f) => fillRow(f, nowMs, 'final'));
   const crew = crewOf([...sessions, ...finished], p.creature);
+  // The phone's project names, as the real poll reads them: a row with a `repo_key` this phone
+  // has numbered is "Private project 2" on its card, as it would be from a real sync.
+  const names = await loadRepoNames().catch(() => null);
   const r = await syncLiveActivities(sessions, liveStates, {
     creature,
     crew,
@@ -248,6 +252,7 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
     finished,
     staleInSeconds: p.staleInSeconds ?? undefined,
     writeWidget: p.widget,
+    names,
   });
   out.push(describe('payload', r));
   // What each surface was handed: the same toState the planner just ran, shown for the record.
@@ -256,7 +261,7 @@ async function runPayload(p: DebugPayload): Promise<string[]> {
     const live = liveStates[s.id];
     const done = phaseOf(s, live, nowMs) === 'done';
     const st = toState(s, live, { nowMs, creature: crew.get(s.id), runningCount: Math.max(0, running - (done ? 0 : 1)) });
-    const attrs = toAttrs(s);
+    const attrs = toAttrs(s, true, names);
     out.push(`${attrs.repo} · ${attrs.agent} · ${s.id.slice(0, 12)}`);
     out.push(`${st.phase} · ${st.trajectory} · ${st.creature} · "${st.sentence}"`);
     out.push(

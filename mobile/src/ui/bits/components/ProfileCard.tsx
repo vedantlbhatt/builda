@@ -59,7 +59,7 @@ export interface ProfileCardProps {
   name: string;
   /** Your archetype, in words ("the architect"). Omit while there is none. */
   archetype?: string | null;
-  /** The line over the name. Default "this is you". */
+  /** The line over the name. Default "this is you"; empty, no line (the screen already says it). */
   caption?: string;
   width: number;
   /** Default `width / 0.718`, react-bits' proportion. */
@@ -154,9 +154,11 @@ export function ProfileCard({
             <View style={{ position: 'absolute', left: cx, top: cy, width: size, height: size }}>{creatureNode}</View>
           </View>
           <View style={{ paddingHorizontal: space.lg, paddingTop: space.md, gap: space.xs }}>
-            <T role="meta" weight={600} style={{ color: tone.text }}>
-              {caption}
-            </T>
+            {caption ? (
+              <T role="meta" weight={600} style={{ color: tone.text }}>
+                {caption}
+              </T>
+            ) : null}
             <T role="hero" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
               {name}
             </T>

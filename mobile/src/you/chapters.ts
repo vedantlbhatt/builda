@@ -14,7 +14,7 @@
  * sentence, no dashes in anything a person reads, and the dollar is what the tokens would cost
  * at API list prices, never "you spent".
  */
-import { dollars, unpricedNote, withoutACommit } from '../copy/money';
+import { dollars, noCommitShareOf, unpricedNote, withoutACommit } from '../copy/money';
 import { capital, count, n, shareWords } from '../copy/numbers';
 import { renderCard } from '../copy/wrapped';
 import type { BuilderProfileResponse, Profile } from '../data/api';
@@ -38,7 +38,6 @@ import { HARNESS_MARKS, isHarness, type HarnessMark } from '../pixel/harness';
 import { archetypeView, sourceLine, type ArchetypeView } from './archetype';
 import { dimensionsBasis, dimensionsPending, dimensionViews, modalArchetypeLine, topDimension } from './dimensions';
 import { glossaryView, type GlossaryMonth } from './glossary';
-import { everyPricedSessionCounted } from '../money/counted';
 import { columnUnits, dollarsOf, dollarUnit, shownUnits } from '../money/round';
 import { corpusBurn, corpusMoney, moneyView } from './money';
 import { stackView } from './stack';
@@ -218,11 +217,9 @@ export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): 
     const usd = m.usd_without_a_commit;
     if (said && typeof usd === 'number') {
       const figure = dollars(usd);
-      // In the flow's terms, never "of the spend": "of every dollar at API list prices" when every
-      // priced session had a commit count (the share's denominator is then every priced dollar),
-      // else what the share is really over (`money/counted.ts`).
+      // In the flow's terms, one rule with the analysis page (`copy/money.noCommitShareOf`).
       const share = m.share_without_a_commit ?? null;
-      const of = everyPricedSessionCounted(m) ? 'of every dollar at API list prices' : 'of the dollars on sessions with a commit count';
+      const of = noCommitShareOf(m);
       const rest = share === null ? 'on sessions that ended with no commit' : `on sessions that ended with no commit, ${shareWords(share)} ${of}`;
       without = { usd: numSpec(usd, figure), digits: dollarDigits(usd), rest, share };
     } else {

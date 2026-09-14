@@ -12,7 +12,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { cancelAnimation, Easing, ReduceMotion, runOnJS, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 
-import { REPLAY_MS } from './view';
+import { openingOf, REPLAY_MS } from './view';
 
 /** VoiceOver steps the replay a twentieth of the session at a time. */
 export const STEPS = 20;
@@ -33,10 +33,11 @@ export interface Playback {
 }
 
 export function usePlayback(span: number, startAtEnd: boolean, onEnd?: () => void): Playback {
-  const playhead = useSharedValue(startAtEnd ? span : 0);
+  const opening = openingOf(span, startAtEnd);
+  const playhead = useSharedValue(opening.playhead);
   const [playing, setPlaying] = useState(false);
-  const [ended, setEnded] = useState(startAtEnd);
-  const [position, setPosition] = useState(startAtEnd ? span : 0);
+  const [ended, setEnded] = useState(opening.ended);
+  const [position, setPosition] = useState(opening.position);
   const resume = useRef(false);
   const playingRef = useRef(false);
   playingRef.current = playing;

@@ -1449,7 +1449,7 @@ def session_title(session: patterns.SessionEvents, *, names: bool = False) -> di
         return _refused(
             len(calls),
             f"{checkpoints} of {len(calls)} tool calls were a write, test or commit the "
-            f"transcript shows, one in {round(1 / patterns.MIN_CHECKPOINT_DENSITY)} needed: a "
+            f"transcript shows, one in {plain.rounded(1 / patterns.MIN_CHECKPOINT_DENSITY)} needed: a "
             "title would describe what the transcript hides, not the work",
             shell,
             code="below_checkpoint_density",

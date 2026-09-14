@@ -29,7 +29,7 @@ import type {
 import { corpusBurnLine, corpusBurnRefusal } from '../copy/burn';
 import { KIND_NOUN, LOOKBACK_MINUTES, PROMPT_BRIEF_WORDS, REFUSALS, ROLE_WORD, SHORT_PROMPT_WORDS } from '../copy/catalog';
 import { dollars, withoutACommit } from '../copy/money';
-import { capital, clock, commas, count, floorMins, human, n, pct, shareWords, tally } from '../copy/numbers';
+import { capital, clock, commas, count, floorMins, human, n, pct, percentOf, shareWords, tally } from '../copy/numbers';
 import { clocksInWords, hourOfDay } from '../copy/time';
 import { renderCard, type RenderedCard } from '../copy/wrapped';
 import { narrativeView, archetypeSentence as narrativeArchetypeLine } from '../profile/narrative';
@@ -164,6 +164,12 @@ export interface TimeModel {
     nightShare: number | null;
     night: NumSpec | null;
     nightLine: string | null;
+    /**
+     * Whose each number is, when the two are not read over the same sessions: the night share
+     * is the Mac's (its report's window, the population every other chapter reads) and the
+     * peak hour the server's (the Mac sends none). Null when both came from one place.
+     */
+    basis: string | null;
     refusals: string[];
   };
   ledger: LedgerRow[];
@@ -185,7 +191,12 @@ export interface ShippingModel {
     | Refused;
   commits: { total: NumSpec; assisted: number; alone: number; assistedText: string; aloneText: string; sentence: string } | Refused;
   languages: { rows: LanguageRow[]; total: string; note: string | null } | Refused;
-  kind: { display: string; sentence: string | null; roles: { key: string; label: string; lines: number; text: string }[]; kinds: string | null } | Refused;
+  /**
+   * `share` is the role's part of every counted line, 0 to 1, and its bar is drawn against the
+   * whole: FOUND IN THE CAPTURE (2026-09-14), the bars were scaled to the biggest role, so
+   * "source files 69%" filled its whole track and read as all of it.
+   */
+  kind: { display: string; sentence: string | null; roles: { key: string; label: string; lines: number; share: number; text: string }[]; kinds: string | null } | Refused;
 }
 
 export interface DimensionRow {
@@ -273,6 +284,8 @@ export interface TrendModel {
   /** True when the move is the way the metric wants; the verdict word is then drawn in green. */
   good: boolean;
   direction: ReportTrend['direction'];
+  /** What differs from the same number said elsewhere on the page, when it does. */
+  note: string | null;
 }
 
 export interface TrendsModel {
@@ -386,6 +399,21 @@ export function localDateLabel(ymd: string, now: number): string | null {
 function builderDayUtc(t: number): number {
   const d = new Date(t - DAY_BOUNDARY_HOUR * 3_600_000);
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** A trend's value over the report's own window ("now"), or null when the report has no such trend. */
+function macTrendNow(report: BuilderReport | null | undefined, key: string): number | null {
+  const t = report?.trends?.find((x) => x.metric === key);
+  return t && isNum(t.now) ? t.now : null;
+}
+
+/**
+ * The share of active time between 10pm and 4am over the report's window, from the Mac: the
+ * `now` side of its night trend, which `analysis/trends.py` computes with `corpus_profile` over
+ * exactly the sessions the rest of the report reads. Null when the report does not carry it.
+ */
+export function macNightShare(report: BuilderReport | null | undefined): number | null {
+  return macTrendNow(report, 'night_share');
 }
 
 function metric(corpus: CorpusProfile | null | undefined, key: string): CorpusMetric | null {
@@ -646,7 +674,13 @@ export function timeOf(b: BuilderProfileResponse, profile: Profile | null, now: 
   const peakM = metric(corpus, 'peak_hour');
   const nightM = metric(corpus, 'night_share');
   const peakHour = isNum(peakM?.value) ? Math.round(peakM.value as number) : null;
-  const nightShare = isNum(nightM?.value) ? (nightM.value as number) : null;
+  // ONE NUMBER FOR NIGHT WORK: the Mac's, over its report's window, when the report carries it.
+  // FOUND IN THE CAPTURE (2026-09-14): the clock said the server's 21% (every session it holds,
+  // 90 days) while You against you said 23% for the same window as the rest of the page, and
+  // the Projects tab 22% and 47% for its two projects over that window, so the whole sat below
+  // both of its parts. Over one window the whole is between them.
+  const macNight = macNightShare(report);
+  const nightShare = macNight ?? (isNum(nightM?.value) ? (nightM.value as number) : null);
   if (peakHour === null) {
     const why = corpus ? metricRefusal(corpus, 'peak_hour') : 'the server has not sent its profile';
     if (why) refusals.push(sentence(`The hour you build most is not shown: ${why}`));
@@ -654,6 +688,20 @@ export function timeOf(b: BuilderProfileResponse, profile: Profile | null, now: 
   if (nightShare === null) {
     const why = corpus ? metricRefusal(corpus, 'night_share') : null;
     if (why) refusals.push(sentence(`Night work is not shown: ${why}`));
+  }
+  let clockBasis: string | null = null;
+  if (report && macNight !== null && peakHour !== null) {
+    const serverSessions = corpus?.sample.sessions ?? null;
+    clockBasis =
+      `The night share is your Mac's, over ${readSpan(report, now).inline}, like the rest of this page. ` +
+      (isNum(serverSessions)
+        ? `The hour you build most is the server's, over all ${count(serverSessions, 'session')} it holds, because your Mac does not send one.`
+        : `The hour you build most is the server's, because your Mac does not send one.`);
+  } else if (report && macNight === null && nightShare !== null) {
+    const serverSessions = corpus?.sample.sessions ?? null;
+    clockBasis = isNum(serverSessions)
+      ? `Both are the server's, over all ${count(serverSessions, 'session')} it holds, so they can differ from your Mac's numbers on the rest of this page.`
+      : `Both are the server's, so they can differ from your Mac's numbers on the rest of this page.`;
   }
 
   const ledger: LedgerRow[] = [];
@@ -706,6 +754,7 @@ export function timeOf(b: BuilderProfileResponse, profile: Profile | null, now: 
       nightShare,
       night: nightShare !== null ? numSpec(nightShare * 100, pct(nightShare)) : null,
       nightLine: nightShare !== null ? `${pct(nightShare)} of your active time falls between 10pm and 4am.` : null,
+      basis: clockBasis,
       refusals,
     },
     ledger,
@@ -806,6 +855,7 @@ export function shippingOf(b: BuilderProfileResponse): ShippingModel {
         key: r.role,
         label: `${ROLE_WORD[r.role] ?? r.role} files`,
         lines: r.lines,
+        share: roleTotal > 0 ? r.lines / roleTotal : 0,
         text: roleTotal > 0 ? `${commas(r.lines)}, ${shareWords(r.lines / roleTotal)}` : commas(r.lines),
       })),
       kinds: kindsSaid,
@@ -873,8 +923,11 @@ export function agentWorkOf(b: BuilderProfileResponse): AgentWorkModel {
   else if (!p) clean = { refusal: 'Neither pile of prompts has enough in it to be a rate yet.' };
   else if (!isNum(p.clean_share) || !isNum(p.clean)) clean = refused(p.reason ?? 'there are too few instructions to be a rate');
   else {
+    // From the two counts the sentence under it says, when they are there, so the figure is
+    // 120 of 647 rounded once and never a share already rounded to three places rounded again.
+    const share = isNum(p.attempts) && p.attempts > 0 ? p.clean / p.attempts : p.clean_share;
     clean = {
-      num: numSpec(p.clean_share * 100, pct(p.clean_share)),
+      num: numSpec(share * 100, pct(share)),
       sentence: `${commas(p.clean)} of ${commas(p.attempts)} instructions landed something without a correction or a long stall.`,
     };
   }
@@ -909,6 +962,29 @@ export function agentWorkOf(b: BuilderProfileResponse): AgentWorkModel {
 
 // ------------------------------------------------------------------ 5 agents
 
+/**
+ * A helper agent's type in words a person uses. The report carries Claude Code's own ids
+ * (`report.v1` `agent_type`), and FOUND IN THE CAPTURE (2026-09-14) the page printed one of them,
+ * "general-purpose", as a label. A type this build does not know is said as it came, with its
+ * hyphens turned to spaces, never as an id.
+ */
+export const AGENT_TYPE_WORDS: Record<string, string> = {
+  'general-purpose': 'general helpers',
+  Explore: 'explorers',
+  Plan: 'planners',
+  fork: 'copies of the session',
+  'workflow-subagent': 'workflow steps',
+  'statusline-setup': 'status line setup',
+  'output-style-setup': 'output style setup',
+  'claude-code-guide': 'Claude Code guides',
+  custom: 'your own agents',
+  unknown: 'type not recorded',
+};
+
+export function agentTypeWords(id: string): string {
+  return AGENT_TYPE_WORDS[id] ?? id.replace(/[-_]+/g, ' ');
+}
+
 export function agentsOf(b: BuilderProfileResponse): AgentsModel {
   const report = b.report ?? null;
   const at = card(report, 'agents_at_once');
@@ -927,7 +1003,7 @@ export function agentsOf(b: BuilderProfileResponse): AgentsModel {
     body: {
       peak: numSpec(a.max_concurrent, n(a.max_concurrent)),
       agents: numSpec(a.agents, commas(a.agents)),
-      types: a.by_type.map((t) => ({ name: t.name === 'unknown' ? 'type not recorded' : t.name, agents: t.agents, text: commas(t.agents) })),
+      types: a.by_type.map((t) => ({ name: agentTypeWords(t.name), agents: t.agents, text: commas(t.agents) })),
       parallel: numSpec(a.parallelism, n(a.parallelism)),
       work: numSpec(a.agent_seconds, duration(a.agent_seconds), { kind: 'duration' }),
       busy:
@@ -1057,10 +1133,14 @@ export function trendValue(metricKey: string, v: number): string {
 export function trendsOf(b: BuilderProfileResponse): TrendsModel {
   const report = b.report ?? null;
   if (!report) return { headline: null, trends: [], basis: null, refusal: NO_REPORT };
+  // A report from before `profile.tool_calls_per_prompt` (2026-09-14) worked the trend out over
+  // every sitting and the card over the ones you were at, so the two differ for one window: said,
+  // until the Mac sends a report computed by the one rule, where they are the same number.
+  const depth = card(report, 'prompts_per_session')?.extras.tool_calls_per_prompt;
   const trends = report.trends.map((t): TrendModel => {
     const verdict = trendVerdict(t);
     const words = trendWords(t);
-    const pctMove = Math.round(Math.abs(t.move) * 100);
+    const pctMove = percentOf(Math.abs(t.move));
     return {
       key: t.metric,
       label: capital(clocksInWords(t.label)),
@@ -1073,6 +1153,10 @@ export function trendsOf(b: BuilderProfileResponse): TrendsModel {
       verdict: verdict === 'good' ? 'the way you want it' : verdict === 'bad' ? 'not the way you want it' : null,
       good: verdict === 'good',
       direction: t.direction,
+      note:
+        t.metric === 'iteration_depth' && isNum(depth) && n(depth) !== n(t.now)
+          ? `Counts runs nobody was at, which the ${n(depth)} a prompt above leaves out.`
+          : null,
     };
   });
   const first = report.trends[0];
@@ -1129,14 +1213,45 @@ function spokenRuns(k: number): string {
 
 // ------------------------------------------------------------------ 9 what stands out
 
+/**
+ * The server's ranked facts this page already says from the Mac's report, by fact id
+ * (`analysis/profile.headline_facts`), each with the test for the Mac's number being on the
+ * page. ONE FIGURE PER FACT: FOUND IN THE CAPTURE (2026-09-14), What stands out said "12.7 tool
+ * calls per prompt", "16% of your build time runs without you", "92% of output tokens" and
+ * "712.6 lines an hour", each two chapters from the Mac's 11.7, 14%, about 94% and 647.8 for the
+ * same fact, because the server reads every session it holds and the Mac its report's window.
+ * A fact the Mac does not say (the tool you call most, the hours in all, the server's own peak
+ * hour, its streak of days with a session) stays.
+ */
+const MAC_SAYS: Record<string, (r: BuilderReport) => boolean> = {
+  iteration_depth: (r) => isNum(card(r, 'prompts_per_session')?.extras.tool_calls_per_prompt) || macTrendNow(r, 'iteration_depth') !== null,
+  autonomy_score: (r) => isNum(card(r, 'work_style')?.extras.autonomy) || macTrendNow(r, 'autonomy_score') !== null,
+  steer_rate: (r) => isNum(card(r, 'change_course')?.value) || macTrendNow(r, 'steer_rate') !== null,
+  code_velocity: (r) => macTrendNow(r, 'code_velocity') !== null,
+  night_share: (r) => macNightShare(r) !== null,
+  planning_ratio: (r) => macTrendNow(r, 'planning_ratio') !== null,
+  short_prompt_share: (r) => macTrendNow(r, 'short_prompt_share') !== null,
+  tool_diversity: (r) => macTrendNow(r, 'tool_diversity') !== null,
+  model_mix: (r) => (r.money?.by_model?.length ?? 0) > 0,
+  barren_token_share: (r) => r.burn?.share != null,
+};
+
 export function standsOutOf(b: BuilderProfileResponse): StandsOutModel {
   const corpus = b.corpus ?? null;
-  const facts = (corpus?.facts ?? []).filter((f) => typeof f.text === 'string' && f.text.trim()).map((f) => ({ key: f.id, text: sentence(f.text) }));
+  const report = b.report ?? null;
+  const all = (corpus?.facts ?? []).filter((f) => typeof f.text === 'string' && f.text.trim());
+  const saidAbove = (id: string) => Boolean(report && MAC_SAYS[id]?.(report));
+  const facts = all.filter((f) => !saidAbove(f.id)).map((f) => ({ key: f.id, text: sentence(f.text) }));
+  const left = all.length - facts.length;
+  const macSessions = report?.coverage?.sessions ?? null;
   const nv = narrativeView(b.narrative);
   return {
     facts,
     factsSource: corpus
-      ? `Ranked by the server, most unusual first, over the ${count(corpus.sample.sessions, 'session')} it holds, so a count here can differ from your Mac's above.`
+      ? `Ranked by the server, most unusual first, over all ${count(corpus.sample.sessions, 'session')} it holds.` +
+        (left > 0
+          ? ` ${capital(count(left, 'more', 'more'))} it ranked ${left === 1 ? 'is' : 'are'} left out, because the chapters above say ${left === 1 ? 'it' : 'them'} from your Mac's report${isNum(macSessions) ? `, over the ${count(macSessions, 'session')} it read` : ''}.`
+          : '')
       : null,
     narrative: nv
       ? {

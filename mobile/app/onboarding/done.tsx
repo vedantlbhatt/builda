@@ -14,7 +14,7 @@ import { DEFAULT_ANIMAL, type Animal } from '../../src/pixel/animals';
 import { HARNESS_MARKS, isMarkSelected, type HarnessMark } from '../../src/pixel/harness';
 import { HarnessLogo } from '../../src/pixel/HarnessLogo';
 import { PixelAnimal, PixelAnimalIcon } from '../../src/pixel/PixelAnimal';
-import { creatureCaption, creatureWord, DONE, doneCaption, THATS_ME } from '../../src/onboarding/copy';
+import { creatureCaption, creatureWord, DONE, doneCaption, doneName, THATS_ME } from '../../src/onboarding/copy';
 import { currentDraft } from '../../src/onboarding/draft';
 import { currentFacts, useFacts } from '../../src/onboarding/facts';
 import { burstBox, chromeIndex, DONE_CREATURE, FINALE, GUTTER, RISE_PT } from '../../src/onboarding/flow';
@@ -215,16 +215,21 @@ export default function DoneStep() {
   // card's art band after (ProfileCard's own layout), so the ring leaves from it either way.
   const art = Math.round(stageH * PROFILE.artShare);
   const burstY = card ? art / 2 : stageH - DONE_CREATURE / 2 - space.md;
-  const captionSize = picked ? fitSize(creatureCaption(picked.name, picked.animal).split(', ')[0] ?? '', cardW, CREATURE_NAME.max, CREATURE_NAME.min) : CREATURE_NAME.min;
+  const captionSize = picked ? fitSize(creatureCaption(doneName(picked.name, facts.serverName), picked.animal).split(', ')[0] ?? '', cardW, CREATURE_NAME.max, CREATURE_NAME.min) : CREATURE_NAME.min;
   // The type every other screen names (the Mac's, else the server's, which says so).
   const typeWords = archetypeWords(facts.archetype);
   const caption = picked ? doneCaption(picked.marks.map((m) => m.name)) : '';
+  // The name the card carries: the one typed on the name step, else the account's, which is what
+  // that step fills in and what the You tab shows. FOUND IN THE CAPTURE PASS (2026-09-14,
+  // shots/now2/50-onboarding-07): with no name saved the card fell back to its default caption and
+  // said "this is you" under the band's own "this is you", with no name anywhere on it.
+  const name = doneName(picked?.name, facts.serverName);
 
   const first = picked ? (
     <View style={{ width: cardW, height: stageH, justifyContent: 'space-between' }}>
       <Animated.View style={wordsStyle}>
         <T role="display" numberOfLines={2} style={[display(captionSize), { color: ON_HUE }]}>
-          {creatureCaption(picked.name, picked.animal)}
+          {creatureCaption(name, picked.animal)}
         </T>
       </Animated.View>
       <View style={{ alignItems: 'center', paddingBottom: space.md }}>
@@ -249,8 +254,9 @@ export default function DoneStep() {
   const second = picked ? (
     <ProfileCard
       creature={picked.animal}
-      name={picked.name || creatureWord(picked.animal)}
-      caption={picked.name ? creatureWord(picked.animal) : DONE.label}
+      name={name || creatureWord(picked.animal)}
+      // With no name the creature is the name, and the band over the card already says "this is you".
+      caption={name ? creatureWord(picked.animal) : ''}
       archetype={typeWords}
       width={cardW}
       height={stageH}

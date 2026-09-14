@@ -9,8 +9,8 @@ strip conformance is: one set of numbers, two languages, the same words.
 No transcript is checked in (docs/overnight-engine.md 6): every scenario is events and turns
 built here. Each is modelled on a shape MEASURED on the real corpus or on the live
 transcript (docs/overnight-engine.md 5.1 and "Deviations (fixes)"), and a few are there only
-because they are where a port goes wrong: a share that rounds half to even (Python's `:.0%`
-says 12% of 0.125 where `Math.round` says 13), a token count at a half (`12.5k` is "12k"),
+because they are where a port goes wrong: a share at a half (0.125 is "13%": a tie rounds UP,
+`plain.half_up`, where Python's `:.0%` said 12%), a token count at a half (`12.5k` is "13k"),
 a share under 1% and one over 99%, and every verdict and refusal the summary can say.
 """
 
@@ -214,8 +214,8 @@ def scenarios() -> list[Burnable]:
     s.turn(604, fresh=70_000, cache=3_000, calls=[tid])
     out.append(s)
 
-    # The rounding traps: 12,500 tokens is "12k" (Python rounds half to even), and a barren
-    # share of exactly 0.125 is "12%".
+    # The rounding traps: 12,500 tokens is "13k" and a barren share of exactly 0.125 is "13%"
+    # (a tie rounds UP, `plain.half_up`; Python's own `round` and `:.0%` said 12k and 12%).
     s = Burnable("halves")
     s.prompt(0, "write the note")
     tid = s.call(5, "Write", "/repo/NOTE.md", path="/repo/NOTE.md", added=3, removed=0)
@@ -237,7 +237,7 @@ def scenarios() -> list[Burnable]:
     out.append(s)
 
     # A share at a half that is printed: 10,000 of 16,000 tokens in a stretch that wrote
-    # nothing is 0.625, which Python says as 62% (half to even) and `Math.round` as 63.
+    # nothing is 0.625, which is 63% on every surface (a tie rounds UP, `plain.half_up`).
     s = Burnable("half_share")
     s.prompt(0, "add the flag")
     tid = s.call(5, "Edit", "/repo/flags.py", path="/repo/flags.py", added=2, removed=0)

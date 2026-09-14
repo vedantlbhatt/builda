@@ -42,6 +42,7 @@ import type {
   Trajectory,
 } from '../../modules/builder-live/src/BuilderLive.types';
 import { lockScreenWithoutDetails } from '../copy/live';
+import { PRIVATE_REPO, repoLabel, type RepoNames } from '../copy/repoLabel';
 import type { SessionDetail } from '../data/api';
 import { ANIMALS } from '../pixel/animals';
 import { DAY_BOUNDARY_HOUR, graphLevel } from '../theme';
@@ -73,8 +74,11 @@ export const RELEVANCE_DEFAULT = 50;
 export const RELEVANCE_DONE = 0;
 /** ActivityKit's limit on attributes plus content state, as JSON. */
 export const PAYLOAD_LIMIT_BYTES = 4096;
-/** The repo name a private session shows, as the in-app live row says it. */
-export const PRIVATE_REPO = 'private repo';
+/**
+ * What a card says for a repository it cannot name (`copy/repoLabel.ts`, the one rule): a private
+ * project this phone has numbered is "Private project 2" there, as on the Projects tab.
+ */
+export { PRIVATE_REPO };
 /**
  * What a card names instead of the repository with Settings > Show details on Lock Screen OFF
  * (`src/data/privacy.ts LOCK_SCREEN_OFF`: Builda, how many are running, the tool and its timer).
@@ -105,11 +109,16 @@ const minuteFloor = (seconds: number): number => Math.floor(seconds / 60) * 60;
  * details on Lock Screen off) names Builda instead of the repository; since attributes cannot
  * change, `activity.ts` ends every card when the switch moves and the next sync starts them
  * again with the new name.
+ *
+ * The repository is `repoLabel` at the OUTSIDE reach: its public name, else the number this
+ * phone gave the project ("Private project 2", the Projects tab's words), never the owner's own
+ * name for it, which the naming field promises stays inside the app; "private repo" when there
+ * is no key or no number yet.
  */
-export function toAttrs(s: SessionDetail, details = true): SessionAttrs {
+export function toAttrs(s: SessionDetail, details = true, names?: RepoNames | null): SessionAttrs {
   return {
     sessionId: s.id,
-    repo: details ? (s.repo_name ?? PRIVATE_REPO).slice(0, REPO_MAX) : DETAILS_OFF_TITLE,
+    repo: details ? repoLabel(s, names, 'outside').slice(0, REPO_MAX) : DETAILS_OFF_TITLE,
     agent: s.harness,
     startedEpoch: Math.round(epochSeconds(s.started_at) ?? 0),
   };
@@ -484,6 +493,8 @@ export interface PlanInput {
    * doing. Default on.
    */
   details?: boolean;
+  /** The phone's project names and numbers (`data/repoNames.loadRepoNames`); none says "private repo". */
+  names?: RepoNames | null;
   nowMs: number;
 }
 
@@ -575,7 +586,7 @@ export function planSync(input: PlanInput): Plan {
       details,
       runningTotal: running.length,
     };
-    const attrs = toAttrs(s, details);
+    const attrs = toAttrs(s, details, input.names);
     const state = toState(s, live, ctx);
     const prev = input.tracked.get(s.id);
 
@@ -713,6 +724,8 @@ export interface WidgetInput {
   /** Each session's creature by id, as `PlanInput.crew`. Default: the crew rule over these rows. */
   crew?: ReadonlyMap<string, string>;
   today?: WidgetToday | null;
+  /** The phone's project names and numbers, as `PlanInput.names`. */
+  names?: RepoNames | null;
   nowMs: number;
 }
 
@@ -739,7 +752,7 @@ export function buildWidgetSnapshot(input: WidgetInput): WidgetSnapshot {
     sessions: listed.slice(0, WIDGET_MAX_SESSIONS).map((s) => {
       const live = input.liveStates?.[s.id] ?? null;
       const state = toState(s, live, { nowMs, creature: creatureOf(s, crew), runningCount: running.length - 1 });
-      const attrs = toAttrs(s);
+      const attrs = toAttrs(s, true, input.names);
       return {
         id: s.id,
         repo: attrs.repo,

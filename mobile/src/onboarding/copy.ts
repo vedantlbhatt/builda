@@ -185,6 +185,17 @@ export const DONE = {
   label: 'this is you',
 } as const;
 
+/**
+ * The name on the last screen's card: the one the name step saved, else the account's display name
+ * (what that step fills in, and what the You tab shows with no name saved). Empty when there is
+ * neither, and the card then names the creature alone.
+ */
+export function doneName(saved: string | null | undefined, account: string | null | undefined): string {
+  const own = typeof saved === 'string' ? saved.trim() : '';
+  if (own) return own;
+  return typeof account === 'string' ? account.trim() : '';
+}
+
 /** Under the caption on the last screen: the tools, as a sentence. Empty with no tools. */
 export function doneCaption(tools: readonly string[]): string {
   if (tools.length === 0) return '';

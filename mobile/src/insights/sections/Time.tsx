@@ -94,6 +94,7 @@ export function TimeSection({ time, width }: { time: TimeModel; width: number })
             </View>
           </View>
         )}
+        {time.clock.basis ? <Words style={[type.meta, styles.caption]}>{time.clock.basis}</Words> : null}
         {time.clock.refusals.length > 0 && (time.clock.peakHour !== null || time.clock.nightShare !== null) ? (
           <View style={{ gap: 8, marginTop: 12 }}>
             {time.clock.refusals.map((r) => (

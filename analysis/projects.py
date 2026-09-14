@@ -49,6 +49,7 @@ import dataclasses
 import datetime as dt
 from collections.abc import Mapping, Sequence
 
+from . import plain
 from . import contributions as co
 from . import corpus as cp
 from . import languages as lang
@@ -324,7 +325,7 @@ def _today(c: cp.Corpus) -> dt.date:
 
 
 def _seconds(facts: Sequence[pf.SessionFact], attr: str) -> int:
-    return round(sum(getattr(f, attr) for f in facts))
+    return plain.rounded(sum(getattr(f, attr) for f in facts))
 
 
 def times_words(ratio: float) -> str:
@@ -382,8 +383,8 @@ def _momentum(facts: Sequence[pf.SessionFact], now: float) -> dict:
         "days": MOMENTUM_DAYS,
         "sessions": len(recent),
         "sessions_before": len(earlier),
-        "attended_seconds": round(b),
-        "attended_seconds_before": round(a),
+        "attended_seconds": plain.rounded(b),
+        "attended_seconds_before": plain.rounded(a),
         "direction": t.direction if t else None,
         "move": t.move if t else None,
         "reason": reason,
@@ -471,8 +472,8 @@ def _weekly(facts: Sequence[pf.SessionFact], axis: Sequence[dt.date]) -> list[di
         {
             "week": rb._day_iso(w),
             "sessions": sessions[i],
-            "attended_seconds": round(attended[i]),
-            "active_seconds": round(active[i]),
+            "attended_seconds": plain.rounded(attended[i]),
+            "active_seconds": plain.rounded(active[i]),
         }
         for i, w in enumerate(axis)
     ]
@@ -551,7 +552,7 @@ def _clock(profile: Mapping, active_seconds: float) -> dict:
         "peak_hour": v,
         "reason": None if v is not None else "below_active_floor",
         "active_minutes": int(active_seconds // 60),
-        "needed_minutes": None if v is not None else round(pf.MIN_ACTIVE_SEC_FOR_SHARES / 60),
+        "needed_minutes": None if v is not None else plain.rounded(pf.MIN_ACTIVE_SEC_FOR_SHARES / 60),
     }
 
 
@@ -576,7 +577,7 @@ def _cost_per_commit(money: Mapping, facts: Sequence[pf.SessionFact]) -> dict:
     elif commits < co.MIN_COMMITS:
         reason, needed = "below_commit_floor", co.MIN_COMMITS
     return {
-        "usd": round(money["usd"] / commits, 2) if reason is None else None,
+        "usd": plain.rounded(money["usd"] / commits, 2) if reason is None else None,
         "commits": commits,
         "unpriced_sessions": int(money["unpriced_sessions"]),
         "reason": reason,
@@ -596,7 +597,7 @@ def _harnesses(sub: cp.Corpus) -> list[dict]:
         n[h] += 1
         secs[h] += f.active_seconds
     return [
-        {"harness": h, "sessions": n[h], "active_seconds": round(secs[h])}
+        {"harness": h, "sessions": n[h], "active_seconds": plain.rounded(secs[h])}
         for h in sorted(n, key=lambda h: (-secs[h], h))
     ]
 
@@ -641,10 +642,10 @@ def _window(sub: cp.Corpus, profile: Mapping, total_attended: float) -> tuple[di
         "first_at": sample["first_at"],
         "last_at": sample["last_at"],
         "active_days": int(sample["days"]),
-        "active_seconds": round(active),
-        "attended_seconds": round(attended),
+        "active_seconds": plain.rounded(active),
+        "attended_seconds": plain.rounded(attended),
         "autonomous_seconds": _seconds(facts, "autonomous_seconds"),
-        "share_of_attended": round(attended / total_attended, 3) if total_attended > 0 else None,
+        "share_of_attended": plain.rounded(attended / total_attended, 3) if total_attended > 0 else None,
         "clock": _clock(profile, active),
         "cards": cards,
         "scores": [rb._score(s) for s in profile["archetype"]["scores"]],
@@ -722,8 +723,8 @@ def _comparison(metric: str, rows: Sequence[tuple[str, int, float | None, int]])
         low_value=lo[2],
         high_sessions=hi[3],
         low_sessions=lo[3],
-        ratio=round(ratio, 2) if ratio is not None and not floor else None,
-        gap=round(gap, 3) if not floor else None,
+        ratio=plain.rounded(ratio, 2) if ratio is not None and not floor else None,
+        gap=plain.rounded(gap, 3) if not floor else None,
     )
     if floor:
         # Two lower bounds, each short by its own amount: the numbers travel, a difference
@@ -820,7 +821,7 @@ def build(everything: cp.Corpus, window_days: int) -> dict:
         # Every counted sitting in the window, listed projects, projects past the cap and the
         # unresolved alike: what each `share_of_attended` is out of, so a screen that says "94%
         # of it" can say how much "it" is without summing a capped list.
-        "window_attended_seconds": round(total_attended),
+        "window_attended_seconds": plain.rounded(total_attended),
     }
     local = [
         _Local(key=b[0], name=names.get(b[0]), checkouts=b[4], cards=b[2], values=b[3]) for b in built
@@ -847,7 +848,7 @@ def dollars(usd: float) -> str:
     """Dollars as the phone says them (`mobile/src/copy/money.ts` `dollars`, the one rule on
     that side): whole dollars from $100, cents below. Here so the sentences this module
     words and the phone's port of them say one figure; `spec/fixtures/projects` pins the two."""
-    return f"${usd:,.0f}" if abs(usd) >= 100 else f"${usd:,.2f}"
+    return f"${plain.half_up(usd):,}" if abs(usd) >= 100 else f"${plain.half_up(usd, 2):,}"
 
 
 def value_words(metric: str, v: float) -> str:

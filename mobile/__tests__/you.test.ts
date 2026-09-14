@@ -24,6 +24,7 @@ import {
   thresholdSentence,
 } from '../src/you/archetype';
 import {
+  dimensionsPending,
   dimensionViews,
   modalArchetypeLine,
   olderHalfMean,
@@ -462,6 +463,14 @@ describe('the five dimensions', () => {
     expect(dimensionViews(null)).toEqual([]);
   });
 
+  test('how many are analysed against the floor, in words, with no digit left alone (FOUND IN THE CAPTURE, 2026-09-14)', () => {
+    expect(dimensionsPending(0, 3)).toBe('No session has been analysed yet, and it takes 3.');
+    expect(dimensionsPending(1, 3)).toBe('1 of the 3 it takes has been analysed so far.');
+    expect(dimensionsPending(2, 3)).toBe('2 of the 3 it takes have been analysed so far.');
+    expect(dimensionsPending(3, 3)).toBe('3 sessions have been analysed.');
+    for (const k of [0, 1, 2]) expect(dimensionsPending(k, 3)).not.toMatch(/^\d+ of \d+ analysed sessions/);
+  });
+
   test("the model's per session type is said with its article and its share", () => {
     expect(modalArchetypeLine(bp({}))).toBe('Read one session at a time, the model most often called you an architect, in 60% of the 10 sessions that had a type.');
   });
@@ -486,7 +495,8 @@ describe('money', () => {
       { key: 'claude-opus-4-8', name: 'Opus 4.8', usd: 1502.2, meta: '97 sessions · 9.1M output tokens · $6.83 a commit', perCommit: 6.83 },
       { key: 'claude-sonnet-4-6', name: 'Sonnet 4.6', usd: 371.22, meta: '55 sessions · 792k output tokens', perCommit: null },
     ]);
-    expect(v.sentences[0]).toBe('$19.80 on sessions that ended with no commit, 1% of the spend.');
+    // The Money page's words (`copy/money.noCommitShareOf`), never "of the spend".
+    expect(v.sentences[0]).toBe('$19.80 on sessions that ended with no commit, 1% of every dollar at API list prices.');
     expect(moneyRowLine(v)).toBe('$1,873 at API list prices');
   });
 
@@ -615,7 +625,7 @@ describe('the glossary', () => {
     expect(v.months[1]!.terms[0]!.definition).toBe('A saved snapshot of your code with a note saying what changed.');
     expect(v.summary).toBe('3 terms from 155 sessions.');
     expect(v.locked).toBe('71 more to find.');
-    expect(v.cutNote).toBe('312 of 9,085 shell commands were cut short in the digest, so a term may have come up unseen.');
+    expect(v.cutNote).toBe('312 of 9,085 shell commands were too long to be read whole, so a term may have come up unseen.');
     expect(glossaryRowLine(v)).toBe('3 terms so far, 71 more to find');
   });
 
@@ -700,7 +710,7 @@ describe('the You tab', () => {
     const doors = youTab(builder(), null, NOW).doors;
     const byKey = Object.fromEntries(doors.map((d) => [d.key, d]));
     expect(byKey.dimensions!.num).toBeNull();
-    expect(byKey.dimensions!.refusal).toBe('Each session is scored on five axes once your Mac analyses it. 0 of 3 analysed sessions so far.');
+    expect(byKey.dimensions!.refusal).toBe('Each session is scored on five axes once your Mac analyses it. No session has been analysed yet, and it takes 3.');
     expect(byKey.money!.num).toBeNull();
     expect(byKey.money!.refusal).toBe(moneyView(corpus(), null, NOW)!.refusal);
     expect(byKey.glossary!.refusal).toBe('Terms arrive with the report from your Mac.');

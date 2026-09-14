@@ -31,6 +31,7 @@ import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View, type 
 import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
 
 import type { SessionDetail } from '../data/api';
+import { useRepoNames } from '../data/repoNames';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { Band, BandWords, FRINGE } from '../insights/Band';
@@ -378,6 +379,8 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
   const focused = useIsFocused();
   const data = useMission(sample);
   const now = useNow(CLOCK_TICK_MS, focused);
+  // What a tile calls a private project: the number the Projects tab gives it (`copy/repoLabel`).
+  const names = useRepoNames();
   const accent = useAccent();
   const reduce = useReduceMotion();
   const page = usePageReveal(reduce);
@@ -398,7 +401,7 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
     [data.live, data.finals, data.seen, now],
   );
   const screen = missionScreen({ ...data.inputs, rows });
-  const models = useMemo(() => new Map((rows ?? []).map((s) => [s.id, tileModel(s, now)] as const)), [rows, now]);
+  const models = useMemo(() => new Map((rows ?? []).map((s) => [s.id, tileModel(s, now, names)] as const)), [rows, now, names]);
   const crew = useMemo(() => crewFor(rows ?? []), [rows]);
   const target = useMemo(() => (rows ? missionOrderIds(rows, now) : []), [rows, now]);
   const hold = useHeldOrder(target);
@@ -680,7 +683,8 @@ function EmptyBandImpl({
   // The band fills what the scroll view shows: its padding, its title and the dissolve under it
   // come off the viewport's height.
   const fill = Math.max(420, viewportH - FRINGE - 44 - 30);
-  const lastLine = last ? lastFinishedLine(last, (iso) => dayLabel(iso)) : null;
+  const names = useRepoNames();
+  const lastLine = last ? lastFinishedLine(last, (iso) => dayLabel(iso), names) : null;
   return (
     <Section>
       <Band hue={hue} title="All quiet">
@@ -817,11 +821,12 @@ export function LiveSessions({
   const now = useNow(CLOCK_TICK_MS, focused);
   const accent = useAccent();
   const { width } = useWindowDimensions();
+  const names = useRepoNames();
   const rows = useMemo(() => visibleRows(sessions, [], new Map(), now), [sessions, now]);
   const crew = useMemo(() => crewFor(rows), [rows]);
   if (rows.length === 0 || !accent.ready) return null;
 
-  const models = new Map(rows.map((s) => [s.id, tileModel(s, now)] as const));
+  const models = new Map(rows.map((s) => [s.id, tileModel(s, now, names)] as const));
   const order = missionOrderIds(rows, now);
   const head = summaryHead([...models.values()]);
   if (!head) return null;

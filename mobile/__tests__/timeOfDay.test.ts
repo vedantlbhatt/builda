@@ -73,4 +73,43 @@ describe('no other clock anywhere in the app', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  // FOUND IN THE CAPTURE PASS (2026-09-14): the Lock Screen said "waiting since 3:54 AM", the
+  // system's time style, where the app writes "3:51pm". The extension writes a clock through
+  // `LiveClock.words` (LiveMarks.swift) and nothing else.
+  const swift: string[] = [];
+  const walkSwift = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) {
+        if (!name.endsWith('.xcassets')) walkSwift(p);
+      } else if (name.endsWith('.swift')) swift.push(p);
+    }
+  };
+  walkSwift(join(ROOT, 'targets', 'widget'));
+
+  test('the Lock Screen, the island and the widget ask the system for no clock', () => {
+    expect(swift.length).toBeGreaterThan(5);
+    const offenders: string[] = [];
+    for (const f of swift) {
+      const code = readFileSync(f, 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*\/\//.test(l))
+        .join('\n');
+      if (/style:\s*\.time\b|DateFormatter|timeStyle|\.formatted\(date:/.test(code)) offenders.push(relative(ROOT, f));
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("the extension's clock is clockWords, line for line", () => {
+    const marks = readFileSync(join(ROOT, 'targets', 'widget', '_shared', 'LiveMarks.swift'), 'utf8');
+    const body = marks.split('enum LiveClock {')[1]!.split('\n}\n')[0]!;
+    // The same three rules as `clockWords`: twelve for noon and midnight, the minute padded to
+    // two digits, and am before noon.
+    expect(body).toContain('h % 12 == 0 ? 12 : h % 12');
+    expect(body).toContain('m < 10 ? "0" : ""');
+    expect(body).toContain('h < 12 ? "am" : "pm"');
+    // What those rules give, from the TypeScript, at the edges the Swift must agree on.
+    expect([clockWords(0, 5), clockWords(12, 0), clockWords(15, 51), clockWords(3, 54)]).toEqual(['12:05am', '12:00pm', '3:51pm', '3:54am']);
+  });
 });

@@ -162,7 +162,7 @@ struct NotUpdatingLine: View {
   var color: Color = BuilderPalette.text
 
   var body: some View {
-    (Text(LiveCopy.notUpdatingSince + " ") + Text(since, style: .time))
+    Text(LiveCopy.notUpdatingSince + " " + LiveClock.words(since))
       .font(LiveType.font(size, .semibold))
       .foregroundStyle(color)
       .lineLimit(1)
@@ -204,7 +204,7 @@ struct CaptionLine: View {
     case .words(let w):
       Text(w)
     case .clock(let words, let date):
-      Text(words + " ") + Text(date, style: .time)
+      Text(words + " " + LiveClock.words(date))
     case .verdict(let v):
       VerdictLabel(verdict: v, size: size, color: color)
     case .verdictSince(let v, let date):

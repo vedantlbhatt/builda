@@ -1,10 +1,13 @@
 /**
  * Numbers said exactly as the engine says them (`src/copy/numbers.ts`).
  *
- * Python rounds the exact binary value of a float and sends an exact tie to the even digit;
- * JavaScript's `Math.round` and `toFixed` send a tie up. A card that says 12% where the Mac
- * says 13% is two answers to one question, so every helper is held to hand checked values
- * here, and to Python itself when python3 is on the machine (the `dither.test.ts` rule).
+ * ONE ROUNDING RULE on both sides (`analysis/plain.half_up`, `scaledHalfUp` here): a tie AWAY
+ * from zero, read off the number as it is written, the decimal point moved in decimal. FOUND
+ * IN THE CAPTURE (2026-09-14): "18% of instructions landed clean" for 120 of 647, a share sent
+ * as 0.185 and rounded the way Python's `round` rounds, a tie to the even digit, off the double
+ * a hair under 0.185; every other percentage rounded half up. Every helper is held to hand
+ * checked values here, and to Python itself when python3 is on the machine (the `dither.test.ts`
+ * rule).
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -20,42 +23,55 @@ import {
   mins,
   n,
   pct,
+  percentOf,
   pyFixed,
   pyFloorDiv,
   pyRound,
+  scaledHalfUp,
   shareWords,
 } from '../src/copy/numbers';
 import { hasDash, ordinal, spoken } from '../src/copy/plain';
 import { python } from './pythonRef';
 
-describe('rounding the way Python rounds', () => {
-  test('an exact tie goes to the even digit', () => {
-    expect(pyRound(0.5)).toBe(0);
+describe('one rounding rule: a tie up, off the number as written', () => {
+  test('the capture: 120 of 647 instructions landed clean is 19%, however it arrives', () => {
+    expect(pct(0.185)).toBe('19%');
+    expect(pct(120 / 647)).toBe('19%');
+    expect(percentOf(0.185)).toBe(19);
+  });
+
+  test('an exact tie goes UP, never to the even digit', () => {
+    expect(pyRound(0.5)).toBe(1);
     expect(pyRound(1.5)).toBe(2);
-    expect(pyRound(2.5)).toBe(2);
-    expect(pyRound(-2.5)).toBe(-2);
-    expect(pyRound(0.125, 2)).toBe(0.12);
+    expect(pyRound(2.5)).toBe(3);
+    expect(pyRound(-2.5)).toBe(-3);
+    expect(pyRound(0.125, 2)).toBe(0.13);
     expect(pyRound(0.375, 2)).toBe(0.38);
-    expect(pyFixed(12.5, 0)).toBe('12');
+    expect(pyFixed(12.5, 0)).toBe('13');
     expect(pyFixed(13.5, 0)).toBe('14');
+    expect(pct(0.125)).toBe('13%');
   });
 
-  test('a value that only LOOKS like a tie rounds by its exact binary value', () => {
-    // 2.675 is 2.67499999999999982236431605997495353221893310546875.
-    expect(pyRound(2.675, 2)).toBe(2.67);
-    // 1.005 is 1.00499999999999989341858963598497211933135986328125.
-    expect(pyRound(1.005, 2)).toBe(1);
-    // 0.15 is 0.1499999999999999944488848768742172978818416595458984375.
-    expect(pyRound(0.15, 1)).toBe(0.1);
-    // 0.35 is 0.34999999999999997779553950749686919152736663818359375.
-    expect(pyRound(0.35, 1)).toBe(0.3);
+  test('a value that LOOKS like a tie is one: the digits a person reads, not the double under them', () => {
+    // 2.675 is stored as 2.67499999999999982236431605997495353221893310546875; it is written 2.675.
+    expect(pyRound(2.675, 2)).toBe(2.68);
+    expect(pyRound(1.005, 2)).toBe(1.01);
+    expect(pyRound(0.15, 1)).toBe(0.2);
+    expect(pyRound(0.35, 1)).toBe(0.4);
+    expect(pct(0.285)).toBe('29%');
   });
 
-  test('Math.round and toFixed would have said otherwise, which is why these exist', () => {
-    expect(Math.round(12.5)).toBe(13);
-    expect(pct(0.125)).toBe('12%');
-    expect((0.125).toFixed(2)).toBe('0.13');
-    expect(pyFixed(0.125, 2)).toBe('0.12');
+  test('the point moves in decimal: a share as a percent, tokens as thousands or millions', () => {
+    expect(scaledHalfUp(0.185, 0, 2)).toBe(19n);
+    expect(scaledHalfUp(12_500, 0, -3)).toBe(13n);
+    expect(scaledHalfUp(3_631_450_000, 1, -6)).toBe(36315n);
+    expect(scaledHalfUp(-0.185, 0, 2)).toBe(-19n);
+  });
+
+  test('not a tie goes to the nearer side', () => {
+    expect(pct(0.1849)).toBe('18%');
+    expect(pct(0.004)).toBe('0%');
+    expect(pyRound(0.18547, 3)).toBe(0.185);
   });
 
   test('pyFixed groups thousands only when asked', () => {
@@ -63,6 +79,7 @@ describe('rounding the way Python rounds', () => {
     expect(pyFixed(1234567.891, 1, true)).toBe('1,234,567.9');
     expect(pyFixed(1234567.891, 1)).toBe('1234567.9');
     expect(pyFixed(0.004, 2)).toBe('0.00');
+    expect(pyFixed(-0.04, 1)).toBe('-0.0');
     expect(commas(64680)).toBe('64,680');
     expect(commas(999)).toBe('999');
     expect(() => commas(1.5)).toThrow();
@@ -79,7 +96,8 @@ describe('profile.py and feedback.py, said the same way', () => {
   test('_n: one decimal at most, no trailing .0, rounded FIRST', () => {
     expect(n(4.96)).toBe('5');
     expect(n(4.94)).toBe('4.9');
-    expect(n(30.25)).toBe('30.2');
+    expect(n(30.25)).toBe('30.3');
+    expect(n(1234.55)).toBe('1,234.6');
     expect(n(64680)).toBe('64,680');
     expect(n(1234.56)).toBe('1,234.6');
     expect(n(0)).toBe('0');
@@ -102,7 +120,8 @@ describe('profile.py and feedback.py, said the same way', () => {
     expect(mins(20)).toBe('under a minute');
     expect(mins(60)).toBe('1 minute');
     expect(mins(90)).toBe('2 minutes');
-    expect(mins(150)).toBe('2 minutes');
+    expect(mins(150)).toBe('3 minutes');
+    expect(mins(30)).toBe('1 minute');
     expect(mins(3900)).toBe('1h 05m');
     expect(floorMins(3585)).toBe('59 minutes');
     expect(floorMins(3900)).toBe('1h 05m');
@@ -119,11 +138,13 @@ describe('profile.py and feedback.py, said the same way', () => {
     expect(human(3_766_512_000)).toBe('3,766.5M');
     expect(human(999_949_999)).toBe('999.9M');
     expect(human(999_950_000)).toBe('1,000.0M');
+    expect(human(12_500)).toBe('13k');
     expect(shareWords(0.004)).toBe('under 1%');
     expect(shareWords(0)).toBe('0%');
     expect(shareWords(0.996)).toBe('over 99%');
     expect(shareWords(1)).toBe('100%');
-    expect(shareWords(0.945)).toBe('94%');
+    expect(shareWords(0.945)).toBe('95%');
+    expect(shareWords(0.005)).toBe('1%');
     expect(about(0.4)).toBe('About 40%');
     expect(about(0.996)).toBe('Over 99%');
   });
@@ -169,15 +190,15 @@ describe('against Python itself (skipped without python3)', () => {
     const py = python<Record<string, unknown[]>>(
       `
 import json
-from analysis import profile as pf, feedback as fb, burn as b, wrapped as w
+from analysis import profile as pf, feedback as fb, burn as b, wrapped as w, plain as pl
 vals = json.loads(sys.argv[1]); secs = json.loads(sys.argv[2])
 print(json.dumps({
   "n": [pf._n(v) for v in vals],
   "count": [pf._count(v, "prompt") for v in vals],
   "pct": [pf._pct(v) for v in vals],
   "in_ten": [pf.in_ten(v) for v in vals],
-  "round2": [round(v, 2) for v in vals],
-  "fixed1": [f"{v:.1f}" for v in vals],
+  "round2": [pl.rounded(v, 2) for v in vals],
+  "fixed1": [str(pl.half_up(v, 1)) for v in vals],
   "share": [b._share_words(v) for v in vals if v <= 1],
   "human": [b._human(int(v)) for v in vals],
   "mins": [fb._mins(s) for s in secs],
@@ -194,8 +215,8 @@ print(json.dumps({
     expect(VALUES.map((v) => pyRound(v, 2))).toEqual(py.round2 as number[]);
     expect(VALUES.map((v) => pyFixed(v, 1))).toEqual(py.fixed1 as string[]);
     expect(VALUES.filter((v) => v <= 1).map(shareWords)).toEqual(py.share as string[]);
-    // One grouping rule on both sides (`burn._human` writes `:,.1f`), so the pin is the bytes at
-    // every size, 4,168.5M included.
+    // One grouping rule on both sides (`burn._human` writes `plain.half_up(n, 1, scale=-6)` with
+    // `,`), so the pin is the bytes at every size, 4,168.5M included.
     expect(VALUES.map((v) => human(Math.trunc(v)))).toEqual(py.human as string[]);
     expect(SECONDS.map(mins)).toEqual(py.mins as string[]);
     expect(SECONDS.map(floorMins)).toEqual(py.floor as string[]);

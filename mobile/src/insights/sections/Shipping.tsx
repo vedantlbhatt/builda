@@ -136,7 +136,8 @@ export function ShippingSection({ shipping, width }: { shipping: ShippingModel; 
                       {r.text}
                     </Text>
                   </View>
-                  <GrowBar frac={k.roles[0] ? r.lines / k.roles[0].lines : 0} color={i === 0 ? HUE.ink : HUE.partner} height={6} delay={100 + i * 80} />
+                  {/* Out of every counted line, never out of the biggest role: 69% fills 69% of the track. */}
+                  <GrowBar frac={r.share} color={i === 0 ? HUE.ink : HUE.partner} height={6} delay={100 + i * 80} />
                 </View>
               ))}
             </View>

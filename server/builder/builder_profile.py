@@ -114,9 +114,9 @@ def builder_profile(db, user_id: str, window_days: int) -> tuple[dict | None, in
         "confidence_mean": _mean([b.get("confidence") for b in bodies], 3),
         "dimensions": {
             d.dimension: {
-                "mean": round(float(d.mean), 1),
+                "mean": _rounded(float(d.mean), 1),
                 "sessions": int(d.n),
-                "trend": round(float(d.trend), 1) if d.trend is not None else None,
+                "trend": _rounded(float(d.trend), 1) if d.trend is not None else None,
             }
             for d in dims
         },
@@ -141,7 +141,7 @@ def _archetype(bodies: list[dict]) -> dict:
     modal, modal_n = _mode(counts)
     return {
         "modal": modal,
-        "share": round(modal_n / total, 3) if total else None,
+        "share": _rounded(modal_n / total, 3) if total else None,
         "with_archetype": total,
         "distribution": dict(_ranked(counts)),
     }
@@ -155,7 +155,7 @@ def _build_style(bodies: list[dict]) -> dict:
         mode, mode_n = _mode(counts)
         out[key] = {
             "mode": mode,
-            "share": round(mode_n / len(values), 3) if values else None,
+            "share": _rounded(mode_n / len(values), 3) if values else None,
             "distribution": dict(_ranked(counts)),
         }
     return out
@@ -211,7 +211,7 @@ def _mode(counts: Counter) -> tuple[str | None, int]:
 
 def _mean(values: list, digits: int) -> float | None:
     xs = [float(v) for v in values if v is not None]
-    return round(sum(xs) / len(xs), digits) if xs else None
+    return _rounded(sum(xs) / len(xs), digits) if xs else None
 
 
 # ------------------------------------------------------------------- corpus metrics
@@ -238,6 +238,19 @@ def _profile_module():
         except ImportError as e:  # pragma: no cover - deployment shape, not logic
             raise MetricsUnavailable(str(e)) from e
     return ap
+
+
+def _rounded(x: float, digits: int | None = None) -> float | int:
+    """THE rounding rule for a number a person reads, a tie AWAY from zero off the number as
+    it is written (`analysis.plain.rounded`, which the phone's `copy/numbers.ts` mirrors), so
+    a dimension mean of 72.25 reads 72.3 here and on the phone alike. Python's own `round`
+    sends a tie to the even digit. The server only build (`server/Dockerfile`) ships without
+    `analysis/`, and there the one rule is not available, so it falls back to `round`."""
+    try:
+        plain = _profile_module().plain
+    except MetricsUnavailable:  # pragma: no cover - deployment shape, not logic
+        return round(x, digits)
+    return plain.rounded(x, digits)
 
 
 def _final_rows(db, user_id: str, days: int | None, *, repo_hash: str | None = None) -> list:
@@ -412,7 +425,7 @@ def _session_fact(ap, r):
     tokens: dict[str, int] = {}
     for entry in r.models or []:
         if isinstance(entry, dict) and entry.get("model_id") and r.tok_out:
-            tokens[entry["model_id"]] = round(
+            tokens[entry["model_id"]] = _rounded(
                 float(entry.get("output_token_share") or 0) * r.tok_out
             )
     extra = {}

@@ -180,7 +180,7 @@ function GlareBlock({ width }: { width: number }) {
 
 function EnterBlock() {
   const [trigger, setTrigger] = useState(0);
-  const rows = ['builder', 'gt-transit', 'dotfiles', 'paxel-notes', 'scratch'];
+  const rows = ['lantern', 'tramline', 'quillwork', 'orchard', 'scratchpad'];
   return (
     <Block id="enter" label="animated content" note="Rows rise 8pt, 40ms apart, once. Replay to see it again.">
       <View style={{ gap: space.sm }}>

@@ -121,6 +121,74 @@ class Numbers(unittest.TestCase):
         )
 
 
+class OneRoundingRule(unittest.TestCase):
+    """`plain.half_up`: a tie AWAY from zero, read off the number as it is written. THE rule
+    for every number a person reads. FOUND IN THE CAPTURE (2026-09-14): "18% of instructions
+    landed clean" for 120 of 647, a share sent as 0.185 and rounded half to even."""
+
+    def test_the_landed_clean_share_is_nineteen_percent(self):
+        self.assertEqual(plain.pct(0.185), "19%")
+        self.assertEqual(plain.pct(120 / 647), "19%")
+
+    def test_a_tie_rounds_up_not_to_the_even_digit(self):
+        self.assertEqual(plain.pct(0.125), "13%")
+        self.assertEqual(plain.pct(0.625), "63%")
+        self.assertEqual(plain.rounded(2.5), 3)
+        self.assertEqual(plain.rounded(0.5), 1)
+        self.assertEqual(plain.rounded(6.25, 1), 6.3)
+        self.assertEqual(plain.rounded(-2.5), -3)
+
+    def test_the_number_as_written_not_the_double_under_it(self):
+        # 2.675 and 0.285 are stored a hair under themselves; a person reads the digits.
+        self.assertEqual(plain.rounded(2.675, 2), 2.68)
+        self.assertEqual(plain.pct(0.285), "29%")
+        self.assertEqual(str(plain.half_up(1234.55, 1)), "1234.6")
+
+    def test_the_decimal_point_moves_in_decimal(self):
+        self.assertEqual(plain.half_up(12_500, scale=-3), 13)
+        self.assertEqual(str(plain.half_up(3_631_450_000, 1, scale=-6)), "3631.5")
+
+    def test_not_a_tie_goes_to_the_nearer_side(self):
+        self.assertEqual(plain.pct(0.1849), "18%")
+        self.assertEqual(plain.pct(0.004), "0%")
+        self.assertEqual(plain.rounded(0.18547, 3), 0.185)
+
+    def test_the_types_round_gives(self):
+        self.assertIsInstance(plain.rounded(2.4), int)
+        self.assertIsInstance(plain.rounded(2.4, 1), float)
+        # A count rounded to places is still that count: never 0.0 on the wire.
+        self.assertEqual(json.dumps(plain.rounded(0, 2)), "0")
+        self.assertEqual(json.dumps(plain.rounded(7, 1)), "7")
+
+    def test_it_refuses_what_is_not_a_number(self):
+        for bad in (float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                plain.half_up(bad)
+
+    #: Every module that says a number a person reads, on the Mac or on the phone. Parsers
+    #: (timestamps, not numbers anyone reads) and the digest (the model's input) are not here.
+    SAYS_NUMBERS = (
+        "agents", "brag", "burn", "calls", "contributions", "corpus", "feedback", "languages",
+        "live", "narrative", "patterns", "playbook", "pricing", "profile", "projects",
+        "quality", "report", "report_blocks", "shipped", "trends", "vocab", "wrapped",
+        "__main__",
+    )
+
+    def test_no_module_that_says_a_number_rounds_on_its_own(self):
+        import re
+
+        bare = re.compile(r"(?<![\w.])round\(")
+        fmt = re.compile(r"\{[^{}]*:[,]?\.\d[f%]\}")
+        for name in self.SAYS_NUMBERS:
+            src = (REPO / "analysis" / f"{name}.py").read_text()
+            code = "\n".join(
+                line.split("#", 1)[0] for line in src.splitlines() if not line.lstrip().startswith(("#", '"', "`"))
+            )
+            self.assertIsNone(bare.search(code), f"{name}.py rounds with round(), not plain.rounded")
+            if name in ("burn", "profile", "pricing", "projects"):
+                self.assertIsNone(fmt.search(code), f"{name}.py rounds in a format spec, not plain.half_up")
+
+
 class Dashes(unittest.TestCase):
     def test_what_is_a_dash(self):
         for text in ("a " + chr(0x2014) + " b", "a" + chr(0x2013) + "b", "a - b", "a -- b"):

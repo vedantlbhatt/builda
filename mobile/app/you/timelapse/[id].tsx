@@ -29,7 +29,7 @@ import { Easing, runOnJS, useAnimatedReaction, useSharedValue, withTiming } from
 import type { SessionDetail } from '../../../src/data/api';
 import type { LiveFile, LiveFrame, LiveState } from '../../../src/generated/live';
 import { GUTTER, type, Words } from '../../../src/insights/kit';
-import { GROUND } from '../../../src/insights/palette';
+import { GROUND, SPECTRUM } from '../../../src/insights/palette';
 import { Block, Section, useClock } from '../../../src/insights/reveal';
 import { widestLabel } from '../../../src/map/figure';
 import { spanOf, spikeBins, trackBins } from '../../../src/map/frames';
@@ -39,7 +39,7 @@ import { layoutMap } from '../../../src/map/layout';
 import { BLOOM_AT, MapCanvas, POP_MS } from '../../../src/map/MapCanvas';
 import { MapError, MapLoading, MapMissing, MapPage, MapRefusal, MapSignedOut, SAMPLE_NOTE, StaleNote, useOpenSession } from '../../../src/map/MapParts';
 import { Legend, ReplayControls, ReplayFigure, SessionBand } from '../../../src/map/MapWords';
-import { bloomDelays, bloomEnd, bloomWaves } from '../../../src/map/paint';
+import { bloomDelays, bloomEnd, bloomWaves, HUE_WORD, stuckHue } from '../../../src/map/paint';
 import { Scrubber } from '../../../src/map/Scrubber';
 import { usePlayback } from '../../../src/map/usePlayback';
 import { useSessionMap } from '../../../src/map/useSessionMap';
@@ -194,6 +194,9 @@ function Replayer({
   const bins = useMemo(() => trackBins(frames, span), [frames, span]);
   const spikes = useMemo(() => spikeBins(bins), [bins]);
   const roles = useMemo(() => rolesOnMap(files), [files]);
+  // The stuck files' hue: none the kinds of file or the band wear (`paint.stuckHue`).
+  const stuckName = useMemo(() => stuckHue(accent.name, roles), [accent.name, roles]);
+  const stuck = SPECTRUM[stuckName].ink;
   const landed = useMemo(() => bloomEnd(bloomDelays(bloomWaves(lay), BLOOM_AT)), [lay]);
   const total = elapsedLabel(span);
   const widest = widestLabel(total, span);
@@ -271,7 +274,7 @@ function Replayer({
   const knotLine = knot ? knotSentence(knot, files, names) : null;
   const burstLine = burst ? burstSentence(burst, span, knot !== null) : null;
   const notes = [thinnedNote(frames, files), offMapNote(frames, lay.index)].filter((n): n is string => n !== null);
-  const items = useMemo(() => legend('timelapse', { knot: knot !== null, reduceMotion: reduce, path: true }), [knot, reduce]);
+  const items = useMemo(() => legend('timelapse', { knot: knot !== null, reduceMotion: reduce, path: true, stuck: HUE_WORD[stuckName] }), [knot, reduce, stuckName]);
   const maxHeight = Math.min(Math.round(height * 0.56), Math.round(width * 1.1));
   const column = width - GUTTER * 2;
 
@@ -283,7 +286,7 @@ function Replayer({
           animal={accent.animal}
           title={title}
           width={width}
-          figure={(inner) => <ReplayFigure playhead={pb.playhead} widest={widest} width={inner} />}
+          figure={(inner) => <ReplayFigure playhead={pb.playhead} at={pb.position} widest={widest} width={inner} />}
           sentence={timelapseTitle(frames)}
           note={replayNote(state, frames, now)}
         />
@@ -296,6 +299,7 @@ function Replayer({
             width={width}
             maxHeight={maxHeight}
             hue={accent}
+            stuck={stuck}
             replay={replay}
             playhead={pb.playhead}
             span={span}
@@ -323,6 +327,7 @@ function Replayer({
             onToggle={toggle}
             onReplay={again}
             playhead={pb.playhead}
+            at={pb.position}
             widest={widest}
             total={total}
             accent={{ fill: accent.fill, onFill: accent.onFill, text: accent.text }}
@@ -336,8 +341,7 @@ function Replayer({
               playhead={pb.playhead}
               knot={knotWindow}
               burst={burstWindow}
-              ink={accent.ink}
-              partner={accent.partner}
+              stuck={stuck}
               onScrubStart={scrubStart}
               onScrubEnd={pb.scrubEnd}
               valueText={`${elapsedLabel(pb.position)} of ${total}`}
@@ -351,7 +355,7 @@ function Replayer({
         <Section style={[styles.gutter, styles.chapter]}>
           <Block style={styles.sentences}>
             {knotLine ? (
-              <Words style={[type.body, { color: inKnot ? accent.text : GROUND.dim }]}>{knotLine}</Words>
+              <Words style={[type.body, { color: inKnot ? stuck : GROUND.dim }]}>{knotLine}</Words>
             ) : null}
             {burstLine ? <Words style={[type.body, { color: pb.ended ? GROUND.text : GROUND.dim }]}>{burstLine}</Words> : null}
             {notes.map((n) => (
@@ -365,7 +369,7 @@ function Replayer({
 
       <Section style={[styles.gutter, styles.chapter]}>
         <Block>
-          <Legend items={items} roles={roles} accent={accent.ink} />
+          <Legend items={items} roles={roles} stuck={stuck} />
         </Block>
       </Section>
     </>

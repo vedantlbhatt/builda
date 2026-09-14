@@ -23,11 +23,15 @@ import { join } from 'node:path';
 
 import { hasDash } from '../src/copy/plain';
 import { explainBurn } from '../src/copy/burn';
+import { shareWords } from '../src/copy/numbers';
+import { burnBand } from '../src/session/burnChart';
 import type { CallTokensRead, SessionDetail } from '../src/data/api';
 import type { SessionCallPoint, SessionCallTokens } from '../src/generated/contract';
 import { ANIMALS } from '../src/pixel/animals';
 import { CAUSE_HUE } from '../src/session/burnChart';
 import {
+  CARET_H,
+  MARK_GAP,
   PART_HUE,
   barHeight,
   beforeSession,
@@ -35,6 +39,7 @@ import {
   clampIndex,
   eachBarWords,
   explainCalls,
+  markShape,
   niceStep,
   percentWords,
   placeMarkLabels,
@@ -120,6 +125,8 @@ describe('the chart', () => {
     expect([v.bars[166]!.first, v.bars[166]!.last]).toEqual([499, 500]);
     expect(v.eachBar).toBe('each bar the average of 3 calls, the last of 2');
     expect(eachBarWords(3, 501)).toBe('each bar the average of 3 calls');
+    // 373 calls two to a bar: the last bar holds one call, said so (it read "the last of 1", 60256e3a).
+    expect(eachBarWords(2, 373)).toBe('each bar the average of 2 calls, and the last bar a single call');
     expect(v.axis[0]).toEqual({ index: 0, label: 'call 1' });
     expect(v.axis[v.axis.length - 1]).toEqual({ index: 166, label: '500' });
   });
@@ -148,6 +155,29 @@ describe('the chart', () => {
     const v = ready(RIDEGT);
     expect(v.ticks.map((t) => t.label)).toEqual(['50k', '100k', '150k']);
     for (const t of v.ticks) expect(t.value).toBeLessThanOrEqual(v.max);
+  });
+
+  test('an expired cache mark can never be read as its bar: dotted, neutral, and stopping short of the bar', () => {
+    // FOUND IN THE DEFECTS PASS (2026-09-14): a solid one point amber stem ran from the bar's top to
+    // the words, beside bars a point and a half wide, so call 211 of 78b653a5 read about 330k where
+    // it sent 118,886. Every bar top from the words down to the floor: the caret's tip stays
+    // MARK_GAP above the bar, the leader ends above the caret, and a bar near the words gets no leader.
+    for (let peak = 10; peak <= 222; peak += 0.5) {
+      const m = markShape(18, peak);
+      expect(m.caret.tip).toBe(peak - MARK_GAP);
+      expect(m.caret.tip - m.caret.top).toBe(CARET_H);
+      if (m.leader) {
+        expect(m.leader[0]).toBe(18);
+        expect(m.leader[1]).toBeLessThan(m.caret.top);
+      } else {
+        expect(m.caret.top - 18).toBeLessThan(5);
+      }
+    }
+    expect(MARK_GAP).toBeGreaterThanOrEqual(2);
+    const src = readFileSync(join(MOBILE, 'src/session/CallsChart.tsx'), 'utf8');
+    // The leader is a dotted path in the neutral ink, never the bar's hue: no stem, no bar colour.
+    expect(src).toMatch(/<Path path=\{leaders\} style="stroke" strokeWidth=\{1\} color=\{GROUND\.dim\}>\s*<DashPathEffect/);
+    expect(src).not.toMatch(/stem/);
   });
 
   test('the call back to an expired cache is marked over its own bar, in a bin too', () => {
@@ -359,6 +389,63 @@ describe('share words add up to 100', () => {
       if (said.some((w) => !/^\d+%$/.test(w))) continue;
       expect(said.reduce((t, w) => t + Number(w.slice(0, -1)), 0)).toBe(100);
     }
+  });
+
+  test('a part said "under 1%" holds the point the whole numbers leave; it is not handed to the largest part', () => {
+    // 60256e3a's tokens: re-read 98.49%, new 1.26%, the reply 0.24%. Largest remainder gave the
+    // re-read the reply's point and read 99% under a band and a paragraph saying 98%.
+    expect(percentWords([132_134_470, 1_694_548, 327_194])).toEqual(['98%', '1%', 'under 1%']);
+    // Without a part in words, the whole numbers still make 100.
+    expect(percentWords([1, 1, 1])).toEqual(['34%', '33%', '33%']);
+  });
+
+  test('a pinned part reads as shareWords says it, and the others take the point', () => {
+    // 97.5% and 2.5%: said on their own they can make 101; the pinned part keeps its own word.
+    const said = percentWords([97.5, 2.5], 0);
+    expect(said[0]).toBe(shareWords(0.975));
+    expect(said.reduce((t, w) => t + Number(w.slice(0, -1)), 0)).toBe(100);
+    for (const parts of [[96.5, 2.6, 0.9], [98.5, 1.5], [90.5, 9.5], [50.5, 49.5]]) {
+      const total = parts.reduce((t, v) => t + v, 0);
+      expect(percentWords(parts, 0)[0]).toBe(shareWords(parts[0]! / total));
+    }
+  });
+
+  test('the re-read on the bar is the re-read on the band and in the paragraph: one number (60256e3a)', () => {
+    // MEASURED on the overnight stack (2026-09-14): burn's total and this block's are equal on all
+    // 152 sessions that carry both, so the three places the page says the share must agree.
+    const burn = {
+      reason: null,
+      tokens: 134_156_212,
+      cache_read_share: 0.9849299412240411,
+      barren_share: 0.11058992929824227,
+      unreadable_share: 0.4884698816630273,
+      segments: 72,
+      lines_added: 507,
+      lines_removed: 0,
+      files_changed: 5,
+      commits: 3,
+      spikes: null,
+      spikes_needed: 5,
+    } as unknown as NonNullable<SessionDetail['burn']>;
+    const block: SessionCallTokens = {
+      ...RIDEGT,
+      calls: 2,
+      points: [
+        { at: 4, cache_read: 66_067_235, cache_write: 846_901, input: 373, output: 163_597 },
+        { at: 900, cache_read: 66_067_235, cache_write: 846_901, input: 373, output: 163_597 },
+      ],
+    };
+    const v = callsView({ call_tokens: block, harness: 'claude_code', burn });
+    if (v.kind !== 'ready') throw new Error('expected a chart');
+    const read = v.shares[0]!.segments.find((g) => g.part === 'read')!;
+    expect(read.text).toBe('re-read 98%');
+    expect(burnBand(burn)!.note).toBe('98% of them re-reading the conversation so far');
+    expect(explainBurn(burn, 'claude_code')[1]!.startsWith('98% of that was the conversation re-reading itself')).toBe(true);
+    expect(v.explain.join(' ')).toContain('re-reads are 98% of the tokens');
+    expect(v.totalNote).toBeNull();
+    // Were the two totals ever to part, the page says so rather than two figures in silence.
+    const parted = callsView({ call_tokens: block, harness: 'claude_code', burn: { ...burn, tokens: 57_600_000 } });
+    expect(parted.kind === 'ready' && parted.totalNote).toBe('Counted call by call, so these can differ from the 57.6M tokens under where the tokens went.');
   });
 
   test('every sample and chart bar that says only whole numbers says 100 in all', () => {

@@ -76,7 +76,7 @@ function allCopy(s: SessionDetail): string[] {
   for (const screen of ['map', 'timelapse'] as const) {
     for (const knot of [true, false])
       for (const reduceMotion of [true, false])
-        for (const path of [true, false]) out.push(...legend(screen, { knot, reduceMotion, path }).map((i) => i.text));
+        for (const path of [true, false]) out.push(...legend(screen, { knot, reduceMotion, path, stuck: 'pink' }).map((i) => i.text));
   }
   out.push(ISLANDS_NOTE, ROLES_NOTE, TAP_HINT);
   const lapse = files.map((f) => f.role);
@@ -330,12 +330,13 @@ describe('the band, the legend and the ledger say what the map draws', () => {
   });
 
   test('the legend: the knot only when there is one, still under Reduce Motion, the path only when drawn, red only on the replay', () => {
-    const none = legend('map', { knot: false, reduceMotion: false, path: false }).map((i) => i.swatch);
+    const none = legend('map', { knot: false, reduceMotion: false, path: false, stuck: 'pink' }).map((i) => i.swatch);
     expect(none).toEqual(['changed', 'read', 'hot', 'cursor']);
-    const all = legend('timelapse', { knot: true, reduceMotion: false, path: true });
+    const all = legend('timelapse', { knot: true, reduceMotion: false, path: true, stuck: 'pink' });
     expect(all.map((i) => i.swatch)).toEqual(['changed', 'read', 'hot', 'path', 'cursor', 'fail', 'knot']);
-    expect(all.find((i) => i.swatch === 'knot')!.text).toMatch(/^Pulsing in your colour/);
-    expect(legend('map', { knot: true, reduceMotion: true, path: true }).find((i) => i.swatch === 'knot')!.text).toMatch(/^Outlined in your colour/);
+    // The stuck files are named by their own colour, never "your colour": the builder's is the band's.
+    expect(all.find((i) => i.swatch === 'knot')!.text).toMatch(/^Pulsing in pink: /);
+    expect(legend('map', { knot: true, reduceMotion: true, path: true, stuck: 'pink' }).find((i) => i.swatch === 'knot')!.text).toMatch(/^Outlined in pink: /);
     for (const it of all) expect(it.text).toMatch(/\.$/);
   });
 

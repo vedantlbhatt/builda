@@ -4,7 +4,9 @@
  * in ember on top (`callsView.PART_HUE`, chosen against burn's chart above), over hairline
  * gridlines labelled in tokens a call. A bar of several calls stands as high as ONE of them sent on
  * average (`CallBar.each`), so the axis means the same thing on every bar. A call that came back to
- * an expired cache is the tall amber bar, and an amber mark over it says how long it was away.
+ * an expired cache is the tall amber bar, and a mark over it says how long it was away: its words
+ * at the top, a dotted leader in the neutral ink and a caret whose tip stops short of the bar
+ * (`callsView.markShape`), so the mark is never read as the bar's height.
  *
  * It DRAWS ON when it comes on screen: the bars rise from the floor left to right on the page's
  * spring, a bar every few milliseconds, as if the session were being replayed call by call. Then
@@ -26,7 +28,7 @@
  * A part that is not zero is never drawn as nothing (`insights/Bars`' rule): new and reply keep a
  * one point cap, drawn on the true stack, so a reply of 300 tokens on a 250,000 token bar is seen.
  */
-import { Canvas, createPicture, Picture, Rect, Skia, type SkCanvas } from '@shopify/react-native-skia';
+import { Canvas, createPicture, DashPathEffect, Path, Picture, Rect, Skia, type SkCanvas } from '@shopify/react-native-skia';
 import React, { memo, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -36,7 +38,7 @@ import { phase, spring } from '../insights/motion';
 import { GROUND, SPECTRUM } from '../insights/palette';
 import { useDrawClock } from '../projects/drawClock';
 import { select } from '../ui/haptics';
-import { PART_HUE, placeMarkLabels, type CallBar, type RewriteMark } from './callsView';
+import { CARET_W, PART_HUE, markShape, placeMarkLabels, type CallBar, type RewriteMark } from './callsView';
 import { AXIS } from './type';
 
 /** Room at the left for the gridline labels, over the bars for the marks, under them for the axis. */
@@ -59,10 +61,14 @@ const REPLY = SPECTRUM[PART_HUE.reply].ink;
 /** One bar as plain numbers for the UI thread: where it stands and its three heights, in points. */
 type Laid = { x: number; w: number; read: number; fresh: number; reply: number; at: number };
 
-/** A mark over a bar, laid out: the stem down to the bar's top, and its words when they fit. */
-type MarkAt = { call: number; label: string; stemX: number; stemTop: number; stemH: number; words: { left: number; align: 'left' | 'center' | 'right' } | null };
+/** A mark over a bar, laid out: its words when they fit. The leader and caret are in `markPaths`. */
+type MarkAt = { call: number; label: string; words: { left: number; align: 'left' | 'center' | 'right' } | null };
 /** The box a mark's words are set in: "46h 34m away" at the axis size is about 76 points. */
 const MARK_W = 88;
+/** Where a mark's leader starts: under its words (`styles.mark`, top 2, 14 points of line). */
+const MARK_WORDS_END = 18;
+/** The leader's dots: one point on, two off, so it reads as a line of dots and never as a bar. */
+const LEADER_DOTS = [1, 2];
 
 /** A bar's height as drawn, its one point caps included. */
 function drawnHeight(b: Laid): number {
@@ -147,21 +153,36 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, at, onIndex }: 
   );
   const grid = useMemo(() => ticks.map((t) => Math.round(floor - t.value * scale)), [ticks, floor, scale]);
   const height = floor + 1;
-  const marksAt: MarkAt[] = useMemo(() => {
+  const { marksAt, leaders, carets } = useMemo(() => {
     const centre = (i: number) => {
       const bar = laid[i];
       return bar ? bar.x + bar.w / 2 : LEFT;
     };
-    // The largest rewrite's words first; any that would sit on words already placed keeps its stem.
+    // The largest rewrite's words first; any that would sit on words already placed keeps its
+    // leader and caret, so every expired cache is still marked.
     const words = placeMarkLabels(marks, centre, LEFT, right, MARK_W);
     const out: MarkAt[] = [];
+    // One path of dots and one of carets for every mark: two nodes however many marks there are.
+    const dots = Skia.Path.Make();
+    const tips = Skia.Path.Make();
     for (const m of marks) {
       const bar = laid[m.index];
       if (!bar) continue;
+      const x = centre(m.index);
+      // A mark whose words gave way to a larger one keeps its caret and draws no leader to nothing.
       const peak = floor - drawnHeight(bar);
-      out.push({ call: m.call, label: m.label, stemX: centre(m.index) - 0.5, stemTop: TOP, stemH: Math.max(0, peak - TOP), words: words.get(m.call) ?? null });
+      const shape = markShape(words.has(m.call) ? MARK_WORDS_END : peak, peak);
+      if (shape.leader) {
+        dots.moveTo(x, shape.leader[0]);
+        dots.lineTo(x, shape.leader[1]);
+      }
+      tips.moveTo(x - CARET_W / 2, shape.caret.top);
+      tips.lineTo(x + CARET_W / 2, shape.caret.top);
+      tips.lineTo(x, shape.caret.tip);
+      tips.close();
+      out.push({ call: m.call, label: m.label, words: words.get(m.call) ?? null });
     }
-    return out;
+    return { marksAt: out, leaders: dots, carets: tips };
   }, [marks, laid, floor, right]);
 
   const { clock, box, landed } = useDrawClock(total);
@@ -235,18 +256,23 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, at, onIndex }: 
               </Text>
             );
           })}
-          {landed
-            ? marksAt.map((m) => (
-                <Animated.View key={m.call} entering={FadeIn.duration(220)} pointerEvents="none" style={StyleSheet.absoluteFill}>
-                  <View style={[styles.stem, { left: m.stemX, top: m.stemTop, height: m.stemH }]} />
-                  {m.words ? (
-                    <Text allowFontScaling={false} numberOfLines={1} style={[AXIS, styles.mark, { left: m.words.left, width: MARK_W, textAlign: m.words.align }]}>
-                      {m.label}
-                    </Text>
-                  ) : null}
-                </Animated.View>
-              ))
-            : null}
+          {landed && marksAt.length ? (
+            <Animated.View entering={FadeIn.duration(220)} pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Canvas style={{ width, height }}>
+                <Path path={leaders} style="stroke" strokeWidth={1} color={GROUND.dim}>
+                  <DashPathEffect intervals={LEADER_DOTS} />
+                </Path>
+                <Path path={carets} color={FRESH} />
+              </Canvas>
+              {marksAt.map((m) =>
+                m.words ? (
+                  <Text key={m.call} allowFontScaling={false} numberOfLines={1} style={[AXIS, styles.mark, { left: m.words.left, width: MARK_W, textAlign: m.words.align }]}>
+                    {m.label}
+                  </Text>
+                ) : null,
+              )}
+            </Animated.View>
+          ) : null}
         </Animated.View>
       </GestureDetector>
     </View>
@@ -260,5 +286,4 @@ const styles = StyleSheet.create({
   tick: { position: 'absolute', left: 0, textAlign: 'right', color: GROUND.faint },
   axis: { position: 'absolute', color: GROUND.dim },
   mark: { position: 'absolute', top: 2, color: FRESH },
-  stem: { position: 'absolute', width: 1, backgroundColor: FRESH },
 });

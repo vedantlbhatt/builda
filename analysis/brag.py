@@ -26,6 +26,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping, Sequence
 
+from . import plain
 from . import pricing
 
 #: What kind of thing this is, and how far a card of this kind starts up the ranking.
@@ -94,7 +95,7 @@ def score(kind: str, *, has_money: bool = False, multiple: float = 1.0) -> float
         base += 0.15
     if multiple >= 2.0:
         base += min(0.2, 0.05 * multiple)
-    return round(min(base, 1.0), 3)
+    return plain.rounded(min(base, 1.0), 3)
 
 
 def _finding(findings: Sequence, fid: str):
@@ -135,7 +136,7 @@ def _model_bill(profile: Mapping, findings: Sequence) -> Card | None:
         return None
     rows.sort(key=lambda r: r["usd_per_commit"])
     cheap, dear = rows[0], rows[-1]
-    multiple = round(dear["usd_per_commit"] / cheap["usd_per_commit"], 1)
+    multiple = plain.rounded(dear["usd_per_commit"] / cheap["usd_per_commit"], 1)
     if multiple < 2:
         return None
     return Card(
@@ -200,7 +201,7 @@ def _the_night_shift(profile: Mapping, findings: Sequence) -> Card | None:
         return None
     late = f.left["lines_per_active_hour"]
     day = f.right["lines_per_active_hour"]
-    multiple = round(max(late, day) / max(min(late, day), 1), 1)
+    multiple = plain.rounded(max(late, day) / max(min(late, day), 1), 1)
     if multiple < 1.5:
         return None
     better = late > day
@@ -208,9 +209,9 @@ def _the_night_shift(profile: Mapping, findings: Sequence) -> Card | None:
         id="the_night_shift",
         kind="argument",
         headline=(
-            f"After 22:00 I land {round(late)} lines an hour. In daylight, {round(day)}."
+            f"After 22:00 I land {plain.rounded(late)} lines an hour. In daylight, {plain.rounded(day)}."
             if better
-            else f"My late sessions land {round(late)} lines an hour. Daylight: {round(day)}."
+            else f"My late sessions land {plain.rounded(late)} lines an hour. Daylight: {plain.rounded(day)}."
         ),
         detail=(
             f"{f.left['n']} late sittings against {f.right['n']} in daylight. "
@@ -272,7 +273,7 @@ def _the_discipline(profile: Mapping, findings: Sequence) -> Card | None:
     return Card(
         id="the_discipline",
         kind="flex",
-        headline=f"{round(f.left['share'] * 100)}% of my edits end in a test before I move on.",
+        headline=f"{plain.pct(f.left['share'])} of my edits end in a test before I move on.",
         detail=f"{f.left['count']} of {f.left['n']} editing runs.",
         numbers=dict(f.left),
         postability=score("flex"),
@@ -280,7 +281,7 @@ def _the_discipline(profile: Mapping, findings: Sequence) -> Card | None:
 
 
 def _hm(seconds: float) -> str:
-    m = round(seconds / 60)
+    m = plain.rounded(seconds / 60)
     return f"{m} minutes" if m < 60 else f"{m // 60}h {m % 60:02d}m"
 
 

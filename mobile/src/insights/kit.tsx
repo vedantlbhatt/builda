@@ -10,6 +10,7 @@ import React, { type ReactNode } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
+import { keepDots } from '../copy/plain';
 import { MONO_FAMILY } from '../theme';
 import { fitSize, type NumSpec } from './format';
 import { COUNT_MS, ease, phase, STAGGER_MS } from './motion';
@@ -48,7 +49,8 @@ export const type = StyleSheet.create({
 export function Words({ style, children, lines }: { style: StyleProp<TextStyle>; children: ReactNode; lines?: number }) {
   return (
     <Text maxFontSizeMultiplier={1.6} numberOfLines={lines} style={style}>
-      {children}
+      {/* A wrapped line never starts with the dot between two facts (`copy/plain.keepDots`). */}
+      {keepDots(children)}
     </Text>
   );
 }

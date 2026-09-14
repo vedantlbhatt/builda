@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, useWindowDimensions, View } from 'react-native';
 
 import { toCardModel } from '../../src/card/RecapCard';
+import { useRepoNames } from '../../src/data/repoNames';
 import { shareCard } from '../../src/card/export';
 import { ApiError, OFFLINE_MESSAGE, type FeedItem, type SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
@@ -30,11 +31,6 @@ import { visibilityLabel } from '../../src/social/format';
 function sharedFromDetail(s: SessionDetail): boolean {
   if (s.post_id === undefined) return s.is_shared;
   return s.post_id !== null;
-}
-
-/** The short code printed on the card: the sample's own, else the id's first six. */
-function shortCode(id: string): string {
-  return id === 'sample' ? 'builder.dev/s/sample' : `builder.dev/s/${id.slice(0, 6)}`;
 }
 
 /** What a thrown load says, as `load.ts` reads it. Status -1 is neither the phone nor the server. */
@@ -73,7 +69,9 @@ function SessionScreenInner({ id, recap, variant }: { id: string; recap?: string
   // and the recap says why Post is off, rather than failing at the tap. Only a transport
   // failure means "offline": a 404 or a 500 is the server answering.
   const offline = failure?.status === 0;
-  const model = useMemo(() => (session ? toCardModel(session, shortCode(id)) : null), [session, id]);
+  // What the card's header calls a private project: the number the Projects tab gives it.
+  const names = useRepoNames();
+  const model = useMemo(() => (session ? toCardModel(session, names) : null), [session, names]);
 
   const load = useCallback(async () => {
     const show = (s: SessionDetail) => {

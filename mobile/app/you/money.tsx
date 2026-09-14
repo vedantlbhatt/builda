@@ -9,9 +9,10 @@ import { NOT_WHAT_YOU_PAY } from '../../src/insights/model';
 import { Num } from '../../src/insights/Num';
 import { DATA, GROUND, HUE_NAMES, SPECTRUM, type Hue, type HueName } from '../../src/insights/palette';
 import { Block, Section } from '../../src/insights/reveal';
-import { BUCKET_COLOR, BurnBody, modelColors } from '../../src/insights/sections/Money';
+import { BurnBody } from '../../src/insights/sections/Money';
 import { FLOW_TITLE, FlowChapter, flowHue, flowPaint } from '../../src/money/FlowChapter';
 import { moneyFlow, projectHuesApart, withFlowFigures } from '../../src/money/flow';
+import { bucketColor, bucketHues, modelColors, modelHueNames, NO_COMMIT_HUE, reservedForProjects, type BucketHues } from '../../src/money/hues';
 import { preferredHue, PROJECT_HUES, projectHues } from '../../src/projects/model';
 import { useNicknames, useProjectRegistry } from '../../src/projects/nicknames';
 import { typeRoles } from '../../src/theme';
@@ -24,9 +25,10 @@ import { ChapterSkeleton, DollarFigure, ErrorChapter, RefusalChapter, SignedOutC
 
 /**
  * Chapter one wears its door's hue on the You tab (ember, the burn, as money does on the analysis
- * page, unless the builder's own creature is ember); chapter three wears heather.
+ * page, unless the builder's own creature is ember); chapter three wears heather, the hue "no
+ * commit" wears everywhere on this page (`money/hues.NO_COMMIT_HUE`), the flow's ending included.
  */
-const WHERE = SPECTRUM.heather;
+const WHERE = SPECTRUM[NO_COMMIT_HUE];
 
 /**
  * Money, as three chapters (design-refs/HOUSE-STYLE.md):
@@ -67,22 +69,28 @@ export default function MoneyScreen() {
   const { registry, ready: registered } = useProjectRegistry(data?.report?.projects?.projects);
   const page = useMemo(() => (data ? moneyPage(data) : null), [data]);
 
-  // The flow wears every project's own hue from the Projects tab, stepped past any hue a model in
-  // it wears (`projectHuesApart`), and its band a hue nobody in it or beside it wears.
+  // One hue, one meaning, on the whole page (`money/hues.ts`): the kinds of token wear hues no model
+  // wears; the flow wears every project's own hue from the Projects tab, stepped past any hue a
+  // model, a kind of token or "no commit" wears (`projectHuesApart`); and its band a hue nobody in
+  // it or beside it wears.
+  const families = useMemo(() => (page?.models ?? []).map((m) => m.family), [page]);
+  const buckets = useMemo(() => bucketHues(families), [families]);
   const projectHue = useMemo(() => {
-    const models = modelColors((page?.models ?? []).map((m) => m.family))
-      .map((ink) => HUE_NAMES.find((h) => SPECTRUM[h].ink === ink || SPECTRUM[h].partner === ink))
-      .filter((h): h is HueName => !!h);
-    const hues = data?.report?.projects ? projectHuesApart(projectHues(data.report.projects.projects, registry), PROJECT_HUES, models) : {};
+    const hues = data?.report?.projects
+      ? projectHuesApart(projectHues(data.report.projects.projects, registry), PROJECT_HUES, modelHueNames(families), reservedForProjects(families))
+      : {};
     return (key: string): HueName => hues[key] ?? preferredHue(key);
-  }, [data, page, registry]);
-  const paint = useMemo(() => flowPaint(cost, projectHue), [cost, projectHue]);
+  }, [data, families, registry]);
+  const paint = useMemo(() => flowPaint(buckets, projectHue), [buckets, projectHue]);
   const flow = useMemo(() => (data && page && registered ? moneyFlow(data, page, paint, nicknames, registry) : null), [data, page, paint, nicknames, registry, registered]);
   // The ring in chapter 01 reads each model exactly as the flow does (`withFlowFigures`).
   const ringModels = useMemo(() => (page ? withFlowFigures(page.models, flow) : []), [page, flow]);
   const flowHueName = useMemo(() => {
     const inside = flow && !isRefused(flow) ? flow.nodes.map((x) => HUE_NAMES.find((h) => SPECTRUM[h].ink === x.hue.ink || SPECTRUM[h].partner === x.hue.ink)) : [];
-    return flowHue([accent.name, costName, 'heather', ...inside.filter((h): h is HueName => !!h)]);
+    return flowHue(
+      inside.filter((h): h is HueName => !!h),
+      [accent.name, costName, 'heather'],
+    );
   }, [flow, accent.name, costName]);
 
   return (
@@ -109,7 +117,7 @@ export default function MoneyScreen() {
 
           {page ? (
             <>
-              <CostChapter page={page} models={ringModels} cost={cost} width={width} masked={mask.masked} onToggleMask={mask.toggle} />
+              <CostChapter page={page} models={ringModels} cost={cost} buckets={buckets} width={width} masked={mask.masked} onToggleMask={mask.toggle} />
               {stage >= 1 && flow ? (
                 isRefused(flow) ? (
                   // A spacer beside the chapter, never a wrapper: a Section reads its place from its parent.
@@ -132,7 +140,23 @@ export default function MoneyScreen() {
 
 // ------------------------------------------------------------------ 01
 
-function CostChapter({ page, models, cost, width, masked, onToggleMask }: { page: MoneyPage; models: MoneyModelRow[]; cost: Hue; width: number; masked: boolean; onToggleMask: () => void }) {
+function CostChapter({
+  page,
+  models,
+  cost,
+  buckets,
+  width,
+  masked,
+  onToggleMask,
+}: {
+  page: MoneyPage;
+  models: MoneyModelRow[];
+  cost: Hue;
+  buckets: BucketHues;
+  width: number;
+  masked: boolean;
+  onToggleMask: () => void;
+}) {
   const inner = width - GUTTER * 2;
   const h = page.hero;
   const lines = page.lines;
@@ -180,11 +204,12 @@ function CostChapter({ page, models, cost, width, masked, onToggleMask }: { page
           {page.buckets.length ? (
             <>
               <View style={styles.barGap}>
-                <StackBar height={16} delay={240} segments={page.buckets.map((x) => ({ key: x.key, value: x.tokens, color: bucketColor(x.key, cost) }))} />
+                <StackBar height={16} delay={240} segments={page.buckets.map((x) => ({ key: x.key, value: x.tokens, color: bucketColor(x.key, buckets) }))} />
               </View>
+              {/* Words, never a swatch: no hue on this page means a kind of token (`money/hues.TOKEN_HUE`). */}
               <View style={styles.legend}>
                 {page.buckets.map((x) => (
-                  <LegendLine key={x.key} color={bucketColor(x.key, cost)} text={x.label} value={x.text} />
+                  <LegendLine key={x.key} text={x.label} value={x.text} />
                 ))}
               </View>
             </>
@@ -229,11 +254,6 @@ function ledgerItem(r: MoneyLedgerRow, masked: boolean, ink: string): LedgerItem
     color: r.tone === 'add' ? DATA.add : r.tone === 'del' ? DATA.del : ink,
     shown: masked && r.dollars ? MASKED_DOLLARS : undefined,
   };
-}
-
-/** The token buckets in the analysis page's colours, the bulk in this chapter's own ink. */
-function bucketColor(key: string, cost: Hue): string {
-  return key === 'cache_read' ? cost.ink : (BUCKET_COLOR[key] ?? GROUND.dim);
 }
 
 /**
@@ -367,10 +387,10 @@ function WhereChapter({ page, width, masked, index }: { page: MoneyPage; width: 
   );
 }
 
-function LegendLine({ color, text, value }: { color: string; text: string; value?: string }) {
+function LegendLine({ color, text, value }: { color?: string; text: string; value?: string }) {
   return (
     <View style={styles.legendLine}>
-      <Swatch color={color} />
+      {color ? <Swatch color={color} /> : null}
       <Text maxFontSizeMultiplier={1.4} style={[type.dim, styles.legendText]}>
         {text}
       </Text>

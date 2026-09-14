@@ -39,6 +39,7 @@ import pathlib
 import re
 from collections.abc import Mapping, Sequence
 
+from . import plain
 from . import run as rn
 
 LOG = logging.getLogger(__name__)
@@ -361,7 +362,7 @@ def build_input(
 
 
 def _mins(seconds: float) -> str:
-    m = round(seconds / 60)
+    m = plain.rounded(seconds / 60)
     return f"{m} min" if m < 60 else f"{m // 60}h {m % 60:02d}m"
 
 

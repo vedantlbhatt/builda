@@ -26,6 +26,7 @@ import { StyleSheet, Text, useWindowDimensions } from 'react-native';
 import type { SessionDetail } from '../../../src/data/api';
 import type { LiveFile, LiveState } from '../../../src/generated/live';
 import { GUTTER, type, Words } from '../../../src/insights/kit';
+import { SPECTRUM } from '../../../src/insights/palette';
 import { Block, Section } from '../../../src/insights/reveal';
 import { renderLiveSentence } from '../../../src/live/sentence';
 import { headlineParts } from '../../../src/map/figure';
@@ -35,7 +36,7 @@ import { layoutMap } from '../../../src/map/layout';
 import { MapCanvas } from '../../../src/map/MapCanvas';
 import { MapError, MapLoading, MapMissing, MapPage, MapRefusal, MapSignedOut, SAMPLE_NOTE, StaleNote, useOpenSession } from '../../../src/map/MapParts';
 import { FigureLine, HotLedger, Legend, SessionBand, WordLink } from '../../../src/map/MapWords';
-import { hotCount, recentPath } from '../../../src/map/paint';
+import { hotCount, HUE_WORD, recentPath, stuckHue } from '../../../src/map/paint';
 import { useSessionMap } from '../../../src/map/useSessionMap';
 import {
   asSentence,
@@ -182,7 +183,13 @@ function ReadyMap({
   const parts = useMemo(() => headlineParts(head.files, head.hot), [head.files, head.hot]);
   const ledger = useMemo(() => hotLedger(files, names, now), [files, names, now]);
   const roles = useMemo(() => rolesOnMap(files), [files]);
-  const items = useMemo(() => legend('map', { knot: knot.length > 0, reduceMotion: reduce, path: path.length >= 2 }), [knot.length, reduce, path.length]);
+  // The stuck files' hue: none the kinds of file or the band wear (`paint.stuckHue`).
+  const stuckName = useMemo(() => stuckHue(accent.name, roles), [accent.name, roles]);
+  const stuck = SPECTRUM[stuckName].ink;
+  const items = useMemo(
+    () => legend('map', { knot: knot.length > 0, reduceMotion: reduce, path: path.length >= 2, stuck: HUE_WORD[stuckName] }),
+    [knot.length, reduce, path.length, stuckName],
+  );
   const cut = cutNote(state);
   const hasFrames = (state.timelapse?.length ?? 0) > 0;
   const maxHeight = Math.min(Math.round(height * 0.62), Math.round(width * 1.2));
@@ -217,6 +224,7 @@ function ReadyMap({
             width={width}
             maxHeight={maxHeight}
             hue={accent}
+            stuck={stuck}
             levels={levels}
             knot={knot}
             cursor={cursor}
@@ -238,7 +246,7 @@ function ReadyMap({
 
       <Section style={[styles.gutter, styles.chapter]}>
         <Block>
-          <Legend items={items} roles={roles} accent={accent.ink} />
+          <Legend items={items} roles={roles} stuck={stuck} />
         </Block>
       </Section>
 

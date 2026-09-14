@@ -29,7 +29,7 @@ import { spoken } from '../copy/plain';
 import { renderTitle } from '../copy/title';
 import type { SessionDetail } from '../data/api';
 import type { SessionBurn } from '../generated/contract';
-import { minutes, renderable } from './feedback';
+import { minutes, pageFactsOf, renderable } from './feedback';
 
 /** Every field the words are written from. A server older than a field omits it. */
 export type SummaryInput = Pick<
@@ -170,8 +170,8 @@ export function burnSentences(s: Pick<SessionDetail, 'burn' | 'harness'>): strin
  * with the same duration rule that section's heading uses. Never what went wrong: the notes
  * say that, with their numbers, where a person chose to look.
  */
-export function feedbackSentence(s: Pick<SessionDetail, 'feedback'>): string | null {
-  const notes = renderable(s.feedback);
+export function feedbackSentence(s: Pick<SessionDetail, 'feedback'> & Partial<Pick<SessionDetail, 'active_seconds' | 'stats'>>): string | null {
+  const notes = renderable(s.feedback, pageFactsOf(s));
   if (!notes.length) return null;
   const total = minutes(notes.reduce((sum, n) => sum + n.seconds, 0));
   if (notes.length === 1) return `One thing in this session is worth a second look, ${total} of it.`;

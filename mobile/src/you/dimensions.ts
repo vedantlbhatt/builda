@@ -109,7 +109,14 @@ export function modalArchetypeLine(bp: Pick<BuilderProfile, 'archetype'>): strin
   return `Read one session at a time, the model most often called you ${article} ${name}${share}.`;
 }
 
-/** Why there are no bars: the count the server sent against the floor it needs. */
+/**
+ * Why there are no bars: the count the server sent against the floor it needs, in words.
+ * FOUND IN THE CAPTURE (2026-09-14): "0 of 3 analysed sessions so far" wrapped with the "0"
+ * alone at a line's end, a digit nobody could read as a count of anything. The server's count
+ * is a measured zero, so it is said, as a sentence with no digit to strand.
+ */
 export function dimensionsPending(analysed: number, needed: number): string {
-  return `${n(analysed)} of ${n(needed)} analysed sessions so far.`;
+  if (analysed <= 0) return `No session has been analysed yet, and it takes ${n(needed)}.`;
+  if (analysed >= needed) return `${count(analysed, 'session has', 'sessions have')} been analysed.`;
+  return `${n(analysed)} of the ${n(needed)} it takes ${analysed === 1 ? 'has' : 'have'} been analysed so far.`;
 }

@@ -11,7 +11,7 @@
  *                3 pt dot every 12 pt that develops in Bayer order as the block arrives and that a
  *                tap shoves outward. Each island paints its own ground over the dots as it blooms,
  *                so the repository is a shape cut out of a dotted sea.
- *   the path     the last six files it touched, joined in order in the session's hue over a dark
+ *   the path     the last six files it touched, joined in order in the ground's white over a dark
  *                casing (Strava's halo under the route), round caps and joins. Wandering draws
  *                long strides between islands; circling draws a tight loop. On the time lapse it
  *                is the trail, thinning back from the head by ShapeGrid's rule.
@@ -20,7 +20,7 @@
  *   the cells    bloom in from the top of the repository outward (the sandpile's waves, four
  *                discrete sizes, a bright release beat); flip over when a refresh changes their
  *                heat or the replay first touches them (the braille flipwave).
- *   the knot     the files it keeps rewriting, in the session's hue, breathing a seventh larger
+ *   the knot     the files it keeps rewriting, in the stuck files' hue, breathing a seventh larger
  *                every PULSE_MS, closed into a loop, with rings going out from it on MagicRings'
  *                cycle, under the cells and never past the page's gutter (`paint.ringBox`).
  *                Reduce Motion: outlined and still.
@@ -78,6 +78,7 @@ import {
   glowOf,
   knockouts,
   PATH_FILES,
+  PATH_INK,
   pathWidth,
   RING_CYCLE_S,
   RING_REACH,
@@ -130,7 +131,11 @@ function measureLabel(role: PlainRole): number {
   return roleWord(role).length * 6.8 + 2;
 }
 
-/** The session's hue: the builder's accent (`theme/accent.tsx`), which the knot and the path wear. */
+/**
+ * The session's hue: the builder's accent (`theme/accent.tsx`), which the sea wears. The path and
+ * the stuck files wear their own (`paint.PATH_INK`, `paint.stuckHue`), so the builder's purple does
+ * not mean the band, the path and the stuck files at once.
+ */
 export interface SessionHue {
   name: HueName;
   ink: string;
@@ -144,6 +149,8 @@ export interface MapCanvasProps {
   /** The tallest the canvas may be. */
   maxHeight: number;
   hue: SessionHue;
+  /** The stuck files' ink: their fill, their loop, their rings (`paint.stuckHue`, the page's key says it). */
+  stuck: string;
   /** The live map: one level per cell. */
   levels?: readonly number[];
   /** The time lapse: levels come from the replay at `playhead` seconds of `span`. */
@@ -176,6 +183,7 @@ export function MapCanvas({
   width,
   maxHeight,
   hue,
+  stuck,
   levels,
   replay = null,
   playhead,
@@ -232,12 +240,13 @@ export function MapCanvas({
       partner,
       slot: put(SLOT_INK),
       fail: put(FAIL_INK),
-      accent: put(hue.ink),
+      stuck: put(stuck),
+      path: put(PATH_INK),
       text: put(GROUND.text),
       bg: put(GROUND.bg),
       dim: put(GROUND.dim),
     };
-  }, [layout, hue.ink]);
+  }, [layout, stuck]);
 
   // ---------------------------------------------------------------- the glide
   // Where each cell was last drawn, by file id, so a refresh that moves an island glides it.
@@ -431,7 +440,7 @@ export function MapCanvas({
               pts.push(x, y);
               if (j < m - 1) widths.push(pw * (0.3 + 0.7 * trailStrength(j, m - 1)));
             }
-            stroke(pts, widths, false, inks.accent);
+            stroke(pts, widths, false, inks.path);
           }
         } else if (pathList.length >= 2) {
           // The live path traces on from its oldest file once the map has landed.
@@ -456,7 +465,7 @@ export function MapCanvas({
               widths.push(pw);
               left -= len;
             }
-            if (pts.length >= 4) stroke(pts, widths, false, inks.accent);
+            if (pts.length >= 4) stroke(pts, widths, false, inks.path);
           }
         }
 
@@ -474,7 +483,7 @@ export function MapCanvas({
             pts.push(x, y);
             widths.push(pw);
           }
-          stroke(pts, widths, knotList.length >= 3, inks.accent);
+          stroke(pts, widths, knotList.length >= 3, inks.stuck);
         }
 
         // Pixels from here on: square corners on every outline.
@@ -495,7 +504,7 @@ export function MapCanvas({
             r = Math.max(r, px(c) + size);
             b = Math.max(b, py(c) + size);
           }
-          line.setColor(col[inks.accent]!);
+          line.setColor(col[inks.stuck]!);
           for (let ri = 0; ri < 3; ri++) {
             const ring = ringAt(rs, ri);
             const sw = RING_STROKE * ring[1];
@@ -531,7 +540,7 @@ export function MapCanvas({
           const step = glow >= 0.95 ? 2 : glow >= 0.6 ? 1 : 0;
           const grow = pitch * (0.12 + step * 0.12);
           fill.setMaskFilter(blurFor(step));
-          fill.setColor(col[knotted ? inks.accent : inks.ink[i]!]!);
+          fill.setColor(col[knotted ? inks.stuck : inks.ink[i]!]!);
           canvas.drawRect(Skia.XYWHRect(px(i) - grow, py(i) - grow, size + grow * 2, size + grow * 2), fill);
         }
         fill.setMaskFilter(null);
@@ -584,7 +593,7 @@ export function MapCanvas({
             continue;
           }
           if (knotted) {
-            fill.setColor(col[inks.accent]!);
+            fill.setColor(col[inks.stuck]!);
             canvas.drawRect(Skia.XYWHRect(x, y, w, h), fill);
             continue;
           }
@@ -616,8 +625,8 @@ export function MapCanvas({
 
         // ------------------------------------------------ the knot, still (Reduce Motion)
         if (knotLit && !pulsing) {
-          // Each knot file outlined in the session's hue.
-          line.setColor(col[inks.accent]!);
+          // Each knot file outlined in the stuck files' hue.
+          line.setColor(col[inks.stuck]!);
           line.setStrokeWidth(1.5);
           for (const c of knotList) canvas.drawRect(Skia.XYWHRect(px(c) - 2.25, py(c) - 2.25, size + 4.5, size + 4.5), line);
         }

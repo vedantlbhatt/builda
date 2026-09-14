@@ -98,6 +98,20 @@ export function heroOf(face: Face, card: ReportWrappedCard): StoryHero {
   return { kind: 'words', text: face.tail ?? face.question };
 }
 
+/**
+ * What a grid tile says under its number: the words of the answer that say what the number
+ * counts ("725" over "prompts read", "15" over "deep sessions"). The story card draws them as its
+ * tail; the grid drew the number alone. FOUND IN THE CAPTURE PASS (2026-09-14, shots/now2/
+ * 30-wrapped-grid-02 and -03): "Your biggest crash out? 725", a count of prompts read standing as
+ * the answer to a question whose answer stays on the Mac, and 15, 72.5 and 6.7 with nothing to say
+ * what they were. Null for a hero that is its own words (a type, a duration, a refusal).
+ */
+export function gridLabel(hero: StoryHero, face: Face): string | null {
+  if (hero.kind !== 'count') return null;
+  const tail = face.tail?.trim();
+  return tail ? tail : null;
+}
+
 // ─── a word answer on the board ─────────────────────────────────────────────────────────
 
 /**

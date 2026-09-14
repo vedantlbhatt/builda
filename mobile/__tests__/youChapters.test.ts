@@ -225,7 +225,7 @@ describe('the You tab', () => {
     expect(money.digits?.final).toBe('2,952');
     expect(money.note).toBe('On a subscription you pay your plan, not this.');
     expect(y.doors.find((d) => d.key === 'dimensions')!.refusal).toBe(
-      'Each session is scored on five axes once your Mac analyses it. 0 of 3 analysed sessions so far.',
+      'Each session is scored on five axes once your Mac analyses it. No session has been analysed yet, and it takes 3.',
     );
     expect(y.collection).toEqual({ found: 6, catalog: 74 });
   });
@@ -253,7 +253,7 @@ describe('the dimensions page', () => {
     const d = dimensionsPage(B);
     expect(isRefused(d.body)).toBe(true);
     if (!isRefused(d.body)) return;
-    expect(d.body.refusal).toBe('The five dimensions are read one analysed session at a time. 0 of 3 analysed sessions so far.');
+    expect(d.body.refusal).toBe('The five dimensions are read one analysed session at a time. No session has been analysed yet, and it takes 3.');
     expect([d.body.analysed, d.body.needed]).toEqual([0, 3]);
     expect(d.hero.name).toBe('Quality guardian');
   });

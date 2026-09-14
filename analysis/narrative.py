@@ -20,6 +20,7 @@ import pathlib
 import re
 from collections.abc import Mapping, Sequence
 
+from . import plain
 from . import run as rn
 
 LOG = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ def build_input(
                     "  (the way they want it)" if t.good else "  (worth a look)"
                 )
                 add(
-                    f"  {t.label}: {t.direction} {abs(t.move) * 100:.0f}%, "
+                    f"  {t.label}: {t.direction} {plain.pct(abs(t.move))}, "
                     f"{t.before:g} -> {t.now:g}{verdict}"
                 )
 
@@ -134,7 +135,7 @@ def build_input(
         add("THEIR COMMITS, split by whether an agent was in the room")
         add(
             f"  {contributions.total} commits over {contributions.active_days} days"
-            + (f", {round(share * 100)}% with an agent" if share is not None else "")
+            + (f", {plain.pct(share)} with an agent" if share is not None else "")
         )
         add(
             f"  longest run of days they shipped: {contributions.longest_streak}, "
@@ -191,14 +192,14 @@ def build_input(
         add("")
         add("  tools reached for")
         for t in tools:
-            add(f"    {t['tool']}: {t['calls']} calls, {round(t['share'] * 100)}%")
+            add(f"    {t['tool']}: {t['calls']} calls, {plain.pct(t['share'])}")
 
     models = profile.get("model_mix") or []
     if models:
         add("")
         add("  models")
         for m in models:
-            add(f"    {m['model']}: {round(m['share'] * 100)}% of output tokens")
+            add(f"    {m['model']}: {plain.pct(m['share'])} of output tokens")
 
     return "\n".join(lines)
 
@@ -242,7 +243,7 @@ def known_numbers(source: str) -> set[str]:
         value = float(tok)
         if 0.0 <= value <= 1.0:
             known.add(f"{value * 100:.10g}")
-            known.add(str(round(value * 100)))
+            known.add(str(int(plain.half_up(value, scale=2))))
     return known
 
 

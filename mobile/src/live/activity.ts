@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import BuilderLive from '../../modules/builder-live';
+import type { RepoNames } from '../copy/repoLabel';
 import type { PushEnvironment, SessionDetail } from '../data/api';
 import { api } from '../data/client';
 import { scheduleFinished, scheduleNeedsYou } from '../push/local';
@@ -86,6 +87,11 @@ export interface SyncOptions {
    * the background. Only for a signed in account with details on; the debug route never does.
    */
   pushTokens?: boolean;
+  /**
+   * The phone's project names and numbers (`data/repoNames.loadRepoNames`), so a card names a
+   * private project as the Projects tab does ("Private project 2"). Without them, "private repo".
+   */
+  names?: RepoNames | null;
   nowMs?: number;
 }
 
@@ -278,6 +284,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
     crew,
     staleInSeconds: opts.staleInSeconds,
     details,
+    names: opts.names,
     nowMs,
   });
   const next = plan.tracked;
@@ -325,7 +332,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
     // The rows mission control shows: a finished turn leaves the widget when it leaves the grid.
     const shown = visibleRows(liveSessions, [], new Map(), nowMs);
     result.widget = writeWidgetSnapshot(
-      buildWidgetSnapshot({ sessions: shown, liveStates, creature: opts.creature, crew, today: opts.today, nowMs })
+      buildWidgetSnapshot({ sessions: shown, liveStates, creature: opts.creature, crew, today: opts.today, names: opts.names, nowMs })
     );
   }
   return result;

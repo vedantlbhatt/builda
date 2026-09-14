@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, type TextProps } from 'react-native';
 
+import { keepDots } from '../copy/plain';
 import type { TypeRole } from '../theme';
 import { toneColor, useColors, useScheme, type Tone } from './scheme';
 import { amberTextProblem, roleScaling, roleStyle, type RoleWeight } from './typeStyle';
@@ -44,7 +45,8 @@ export function T({ role = 'body', tone = 'text', weight, align, style, children
       {...rest}
       style={[base, { color: toneColor(c, tone) }, align ? { textAlign: align } : null, style]}
     >
-      {children}
+      {/* A wrapped line never starts with the dot between two facts (`copy/plain.keepDots`). */}
+      {keepDots(children)}
     </Text>
   );
 }

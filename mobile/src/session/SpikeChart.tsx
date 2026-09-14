@@ -1,7 +1,8 @@
 /**
  * The costly stretches as bars (`burnChart.ts` decides every value): a typical stretch first, one
  * unit tall in the neutral ink, then each costly stretch at its multiple in the hue of its
- * dominant cause, beside the dashed line burn draws its own bar at. The bars grow from the floor
+ * dominant cause, beside the dashed line a stretch must reach to count as costly (three typical
+ * ones, `burn.SPIKE_MULTIPLE`), drawn only past the typical bar. The bars grow from the floor
  * one after another on the page's spring (a hair of give), and each costly one pulses ONCE as it
  * lands, then everything is still.
  *
@@ -67,6 +68,8 @@ export function SpikeChart({ chart, width, delay = 60 }: { chart: BurnChart; wid
   const base = TOP + PLOT;
   const yOf = (m: number) => base - (Math.max(0, m) / chart.max) * PLOT;
   const thresholdY = Math.round(yOf(chart.threshold)) + 0.5;
+  /** Where the dashed rule starts: past the typical bar's slot, which the rule says nothing about. */
+  const ruleFrom = chart.bars[0] && !chart.bars[0].spike ? slot : 0;
 
   const placed: Placed[] = useMemo(
     () =>
@@ -90,12 +93,15 @@ export function SpikeChart({ chart, width, delay = 60 }: { chart: BurnChart; wid
         const line = Skia.Paint();
         line.setAntiAlias(true);
         line.setStyle(PaintStyle.Stroke);
-        // The floor, and burn's own bar as a dashed rule: dashes drawn as short segments.
+        // The floor, and the line a costly stretch reaches as a dashed rule, drawn as short
+        // segments from the end of the typical bar's slot: the typical stretch is 1x by
+        // definition and its "1×" sits under the line when the tallest bar is tall, so the rule
+        // ran through its label (FOUND IN THE DEFECTS PASS, 2026-09-14, 60256e3a at 34.3x).
         line.setColor(Skia.Color(GROUND.border));
         line.setStrokeWidth(1);
         canvas.drawLine(0, base + 0.5, width, base + 0.5, line);
         line.setColor(Skia.Color(GROUND.faint));
-        for (let x = 0; x < width; x += 8) canvas.drawLine(x, thresholdY, Math.min(width, x + 4), thresholdY, line);
+        for (let x = ruleFrom; x < width; x += 8) canvas.drawLine(x, thresholdY, Math.min(width, x + 4), thresholdY, line);
 
         const fill = Skia.Paint();
         fill.setAntiAlias(false);
@@ -137,7 +143,7 @@ export function SpikeChart({ chart, width, delay = 60 }: { chart: BurnChart; wid
       },
       { width, height: base + 1 },
     );
-  }, [placed, width, base, thresholdY]);
+  }, [placed, width, base, thresholdY, ruleFrom]);
 
   return (
     <View style={{ width, height: base + UNDER }} accessible accessibilityRole="image" accessibilityLabel={describe(chart)}>

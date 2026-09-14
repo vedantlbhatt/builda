@@ -18,7 +18,7 @@ import type { ReportStack, ReportStackItem } from '../src/generated/report';
 import fixture from '../src/insights/fixtures/report-2026-09-13.json';
 import { formatWith, type NumSpec } from '../src/insights/format';
 import { isRefused, NO_REPORT } from '../src/insights/model';
-import { bubbleRadius, packBubbles, packTiles, rowsHeight, tileSize, TILE_UNITS, wrapMarks } from '../src/stack/layout';
+import { BUBBLE_COUNT_MIN, bubbleFace, bubbleRadius, packBubbles, packTiles, rowsHeight, tileSize, TILE_UNITS, wrapMarks } from '../src/stack/layout';
 import { CATEGORY_HUES, chapterHues, listOf, LOOP_MAX, phoneTools, projectReach, reportTools, stackPage, TOP_MAX, toolsBand, toolsFromReport, type StackBody } from '../src/stack/model';
 import { stackPage as doorStackPage } from '../src/you/chapters';
 
@@ -146,7 +146,7 @@ describe('the hero and the bubbles', () => {
     expect(s.loop.length).toBe(LOOP_MAX);
     expect(s.loop.slice(0, TOP_MAX)).toEqual(s.top);
     expect(s.topLine).toBe('Git turned up in the most sessions: 115 of the 143 read.');
-    expect(s.cutNote).toBe('5,932 of 7,978 shell commands were cut short in the digest, so a tool may have run unseen.');
+    expect(s.cutNote).toBe('5,932 of 7,978 shell commands were too long to be read whole, so a tool may have run unseen.');
   });
 
   test('a tie at the top is said as a tie', () => {
@@ -548,6 +548,18 @@ describe('the stack components hold to the house', () => {
     const all = files.map((f) => code(f.src)).join('\n');
     for (const part of ['<LogoLoop', '<PixelCard', '<ClickSpark', '<SparkBurst', '<Band ', '<BandFigure', '<Num ', '<GrowBar', '<CreaturePrint']) {
       expect({ part, used: all.includes(part) }).toEqual({ part, used: true });
+    }
+  });
+});
+
+describe('every bubble carries its count (shots/now2/25-stack-02: JavaScript with no number)', () => {
+  test('from the smallest bubble to the largest, a count at a readable size under a mark that leaves it room', () => {
+    for (let r = 26; r <= 84; r++) {
+      const { markSize, font } = bubbleFace(r);
+      expect(font).toBeGreaterThanOrEqual(BUBBLE_COUNT_MIN);
+      // The mark, the count's line and the 2 point gap between them sit inside the disc's middle.
+      expect({ r, fits: markSize + font * 1.25 + 2 <= 2 * r * 0.85 }).toEqual({ r, fits: true });
+      expect(markSize).toBeGreaterThanOrEqual(12);
     }
   });
 });

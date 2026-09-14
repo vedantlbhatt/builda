@@ -119,6 +119,21 @@ export function packBubbles(items: readonly BubbleIn[], width: number, o: Bubble
 
 // ------------------------------------------------------------------ tiles
 
+/** The smallest a bubble's count is set: below it a number stops being read at a glance. */
+export const BUBBLE_COUNT_MIN = 11;
+
+/**
+ * What a bubble of radius `r` carries: its mark and, under it, ALWAYS its count. FOUND IN THE
+ * CAPTURE PASS (2026-09-14, shots/now2/25-stack-02 and 11-project-1-12): bubbles under 34 points
+ * drew the mark alone, so JavaScript and Valhalla sat in the cloud with no number while every
+ * other bubble had one, and a thing with no count reads as a thing that was never counted. A small
+ * bubble shrinks its mark to make room; the count never goes below `BUBBLE_COUNT_MIN`.
+ */
+export function bubbleFace(r: number): { markSize: number; font: number } {
+  const big = r >= 34;
+  return { markSize: Math.round(r * (big ? 0.62 : 0.5)), font: Math.max(BUBBLE_COUNT_MIN, Math.round(r * 0.34)) };
+}
+
 export type TileSize = 'lead' | 'mid' | 'small';
 
 export interface TileIn {

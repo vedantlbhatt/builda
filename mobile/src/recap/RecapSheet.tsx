@@ -3,8 +3,10 @@ import { Alert, Modal, Pressable, ScrollView, useWindowDimensions, View } from '
 
 import { CELEBRATION_MS } from '../analysis/AnalysisView';
 import { labelize } from '../analysis/format';
+import { repoLabel } from '../copy/repoLabel';
 import { ApiError, type FeedItem, type SessionDetail, type Visibility } from '../data/api';
 import { api } from '../data/client';
+import { useRepoNames } from '../data/repoNames';
 import { PixelBadge } from '../pixel/PixelBadge';
 import {
   CAPTION_MAX,
@@ -69,6 +71,8 @@ export function RecapSheet({
 }) {
   const { width } = useWindowDimensions();
   const c = useColors();
+  // A private project as the Projects tab names it ("Private project 2"), `copy/repoLabel`.
+  const names = useRepoNames();
   // The post this opening started from. Derived live from the prop, `editing` flipped
   // to "Edit post" mid-typing when a fresh detail and its post lookup landed (a post made
   // on another device) — the title field vanished with its text and Save would have
@@ -251,7 +255,7 @@ export function RecapSheet({
               <View style={{ gap: space.xs }}>
                 <T role="title">{headline}</T>
                 <T role="meta" tone="dim">
-                  {session.repo_name ?? 'private repo'} · {dayLabel(session.started_at)}
+                  {repoLabel(session, names)} · {dayLabel(session.started_at)}
                 </T>
               </View>
             </Surface>

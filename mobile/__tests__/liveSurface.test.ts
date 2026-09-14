@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import type { SessionDetail } from '../src/data/api';
 import type { LiveState } from '../src/generated/live';
 import { lockScreenWithoutDetails } from '../src/copy/live';
+import { HARNESS_GLYPHS } from '../src/pixel/harness';
 import { havePython, python } from './pythonRef';
 import { debugSessions, DEBUG_STATES, parseDebugLive } from '../src/live/fixtures';
 import { livePresenceLine } from '../src/live/format';
@@ -692,8 +693,9 @@ function swiftStructVars(src: string, name: string): string[] {
 describe('the widget snapshot', () => {
   const d = debugSessions('needsYou', 4, NOW);
   const extra = row('x', { ended_at: new Date(NOW - 5_000).toISOString() });
+  const done = row('done', { state: 'final' });
   const snap = buildWidgetSnapshot({
-    sessions: [...d.sessions, extra, row('done', { state: 'final' })],
+    sessions: [...d.sessions, extra, done],
     liveStates: d.liveStates,
     creature: 'fox',
     today: { attendedSeconds: 8040.4, week: [0, 1, 2, 9, -1, 5, 3] },
@@ -720,7 +722,9 @@ describe('the widget snapshot', () => {
   });
 
   test('every row wears its own crew creature, never the builder\'s and never Bit', () => {
-    const rows = [...d.sessions, extra];
+    // The rule over the rows the snapshot was handed, the finished one included: it steps a
+    // creature past one a session running at its start wears, and which ids collide is the hash's.
+    const rows = [...d.sessions, extra, done];
     const crew = crewCreatures(rows);
     for (const r of snap.sessions) {
       expect(r.creature).toBe(crew.get(r.id)!);
@@ -1235,8 +1239,14 @@ describe('the native palette is the tokens, generated', () => {
     for (const id of ['claude_code', 'codex', 'cursor_ide', 'cursor_agent', 'gemini_cli', 'cline', 'opencode']) {
       expect(marks).toContain(`case "${id}": return`);
     }
-    // Aider has no mark: its name carries it
-    expect(marks).not.toContain('"aider"');
+    // Aider has no mark of its own: the native surfaces draw the phone's pixel glyph for it, the
+    // same `>_` frame (HARNESS_GLYPHS.aider), one rectangle per run of drawn cells at 1.5 units a
+    // cell. FOUND IN THE CAPTURE PASS (2026-09-14): its Lock Screen card had no mark at all.
+    expect(marks).toContain('case "aider": return "aider-pixel"');
+    const body = marks.split('case 11: // aider-pixel, layer 1')[1]!.split(/\n\s*case \d+:|\n\s*default:/)[0]!;
+    const runs = HARNESS_GLYPHS.aider.flatMap((row, y) => [...row.matchAll(/b+/g)].map((m) => [m.index! * 1.5, y * 1.5]));
+    expect(body.match(/p\.move\(to:/g)?.length).toBe(runs.length);
+    for (const [x, y] of runs) expect(body).toContain(`p.move(to: CGPoint(x: ${x}, y: ${y}))`);
   });
 });
 

@@ -86,6 +86,17 @@ EDIT_TOOLS = frozenset(
 # regex over shell text cannot see it, and auto-commits are the point of that harness.
 COMMIT_TOOLS = frozenset({"commit"})
 
+# A shell line that commits: `git commit`, and `git` with its OWN options before the
+# subcommand (`git -c user.name=x commit`, `git -C repo commit`, `git --no-pager commit`).
+# THE one definition: `stats` below, `patterns._committed` (burn, feedback, live, vocab,
+# shipped) and `BuilderAnalysis.Digest.gitCommit` in Swift all read this pattern.
+# FOUND IN THE DEFECTS PASS (2026-09-14): `\bgit commit\b` missed every `git -c ... commit`,
+# 23 of the 172 commit calls in the overnight corpus's 160 counted sittings and 4 of 7 in
+# one RideGT sitting (60256e3a), whose card then said three stretches had "nothing written,
+# tested or committed" across a stretch that held three of those commits.
+# `commit` must end the word: `git -c commit.gpgsign=false log` is not a commit.
+COMMIT_CMD = re.compile(r"\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}[A-Za-z][\w-]*(?:=\S+)?))*\s+commit(?![\w.=-])")
+
 # Tools that mean "read a file". FOUND BY A TEST: `files_read` keyed on Claude Code's `Read`
 # alone, so every Gemini, Cline and opencode session reported zero files read — the same
 # silent zero the shell/edit sets exist to prevent. Codex has no read tool (it reads through
@@ -729,7 +740,7 @@ def stats(events: list[Ev]) -> dict:
         1
         for e in tools
         if e.tool in COMMIT_TOOLS
-        or (e.tool in SHELL_TOOLS and re.search(r"\bgit commit\b", e.text))
+        or (e.tool in SHELL_TOOLS and COMMIT_CMD.search(e.text))
     )
     tests = sum(
         1

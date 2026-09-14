@@ -683,9 +683,17 @@ def _upsert_stats(db, session_id, p: SessionUpload):
               attrib_confidence = EXCLUDED.attrib_confidence,
               -- COALESCE, not EXCLUDED, exactly as `analysis` is handled. A client that
               -- does not compute feedback sends nothing, and nothing must not mean
-              -- "delete what another client measured". A final session's events do not
-              -- change, so a stored note is still true.
-              feedback = COALESCE(EXCLUDED.feedback, session_stats.feedback),
+              -- "delete what another client measured".
+              -- EXCEPT from a producer that computed `burn`: burn and feedback are built in
+              -- one pass by the same `analysis` package (capture.sessions.build_payload:
+              -- `_feedback` and `session_burn_of` both import it, and the Mac computes
+              -- neither), so its null is "nothing worth saying", not "not computed". A
+              -- final session's events do not change, but the RULES do: FOUND IN THE
+              -- DEFECTS PASS (2026-09-14), 60256e3a kept "3 stretches with nothing
+              -- written, tested or committed, 3h 09m" of a 3h 12m sitting that landed 13
+              -- commits after a corrected re-upload had no note for it.
+              feedback = CASE WHEN EXCLUDED.burn IS NOT NULL THEN EXCLUDED.feedback
+                              ELSE COALESCE(EXCLUDED.feedback, session_stats.feedback) END,
               -- The same rule for `burn` (0023). Null on the wire means the producer
               -- did not compute it; a refusal is a document with `reason` set, and it
               -- does replace what was stored.

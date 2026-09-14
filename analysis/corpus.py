@@ -59,6 +59,7 @@ import pathlib
 import time
 from collections.abc import Sequence
 
+from . import plain
 from . import agents as ag_mod
 from . import burn as bn_mod
 from . import contributions as co_mod
@@ -351,7 +352,7 @@ def cut(
         if reported:
             out_tokens = ledger.buckets["output"]
             for entry in ledger.models:
-                by_model[entry["model_id"]] = round(entry["output_token_share"] * out_tokens)
+                by_model[entry["model_id"]] = plain.rounded(entry["output_token_share"] * out_tokens)
         minutes = _offset_minutes(s.started_at, tz)
         # Where the tokens went, cut at the same prompts `burn` cuts one transcript at.
         # Every file the sitting's records came from, each message once across them,

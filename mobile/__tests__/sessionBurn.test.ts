@@ -237,7 +237,8 @@ describe('by hand', () => {
 
   test('a multiple is said the way profile._n says a number: one decimal at most, no trailing zero', () => {
     expect(spikeView(spike({ multiple: 10 })).meta).toBe('10 times a typical stretch · 71k tokens a line');
-    expect(spikeView(spike({ multiple: 3.25 })).meta.startsWith('3.2 times')).toBe(true);
+    // 3.25 is a tie at one decimal, and a tie rounds UP (the one rule, `copy/numbers`).
+    expect(spikeView(spike({ multiple: 3.25 })).meta.startsWith('3.3 times')).toBe(true);
   });
 
   test('durations are feedback._mins', () => {

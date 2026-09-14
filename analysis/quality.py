@@ -33,6 +33,8 @@ data and this module does not invent one.
 
 from __future__ import annotations
 
+from . import plain
+
 import dataclasses
 import re
 from collections.abc import Sequence
@@ -144,12 +146,12 @@ def summary(sessions: Sequence) -> dict:
         # The share of runs that passed. Not "the first try worked" per feature, which
         # nothing here can see: it is the share of times you ran the tests and they were
         # already green.
-        "first_try_rate": round(passes / runs, 3),
+        "first_try_rate": plain.rounded(passes / runs, 3),
         "time_to_green": (
             {
                 "n": len(times),
-                "median_seconds": round(times[len(times) // 2]),
-                "worst_seconds": round(times[-1]),
+                "median_seconds": plain.rounded(times[len(times) // 2]),
+                "worst_seconds": plain.rounded(times[-1]),
                 "median_attempts": sorted(g.attempts for g in got)[len(got) // 2],
             }
             if times

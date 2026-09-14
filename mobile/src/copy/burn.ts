@@ -77,13 +77,17 @@ export function spikeVerdict(s: SessionBurnSpike): string {
 
 /**
  * `burn._work_clause`: what the session did to files, for the first sentence. The lines it
- * added and removed when either is counted; else the files or commits; else, when some
- * stretch ran something the transcript cannot see into, that it cannot say.
+ * added and removed when either is counted, and a side that counted none is not said (the
+ * transcript sees a removal only in an edit's patch, so its 0 is not a count: "removed 0" on a
+ * sitting whose commits deleted 57 lines, 2026-09-14); else the files or commits; else, when
+ * some stretch ran something the transcript cannot see into, that it cannot say.
  */
 function workClause(b: SessionBurn): string {
   const added = b.lines_added ?? 0;
   const removed = b.lines_removed ?? 0;
-  if (added || removed) return `, added ${tally(added, 'line')} and removed ${commas(removed)}`;
+  if (added && removed) return `, added ${tally(added, 'line')} and removed ${commas(removed)}`;
+  if (added) return ` and added ${tally(added, 'line')}`;
+  if (removed) return ` and removed ${tally(removed, 'line')}`;
   if (b.files_changed) return ` and changed ${tally(b.files_changed, 'file')} with no line count`;
   if (b.commits) return ` and made ${tally(b.commits, 'commit')}`;
   // The engine asks whether any stretch was unreadable; the wire says how many tokens went

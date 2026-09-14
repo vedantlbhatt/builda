@@ -92,7 +92,7 @@
    "spikes_needed": 5
   },
   "sentences": [
-   "This session used 1.0M tokens, added 100 lines and removed 0.",
+   "This session used 1.0M tokens and added 100 lines.",
    "About 76% went into stretches where nothing was written. That is not always wasted, but it is where to look first.",
    "The most expensive stretch cost 780k tokens, 72% of it on reading 12 files, and nothing was written."
   ]
@@ -184,7 +184,7 @@
   },
   "sentences": [
    "This session used 615k tokens, added 83 lines and removed 8.",
-   "The most expensive stretch cost 400k tokens, 52% of it on editing the same file 4 times, and it wrote 8 lines."
+   "The most expensive stretch cost 400k tokens, 53% of it on editing the same file 4 times, and it wrote 8 lines."
   ]
  },
  {
@@ -261,7 +261,7 @@
    "spikes_needed": 5
   },
   "sentences": [
-   "This session used 582k tokens, added 94 lines and removed 0.",
+   "This session used 582k tokens and added 94 lines.",
    "The most expensive stretch cost 482k tokens, under 1% of it on the turn that handed work to 1 helper agent, and it wrote 64 lines."
   ]
  },
@@ -283,7 +283,7 @@
    "spikes_needed": 5
   },
   "sentences": [
-   "This session used 1.2M tokens, added 12 lines and removed 0.",
+   "This session used 1.2M tokens and added 12 lines.",
    "Over 99% of that was the conversation re-reading itself, which is normal in a long session and is the main reason cost climbs the longer you go."
   ]
  },
@@ -318,7 +318,7 @@
    "spikes_needed": 5
   },
   "sentences": [
-   "This session used 250k tokens, added 0 lines and removed 160.",
+   "This session used 250k tokens and removed 160 lines.",
    "The most expensive stretch cost 165k tokens, and it removed 120 lines."
   ]
  },
@@ -411,7 +411,7 @@
    "spikes_needed": 5
   },
   "sentences": [
-   "This session used 12k tokens, added 3 lines and removed 0."
+   "This session used 13k tokens and added 3 lines."
   ]
  },
  {
@@ -474,8 +474,8 @@
    "spikes_needed": 5
   },
   "sentences": [
-   "This session used 16k tokens, added 2 lines and removed 0.",
-   "About 62% went into stretches where nothing was written. That is not always wasted, but it is where to look first."
+   "This session used 16k tokens and added 2 lines.",
+   "About 63% went into stretches where nothing was written. That is not always wasted, but it is where to look first."
   ]
  },
  {

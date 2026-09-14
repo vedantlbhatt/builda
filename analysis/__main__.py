@@ -8,6 +8,7 @@ import pathlib
 import sys
 import time
 
+from . import plain
 from . import digest as dg
 
 
@@ -673,15 +674,15 @@ def _live_entry(t, session, history, salt: str, now: float, names: bool, *, ende
         active = session.attended + session.autonomous
         state["eta"] = {
             **{k: None for k in state["eta"]},
-            "elapsed_s": round(active),
+            "elapsed_s": plain.rounded(active),
             "basis": state["eta"]["basis"],
             "reason": f"this session has ended, after {fb._mins(active)} active",
         }
     return {
         "transcript": str(t.path),
         "repo": session.repo.identity if session.repo else None,
-        "attended_s": round(session.attended),
-        "autonomous_s": round(session.autonomous),
+        "attended_s": plain.rounded(session.attended),
+        "autonomous_s": plain.rounded(session.autonomous),
         "unattended": session.presence == 0,
         "background": background,
         "state": state,
@@ -779,7 +780,7 @@ def _clock(seconds: float) -> str:
     `live.sentence` floors, and the two printed one above the other read "for 4 minutes"
     beside "for three minutes" about one 215 second wait (FOUND BY RUNNING IT on the live
     transcript). The exact figure agrees with both."""
-    s = int(round(max(0.0, seconds)))
+    s = int(plain.rounded(max(0.0, seconds)))
     h, rest = divmod(s, 3600)
     m, sec = divmod(rest, 60)
     if h:
@@ -1287,7 +1288,7 @@ def _quality(a) -> int:
 
     print(
         f"{stats['runs']} test runs in the last {a.days} days: {stats['passed']} passed, "
-        f"{stats['failed']} failed. {round(stats['first_try_rate'] * 100)}% were already green."
+        f"{stats['failed']} failed. {plain.pct(stats['first_try_rate'])} were already green."
     )
     ttg = stats["time_to_green"]
     if ttg is None:
@@ -1305,7 +1306,7 @@ def _quality(a) -> int:
 
 
 def _hm(seconds: float) -> str:
-    m = round(seconds / 60)
+    m = plain.rounded(seconds / 60)
     if m < 1:
         return "under a minute"
     return f"{m} min" if m < 60 else f"{m // 60}h {m % 60:02d}m"
@@ -1348,7 +1349,7 @@ def _contributions(a) -> int:
     )
     if share is not None:
         print(
-            f"{graph.assisted} landed while an agent was working ({round(share * 100)}%), "
+            f"{graph.assisted} landed while an agent was working ({plain.pct(share)}), "
             f"{graph.alone} you committed on your own."
         )
     else:
@@ -1493,7 +1494,7 @@ def _playbook(a) -> int:
     worked, cost = pb_mod.split(tried)
     print(
         f"{stats['worked']} of {stats['n']} prompts landed something without you having to "
-        f"take it back. That is {round(stats['value'] * 100)}%.\n"
+        f"take it back. That is {plain.pct(stats['value'])}.\n"
     )
     print("THESE LANDED, AND YOU NEVER TOUCHED THE WHEEL")
     for at in worked[: a.top]:

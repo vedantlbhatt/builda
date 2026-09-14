@@ -19,6 +19,8 @@ labelled `stale_prices` past `PRICE_STALE_DAYS` rather than silently drifting.
 
 from __future__ import annotations
 
+from . import plain
+
 import dataclasses
 import datetime as dt
 
@@ -183,11 +185,11 @@ def split_by_model(tokens: Tokens, output_share: dict[str, float]) -> dict[str, 
     for model, share in output_share.items():
         f = share / total
         out[model] = Tokens(
-            input=round(tokens.input * f),
-            output=round(tokens.output * f),
-            cache_read=round(tokens.cache_read * f),
-            cache_w5m=round(tokens.cache_w5m * f),
-            cache_w1h=round(tokens.cache_w1h * f),
+            input=plain.rounded(tokens.input * f),
+            output=plain.rounded(tokens.output * f),
+            cache_read=plain.rounded(tokens.cache_read * f),
+            cache_w5m=plain.rounded(tokens.cache_w5m * f),
+            cache_w1h=plain.rounded(tokens.cache_w1h * f),
         )
     return out
 
@@ -216,10 +218,10 @@ def prices_are_stale(today: dt.date | None = None) -> bool:
 def money(usd: float) -> str:
     """Dollars the way a person says them: "$0.42", "$12.30", "$1,204"."""
     if usd < 1:
-        return f"${usd:.2f}"
+        return f"${plain.half_up(usd, 2)}"
     if usd < 100:
-        return f"${usd:,.2f}"
-    return f"${round(usd):,}"
+        return f"${plain.half_up(usd, 2):,}"
+    return f"${int(plain.half_up(usd)):,}"
 
 
 

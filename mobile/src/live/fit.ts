@@ -53,11 +53,13 @@ export function runEms(run: string, face: Face): number {
 /**
  * The runs a line can only be broken between: split at spaces, and after a hyphen or a slash,
  * where iOS breaks a line too (Unicode line breaking, UAX #14), so "gt-transit" may end a line
- * after "gt-" and that is not a word broken. Empty runs are dropped.
+ * after "gt-" and that is not a word broken. Empty runs are dropped. A no-break space is not a
+ * break: "Private project 2" holds its number to its words with one (`projects/model.projectLabel`),
+ * so "project 2" is one run, and JavaScript's `\s` would have split it.
  */
 export function unbreakableRuns(text: string): string[] {
   const out: string[] = [];
-  for (const word of text.split(/\s+/)) {
+  for (const word of text.split(/[^\S\u00a0]+/)) {
     let run = '';
     for (const ch of word) {
       run += ch;

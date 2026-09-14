@@ -246,21 +246,21 @@ def state_payload(name: str) -> dict:
 
     if name == "working-eta":
         # Twelve minutes into a run that typically takes 21: an ETA the engine stands behind.
-        sid, minutes, files, added = "debug-ridegt", 12, 9, 214
+        sid, minutes, files, added = "debug-tramline", 12, 9, 214
         lv = live(sid, act("editing", "source", attempt=3, since=95, files=1, calls=3),
                   verdict("converging", "error_rate_down_and_new_files", errors_now=1, errors_before=3, new_files=2, checkpoints=1),
                   ridegt_eta(minutes), 5, "running_fine", changed=3, read_only=6)
         harness = "claude_code"
     elif name == "circling":
         # Stuck on one failing command for six minutes, still inside the typical run.
-        sid, minutes, files, added = "debug-ridegt-codex", 14, 11, 96
+        sid, minutes, files, added = "debug-tramline-codex", 14, 11, 96
         lv = live(sid, act("testing", "test", since=20),
                   verdict("circling", "consecutive_failures", errors_now=6, errors_before=2, fail_run=5, stuck_s=6 * MIN + 12),
                   ridegt_eta(minutes), 66, "circling", changed=4, read_only=7)
         harness = "codex"
     elif name == "over-typical":
         # 34 minutes into a run that typically takes 21: the ring stays full, the caption says so.
-        sid, minutes, files, added = "debug-ridegt-long", 34, 15, 388
+        sid, minutes, files, added = "debug-tramline-long", 34, 15, 388
         lv = live(sid, act("editing", "source", since=70, files=2, calls=4),
                   verdict("converging", "error_rate_down_and_new_files", errors_now=0, errors_before=2, new_files=1, checkpoints=2),
                   ridegt_eta(minutes), 5, "running_fine", changed=7, read_only=8)
@@ -271,16 +271,16 @@ def state_payload(name: str) -> dict:
         # not looked at yet: the card ends as finished, never "needs you", and the widget lists
         # it as finished. Send working-eta first, so there is a card to finish: the same start
         # (a card's attributes are fixed when it starts), so the widget's "ran" and the card's agree.
-        sid, minutes, files, added = "debug-ridegt", 12, 9, 214
+        sid, minutes, files, added = "debug-tramline", 12, 9, 214
         lv = live(sid, act("waiting_on_you", "unknown", since=3 * MIN, calls=0),
                   verdict("done", "turn_ended", files_changed=3, commits=1, checkpoints=2),
                   ridegt_eta(minutes), 31, "finished_unreviewed", changed=3, read_only=6)
         harness = "claude_code"
-        return {"sessions": [{"session": row(sid, "RideGT", harness, minutes, now, files, added), "live": phone_live(lv)}],
+        return {"sessions": [{"session": row(sid, "tramline", harness, minutes, now, files, added), "live": phone_live(lv)}],
                 "widget": True}
     elif name == "lost":
         # Editing files it never read: the engine's `lost` rule at its threshold.
-        sid, minutes, files, added = "debug-ridegt-lost", 19, 13, 162
+        sid, minutes, files, added = "debug-tramline-lost", 19, 13, 162
         lv = live(sid, act("editing", "source", since=30, files=4, calls=4),
                   verdict("lost", "edits_to_unread_files", blind_edits=4, errors_now=2, errors_before=1),
                   # `_needs_you`: 55 + 5 for each blind file beyond LOST_MIN_BLIND_FILES (3).
@@ -288,7 +288,7 @@ def state_payload(name: str) -> dict:
         harness = "claude_code"
     else:
         sys.exit(f"no state {name!r}: working-eta, circling, over-typical, lost, finished")
-    return {"sessions": [{"session": row(sid, "RideGT", harness, minutes, now, files, added), "live": phone_live(lv)}], "fresh": True}
+    return {"sessions": [{"session": row(sid, "tramline", harness, minutes, now, files, added), "live": phone_live(lv)}], "fresh": True}
 
 
 # ------------------------------------------------------------------ main

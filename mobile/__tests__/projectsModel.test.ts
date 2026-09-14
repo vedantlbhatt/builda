@@ -91,7 +91,8 @@ describe('every sentence the engine words, word for word', () => {
   test('twice is said once the ratio says two', () => {
     expect(timesWords(2)).toBe('twice');
     expect(timesWords(2.04)).toBe('twice');
-    expect(timesWords(2.15)).toBe('2.1 times');
+    // 2.15 as written is a tie, and a tie rounds UP (the one rule, `copy/numbers`).
+    expect(timesWords(2.15)).toBe('2.2 times');
     expect(timesWords(10.08)).toBe('10.1 times');
   });
 

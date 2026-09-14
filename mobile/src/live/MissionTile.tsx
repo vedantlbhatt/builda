@@ -258,6 +258,33 @@ export function LiveNum({
     },
   );
 
+  // What React renders follows the count, `insights/Num`'s rule: the first frame while the count
+  // is ahead of it, the resting string once it has landed. React re-renders this tile on every
+  // clock tick, and each commit hands the input React's own text back; with "0" there, a number
+  // that had counted up to 1 went back to "0" at the next tick and nothing on the UI thread wrote
+  // it again, because its shared values had stopped moving. FOUND IN THE DEFECTS PASS
+  // (2026-09-14): the Sessions band read "0 needs you" over "1 running", and the Now band "0
+  // running" over "1 not updating", with the model's figure 1 both times.
+  const [rested, setRested] = useState(false);
+  useAnimatedReaction(
+    () => started.value === 1 && Math.abs(shown.value - target.value) < 0.0005,
+    (now, before) => {
+      if (now && !before) runOnJS(setRested)(true);
+    },
+  );
+  // And never left waiting on a clock that does not reach its delay: by the time the count would
+  // have finished, the number is at rest.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!started.value) {
+        started.value = 1;
+        shown.value = target.value;
+      }
+      setRested(true);
+    }, delay + COUNT_MS + 400);
+    return () => clearTimeout(t);
+  }, [delay, started, shown, target]);
+
   const animatedProps = useAnimatedProps(() => {
     const v = shown.value;
     const text = Math.abs(v - target.value) < 0.0005 ? rest.value : elapsed ? elapsedLabel(v) : formatWith(fmt, v);
@@ -279,7 +306,7 @@ export function LiveNum({
         importantForAccessibility="no"
         accessibilityElementsHidden
         underlineColorAndroid="transparent"
-        defaultValue={startsAt}
+        defaultValue={rested ? final : startsAt}
         animatedProps={animatedProps}
         style={[StyleSheet.absoluteFill, textStyle, styles.input]}
       />

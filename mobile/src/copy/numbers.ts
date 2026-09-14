@@ -4,70 +4,65 @@
  * Every sentence the phone writes from the report and the session wire is a port of a
  * Python sentence (docs/overnight-integration.md 1.5: the report carries no rendered
  * string, and the phone renders every one). The words are the easy half. The hard half is
- * the numbers, because Python and JavaScript round differently and a card that says 12%
- * where the Mac says 13% is two answers to one question:
+ * the numbers: a card that says 12% where the Mac says 13% is two answers to one question.
  *
- *   - Python's `round(x, n)` and `f"{x:.nf}"` round the EXACT binary value of `x`, and an
- *     exact tie goes to the even digit: `round(0.125, 2)` is 0.12, `round(2.5)` is 2.
- *   - `Math.round` rounds a tie up, and `toFixed` rounds a tie up.
+ * ONE ROUNDING RULE, on both sides: a tie AWAY from zero, read off the number as it is
+ * WRITTEN (its shortest round trip digits, which JavaScript's `String(x)` and Python's
+ * `repr(x)` both write), with the decimal point moved in decimal, never by a multiply in
+ * binary. `analysis/plain.half_up` is the Python half; `scaledHalfUp` below is this one, and
+ * every helper here is built on it. FOUND IN THE CAPTURE (2026-09-14): "18% of instructions
+ * landed clean" for a share sent as 0.185, 120 of 647, because the phone ported Python's
+ * `round`, which sends a tie to the even digit and reads 0.185 as the double a hair under it.
+ * Every other percentage on the page rounded half up. A person reads 18.5% and says 19%.
  *
- * So `pyRound` and `pyFixed` below do the arithmetic Python does, exactly, on the double's
- * own bits, and every helper here is built on them. Each helper names the Python function
- * it ports; `__tests__/copyNumbers.test.ts` pins them to Python when python3 is on the
- * machine, and to hand checked values always.
+ * `pyRound` and `pyFixed` keep their names (they are what the Python side's `plain.rounded`
+ * and `plain.half_up` write); `__tests__/copyNumbers.test.ts` pins them to Python when python3
+ * is on the machine, and to hand checked values always.
  *
  * Pure: no React Native, so `bun test` runs it.
  */
 
 // ------------------------------------------------------------------ exact rounding
 
-const TWO = 2n;
+const DIGITS = /^(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/;
 
-/** `x` as `mantissa * 2^exponent`, exactly, with the sign on the mantissa. */
-function decompose(x: number): { mant: bigint; exp: number } {
-  const view = new DataView(new ArrayBuffer(8));
-  view.setFloat64(0, x);
-  const hi = view.getUint32(0);
-  const lo = view.getUint32(4);
-  const negative = hi >>> 31 === 1;
-  const biased = (hi >>> 20) & 0x7ff;
-  let mant = (BigInt(hi & 0xfffff) << 32n) | BigInt(lo);
-  let exp: number;
-  if (biased === 0) {
-    exp = -1074; // subnormal: no implicit leading bit
-  } else {
-    mant |= 1n << 52n;
-    exp = biased - 1075;
-  }
-  return { mant: negative ? -mant : mant, exp };
+/**
+ * `|x|` as it is written, exactly: `mant * 10^exp`, from the shortest digits that read back as
+ * `x` (ECMAScript's Number to String, the same digits Python's `repr` writes).
+ */
+function decimalOf(x: number): { mant: bigint; exp: number } {
+  const m = DIGITS.exec(String(Math.abs(x)));
+  if (!m) throw new RangeError(`cannot read ${x} as a decimal`);
+  const frac = m[2] ?? '';
+  return { mant: BigInt(`${m[1]}${frac}`), exp: Number(m[3] ?? 0) - frac.length };
 }
 
 /**
- * `x * 10^digits` rounded to an integer the way CPython rounds: on the exact binary value,
- * an exact tie to the even integer. Returned as a BigInt so nothing is rounded twice.
+ * `x * 10^(digits + scale)` rounded to an integer with a tie AWAY from zero, on the number as
+ * written (`decimalOf`): THE rounding rule, `analysis/plain.half_up` on this side. `scale` moves
+ * the decimal point before rounding (2 for a share said as a percent, -6 for tokens said in
+ * millions), exactly. Returned as a BigInt so nothing is rounded twice.
  */
-function scaledHalfEven(x: number, digits: number): bigint {
+export function scaledHalfUp(x: number, digits: number, scale = 0): bigint {
   if (!Number.isFinite(x)) throw new RangeError(`cannot round ${x}`);
   if (!Number.isInteger(digits) || digits < 0) throw new RangeError(`digits must be a whole number, got ${digits}`);
   if (x === 0) return 0n;
-  const { mant, exp } = decompose(x);
-  const negative = mant < 0n;
-  const num = (negative ? -mant : mant) * 10n ** BigInt(digits);
+  const { mant, exp } = decimalOf(x);
+  const k = exp + digits + scale;
   let q: bigint;
-  if (exp >= 0) {
-    q = num << BigInt(exp);
+  if (k >= 0) {
+    q = mant * 10n ** BigInt(k);
   } else {
-    const den = 1n << BigInt(-exp);
-    q = num / den;
-    const twice = (num % den) * TWO;
-    if (twice > den || (twice === den && q % TWO === 1n)) q += 1n;
+    const den = 10n ** BigInt(-k);
+    q = mant / den;
+    if ((mant % den) * 2n >= den) q += 1n;
   }
-  return negative ? -q : q;
+  return x < 0 ? -q : q;
 }
 
-/** Python's `round(x, digits)`: the double nearest the half even decimal. */
+/** `plain.rounded(x, digits)`: the double nearest the half up decimal. */
 export function pyRound(x: number, digits = 0): number {
-  const q = scaledHalfEven(x, digits);
+  const q = scaledHalfUp(x, digits);
   return digits === 0 ? Number(q) : Number(`${q}e-${digits}`);
 }
 
@@ -83,11 +78,12 @@ function grouped(intDigits: string): string {
 }
 
 /**
- * Python's `f"{x:.{digits}f}"`, and with `commas`, `f"{x:,.{digits}f}"`. A value that rounds
- * to zero keeps its sign as Python does ("-0.0"); nothing here formats a negative share.
+ * `plain.half_up(x, digits)` written out, with `commas` as `f"{d:,}"` groups it, and `scale`
+ * moving the point first. A value that rounds to zero keeps its sign as Python's Decimal does
+ * ("-0.0"); nothing here formats a negative share.
  */
-export function pyFixed(x: number, digits: number, commas = false): string {
-  const q = scaledHalfEven(x, digits);
+export function pyFixed(x: number, digits: number, commas = false, scale = 0): string {
+  const q = scaledHalfUp(x, digits, scale);
   const { int, frac } = place(q, digits);
   const sign = x < 0 || Object.is(x, -0) ? '-' : '';
   const whole = commas ? grouped(int) : int;
@@ -108,7 +104,7 @@ export function commas(n: number): string {
  * thousands separated, rounded FIRST (4.96 is "5", never "5.0").
  */
 export function n(x: number): string {
-  const q = scaledHalfEven(x, 1);
+  const q = scaledHalfUp(x, 1);
   if (q % 10n === 0n) return commas(Number(q / 10n));
   const { int, frac } = place(q, 1);
   return `${q < 0n ? '-' : ''}${grouped(int)}.${frac}`;
@@ -122,14 +118,19 @@ export function count(x: number, one: string, many?: string): string {
   return `${n(x)} ${x === 1 ? one : (many ?? `${one}s`)}`;
 }
 
-/** `profile._pct`: a share as a whole percent, `round(x * 100)`. */
+/** `plain.pct`: a share as a whole percent, the share's point moved two places, a tie up. */
 export function pct(share: number): string {
-  return `${Number(scaledHalfEven(share * 100, 0))}%`;
+  return `${percentOf(share)}%`;
+}
+
+/** A share as its whole percent, the number `pct` writes: 0.185 is 19. */
+export function percentOf(share: number): number {
+  return Number(scaledHalfUp(share, 0, 2));
 }
 
 /** `profile.in_ten`: a share as "N in 10", rounded half UP, the one rule every such line reads. */
 export function inTen(share: number): number {
-  return Math.trunc(share * 10 + 0.5 + 1e-9);
+  return Number(scaledHalfUp(share, 0, 1));
 }
 
 // ------------------------------------------------------------------ templates
@@ -172,9 +173,9 @@ export function fill(template: FillTemplate, values: Readonly<Record<string, num
 
 // ------------------------------------------------------------------ durations
 
-/** `feedback._mins`: "under a minute", "12 minutes", "1h 05m". Rounded, half to even. */
+/** `feedback._mins`: "under a minute", "12 minutes", "1h 05m". Rounded, a tie up. */
 export function mins(seconds: number): string {
-  const m = Number(scaledHalfEven(seconds / 60, 0));
+  const m = Number(scaledHalfUp(seconds / 60, 0));
   if (m < 1) return 'under a minute';
   if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`;
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
@@ -253,15 +254,16 @@ export function tally(x: number, noun: string): string {
  *
  * THE ONE TOKEN FORMATTER. FOUND IN THE FINAL CAPTURE (2026-09-13): Money and the analysis page
  * printed "3766.5M tokens" two lines from "$2,564" and "47,803 lines", because `_human` wrote
- * `f"{n / 1_000_000:.1f}M"` with no `,`. The phone groups, and `analysis/burn.py` now does too
- * (`:,.1f`), so the two agree to the byte at every size (`__tests__/copyNumbers.test.ts` runs
- * Python on it).
+ * `f"{n / 1_000_000:.1f}M"` with no `,`. The phone groups, and `analysis/burn.py` now does too,
+ * both moving the point by six places in decimal and rounding a tie up (`plain.half_up(n, 1,
+ * scale=-6)`), so the two agree to the byte at every size (`__tests__/copyNumbers.test.ts` runs
+ * Python on it). 12,500 tokens is "13k".
  */
 export function human(tokens: number): string {
-  if (tokens >= 1_000_000 || Number(scaledHalfEven(tokens / 1_000, 0)) >= 1_000) {
-    return `${pyFixed(tokens / 1_000_000, 1, true)}M`;
+  if (tokens >= 1_000_000 || Number(scaledHalfUp(tokens, 0, -3)) >= 1_000) {
+    return `${pyFixed(tokens, 1, true, -6)}M`;
   }
-  if (tokens >= 1_000) return `${pyFixed(tokens / 1_000, 0)}k`;
+  if (tokens >= 1_000) return `${pyFixed(tokens, 0, false, -3)}k`;
   return String(tokens);
 }
 
@@ -273,7 +275,7 @@ export function human(tokens: number): string {
 export function shareWords(share: number): string {
   if (share > 0 && share < 0.005) return 'under 1%';
   if (share >= 0.995 && share < 1) return 'over 99%';
-  return `${pyFixed(share * 100, 0)}%`;
+  return pct(share);
 }
 
 /** `burn._about`: a share opening a sentence, "About 40%", and never "About 100%". */

@@ -48,7 +48,7 @@ import { COUNT_MS, ease, phase, SECTION_CLOCK_MS } from '../insights/motion';
 import { GROUND } from '../insights/palette';
 import { useClock, useReducedSV } from '../insights/reveal';
 import { MASKED_DOLLARS } from '../you/numbers';
-import { hitTest, litBy, type FlowNode, type LaidLabel, type MoneyFlow, type Ribbon, type SankeyLayout } from './flow';
+import { hitTest, LABEL_KNOCKOUT_PAD, litBy, type FlowNode, type LaidLabel, type MoneyFlow, type Ribbon, type SankeyLayout } from './flow';
 
 // ------------------------------------------------------------------ timing (above the worklets: a worklet's closure is read where it is declared)
 
@@ -440,8 +440,11 @@ function FlowLabel({
     return { opacity: p * fade, transform: [{ translateY: reduced.value ? 0 : (1 - p) * 6 }] };
   }, [delay, fade]);
   const right = label.align === 'right';
-  // On a stream the figure takes the ground's white; on the ground, its node's ink.
-  const ink = node ? (label.onStream ? GROUND.text : node.hue.ink) : GROUND.dim;
+  // A ribbon under the words: the ground is cut back under them (`LaidLabel.knockout`) and the
+  // figure is its node's ink on that ground. On the token stream's grain the figure takes the
+  // ground's white; on the ground, its node's ink.
+  const ink = node ? (label.knockout ? node.hue.ink : label.onStream ? GROUND.text : node.hue.ink) : GROUND.dim;
+  const cut = label.knockout ? [styles.cut, right ? styles.cutRight : styles.cutLeft] : null;
   const name = node ? node.label : grey?.label ?? '';
   const said = node ? `${node.label}, ${masked && node.dollars ? 'hidden' : node.figure.final}` : `${grey?.figure ?? ''} of the tokens ${grey?.label ?? ''}`;
   return (
@@ -453,22 +456,24 @@ function FlowLabel({
       onAccessibilityTap={onSelect}
       style={[styles.label, { left: label.x, top: label.y, width: label.w, alignItems: right ? 'flex-end' : 'flex-start' }, style]}
     >
-      <Text allowFontScaling={false} numberOfLines={3} style={[type.label, styles.name, right ? styles.right : null, node ? null : styles.greyName]}>
+      <Text allowFontScaling={false} numberOfLines={3} style={[type.label, styles.name, right ? styles.right : null, node ? null : styles.greyName, cut]}>
         {name}
       </Text>
-      {node ? (
-        masked && node.dollars ? (
-          <Text allowFontScaling={false} style={figure(16, ink)}>
-            {MASKED_DOLLARS}
-          </Text>
+      <View style={cut}>
+        {node ? (
+          masked && node.dollars ? (
+            <Text allowFontScaling={false} style={figure(16, ink)}>
+              {MASKED_DOLLARS}
+            </Text>
+          ) : (
+            <FlowNum spec={node.figure} clock={clock} textStyle={figure(16, ink)} delay={delay + 40} />
+          )
         ) : (
-          <FlowNum spec={node.figure} clock={clock} textStyle={figure(16, ink)} delay={delay + 40} />
-        )
-      ) : (
-        <Text allowFontScaling={false} style={figure(15, GROUND.dim)}>
-          {grey?.figure}
-        </Text>
-      )}
+          <Text allowFontScaling={false} style={figure(15, GROUND.dim)}>
+            {grey?.figure}
+          </Text>
+        )}
+      </View>
     </Animated.View>
   );
 }
@@ -538,6 +543,18 @@ const styles = StyleSheet.create({
   name: { color: GROUND.text, letterSpacing: 0 },
   right: { textAlign: 'right' },
   greyName: { color: GROUND.dim },
+  // The ground cut back under words a ribbon runs under, reaching LABEL_KNOCKOUT_PAD past them and
+  // pulled back by the same, so the words stay exactly where they were laid out.
+  cut: {
+    backgroundColor: GROUND.bg,
+    borderRadius: 2,
+    borderCurve: 'continuous',
+    paddingHorizontal: LABEL_KNOCKOUT_PAD[0],
+    paddingVertical: LABEL_KNOCKOUT_PAD[1],
+    marginVertical: -LABEL_KNOCKOUT_PAD[1],
+  },
+  cutLeft: { marginLeft: -LABEL_KNOCKOUT_PAD[0] },
+  cutRight: { marginRight: -LABEL_KNOCKOUT_PAD[0] },
   sizer: { opacity: 0 },
   input: { padding: 0, margin: 0, paddingTop: 0, paddingBottom: 0, backgroundColor: 'transparent' },
 });

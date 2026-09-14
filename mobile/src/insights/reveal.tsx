@@ -15,7 +15,7 @@
  * Blocks must be direct children of a `Section`, and sections direct children of the scroll
  * content: each position is read from `onLayout`, which is relative to the parent.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -50,6 +50,7 @@ interface Page {
 const PageCtx = createContext<Page | null>(null);
 const SectionCtx = createContext<SharedValue<number> | null>(null);
 const ClockCtx = createContext<SharedValue<number> | null>(null);
+const LandedCtx = createContext(false);
 
 /** The scroll offset and viewport the whole page reveals against. */
 export function usePageReveal(reduced: boolean): Page {
@@ -117,12 +118,21 @@ export function Block({ children, style, enter = true, enterDelay = 0 }: BlockPr
   // The resting state must never depend on an animation finishing: a timing cancelled under it
   // (a reload while it runs, the app sent to the background mid count) would leave a number
   // frozen half way. Once a block has started, it is put at rest by this time whatever happened.
+  //
+  // The same timer flips `landed`, a React value its marks read through `useLanded` and draw
+  // their resting shape from, with no shared value in between. FOUND IN THE CAPTURE (2026-09-14,
+  // 21-analysis-17 and -29): under a saturated render server two slopes kept the frame drawn
+  // about 860 ms into their clock, where the strong ease out has the line looking whole and the
+  // end dot has not begun, and nothing ever asked the canvas to draw again. A static prop change
+  // is a new render, so the picture at rest cannot depend on the last animated frame arriving.
   const landing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [landed, setLanded] = useState(false);
   const land = useCallback(() => {
     if (landing.current) return;
     landing.current = setTimeout(() => {
       if (clock.value < SECTION_CLOCK_MS) clock.value = SECTION_CLOCK_MS;
       if (shown.value < 1) shown.value = 1;
+      setLanded(true);
     }, START_HOLD_MS + SECTION_CLOCK_MS + 400);
   }, [clock, shown]);
   useEffect(
@@ -175,11 +185,23 @@ export function Block({ children, style, enter = true, enterDelay = 0 }: BlockPr
 
   return (
     <ClockCtx.Provider value={clock}>
-      <Animated.View onLayout={onLayout} style={[animated, style]}>
-        {children}
-      </Animated.View>
+      <LandedCtx.Provider value={landed}>
+        <Animated.View onLayout={onLayout} style={[animated, style]}>
+          {children}
+        </Animated.View>
+      </LandedCtx.Provider>
     </ClockCtx.Provider>
   );
+}
+
+/**
+ * True once the block this sits in has come to rest (its clock is at the end, whatever happened
+ * to the animation). A mark drawn from the clock draws its resting shape from props when this is
+ * true, so the last frame is a render, not a frame the render server may have dropped. False
+ * outside a `Block`.
+ */
+export function useLanded(): boolean {
+  return useContext(LandedCtx);
 }
 
 /** The clock of the block this sits in: 0 until it plays, then up to `SECTION_CLOCK_MS`. */

@@ -1071,7 +1071,19 @@ class TheFirstSentence(unittest.TestCase):
 
     def test_lines_are_added_and_removed_never_changed(self):
         rep = self.report(lines_removed={"value": 40})
-        self.assertEqual(burn.explain(rep)[0], "This session used 1.2M tokens, added 0 lines and removed 40.")
+        self.assertEqual(burn.explain(rep)[0], "This session used 1.2M tokens and removed 40 lines.")
+        both = self.report(lines_added={"value": 12}, lines_removed={"value": 40})
+        self.assertEqual(burn.explain(both)[0], "This session used 1.2M tokens, added 12 lines and removed 40.")
+
+    def test_a_side_that_counted_none_is_not_said(self):
+        """FOUND IN THE DEFECTS PASS (2026-09-14): "added 507 lines and removed 0" on RideGT
+        sitting 60256e3a, whose commits deleted 57. The transcript sees a removal only in an
+        edit's patch, never in a `Write` over a file or a script's rewrite: its 0 is not a count."""
+        rep = self.report(lines_added={"value": 507})
+        said = burn.explain(rep)[0]
+        self.assertEqual(said, "This session used 1.2M tokens and added 507 lines.")
+        self.assertNotIn("removed 0", said)
+        self.assertNotIn("added 0", burn.explain(self.report(lines_removed={"value": 3}))[0])
 
     def test_no_line_count_is_never_a_zero(self):
         committed = self.report(segments=[{"commits": 4, "unreadable": False}])
@@ -1162,7 +1174,7 @@ class PlainLanguage(unittest.TestCase):
         )
         self.assertEqual(
             burn.explain(burn.burn_report(path))[0],
-            "This session used 9k tokens, added 1 line and removed 0.",
+            "This session used 9k tokens and added 1 line.",
         )
 
     def test_every_string_every_report_can_produce_is_free_of_dashes(self):

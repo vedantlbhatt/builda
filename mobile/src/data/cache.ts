@@ -139,6 +139,69 @@ export async function listSessions(limit: number): Promise<SessionDetail[]> {
 }
 
 /**
+ * The Sessions list's rows (`session/listReach.ts`): finished, of one kind, newest first, and at or
+ * after `from` when there is one. `julianday` compares the instants, not the strings: a stored
+ * `-04:00` and a `-05:00` either side of a clock change sort as the times they are.
+ */
+export const FINISHED_SQL = {
+  notable:
+    "SELECT json FROM sessions WHERE live = 0 AND json_extract(json, '$.notable') = 1 AND (?1 IS NULL OR julianday(started_at) >= julianday(?1)) ORDER BY julianday(started_at) DESC LIMIT ?2",
+  every:
+    'SELECT json FROM sessions WHERE live = 0 AND (?1 IS NULL OR julianday(started_at) >= julianday(?1)) ORDER BY julianday(started_at) DESC LIMIT ?2',
+} as const;
+
+export async function listFinished(mode: 'notable' | 'every', from: string | null, limit: number): Promise<SessionDetail[]> {
+  return guarded('listFinished', [], async (d) => {
+    const rows = await d.getAllAsync<Row>(FINISHED_SQL[mode], from, limit);
+    return rows.map((r) => parse(r.json)).filter((s): s is SessionDetail => s !== null);
+  });
+}
+
+/**
+ * One page of finished sessions from the server, saved: `before` is the cursor (the oldest row the
+ * list has), null for the top. The rows are list rows, without a strip; `fillDetails` reads those.
+ */
+export async function readPage(
+  api: Api,
+  opts: { before: string | null; notableOnly: boolean; limit: number }
+): Promise<{ rows: SessionDetail[]; next_before: string | null }> {
+  const page = await api.sessions({ limit: opts.limit, before: opts.before, notable_only: opts.notableOnly });
+  for (const s of page.sessions) await upsert(s, false);
+  return { rows: page.sessions, next_before: page.next_before ?? null };
+}
+
+/**
+ * The details (strip and stats) of the given sessions this phone has not read yet, six at a time.
+ * A failure leaves that row's strip waiting; the rest still land.
+ */
+export async function fillDetails(api: Api, ids: readonly string[]): Promise<void> {
+  const missing = await guarded('fillDetails', [] as string[], async (d) => {
+    const out: string[] = [];
+    for (const id of ids) {
+      const row = await d.getFirstAsync<Row>('SELECT json FROM sessions WHERE id = ?', id);
+      const s = row ? parse(row.json) : null;
+      if (s && !('strip' in s)) out.push(id);
+    }
+    return out;
+  });
+  for (let i = 0; i < missing.length; i += DETAIL_BATCH) {
+    const results = await Promise.allSettled(missing.slice(i, i + DETAIL_BATCH).map((id) => api.session(id)));
+    for (const r of results) if (r.status === 'fulfilled') await upsert(r.value, true);
+  }
+}
+
+/**
+ * What the sync's first page of the list said (`listReach.reachOfPage`): the newest
+ * `SYNC_LIST_LIMIT` sessions you were there for at least 20 minutes, and whether older ones exist.
+ * Null until a sync has read it in this process.
+ */
+let firstPage: { startedAt: string[]; nextBefore: string | null } | null = null;
+
+export function syncedFirstPage(): { startedAt: string[]; nextBefore: string | null } | null {
+  return firstPage;
+}
+
+/**
  * Finished sessions in one project, newest first: the rows whose `repo_key` is `key`, picked by
  * SQLite from the saved JSON, so a project page reads its own rows and never parses the rest.
  */
@@ -323,6 +386,8 @@ async function runSync(api: Api): Promise<void> {
     await upsert(s, false);
     if (wasLiveSet.has(s.id) && (s.state ?? 'final') === 'final') staleLive.push(s.id);
   }
+  // The Sessions list's top, and whether it goes further back (`session/listReach.ts`).
+  firstPage = { startedAt: page.sessions.map((s) => s.started_at), nextBefore: page.next_before ?? null };
   let liveNow: SessionDetail[] | null = null;
   try {
     liveNow = (await api.liveSessions()).sessions;
@@ -510,6 +575,7 @@ export async function forgetLiveNames(): Promise<number> {
 
 /** Sign-out: the cached sessions are the user's data, not ours to keep. */
 export async function clear(): Promise<void> {
+  firstPage = null;
   await guarded('clear', undefined, async (d) => {
     await d.execAsync('DELETE FROM sessions; DELETE FROM profile;');
     await d.runAsync("DELETE FROM kv WHERE substr(k, 1, ?) <> ?", DEVICE_KEY_PREFIX.length, DEVICE_KEY_PREFIX);

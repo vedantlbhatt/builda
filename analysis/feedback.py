@@ -21,6 +21,8 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Sequence
 
+from . import plain
+
 #: A stretch with no write, test or commit worth mentioning on a single card. Higher than
 #: `patterns.SPIN_TOOL_CALLS` on purpose: the profile is looking for a habit across
 #: sittings and can afford to notice a 25 call run, and a card that flags one of those
@@ -104,7 +106,7 @@ def notes(session) -> list[Note]:
                     + (f" {_mins(lost)} in total." if len(spins) > 1 else "")
                 ),
                 seconds=lost,
-                numbers={"runs": len(spins), "worst_calls": worst_calls, "seconds": round(lost)},
+                numbers={"runs": len(spins), "worst_calls": worst_calls, "seconds": plain.rounded(lost)},
             )
         )
 
@@ -119,7 +121,7 @@ def notes(session) -> list[Note]:
                     f"over {_mins(secs)}."
                 ),
                 seconds=secs,
-                numbers={"failures": longest, "seconds": round(secs), "what": what},
+                numbers={"failures": longest, "seconds": plain.rounded(secs), "what": what},
             )
         )
 
@@ -134,7 +136,7 @@ def notes(session) -> list[Note]:
                     f"A file on its fifth pass usually needs a decision, not another attempt."
                 ),
                 seconds=span,
-                numbers={"file": worst_file, "writes": writes, "seconds": round(span)},
+                numbers={"file": worst_file, "writes": writes, "seconds": plain.rounded(span)},
             )
         )
 
@@ -160,7 +162,7 @@ def wire(session) -> list[dict] | None:
     not read must not look the same on the card, and only one of them has a row.
     """
     out = [
-        {"id": n.id, "seconds": int(round(n.seconds)), "count": _count(n)} for n in notes(session)
+        {"id": n.id, "seconds": int(plain.rounded(n.seconds)), "count": _count(n)} for n in notes(session)
     ]
     return out or None
 
@@ -228,7 +230,7 @@ def _most_rewritten(session) -> tuple[str | None, int, float]:
 
 
 def _mins(seconds: float) -> str:
-    m = round(seconds / 60)
+    m = plain.rounded(seconds / 60)
     if m < 1:
         return "under a minute"
     if m < 60:

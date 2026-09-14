@@ -22,6 +22,8 @@ Everything here needs PROMPT TEXT, which never leaves the machine
 
 from __future__ import annotations
 
+from . import plain
+
 import dataclasses
 import re
 from collections.abc import Sequence
@@ -145,7 +147,7 @@ def summary(all_attempts: Sequence[Attempt]) -> dict:
             ),
         }
     return {
-        "value": round(len(worked) / n, 3),
+        "value": plain.rounded(len(worked) / n, 3),
         "n": n,
         "worked": len(worked),
         "cost": len(cost),

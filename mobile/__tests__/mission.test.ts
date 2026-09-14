@@ -738,6 +738,48 @@ describe('the grid is a hierarchy, and the band says the one number', () => {
     expect(summaryHead([])).toBeNull();
   });
 
+  test('the band\'s figure is never 0: it counts what its word names, over every mix of up to four tiles', () => {
+    // FOUND IN THE DEFECTS PASS (2026-09-14): the Sessions band read "0 needs you" over "1 running".
+    // The model is held here; the drawn count that stayed on its first frame is `LiveNum`'s guard.
+    const kinds: TileModel['kind'][] = ['needsYou', 'working', 'stalled', 'finished'];
+    const tiles = kinds.flatMap((kind) => [{ kind, stale: false }, { kind, stale: true }]);
+    const mixes: { kind: TileModel['kind']; stale: boolean }[][] = [[]];
+    for (let n = 0; n < 4; n++) for (const mix of [...mixes]) if (mix.length === n) for (const t of tiles) mixes.push([...mix, t]);
+    for (const mix of mixes) {
+      const head = summaryHead(mix);
+      if (mix.length === 0) {
+        expect(head).toBeNull();
+        continue;
+      }
+      expect(head).not.toBeNull();
+      expect(head!.figure).toBeGreaterThan(0);
+      // A wait on a row that stopped reporting is not counted as one (`countsOf`).
+      const counted =
+        head!.word === 'needs you'
+          ? mix.filter((t) => t.kind === 'needsYou' && !t.stale).length
+          : head!.word === 'finished'
+            ? mix.filter((t) => t.kind === 'finished').length
+            : head!.word === 'not updating'
+              ? mix.filter((t) => t.kind !== 'finished' && t.stale).length
+              : mix.filter((t) => t.kind !== 'finished').length;
+      // "running" is said only while at least one of them is still reporting.
+      if (head!.word === 'running') expect(mix.some((t) => t.kind !== 'finished' && !t.stale)).toBe(true);
+      expect({ mix, figure: head!.figure }).toEqual({ mix, figure: counted });
+      expect(head!.label.startsWith(`${head!.figure} ${head!.word}`)).toBe(true);
+    }
+  });
+
+  test('when every row that runs has stopped reporting, the band says so instead of "running"', () => {
+    // FOUND IN THE DEFECTS PASS (2026-09-14): "0 running" over "1 not updating" on the Now tab.
+    expect(summaryHead([{ kind: 'needsYou', stale: true }])).toEqual({ figure: 1, word: 'not updating', lines: [], label: '1 not updating' });
+    expect(summaryHead([{ kind: 'working', stale: true }, { kind: 'finished', stale: false }])).toEqual({
+      figure: 1,
+      word: 'not updating',
+      lines: ['1 finished'],
+      label: '1 not updating, 1 finished',
+    });
+  });
+
   test('while any row has stopped reporting, the band never claims nothing needs you', () => {
     const head = summaryHead([
       { kind: 'working', stale: false },

@@ -131,6 +131,8 @@ export interface FlowPaint {
   bucket(key: string): Hue;
   models(families: readonly string[]): Hue[];
   project(key: string): Hue;
+  /** The "no commit" ending, in the hue the page's Where it went chapter gives the same dollars; a neutral grey without one. */
+  none?: Hue;
 }
 
 /** What the money page already decided about the buckets and the models (`chapters.moneyPage`). */
@@ -152,18 +154,27 @@ const OUTCOME_HUE: Record<OutcomeKey, Hue> = {
 
 /**
  * Each project's hue inside this one picture. A project keeps the hue it wears on the Projects
- * tab, unless a model in the picture already wears it: then it steps round `order` (the Projects
- * tab's own ring) to the first hue no model and no other project wears. FOUND ON THE SIMULATOR
- * (2026-09-13): the oldest project is tide and so is Fable 5, and Fable's stream into it read as
- * running on into the commit block. The models keep theirs because the ring above them on the
- * same page names them by colour.
+ * tab, unless a model in the picture already wears it, or anything else on the page does
+ * (`reserved`: the kinds of token and "no commit", `hues.reservedForProjects`): then it steps round
+ * `order` (the Projects tab's own ring) to the first hue nothing else and no other project wears.
+ * FOUND ON THE SIMULATOR (2026-09-13): the oldest project is tide and so is Fable 5, and Fable's
+ * stream into it read as running on into the commit block. FOUND IN THE CAPTURE (2026-09-14):
+ * stepped past the models only, project 1 landed on brass, the yellow of cache writes, and project
+ * 2 kept ember, the orange of cache reads. The models keep theirs because the ring above them on
+ * the same page names them by colour.
  */
-export function projectHuesApart<K extends string, H extends string>(own: Readonly<Record<K, H>>, order: readonly H[], models: readonly H[]): Record<K, H> {
+export function projectHuesApart<K extends string, H extends string>(
+  own: Readonly<Record<K, H>>,
+  order: readonly H[],
+  models: readonly H[],
+  reserved: readonly H[] = [],
+): Record<K, H> {
   const out = { ...own } as Record<K, H>;
-  const worn = (h: H, except: K) => models.includes(h) || (Object.keys(out) as K[]).some((k) => k !== except && out[k] === h);
+  const taken = (h: H) => models.includes(h) || reserved.includes(h);
+  const worn = (h: H, except: K) => taken(h) || (Object.keys(out) as K[]).some((k) => k !== except && out[k] === h);
   for (const key of Object.keys(out) as K[]) {
     const want = out[key];
-    if (!models.includes(want)) continue;
+    if (!taken(want)) continue;
     const at = Math.max(0, order.indexOf(want));
     for (let i = 1; i <= order.length; i++) {
       const h = order[(at + i) % order.length]!;
@@ -555,7 +566,7 @@ export function moneyFlow(
       value: ended[k],
       figure: figureOf(own, ended[k]),
       dollars: true,
-      hue: OUTCOME_HUE[k],
+      hue: k === 'none' && paint.none ? paint.none : OUTCOME_HUE[k],
       hollow: k === 'unsplit',
       sentence:
         k === 'commit'
@@ -591,7 +602,7 @@ export function moneyFlow(
   if (grey) notes.push('The grey stream is tokens, not dollars. It rejoins the rest before the line marked priced, because those tokens are priced with everything else; what those stretches would cost alone would need each one split by model and by kind of token.');
   const floorProjects = projects.filter((p) => p.ending.unsplit > 0 && p.members === 1 && p.ending.none === 0 && p.id !== 'project:elsewhere');
   if (floorProjects.length) {
-    notes.push(`${floorProjects.map((p) => unsplitWords(p, 'long')).join(' ')} This chart splits only the projects with enough sessions to split; Where it went, further down, counts every priced session together.`);
+    notes.push(`${floorProjects.map((p) => unsplitWords(p, 'long')).join(' ')} This chart splits only the projects with enough sessions to split. The Where it went chapter, further down, counts every priced session together.`);
   }
   if (projectsWhole !== target) {
     // Said, never hidden: each project keeps its own page's figure, and the column is a rounding
@@ -770,7 +781,21 @@ export interface LaidLabel {
    * hue's ink over its own partner is too faint to read (found on the simulator, 2026-09-13).
    */
   onStream: boolean;
+  /**
+   * A ribbon (a stream between two columns, a priced stream or the grey one) runs under its words
+   * somewhere, so the ground is cut back under them, the way the codebase map cuts it back under a
+   * label (`map/paint.knockouts`), and its figure is set in its node's ink on that ground. FOUND IN
+   * THE CAPTURE (2026-09-14, 22-money-08 and 09): Opus 5's stream crossed "$241", the dashed outline
+   * of a stream the report does not split ran through "$162", and a tap on Fable 5's stream lit it
+   * light cyan under a white "$241". The token stream's grain is not a ribbon: the words on it read.
+   */
+  knockout: boolean;
 }
+
+/** About how wide a 16 pt heavy figure runs, per character (tabular digits, "$", ","). */
+const FIGURE_CHAR_W = 9.8;
+/** How far the ground is cut back past a label's words, points: across, then up and down (the map's `KNOCKOUT_PAD`). */
+export const LABEL_KNOCKOUT_PAD: readonly [number, number] = [3, 1];
 
 export interface SankeyLayout {
   width: number;
@@ -1033,11 +1058,31 @@ export function layoutSankey(flow: MoneyFlow, width: number): SankeyLayout {
     const ys = relax(items.map((x) => ({ y: x.y, h: x.h, lo: x.lo, hi: x.hi })));
     items.forEach((x, i) => placed.set(x.id, ys[i]!));
   }
-  // Whether a point is on a stream: the token stream, the grey one, or any ribbon, exactly (no finger's width).
+  // Whether a point is on a ribbon (a stream between columns, a priced stream, the grey one), and
+  // whether it is on any stream at all (those, or the token stream), exactly (no finger's width).
+  const onRibbonAt = (px: number, py: number): boolean =>
+    [...links, ...fans].some((l) => onRibbon(l.ribbon, px, py, 0) !== null) || (grey?.parts.some((p) => onRibbon(p, px, py, 0) !== null) ?? false);
   const onStream = (px: number, py: number): boolean =>
-    (trunk !== null && px >= trunk.x0 && px <= trunk.x1 && py >= trunk.top && py <= trunk.bottom) ||
-    [...links, ...fans].some((l) => onRibbon(l.ribbon, px, py, 0) !== null) ||
-    (grey?.parts.some((p) => onRibbon(p, px, py, 0) !== null) ?? false);
+    (trunk !== null && px >= trunk.x0 && px <= trunk.x1 && py >= trunk.top && py <= trunk.bottom) || onRibbonAt(px, py);
+  // Whether a ribbon runs under the words anywhere: sampled every few points along each line of
+  // them, over the width the words take (a name wraps to the lane; a figure is its characters).
+  const crossed = (id: string, x: number, y: number, w: number, h: number, align: 'left' | 'right'): boolean => {
+    const nd = byId.get(id);
+    const name = nd ? nd.label : (flow.grey?.label ?? '');
+    const said = nd ? nd.figure.final : (flow.grey?.figure ?? '');
+    const lines = Math.max(1, Math.round((h - G.figureLine) / G.nameLine));
+    // One line is its characters; a name that wraps fills the lane, so all of the lane is read.
+    const nameW = lines === 1 ? Math.min(w, name.length * CHAR_W) : w;
+    const figW = Math.min(w, said.length * FIGURE_CHAR_W);
+    const rows: [number, number][] = [];
+    for (let i = 0; i < lines; i++) rows.push([y + G.nameLine * (i + 0.5), nameW]);
+    rows.push([y + h - G.figureLine / 2, figW]);
+    for (const [cy, tw] of rows) {
+      const x0 = align === 'left' ? x : x + w - tw;
+      for (let sx = x0; sx <= x0 + tw; sx += 4) if (onRibbonAt(sx, cy)) return true;
+    }
+    return false;
+  };
   const labels: LaidLabel[] = [];
   const leaders: SankeyLayout['leaders'] = [];
   for (const wnt of wants) {
@@ -1049,7 +1094,8 @@ export function layoutSankey(flow: MoneyFlow, width: number): SankeyLayout {
     // Sampled where the figure's first digits are, and in the middle of the name's first line.
     const fx = lane.align === 'left' ? x + 14 : x + w - 14;
     const stream = onStream(fx, y + wnt.h - G.figureLine / 2) || onStream(fx, y + G.nameLine / 2);
-    labels.push({ id: wnt.id, x, y, w, h: wnt.h, align: lane.align, at: (wnt.column === 3 ? xs[3] : x) / width, onStream: stream });
+    const knockout = crossed(wnt.id, x, y, w, wnt.h, lane.align);
+    labels.push({ id: wnt.id, x, y, w, h: wnt.h, align: lane.align, at: (wnt.column === 3 ? xs[3] : x) / width, onStream: stream, knockout });
     const nd = wnt.node;
     if (nd) {
       // A label pushed clear of its node gets a hairline back to it, from its first line.

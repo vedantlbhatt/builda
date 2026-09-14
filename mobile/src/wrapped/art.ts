@@ -71,6 +71,7 @@ export type ArtBasis =
   | 'session_strip'
   | 'peak_overlap'
   | 'commit_days'
+  | 'streak_days'
   | 'cumulative_lines'
   | 'card_share'
   | 'role_split'
@@ -640,8 +641,15 @@ function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): Art
         : fallback;
     }
     case 'streak': {
-      const values = src.commitDays ? commitRow(src.commitDays, src.windowEnd) : null;
-      return values ? { kind: 'row', values, basis: 'commit_days' } : fallback;
+      // The card's own days, one square each: every day with a commit AND a session with you there
+      // (extras.both_days), its longest run of them in ink. Exact numbers from the report. FOUND IN
+      // THE now3 PASS (2026-09-14): the art drew commit days alone, and a 17 day commit run stood
+      // under "8 days straight"; the phone cannot redraw the both days, it holds too few sessions.
+      const both = card.extras.both_days;
+      const run = card.value;
+      return typeof both === 'number' && both > 0 && typeof run === 'number' && run > 0
+        ? { kind: 'tally', total: Math.min(MAX_TALLY, Math.round(both)), lit: Math.min(Math.round(both), Math.round(run)), basis: 'streak_days' }
+        : fallback;
     }
     case 'shipped': {
       const series = src.sessions ? cumulativeLines(src.sessions) : null;

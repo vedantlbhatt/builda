@@ -69,9 +69,9 @@ describe('never random: the same card draws the same header, every render', () =
 
   test('with no sources the data cards fall back to a seeded field, and say so', () => {
     const procedural = REPORT_ENUMS.wrapped_card.filter((id) => artFor(card(id), NO_SOURCES).basis === 'procedural');
-    // Five cards carry their own data on the wire: the share, the split, the sends, the
-    // average prompt with its median, and the helper agents with their peak.
-    const onTheWire = new Set(['change_course', 'kind_of_work', 'go_to_prompt', 'prompt_length', 'agents_at_once']);
+    // Six cards carry their own data on the wire: the share, the split, the sends, the
+    // average prompt with its median, the helper agents with their peak, and the streak's days.
+    const onTheWire = new Set(['change_course', 'kind_of_work', 'go_to_prompt', 'prompt_length', 'agents_at_once', 'streak']);
     expect(procedural.sort()).toEqual([...REPORT_ENUMS.wrapped_card].filter((id) => !onTheWire.has(id)).sort());
   });
 
@@ -110,7 +110,7 @@ describe('real data where the phone holds it', () => {
     time_put_in: 'activity_grid',
     longest_session: 'session_strip',
     agents_at_once: 'peak_overlap',
-    streak: 'commit_days',
+    streak: 'streak_days',
     shipped: 'cumulative_lines',
     change_course: 'card_share',
     kind_of_work: 'role_split',
@@ -124,6 +124,12 @@ describe('real data where the phone holds it', () => {
     for (const id of REPORT_ENUMS.wrapped_card) {
       expect({ id, basis: artFor(card(id), SAMPLE_SOURCES).basis }).toEqual({ id, basis: expected[id] ?? 'procedural' });
     }
+  });
+
+  test('the streak draws its own days, the run in ink, never commit days alone', () => {
+    // FOUND IN THE now3 PASS (2026-09-14): a 17 day commit run under "8 days straight".
+    const spec = artFor(card('streak'), SAMPLE_SOURCES);
+    expect(spec).toMatchObject({ kind: 'tally', total: 20, lit: 11, basis: 'streak_days' });
   });
 
   test('a refused card never draws data: it has no answer to draw', () => {

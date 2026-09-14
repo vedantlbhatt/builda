@@ -91,14 +91,21 @@ section.
   Stack restarted onto it and re-synced; artifact version 9.
 - 00:05: comparisons say "only lower bounds", not "floors" (8878670). Build 4 on the phone
   (the text patch and the chart's review fixes). Running: a capture of every screen as it is
-  now into `shots/now2/`, with a defect list, to refresh the artifact's first section.
+  now into `shots/now2/` (216 stills and 77 widget and Live Activity renders, INDEX.md): no dash,
+  no "you spent", no key characters, no dropped last line anywhere. Defects found and being fixed
+  (01:40): a project page calling itself idle while sessions ran today, the Sessions list cut at
+  50 notable with no word, onboarding saying 81 of 183, the token chart's rewrite mark read as a
+  bar, a "nothing happened" note on a session with 13 commits, "private repo" beside the new
+  numbered names, two numbers for one fact on the analysis page, colours with two meanings, the
+  sample session showing a real repo name, the share card still saying builder.
 - Owner, 00:20: demos for every project (brief.md). Research landed (`docs/research/demo-capture.md`:
   "repo clip" is RepoClip, closed and AI illustrated; build on simctl, Maestro, Playwright, VHS,
   ffmpeg, sandbox-runtime), design in `docs/demos.md` (80314be). Running: the generator
   (`capture/demo/`, first demos of Builda and RideGT on the "Builder Screens" simulator) and
   the storage and publish path (migration 0026, owner only media, a dev file backend, the
-  contract channel, `capture demo --publish`). Next: the phone (a stack of stills beside each
-  project, a gallery, the video looping muted behind the hero, expo-video, a build).
+  contract channel, `capture demo --publish`; done 01:30, uncommitted beside the generator's
+  capture/cli.py wiring). The stack restarted onto the media routes and the file backend
+  (`$OVERNIGHT_HOME/media`). Running: the phone side (stacks, gallery, the video, expo-video).
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

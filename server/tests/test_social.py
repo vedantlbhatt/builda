@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
-from test_contract import SAMPLE_ANALYSIS
+from test_contract import SAMPLE_ANALYSIS, SAMPLE_BURN, SAMPLE_CALL_TOKENS
 from test_sync import (  # noqa: F401 - fixtures are picked up by name
     TEST_DB,
     _live,
@@ -246,6 +246,56 @@ def test_session_detail_carries_only_the_viewers_own_post_id(client, created_use
     # Un-sharing takes it back to null, not to a dangling id.
     assert client.delete(f"/v1/posts/{post['id']}", headers=h_a).status_code == 204
     assert _detail_post_id(client, h_a, sid) is None
+
+
+def _stats_rows_as(viewer: str, session_id: str) -> list:
+    """`session_stats` for one session through a bare builder_app connection with `viewer`
+    as the viewer: what RLS itself lets through, whatever a route does with it."""
+    with app_engine().connect() as c:
+        c.execute(text("SELECT set_config('app.viewer_id', :v, false)"), {"v": viewer})
+        return c.execute(
+            text("SELECT burn, call_tokens FROM session_stats WHERE session_id = :s"),
+            {"s": session_id},
+        ).all()
+
+
+def test_call_tokens_reach_a_stranger_exactly_where_burn_does(client, created_users):
+    """0025 puts `call_tokens` on `session_stats` beside `burn`, under the same owner and
+    shared session policies (0003). So a stranger reads it on a shared session, the same
+    document the owner reads, and on nothing else: an unshared or privately posted session
+    is not there for them at all, and the feed and the post carry neither block. Checked
+    through the route AND through a bare connection with the stranger as the viewer, so a
+    404 cannot be the route's doing alone (CLAUDE.md, a negative test must reach the code)."""
+    uid_a, h_a = _person(client, created_users, "alice")
+    uid_b, h_b = _person(client, created_users, "bob")
+    sid = _session(client, h_a, uid_a, burn=SAMPLE_BURN, call_tokens=SAMPLE_CALL_TOKENS)
+
+    owner = client.get(f"/v1/sessions/{sid}", headers=h_a).json()
+    assert (owner["burn"], owner["call_tokens"]) == (SAMPLE_BURN, SAMPLE_CALL_TOKENS)
+    assert len(_stats_rows_as(uid_a, sid)) == 1, "the owner reads their own row"
+
+    # Unshared: the session does not exist for the stranger, and neither does its row.
+    assert client.get(f"/v1/sessions/{sid}", headers=h_b).status_code == 404
+    assert _stats_rows_as(uid_b, sid) == []
+
+    # Shared through a public post: exactly the owner's two documents, nothing added.
+    post = _post(client, h_a, sid, "public")
+    seen = client.get(f"/v1/sessions/{sid}", headers=h_b).json()
+    assert (seen["burn"], seen["call_tokens"]) == (owner["burn"], owner["call_tokens"])
+    [(burn, calls)] = _stats_rows_as(uid_b, sid)
+    assert (burn, calls) == (SAMPLE_BURN, SAMPLE_CALL_TOKENS)
+    # The post and the feed item are not the session detail: neither block is on them.
+    item = client.get(f"/v1/posts/{post['id']}", headers=h_b).json()
+    assert "burn" not in item and "call_tokens" not in item
+    assert all("call_tokens" not in i for i in client.get("/v1/feed", headers=h_a).json()["items"])
+
+    # A private post takes the session back from everyone but its owner.
+    r = client.patch(f"/v1/posts/{post['id']}", json={"visibility": "private"}, headers=h_a)
+    assert r.status_code == 200, r.text
+    assert client.get(f"/v1/sessions/{sid}", headers=h_b).status_code == 404
+    assert _stats_rows_as(uid_b, sid) == []
+    mine = client.get(f"/v1/sessions/{sid}", headers=h_a).json()
+    assert mine["call_tokens"] == SAMPLE_CALL_TOKENS
 
 
 def test_a_live_session_cannot_be_shared(client, created_users):

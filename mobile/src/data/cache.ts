@@ -201,7 +201,7 @@ export async function putDetail(s: SessionDetail): Promise<void> {
  * from an earlier read must not outlive it: a burn block from a re-cut that no longer
  * produces one, file names the person has since turned off.
  */
-const DETAIL_AUTHORITATIVE = ['burn', 'title_ids', 'live_state', 'live_names'] as const;
+const DETAIL_AUTHORITATIVE = ['burn', 'title_ids', 'call_tokens', 'live_state', 'live_names'] as const;
 
 /**
  * Which of two live states to keep. The live list serves a SLIM body (no time lapse, the map

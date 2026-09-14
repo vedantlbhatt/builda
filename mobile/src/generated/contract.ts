@@ -23,6 +23,8 @@ export type BurnRepeat = "shell" | "edit" | "read" | "other";
 export type TitleVerb = "debugged" | "wired" | "refactored" | "shipped" | "committed" | "tested" | "built" | "explored" | "worked_through" | "edited" | "looked_around";
 export type TitleObject = "test" | "source" | "config" | "docs" | "migration" | "style" | "build" | "dependency" | "unknown" | "test_suite" | "commit" | "failure" | "codebase";
 export type TitleRefusal = "no_tool_calls" | "writes_name_no_file" | "harness_files_only" | "below_checkpoint_density";
+export type CallTokensRefusal = "no_token_counts" | "too_few_calls";
+export type CallPriceRefusal = "model_not_in_price_table";
 
 /** Legal values for the enums of the contract's own objects (v4), in contract order. */
 export const CONTRACT_ENUMS = {
@@ -32,6 +34,8 @@ export const CONTRACT_ENUMS = {
   title_verb: ["debugged", "wired", "refactored", "shipped", "committed", "tested", "built", "explored", "worked_through", "edited", "looked_around"],
   title_object: ["test", "source", "config", "docs", "migration", "style", "build", "dependency", "unknown", "test_suite", "commit", "failure", "codebase"],
   title_refusal: ["no_tool_calls", "writes_name_no_file", "harness_files_only", "below_checkpoint_density"],
+  call_tokens_refusal: ["no_token_counts", "too_few_calls"],
+  call_price_refusal: ["model_not_in_price_table"],
 } as const;
 
 export interface SessionBurnCause {
@@ -103,6 +107,57 @@ export interface SessionTitleIds {
   modules?: number | null;
   /** why no title rule fired (vocab.TITLE_REFUSALS): no_tool_calls, writes_name_no_file (a harness that does not say which file a patch touched), harness_files_only (only Claude Code's own scratch or notes were written), below_checkpoint_density (too few visible writes, tests or commits for a title to describe the work rather than what the transcript hides). Null when a title answered */
   reason?: TitleRefusal | null;
+}
+
+export interface SessionCallPoint {
+  /** seconds from the session's start to the first call in this point */
+  at: number;
+  /** tokens re-read from the cache (cache_read_input_tokens), summed over the point's calls: the conversation so far, sent again */
+  cache_read: number;
+  /** tokens written to the cache (cache_creation_input_tokens, both lifetimes): what was new in the conversation, or all of it again after the cache expired */
+  cache_write: number;
+  /** fresh input tokens, neither read from nor written to the cache */
+  input: number;
+  /** tokens the model wrote back */
+  output: number;
+}
+
+export interface SessionCallRewrite {
+  /** the call's number in this session, counting from 1; the first per_point calls are the first point, the next per_point the second */
+  call: number;
+  /** seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds */
+  away_seconds: number;
+  /** the tokens it wrote to the cache again, more than half of everything it sent (calls.REWRITE_MIN_SHARE) */
+  written: number;
+}
+
+export interface SessionCallTokens {
+  /** why there is no chart: no_token_counts (the transcript records no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed). Null when answered; then every field below that can be is set */
+  reason?: CallTokensRefusal | null;
+  /** calls to the model in the session window, each assistant message once and `<synthetic>` placeholders left out (calls.calls_of). Null only with reason no_token_counts, where nothing was counted */
+  calls?: number | null;
+  /** calls.MIN_CALLS, the calls a chart needs, so the phone can say why a short session has none */
+  calls_needed: number;
+  /** consecutive calls summed into each point: 1 up to 240 calls, then ceil(calls / 240), the last point holding the rest. Null when refused */
+  per_point?: number | null;
+  /** the calls in time order, per_point to a point. Their tokens sum to the tokens burn counts for the same window. Null when refused (max 240 items) */
+  points?: SessionCallPoint[] | null;
+  /** how long the cache kept what these calls wrote: 3600 when any call wrote with the one hour lifetime, 300 when they wrote only with five minutes, null when nothing was written to a cache (then no call is a rewrite) or when refused */
+  lifetime_seconds?: number | null;
+  /** calls that came back to an expired cache and wrote most of the conversation into it again, the 12 that wrote the most, in call order. [] when none did; null when refused (max 12 items) */
+  rewrites?: SessionCallRewrite[] | null;
+  /** every such call, however many rewrites keeps. Null when refused */
+  rewrite_calls?: number | null;
+  /** the re-reads at API list prices, dollars, each call priced on its own model (analysis/pricing.py cost_usd). Never a bill. Null when refused or when price_reason is set */
+  usd_cache_read?: number | null;
+  /** the cache writes at API list prices, dollars, the five minute and the one hour writes each at its own rate. Null when refused or when price_reason is set */
+  usd_cache_write?: number | null;
+  /** the fresh input at API list prices, dollars. Null when refused or when price_reason is set */
+  usd_input?: number | null;
+  /** what the model wrote back at API list prices, dollars. Null when refused or when price_reason is set */
+  usd_output?: number | null;
+  /** why the four dollar fields are null on an answered chart: model_not_in_price_table (a call that carries tokens names a model analysis/pricing.py has no price for, so it is not priced at a guess). Null otherwise */
+  price_reason?: CallPriceRefusal | null;
 }
 
 /** The complete set of fields the phone can ever receive for a session. */
@@ -208,7 +263,9 @@ export interface SessionWire {
   burn?: SessionBurn | null;
   /** an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles. */
   title_ids?: SessionTitleIds | null;
+  /** what every call to the model sent and got back in this sitting (analysis/calls.py over the session window, each message counted once): at most 240 points of five token counts, the calls that came back to an expired cache, and the list price of each kind of token. Numbers and two enums: no prompt, path, command, file name, tool name or model name. Computed on the machine or by the hook channel; the phone draws the chart and writes every sentence. Null when the producer does not compute it; a refusal is call_tokens.reason, never a zero. */
+  call_tokens?: SessionCallTokens | null;
 }
 
-export const PUBLIC_FIELDS = ["abandoned_branch_tokens", "active_calc_version", "active_seconds", "agent_line_bucket", "agent_observed_at", "analysis", "attended_seconds", "attrib_confidence", "autonomous_seconds", "burn", "card_png_url", "client_clock_offset_ms", "client_session_id", "client_version", "commit_count", "commit_deletions", "commit_insertions", "content_hash", "end_reason", "ended_at", "feedback", "files_created", "files_touched", "harness", "human_edit_events", "human_prompt_count", "idle_seconds", "lines_added_agent", "lines_removed_agent", "live", "live_names", "machine_id", "model_state", "models", "notable", "presence_count", "prompt_count_basis", "repo_hash", "repo_id_basis", "repo_name", "repo_pepper_version", "sessionizer_version", "started_at", "state", "strip_columns", "strip_marks", "time_quality", "timeline_fidelity", "title", "title_ids", "title_source", "token_coverage", "token_dedupe", "token_scope", "tokens", "tokens_reported", "tool_calls", "tz_offset_minutes", "unattended", "visible"] as const;
-export const ANONYMOUS_FIELDS = ["abandoned_branch_tokens", "active_calc_version", "active_seconds", "agent_line_bucket", "agent_observed_at", "analysis", "attended_seconds", "attrib_confidence", "autonomous_seconds", "burn", "card_png_url", "client_clock_offset_ms", "client_session_id", "client_version", "commit_count", "commit_deletions", "commit_insertions", "content_hash", "end_reason", "ended_at", "feedback", "files_created", "files_touched", "harness", "human_edit_events", "human_prompt_count", "idle_seconds", "lines_added_agent", "lines_removed_agent", "live", "live_names", "machine_id", "model_state", "models", "notable", "presence_count", "prompt_count_basis", "repo_hash", "repo_id_basis", "repo_pepper_version", "sessionizer_version", "started_at", "state", "strip_columns", "strip_marks", "time_quality", "timeline_fidelity", "title_ids", "token_coverage", "token_dedupe", "token_scope", "tokens", "tokens_reported", "tool_calls", "tz_offset_minutes", "unattended", "visible"] as const;
+export const PUBLIC_FIELDS = ["abandoned_branch_tokens", "active_calc_version", "active_seconds", "agent_line_bucket", "agent_observed_at", "analysis", "attended_seconds", "attrib_confidence", "autonomous_seconds", "burn", "call_tokens", "card_png_url", "client_clock_offset_ms", "client_session_id", "client_version", "commit_count", "commit_deletions", "commit_insertions", "content_hash", "end_reason", "ended_at", "feedback", "files_created", "files_touched", "harness", "human_edit_events", "human_prompt_count", "idle_seconds", "lines_added_agent", "lines_removed_agent", "live", "live_names", "machine_id", "model_state", "models", "notable", "presence_count", "prompt_count_basis", "repo_hash", "repo_id_basis", "repo_name", "repo_pepper_version", "sessionizer_version", "started_at", "state", "strip_columns", "strip_marks", "time_quality", "timeline_fidelity", "title", "title_ids", "title_source", "token_coverage", "token_dedupe", "token_scope", "tokens", "tokens_reported", "tool_calls", "tz_offset_minutes", "unattended", "visible"] as const;
+export const ANONYMOUS_FIELDS = ["abandoned_branch_tokens", "active_calc_version", "active_seconds", "agent_line_bucket", "agent_observed_at", "analysis", "attended_seconds", "attrib_confidence", "autonomous_seconds", "burn", "call_tokens", "card_png_url", "client_clock_offset_ms", "client_session_id", "client_version", "commit_count", "commit_deletions", "commit_insertions", "content_hash", "end_reason", "ended_at", "feedback", "files_created", "files_touched", "harness", "human_edit_events", "human_prompt_count", "idle_seconds", "lines_added_agent", "lines_removed_agent", "live", "live_names", "machine_id", "model_state", "models", "notable", "presence_count", "prompt_count_basis", "repo_hash", "repo_id_basis", "repo_pepper_version", "sessionizer_version", "started_at", "state", "strip_columns", "strip_marks", "time_quality", "timeline_fidelity", "title_ids", "token_coverage", "token_dedupe", "token_scope", "tokens", "tokens_reported", "tool_calls", "tz_offset_minutes", "unattended", "visible"] as const;

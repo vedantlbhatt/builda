@@ -3,8 +3,8 @@
 // BuilderModel supplies `SessionAnalysis` (Generated/AnalysisSpec.swift), the value type
 // behind the `analysis` key. It is the only wire type the Mac encodes that is not defined
 // in this file. The cases marked "not encoded by the Mac" (v4: live, live_names, burn,
-// title_ids) are sent by capture and the server's hook channel; no Swift type here or in
-// BuilderSync can hold one, so the Mac cannot put them on the wire.
+// title_ids, call_tokens) are sent by capture and the server's hook channel; no Swift type
+// here or in BuilderSync can hold one, so the Mac cannot put them on the wire.
 import BuilderModel
 import Foundation
 
@@ -73,6 +73,7 @@ public enum UploadField: String, CodingKey, CaseIterable, Sendable {
     case live_names  // LiveNames?, not encoded by the Mac
     case burn  // SessionBurn?, not encoded by the Mac
     case title_ids  // SessionTitleIds?, not encoded by the Mac
+    case call_tokens  // SessionCallTokens?, not encoded by the Mac
 }
 
 /// Per-repo visibility. `excluded` is deliberately not a mode: an excluded repo produces
@@ -154,6 +155,7 @@ public enum UploadContract {
         .live_names,
         .burn,
         .title_ids,
+        .call_tokens,
     ]
 
     public static let anonymousFields: Set<UploadField> = [
@@ -214,6 +216,7 @@ public enum UploadContract {
         .live_names,
         .burn,
         .title_ids,
+        .call_tokens,
     ]
 
     /// Legal values for every enum-typed field, so a typo becomes a test failure here

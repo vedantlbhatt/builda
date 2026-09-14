@@ -35,6 +35,7 @@ PUBLIC_FIELDS = [
     "attrib_confidence",
     "autonomous_seconds",
     "burn",
+    "call_tokens",
     "card_png_url",
     "client_clock_offset_ms",
     "client_session_id",
@@ -98,6 +99,7 @@ ANONYMOUS_FIELDS = [
     "attrib_confidence",
     "autonomous_seconds",
     "burn",
+    "call_tokens",
     "card_png_url",
     "client_clock_offset_ms",
     "client_session_id",
@@ -172,8 +174,8 @@ ENUM_VALUES: dict[str, list[str]] = {
 TOOL_CALL_KEYS: list[str] = ["Read", "Edit", "Write", "Bash", "mcp_other", "other"]
 
 #: Legal values for the enums inside the contract's own objects (v4: `burn`,
-#: `title_ids`), in contract order. Each copies a Python table and is pinned to it both
-#: ways by server/tests/test_contract.py.
+#: `title_ids`, `call_tokens`), in contract order. Each copies a Python table and is
+#: pinned to it both ways by server/tests/test_contract.py.
 OBJECT_ENUM_VALUES: dict[str, list[str]] = {
     "burn_cause": ["context_replay", "subagent_fanout", "error_loop", "repeated_call", "file_churn", "compaction", "investigated"],
     "burn_refusal": ["no_token_counts", "below_session_floor", "nothing_inside_segments", "not_segmented"],
@@ -181,6 +183,8 @@ OBJECT_ENUM_VALUES: dict[str, list[str]] = {
     "title_verb": ["debugged", "wired", "refactored", "shipped", "committed", "tested", "built", "explored", "worked_through", "edited", "looked_around"],
     "title_object": ["test", "source", "config", "docs", "migration", "style", "build", "dependency", "unknown", "test_suite", "commit", "failure", "codebase"],
     "title_refusal": ["no_tool_calls", "writes_name_no_file", "harness_files_only", "below_checkpoint_density"],
+    "call_tokens_refusal": ["no_token_counts", "too_few_calls"],
+    "call_price_refusal": ["model_not_in_price_table"],
 }
 
 #: model name -> field name -> enum name, for the validators of the objects below.
@@ -189,6 +193,9 @@ OBJECT_ENUM_FIELDS: dict[str, dict[str, str]] = {
     "SessionBurnSpike": {},
     "SessionBurn": {"reason": "burn_refusal"},
     "SessionTitleIds": {"verb": "title_verb", "object": "title_object", "reason": "title_refusal"},
+    "SessionCallPoint": {},
+    "SessionCallRewrite": {},
+    "SessionCallTokens": {"reason": "call_tokens_refusal", "price_reason": "call_price_refusal"},
 }
 
 
@@ -315,6 +322,52 @@ class SessionTitleIds(BaseModel):
         return v
 
 
+class SessionCallPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    at: int
+    cache_read: int
+    cache_write: int
+    input: int
+    output: int
+
+
+class SessionCallRewrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    call: int
+    away_seconds: int
+    written: int
+
+
+class SessionCallTokens(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+    calls: int | None = None
+    calls_needed: int
+    per_point: int | None = None
+    points: list[SessionCallPoint] | None = Field(default=None, max_length=240)
+    lifetime_seconds: int | None = None
+    rewrites: list[SessionCallRewrite] | None = Field(default=None, max_length=12)
+    rewrite_calls: int | None = None
+    usd_cache_read: float | None = None
+    usd_cache_write: float | None = None
+    usd_input: float | None = None
+    usd_output: float | None = None
+    price_reason: str | None = None
+
+    @field_validator("reason", "price_reason")
+    @classmethod
+    def _validate_enum(cls, v, info):
+        allowed = OBJECT_ENUM_VALUES[OBJECT_ENUM_FIELDS[cls.__name__][info.field_name]]
+        if v is not None and v not in allowed:
+            raise ValueError(
+                '%s=%r is not one of %r' % (info.field_name, v, allowed)
+            )
+        return v
+
+
 class SessionUpload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -378,6 +431,7 @@ class SessionUpload(BaseModel):
     live_names: LiveNames | None = None
     burn: SessionBurn | None = None
     title_ids: SessionTitleIds | None = None
+    call_tokens: SessionCallTokens | None = None
 
     @field_validator("harness", "time_quality", "state", "end_reason", "timeline_fidelity", "prompt_count_basis", "agent_line_bucket", "attrib_confidence", "token_dedupe", "token_scope", "token_coverage", "model_state", "repo_id_basis", "title_source")
     @classmethod

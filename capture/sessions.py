@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import functools
 import pathlib
 import time
 from collections import Counter
@@ -513,12 +514,13 @@ def build_payload(
     The two clocks are rounded the same way and the headline is their SUM, never rounded
     independently: the server rejects `attended + autonomous != active` beyond a second.
 
-    `burn` and `title_ids` (v4) are computed here, like `feedback`, so every path that
-    builds a payload carries them: `capture sync` and the hook channel alike.
+    `burn`, `title_ids` and `call_tokens` (v4) are computed here, like `feedback`, so every
+    path that builds a payload carries them: `capture sync` and the hook channel alike.
     `turns_loader` is a memoised `analysis.burn.load_turns` for a caller that builds many
-    payloads from one set of transcripts (`cli.build_payloads`); without one each payload
-    reads its own files. `live` is NOT computed here: it moves with the clock, not the
-    bytes, and is attached after the hash (`attach_live`).
+    payloads from one set of transcripts (`cli.build_payloads`); without one this payload
+    memoises its own (`_one_parse`), so burn and the call series read each file once.
+    `live` is NOT computed here: it moves with the clock, not the bytes, and is attached
+    after the hash (`attach_live`).
     """
     from analysis import patterns as pat
 
@@ -635,12 +637,16 @@ def build_payload(
     notes = _feedback(s)
     if notes is not None:
         p["feedback"] = notes
-    spent = session_burn_of(s, loader=turns_loader)
+    loader = turns_loader if turns_loader is not None else _one_parse()
+    spent = session_burn_of(s, loader=loader)
     if spent is not None:
         p["burn"] = spent
     title = title_ids(s)
     if title is not None:
         p["title_ids"] = title
+    per_call = session_calls_of(s, loader=loader)
+    if per_call is not None:
+        p["call_tokens"] = per_call
     p["content_hash"] = content_hash(p)
     return p
 
@@ -691,6 +697,50 @@ def session_burn_of(s: Session, loader=None) -> dict | None:
     except (OSError, ValueError):
         return None
     return session_burn(s.events, turns, harness=analysis_name(s.harness))
+
+
+def _one_parse():
+    """`analysis.burn.load_turns`, memoised for ONE payload: burn and the call series read
+    the same files, and the call series reads each of them whole (the call before the
+    window). None when the engine is not deployed beside capture."""
+    try:
+        from analysis import burn as bn
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    return functools.lru_cache(maxsize=None)(bn.load_turns)
+
+
+# ----------------------------------------------------------------------------- calls
+
+
+def session_calls_of(s: Session, loader=None) -> dict | None:
+    """The contract v4 `call_tokens` block (`SessionCallTokens`) for a cut sitting:
+    `analysis.calls.session_calls`, THE ONE producer of the block, over every file the
+    sitting's records came from. Its window is the one `burn` counts (`turns_for_window`, each
+    message once across the files), so the points sum to the burn block's tokens; the call
+    before each call is read from the call's own transcript, whole, because the break that
+    let a cache expire is usually the one that ended the sitting before (analysis/calls.py,
+    rule 1).
+
+    The hook channel builds its payloads here too, from the bytes the server still holds.
+    RECORDED, NOT FIXED: it retires a conversation's bytes once every session in them is final
+    (`routes/ingest.py`), so the first call after a return has no call before it there and is
+    never flagged by that channel, where `capture sync` reading the whole file flags it. The
+    chart and its numbers are the same either way; only the annotation is missing, which is
+    the safe way to be wrong.
+
+    None when the engine is not deployed beside capture or a file cannot be read: "not
+    computed", which the contract says null means, never a refusal it did not make."""
+    try:
+        from analysis import calls as cl
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    kw = {} if loader is None else {"loader": loader}
+    paths = sorted({r["path"] for r in s.records})
+    try:
+        return cl.session_calls(paths, s.started_at, s.ended_at, **kw)
+    except (OSError, ValueError):
+        return None
 
 
 # ----------------------------------------------------------------------------- title

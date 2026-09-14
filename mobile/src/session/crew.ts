@@ -37,13 +37,15 @@ export function crewOf(session: SessionDetail, around: readonly SessionDetail[])
 
 /**
  * The hues a session's page wears: the hero in the session's own; burn forensics in ember (the
- * burn, as on the analysis page) unless the session is ember itself, then coral; the model's
- * reading in iris unless the session is iris, then heather. Neighbouring chapters never share a
- * family, so the page reads as a sequence of colour worlds.
+ * burn, as on the analysis page) unless the session is ember itself, then coral; tokens call by
+ * call in tide (the re-read's own colour, the bars' biggest part) unless the session is tide, then
+ * cobalt; the model's reading in iris unless the session is iris, then heather. Neighbouring
+ * chapters never share a family, so the page reads as a sequence of colour worlds.
  */
 export interface SessionHues {
   session: HueName;
   burn: HueName;
+  calls: HueName;
   reading: HueName;
 }
 
@@ -52,6 +54,7 @@ export function sessionHues(creature: CrewCreature): SessionHues {
   return {
     session,
     burn: session === 'ember' ? 'coral' : 'ember',
+    calls: session === 'tide' ? 'cobalt' : 'tide',
     reading: session === 'iris' ? 'heather' : 'iris',
   };
 }

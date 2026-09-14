@@ -281,6 +281,12 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
     # session screen writes the sentences. Null when no producer computed it, and a
     # refusal is the document's own `reason`, never a missing key or a zero.
     out["burn"] = stats.burn if stats else None
+    # Contract v4 (0025). What every call to the model sent and got back, as numbers and two
+    # enums; the session screen draws it and writes the sentences. On `session_stats` beside
+    # burn, so it travels to exactly the viewers burn does (a shared session's stranger
+    # included, through the same policies) and nowhere else: not the list, not the feed.
+    # Null when no producer computed it; a refusal is the document's own `reason`.
+    out["call_tokens"] = stats.call_tokens if stats else None
     # The FULL live state, time lapse and whole map included, while the session runs;
     # null once it is final (the row is deleted then; the state check is the second lock).
     out["live_state"] = live.body if live is not None and row.state == "live" else None

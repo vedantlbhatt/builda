@@ -98,6 +98,7 @@ Every field, in full. `4` is the contract version.
 | `live_names` | live_names | public + anonymous | OPT-IN, OFF BY DEFAULT: the basename of each file in live.map, keyed by its id. Sent only with `capture sync --live --live-names` and stored only while the account has File names on. Owner only; shown on the session screen, never on the Lock Screen, the widget, a push or a share. |
 | `burn` | SessionBurn | public + anonymous | where this sitting's tokens went and whether anything came of it (analysis/burn.py over the session window): counts, shares, enums and at most three costly stretches. No prompt, path, command, file name or tool name. Computed on the machine or by the hook channel; the phone writes every sentence. Null when the producer does not compute it; a refusal is burn.reason, never a zero. |
 | `title_ids` | SessionTitleIds | public + anonymous | an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles. |
+| `call_tokens` | SessionCallTokens | public + anonymous | what every call to the model sent and got back in this sitting (analysis/calls.py over the session window, each message counted once): at most 240 points of five token counts, the calls that came back to an expired cache, and the list price of each kind of token. Numbers and two enums: no prompt, path, command, file name, tool name or model name. Computed on the machine or by the hook channel; the phone draws the chart and writes every sentence. Null when the producer does not compute it; a refusal is call_tokens.reason, never a zero. |
 
 ## Per-repository control
 
@@ -119,9 +120,11 @@ character id, salted with a secret that never leaves your machine or your accoun
 no file name, no command, no prompt. It is deleted when the session finishes. Your Lock
 Screen, your widget and every push see only these numbers.
 
-`burn` and `title_ids` describe a session after the fact in the same way: where its tokens
-went and its title, as counts and ids from fixed lists. The sentences you read about them
-are written on your phone.
+`burn`, `title_ids` and `call_tokens` describe a session after the fact in the same way:
+where its tokens went, its title, and what each call to the model sent and got back (token
+counts, the calls that found the cache expired, and what each kind of token would cost at
+API list prices), as counts and ids from fixed lists. No model name travels in them. The
+sentences you read about them are written on your phone.
 
 ## Session analysis
 
@@ -203,9 +206,9 @@ builder sync --dry-run --print-payload | jq
 
 # 2. Diff its actual keys against this page, in both directions.
 #    `leaf_paths` expands every structured field (tokens, models, strip_marks, feedback,
-#    tool_calls, analysis, live, live_names, burn, title_ids) so a scalar-path walk lines
-#    up exactly. tool_calls keys are tool names, so they are normalised to the wildcard
-#    the contract publishes. List indices are stripped both mid-path
+#    tool_calls, analysis, live, live_names, burn, title_ids, call_tokens) so a scalar-path
+#    walk lines up exactly. tool_calls keys are tool names, so they are normalised to the
+#    wildcard the contract publishes. List indices are stripped both mid-path
 #    (dimensions.0.score) and trailing (tags.0).
 builder sync --dry-run --print-payload \
   | jq -r '[paths(scalars)] | .[] | join(".")' \

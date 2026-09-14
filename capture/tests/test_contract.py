@@ -94,7 +94,7 @@ class ContractConformance(unittest.TestCase):
 
     def test_the_fixtures_reach_every_v4_field(self):
         """A walk over payloads that never carry a field proves nothing about it."""
-        for name in ("burn", "title_ids", "live", "live_names"):
+        for name in ("burn", "title_ids", "call_tokens", "live", "live_names"):
             self.assertTrue(any(name in p for p in self.payloads), name)
 
     def test_every_key_is_declared_nested_fields_included(self):

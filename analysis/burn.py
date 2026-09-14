@@ -126,6 +126,13 @@ class Turn:
     #: Gemini `toolCalls[].id`. The same ids the digest stamps on `Ev.tool_id`, which is
     #: what lets a cause claim the turns that issued its calls.
     tool_ids: list[str] = dataclasses.field(default_factory=list)
+    #: The part of `cache_create` written with the ONE HOUR cache lifetime (Claude Code's
+    #: `usage.cache_creation.ephemeral_1h_input_tokens`); the rest of it was written with
+    #: five minutes. 0 when the usage carries no breakdown, the rule
+    #: `capture.sessions.token_ledger` applies to the upload's `cache_w5m` / `cache_w1h`, so
+    #: a price and a cache lifetime read off a turn agree with the stored buckets. Codex and
+    #: Gemini write no such split: 0 (`analysis/calls.py` reads it).
+    cache_create_1h: int = 0
 
     @property
     def total(self) -> int:
@@ -194,6 +201,7 @@ def _claude_turns(path: pathlib.Path) -> list[Turn]:
                 mid = str(mid)
                 usage = msg.get("usage") if isinstance(msg.get("usage"), dict) else {}
                 if mid not in by_id:
+                    split = usage.get("cache_creation")
                     by_id[mid] = Turn(
                         ts=ts,
                         msg_id=mid,
@@ -202,6 +210,9 @@ def _claude_turns(path: pathlib.Path) -> list[Turn]:
                         output_tokens=_int(usage.get("output_tokens")),
                         cache_create=_int(usage.get("cache_creation_input_tokens")),
                         cache_read=_int(usage.get("cache_read_input_tokens")),
+                        cache_create_1h=_int(split.get("ephemeral_1h_input_tokens"))
+                        if isinstance(split, dict)
+                        else 0,
                     )
                     order.append(mid)
                 turn = by_id[mid]

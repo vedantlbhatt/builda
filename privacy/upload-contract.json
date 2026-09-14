@@ -69,6 +69,8 @@
     "    `capture sync --live --live-names`, stored only while the account has File names on, shown only on the session screen.",
     "  * `burn` and `title_ids`: where a sitting's tokens went, and its engineer voice title, as numbers and ids (`objects` below).",
     "    The sentences are written on the phone; no word, path or command travels.",
+    "  * `call_tokens`: what every call to the model sent and got back, as at most 240 points of five token counts, the calls that",
+    "    came back to an expired cache and the list price of each bucket (`objects` below). Numbers and two enums: no word, no model name.",
     "  * `quotes`: THE SECOND OPT-IN EXCEPTION, a document of its own with its own route, modelled on `analysis`: up to three prompts",
     "    verbatim, for the Wrapped cards that quote you. Off unless the phone's setting AND the machine's --quotes flag both say yes."
   ],
@@ -700,16 +702,28 @@
         "anonymous"
       ],
       "doc": "an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles."
+    },
+    {
+      "name": "call_tokens",
+      "type": "object",
+      "item": "SessionCallTokens",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "what every call to the model sent and got back in this sitting (analysis/calls.py over the session window, each message counted once): at most 240 points of five token counts, the calls that came back to an expired cache, and the list price of each kind of token. Numbers and two enums: no prompt, path, command, file name, tool name or model name. Computed on the machine or by the hook channel; the phone draws the chart and writes every sentence. Null when the producer does not compute it; a refusal is call_tokens.reason, never a zero."
     }
   ],
   "_objects_note": [
-    "The shapes of the two structured session fields added in v4, `burn` and `title_ids`, in the notation of spec/*.json",
+    "The shapes of the three structured session fields added in v4, `burn`, `title_ids` and `call_tokens`, in the notation of spec/*.json",
     "(scripts/gen_analysis.py's emitters read it). Numbers, bools and enums only: server/tests/test_contract.py fails on any",
     "string field here. Every enum copies a Python table and is pinned to it both ways by that test: burn_cause to",
     "analysis/burn.py _CAUSE_SENTENCES and the causes Segment detects, burn_repeat to burn._REPEAT_SENTENCES, title_verb,",
     "title_object and title_refusal to analysis/vocab.py VERBS, OBJECTS and TITLE_REFUSALS; burn_refusal equals spec/report.v1.json's burn_refusal, one list of codes",
-    "for one module's refusals. A double is a 0 to 1 share. The sentences are written on the phone from these (burn.explain is the",
-    "reference; spec/fixtures/burn/session.json pins the port), so nothing here carries a word."
+    "for one module's refusals; call_tokens_refusal to analysis/calls.py REFUSALS and call_price_refusal to calls.PRICE_REFUSALS (pricing's own code).",
+    "A double is a 0 to 1 share and a number is a count of dollars at API list prices. The sentences are written on the phone from these",
+    "(burn.explain is the reference; spec/fixtures/burn/session.json pins the port), so nothing here carries a word."
   ],
   "enums": {
     "burn_cause": [
@@ -766,6 +780,13 @@
       "writes_name_no_file",
       "harness_files_only",
       "below_checkpoint_density"
+    ],
+    "call_tokens_refusal": [
+      "no_token_counts",
+      "too_few_calls"
+    ],
+    "call_price_refusal": [
+      "model_not_in_price_table"
     ]
   },
   "objects": {
@@ -958,6 +979,135 @@
         "values": "title_refusal",
         "nullable": true,
         "doc": "why no title rule fired (vocab.TITLE_REFUSALS): no_tool_calls, writes_name_no_file (a harness that does not say which file a patch touched), harness_files_only (only Claude Code's own scratch or notes were written), below_checkpoint_density (too few visible writes, tests or commits for a title to describe the work rather than what the transcript hides). Null when a title answered"
+      }
+    ],
+    "SessionCallPoint": [
+      {
+        "name": "at",
+        "type": "int",
+        "doc": "seconds from the session's start to the first call in this point"
+      },
+      {
+        "name": "cache_read",
+        "type": "int",
+        "doc": "tokens re-read from the cache (cache_read_input_tokens), summed over the point's calls: the conversation so far, sent again"
+      },
+      {
+        "name": "cache_write",
+        "type": "int",
+        "doc": "tokens written to the cache (cache_creation_input_tokens, both lifetimes): what was new in the conversation, or all of it again after the cache expired"
+      },
+      {
+        "name": "input",
+        "type": "int",
+        "doc": "fresh input tokens, neither read from nor written to the cache"
+      },
+      {
+        "name": "output",
+        "type": "int",
+        "doc": "tokens the model wrote back"
+      }
+    ],
+    "SessionCallRewrite": [
+      {
+        "name": "call",
+        "type": "int",
+        "doc": "the call's number in this session, counting from 1; the first per_point calls are the first point, the next per_point the second"
+      },
+      {
+        "name": "away_seconds",
+        "type": "int",
+        "doc": "seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds"
+      },
+      {
+        "name": "written",
+        "type": "int",
+        "doc": "the tokens it wrote to the cache again, more than half of everything it sent (calls.REWRITE_MIN_SHARE)"
+      }
+    ],
+    "SessionCallTokens": [
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "call_tokens_refusal",
+        "nullable": true,
+        "doc": "why there is no chart: no_token_counts (the transcript records no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed). Null when answered; then every field below that can be is set"
+      },
+      {
+        "name": "calls",
+        "type": "int",
+        "nullable": true,
+        "doc": "calls to the model in the session window, each assistant message once and `<synthetic>` placeholders left out (calls.calls_of). Null only with reason no_token_counts, where nothing was counted"
+      },
+      {
+        "name": "calls_needed",
+        "type": "int",
+        "doc": "calls.MIN_CALLS, the calls a chart needs, so the phone can say why a short session has none"
+      },
+      {
+        "name": "per_point",
+        "type": "int",
+        "nullable": true,
+        "doc": "consecutive calls summed into each point: 1 up to 240 calls, then ceil(calls / 240), the last point holding the rest. Null when refused"
+      },
+      {
+        "name": "points",
+        "type": "list",
+        "item": "SessionCallPoint",
+        "max_items": 240,
+        "nullable": true,
+        "doc": "the calls in time order, per_point to a point. Their tokens sum to the tokens burn counts for the same window. Null when refused"
+      },
+      {
+        "name": "lifetime_seconds",
+        "type": "int",
+        "nullable": true,
+        "doc": "how long the cache kept what these calls wrote: 3600 when any call wrote with the one hour lifetime, 300 when they wrote only with five minutes, null when nothing was written to a cache (then no call is a rewrite) or when refused"
+      },
+      {
+        "name": "rewrites",
+        "type": "list",
+        "item": "SessionCallRewrite",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "calls that came back to an expired cache and wrote most of the conversation into it again, the 12 that wrote the most, in call order. [] when none did; null when refused"
+      },
+      {
+        "name": "rewrite_calls",
+        "type": "int",
+        "nullable": true,
+        "doc": "every such call, however many rewrites keeps. Null when refused"
+      },
+      {
+        "name": "usd_cache_read",
+        "type": "number",
+        "nullable": true,
+        "doc": "the re-reads at API list prices, dollars, each call priced on its own model (analysis/pricing.py cost_usd). Never a bill. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "usd_cache_write",
+        "type": "number",
+        "nullable": true,
+        "doc": "the cache writes at API list prices, dollars, the five minute and the one hour writes each at its own rate. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "usd_input",
+        "type": "number",
+        "nullable": true,
+        "doc": "the fresh input at API list prices, dollars. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "usd_output",
+        "type": "number",
+        "nullable": true,
+        "doc": "what the model wrote back at API list prices, dollars. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "price_reason",
+        "type": "enum",
+        "values": "call_price_refusal",
+        "nullable": true,
+        "doc": "why the four dollar fields are null on an answered chart: model_not_in_price_table (a call that carries tokens names a model analysis/pricing.py has no price for, so it is not priced at a guess). Null otherwise"
       }
     ]
   },

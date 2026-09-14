@@ -622,6 +622,49 @@ SAMPLE_BURN: dict = {
     "spikes_needed": 5,
 }
 
+#: A session call_tokens block with every field populated: 7 calls, one to a point, the first
+#: a return to an expired cache (RideGT `0a050ea3` call 124's numbers), priced on Opus 5.
+SAMPLE_CALL_TOKENS: dict = {
+    "reason": None,
+    "calls": 7,
+    "calls_needed": 5,
+    "per_point": 1,
+    "points": [
+        {"at": 4, "cache_read": 26448, "cache_write": 140553, "input": 2, "output": 398},
+        {"at": 14, "cache_read": 167001, "cache_write": 918, "input": 2, "output": 669},
+        {"at": 22, "cache_read": 167919, "cache_write": 766, "input": 2, "output": 238},
+        {"at": 31, "cache_read": 168685, "cache_write": 455, "input": 2, "output": 223},
+        {"at": 40, "cache_read": 169140, "cache_write": 440, "input": 2, "output": 247},
+        {"at": 52, "cache_read": 169580, "cache_write": 284, "input": 2, "output": 427},
+        {"at": 184, "cache_read": 169864, "cache_write": 826, "input": 2, "output": 756},
+    ],
+    "lifetime_seconds": 3600,
+    "rewrites": [{"call": 1, "away_seconds": 4095, "written": 140553}],
+    "rewrite_calls": 1,
+    "usd_cache_read": 0.5193185,
+    "usd_cache_write": 2.88484,
+    "usd_input": 0.00007,
+    "usd_output": 0.0739,
+    "price_reason": None,
+}
+
+#: The same block refused for a short sitting: how many calls, and nothing drawn.
+SAMPLE_CALL_TOKENS_REFUSED: dict = {
+    "reason": "too_few_calls",
+    "calls": 3,
+    "calls_needed": 5,
+    "per_point": None,
+    "points": None,
+    "lifetime_seconds": None,
+    "rewrites": None,
+    "rewrite_calls": None,
+    "usd_cache_read": None,
+    "usd_cache_write": None,
+    "usd_input": None,
+    "usd_output": None,
+    "price_reason": None,
+}
+
 SAMPLE_TITLE_IDS: dict = {
     "verb": "refactored",
     "object": "source",
@@ -785,6 +828,86 @@ def test_published_leaf_paths_cover_burn_and_title_ids():
     assert declared == actual, {"declared_but_unreachable": sorted(declared - actual)}
 
 
+def test_published_leaf_paths_cover_call_tokens():
+    leaf_paths = set(json.loads(PUBLISHED.read_text())["leaf_paths"])
+    actual = set(_scalar_paths({"call_tokens": SAMPLE_CALL_TOKENS}, ""))
+    assert actual <= leaf_paths, {"sent_but_not_declared": sorted(actual - leaf_paths)}
+    declared = {p for p in leaf_paths if p.split(".")[0] == "call_tokens"}
+    assert declared == actual, {"declared_but_unreachable": sorted(declared - actual)}
+
+
+def test_call_tokens_round_trip_and_close_every_level():
+    for block in (SAMPLE_CALL_TOKENS, SAMPLE_CALL_TOKENS_REFUSED):
+        p = valid_payload(call_tokens=block)
+        assert p.call_tokens.model_dump(mode="json") == block
+        assert sanity_gate(p) is None
+    assert valid_payload().call_tokens is None
+
+    point = SAMPLE_CALL_TOKENS["points"][0]
+    back = SAMPLE_CALL_TOKENS["rewrites"][0]
+    for bad in (
+        {**SAMPLE_CALL_TOKENS, "reason": "the harness wrote no counts"},
+        {**SAMPLE_CALL_TOKENS, "price_reason": "gpt-5-codex"},
+        {**SAMPLE_CALL_TOKENS, "model": "claude-opus-5"},
+        {**SAMPLE_CALL_TOKENS, "points": [{**point, "model": "claude-opus-5"}]},
+        {**SAMPLE_CALL_TOKENS, "points": [{**point, "at": "4s"}]},
+        {**SAMPLE_CALL_TOKENS, "points": [point] * 241},
+        {**SAMPLE_CALL_TOKENS, "rewrites": [back] * 13},
+        {**SAMPLE_CALL_TOKENS, "rewrites": [{**back, "prompt": "zqx sentinel prompt"}]},
+    ):
+        with pytest.raises(ValidationError):
+            valid_payload(call_tokens=bad)
+
+
+@pytest.mark.parametrize(
+    "bad,says",
+    [
+        (
+            {**SAMPLE_CALL_TOKENS_REFUSED, "points": SAMPLE_CALL_TOKENS["points"]},
+            "one or the other",
+        ),
+        ({**SAMPLE_CALL_TOKENS_REFUSED, "reason": "no_token_counts"}, "null exactly when"),
+        ({**SAMPLE_CALL_TOKENS, "calls": 9}, "7 points for 9 calls"),
+        ({**SAMPLE_CALL_TOKENS, "per_point": 2}, "7 points for 7 calls at 2"),
+        (
+            {**SAMPLE_CALL_TOKENS, "rewrites": [{"call": 8, "away_seconds": 4095, "written": 1}]},
+            "outside",
+        ),
+        ({**SAMPLE_CALL_TOKENS, "rewrite_calls": 0}, "outside"),
+        ({**SAMPLE_CALL_TOKENS, "usd_output": None}, "four dollar figures"),
+        ({**SAMPLE_CALL_TOKENS, "price_reason": "model_not_in_price_table"}, "four dollar figures"),
+        (
+            {**SAMPLE_CALL_TOKENS, "points": list(reversed(SAMPLE_CALL_TOKENS["points"]))},
+            "out of time order",
+        ),
+    ],
+)
+def test_the_gate_refuses_a_call_tokens_block_that_disagrees_with_itself(bad, says):
+    """The phone labels every bar "calls a to b" from `per_point` and `calls`: a count that
+    disagrees with the points mislabels the whole chart, and the server never sees a
+    transcript, so consistency is the one check it has."""
+    assert says in (sanity_gate(valid_payload(call_tokens=bad)) or ""), says
+
+
+def test_call_tokens_enums_and_caps_are_the_calls_tables_both_ways():
+    """`call_tokens_refusal` is `analysis/calls.py` REFUSALS, and every refusal the module
+    can return is one of them (read off `_refused(` in its source); `call_price_refusal` is
+    pricing's own code; the list caps are the module's constants."""
+    _analysis()
+    from analysis import calls, pricing
+
+    enums = _contract()["enums"]
+    assert enums["call_tokens_refusal"] == list(calls.REFUSALS)
+    src = Path(calls.__file__).read_text()
+    used = set(re.findall(r"_refused\((REFUSE_\w+)", src))
+    assert {getattr(calls, name) for name in used} == set(calls.REFUSALS), used
+    assert enums["call_price_refusal"] == list(calls.PRICE_REFUSALS)
+    assert list(calls.PRICE_REFUSALS) == [pricing.BASIS_UNKNOWN_MODEL]
+    caps = {f["name"]: f.get("max_items") for f in _contract()["objects"]["SessionCallTokens"]}
+    assert (caps["points"], caps["rewrites"]) == (calls.MAX_POINTS, calls.MAX_REWRITES)
+    assert enums == OBJECT_ENUM_VALUES
+
+
 def test_quotes_leaf_paths_are_published():
     published = json.loads(PUBLISHED.read_text())
     doc = published["documents"]["quotes"]
@@ -867,6 +990,9 @@ def test_the_session_objects_carry_only_numbers_bools_and_enums():
         "SessionBurnSpike",
         "SessionBurnCause",
         "SessionTitleIds",
+        "SessionCallTokens",
+        "SessionCallPoint",
+        "SessionCallRewrite",
     }
     kinds = {f["type"] for fs in objects.values() for f in fs}
     assert kinds <= {"int", "number", "double", "bool", "enum", "list"}, kinds

@@ -681,7 +681,7 @@ def _stored_burn_and_title(user_id: str):
     with owner_engine().connect() as c:
         return c.execute(
             text(
-                "SELECT s.id, st.burn, s.title_ids FROM sessions s "
+                "SELECT s.id, st.burn, s.title_ids, st.call_tokens FROM sessions s "
                 "JOIN session_stats st ON st.session_id = s.id WHERE s.user_id = :u"
             ),
             {"u": user_id},
@@ -722,9 +722,18 @@ def test_the_hook_channel_stores_the_burn_and_title_the_payload_builder_computes
         want = builder(finalize)
         assert want.burn is not None, "the payload builder computes no burn for this sitting"
         assert want.title_ids is not None, "the payload builder computes no title for it"
-        ((session_id, burn, title),) = _stored_burn_and_title(uid)
+        # 0025: the call series comes out of the same builder, from the same bytes.
+        assert want.call_tokens is not None, "the payload builder computes no call series"
+        assert want.call_tokens.reason is None and want.call_tokens.points, want.call_tokens
+        ((session_id, burn, title, calls),) = _stored_burn_and_title(uid)
         assert burn == want.burn.model_dump(mode="json"), hook
         assert title == want.title_ids.model_dump(mode="json"), hook
+        assert calls == want.call_tokens.model_dump(mode="json"), hook
         detail = client.get(f"/v1/sessions/{session_id}", headers=headers).json()
         assert (detail["burn"], detail["title_ids"]) == (burn, title)
+        assert detail["call_tokens"] == calls
+        drawn = sum(
+            p["cache_read"] + p["cache_write"] + p["input"] + p["output"] for p in calls["points"]
+        )
+        assert drawn == burn["tokens"], "the chart and the burn block count one set of calls"
         assert detail["state"] == ("final" if finalize else "live")

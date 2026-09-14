@@ -14,6 +14,9 @@
  *                   and the doorways to the map and the time lapse, as words
  *   the burn        its own band in its own hue, the chart that grows and pulses once, the splits
  *                   (`BurnSection.tsx`)
+ *   call by call    its own band, what every call to the model sent as a bar a finger scrubs, the
+ *                   call that found the cache expired, tokens against list price, and why the
+ *                   re-read is most of it (`CallsSection.tsx`)
  *   the reading     the model's, on its own band (`analysis/AnalysisView.tsx`)
  *   the card        and what can be done with it, as words (`Share.tsx`)
  *
@@ -49,6 +52,8 @@ import { useReduceMotion } from '../ui/motion';
 import { burnChart } from './burnChart';
 import { burnView } from './burnView';
 import { BurnSection } from './BurnSection';
+import { callsView } from './callsView';
+import { CallsSection } from './CallsSection';
 import { sessionHues, type CrewCreature } from './crew';
 import { DecisionList } from './DecisionList';
 import { decisionRows } from './decisions';
@@ -63,7 +68,7 @@ import { ShareChapter, type PostState } from './Share';
 import { SessionWords } from './TitleLine';
 
 /** Chapters after the first (the hero and the route play alone, then these mount in turn). */
-const CHAPTERS = 4;
+const CHAPTERS = 5;
 
 export interface SessionPageProps {
   session: SessionDetail;
@@ -100,6 +105,7 @@ export function SessionPage(props: SessionPageProps) {
   const words = useMemo(() => wordsOf(s), [s]);
   const burn = useMemo(() => burnView(s), [s]);
   const chart = useMemo(() => burnChart(s.burn), [s.burn]);
+  const calls = useMemo(() => callsView(s), [s]);
   const decisions = useMemo(() => decisionRows(s.live_state?.decisions, s.started_at), [s.live_state?.decisions, s.started_at]);
   const links = useMemo(() => sessionLinks(s, sampleVariant), [s, sampleVariant]);
   const live = (s.state ?? 'final') === 'live';
@@ -149,7 +155,9 @@ export function SessionPage(props: SessionPageProps) {
 
           {stage >= 2 ? <BurnSection burn={s.burn} view={burn} chart={chart} hue={SPECTRUM[hues.burn]} width={width} prompts={promptCount(s)} /> : null}
 
-          {stage >= 3 ? (
+          {stage >= 3 ? <CallsSection key={s.id} session={s} view={calls} hue={SPECTRUM[hues.calls]} width={width} /> : null}
+
+          {stage >= 4 ? (
             s.analysis ? (
               <AnalysisView analysis={s.analysis} hue={SPECTRUM[hues.reading]} width={width} still={live} />
             ) : (
@@ -164,7 +172,7 @@ export function SessionPage(props: SessionPageProps) {
             )
           ) : null}
 
-          {stage >= 4 ? (
+          {stage >= 5 ? (
             <ShareChapter
               model={props.card}
               width={width}

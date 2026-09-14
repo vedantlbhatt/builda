@@ -26,6 +26,8 @@ from sqlalchemy.engine import make_url
 from test_contract import (
     SAMPLE_ANALYSIS,
     SAMPLE_BURN,
+    SAMPLE_CALL_TOKENS,
+    SAMPLE_CALL_TOKENS_REFUSED,
     SAMPLE_TITLE_IDS,
     SAMPLE_TITLE_REFUSAL,
     valid_payload,
@@ -673,4 +675,80 @@ def test_prose_or_an_undeclared_id_in_burn_or_title_ids_is_refused_at_the_route(
     p[field] = bad
     r = client.post("/v1/sync/sessions:batch", json={"sessions": [p]}, headers=headers)
     assert r.status_code == 422, r.text
+    assert _owner_rows(uid) == []
+
+
+# ---------------------------------------------------------------- contract v4: call_tokens
+
+
+def test_call_tokens_round_trip_and_are_not_wiped_by_a_client_that_does_not_compute_them(
+    client, paired
+):
+    """0025: stored and returned exactly, on the detail only, and left alone by a resync from
+    a client that computes none (the Mac, or a server still running the code from before)."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    first = _payload(client_session_id=csid, burn=SAMPLE_BURN, call_tokens=SAMPLE_CALL_TOKENS)
+    assert _upload(client, headers, first)["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["call_tokens"] == (
+        SAMPLE_CALL_TOKENS
+    )
+    # A chart is the detail's, not the list's: 240 points a row would be the whole list.
+    listed = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert all("call_tokens" not in s for s in listed)
+
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert detail["call_tokens"] == SAMPLE_CALL_TOKENS
+    assert detail["burn"] == SAMPLE_BURN
+
+
+def test_a_call_tokens_refusal_replaces_a_stored_chart(client, paired):
+    """Null on the wire keeps what is stored; a refusal is a document and the newer fact."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    _upload(client, headers, _payload(client_session_id=csid, call_tokens=SAMPLE_CALL_TOKENS))
+    refused = _payload(client_session_id=csid, call_tokens=SAMPLE_CALL_TOKENS_REFUSED)
+    assert _upload(client, headers, refused)["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    got = client.get(f"/v1/sessions/{sid}", headers=headers).json()["call_tokens"]
+    assert got == SAMPLE_CALL_TOKENS_REFUSED
+
+
+def test_call_tokens_read_back_null_never_missing(client, paired):
+    uid, headers = paired
+    _upload(client, headers, _payload())
+    sid = _owner_rows(uid)[0].id
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert "call_tokens" in detail and detail["call_tokens"] is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {**SAMPLE_CALL_TOKENS, "sentence": "Call 1, in the first minute: sent 167,003 tokens."},
+        {**SAMPLE_CALL_TOKENS, "price_reason": "priced as Opus 5"},
+        {
+            **SAMPLE_CALL_TOKENS,
+            "points": [{**SAMPLE_CALL_TOKENS["points"][0], "model": "claude-opus-5"}],
+        },
+    ],
+)
+def test_prose_or_a_model_name_in_call_tokens_is_refused_at_the_route(client, paired, bad):
+    uid, headers = paired
+    p = _payload()
+    p["call_tokens"] = bad
+    r = client.post("/v1/sync/sessions:batch", json={"sessions": [p]}, headers=headers)
+    assert r.status_code == 422, r.text
+    assert _owner_rows(uid) == []
+
+
+def test_a_call_tokens_block_that_disagrees_with_itself_is_rejected_and_stores_nothing(
+    client, paired
+):
+    uid, headers = paired
+    out = _upload(client, headers, _payload(call_tokens={**SAMPLE_CALL_TOKENS, "calls": 9}))
+    assert out["accepted"] == 0
+    assert out["rejected"][0]["reason"].startswith("call_tokens"), out
     assert _owner_rows(uid) == []

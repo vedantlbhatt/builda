@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
 import type { ShippedPost } from '../generated/shipped';
-import type { FeedbackNoteWire, SessionBurn, SessionTitleIds } from '../generated/contract';
+import type { FeedbackNoteWire, SessionBurn, SessionCallTokens, SessionTitleIds } from '../generated/contract';
 import type { Archetype, Dimension, SessionAnalysis } from '../generated/analysis';
 import type { Creature, LiveNames, LiveState } from '../generated/live';
 import type { QuotesUpload } from '../generated/quotes';
@@ -180,6 +180,15 @@ export interface SessionDetail {
    * fired, or the producer does not compute it.
    */
   title_ids?: SessionTitleIds | null;
+  /**
+   * What every call to the model sent and got back (`analysis/calls.py` over the session
+   * window): at most 240 points of five token counts, the calls that came back to an expired
+   * cache, and what each kind of token would cost at API list prices, priced on the machine.
+   * Only on the detail endpoint. Drawn and put into words on the phone
+   * (`src/session/callsView.ts`). Null when the producer does not compute it; a refusal is
+   * `call_tokens.reason`, never a zero. Undefined is a server older than the field (0025).
+   */
+  call_tokens?: SessionCallTokens | null;
 }
 
 export interface Profile {

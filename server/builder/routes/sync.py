@@ -176,6 +176,45 @@ def sanity_gate(p: SessionUpload) -> str | None:
         if not ((t.reason is None and titled) or (t.reason is not None and bare)):
             return "title_ids must carry a verb and an object, or a reason and neither"
 
+    if p.call_tokens is not None:
+        return call_tokens_gate(p.call_tokens)
+
+    return None
+
+
+def call_tokens_gate(c) -> str | None:
+    """`call_tokens` (0025) is a chart or the reason there is none, never both and never half.
+
+    The phone labels every bar "calls a to b" from `per_point` and `calls`, and says "call N"
+    of a rewrite, so a point count that disagrees with the calls it claims to cover mislabels
+    every bar of the chart, and a rewrite past the last call points at a bar that is not there.
+    The server cannot recompute any of it (it never sees a transcript), so, as for the other
+    blocks, the consistency of the numbers is the only check it has."""
+    dollars = (c.usd_cache_read, c.usd_cache_write, c.usd_input, c.usd_output)
+    if c.reason is not None:
+        answered = (c.per_point, c.points, c.lifetime_seconds, c.rewrites, c.rewrite_calls)
+        if any(x is not None for x in (*answered, *dollars, c.price_reason)):
+            return "call_tokens carries a refusal and a chart: one or the other"
+        if (c.calls is None) != (c.reason == "no_token_counts"):
+            return "call_tokens.calls is null exactly when nothing was counted"
+        return None
+    if None in (c.calls, c.per_point, c.points, c.rewrites, c.rewrite_calls):
+        return "call_tokens answers without its calls, points or rewrites"
+    points = -(-c.calls // c.per_point) if c.per_point >= 1 else None
+    if c.calls < c.calls_needed or len(c.points) != points:
+        return (
+            f"call_tokens has {len(c.points)} points for {c.calls} calls at {c.per_point} a point"
+        )
+    counts = [v for x in c.points for v in (x.at, x.cache_read, x.cache_write, x.input, x.output)]
+    ordered = all(a.at <= b.at for a, b in zip(c.points, c.points[1:], strict=False))
+    if any(v < 0 for v in counts) or not ordered:
+        return "call_tokens has a negative count or points out of time order"
+    if len(c.rewrites) > c.rewrite_calls or any(not 1 <= r.call <= c.calls for r in c.rewrites):
+        return "call_tokens names a rewrite outside its own calls"
+    priced = all(d is not None and d >= 0 for d in dollars) and c.price_reason is None
+    refused = c.price_reason is not None and all(d is None for d in dollars)
+    if not (priced or refused):
+        return "call_tokens must carry four dollar figures, or a price_reason and none"
     return None
 
 
@@ -565,14 +604,14 @@ def _upsert_stats(db, session_id, p: SessionUpload):
               human_prompt_count, prompt_count_basis, files_touched, files_created,
               lines_added_agent, lines_removed_agent, commit_count, commit_insertions,
               commit_deletions, human_edit_events, agent_line_bucket, attrib_confidence,
-              feedback, burn
+              feedback, burn, call_tokens
             ) VALUES (
               :sid, :reported, :tin, :tout, :tcr, :tw5, :tw1, :abandoned,
               :dedupe, :scope, :coverage, CAST(:models AS jsonb), :model_state,
               CAST(:tools AS jsonb),
               :prompts, :basis, :files, :created, :added, :removed,
               :commits, :ins, :del, :human_edits, :bucket, :confidence,
-              CAST(:feedback AS jsonb), CAST(:burn AS jsonb)
+              CAST(:feedback AS jsonb), CAST(:burn AS jsonb), CAST(:call_tokens AS jsonb)
             )
             ON CONFLICT (session_id) DO UPDATE SET
               tokens_reported = EXCLUDED.tokens_reported,
@@ -602,7 +641,9 @@ def _upsert_stats(db, session_id, p: SessionUpload):
               -- The same rule for `burn` (0023). Null on the wire means the producer
               -- did not compute it; a refusal is a document with `reason` set, and it
               -- does replace what was stored.
-              burn = COALESCE(EXCLUDED.burn, session_stats.burn)
+              burn = COALESCE(EXCLUDED.burn, session_stats.burn),
+              -- And for `call_tokens` (0025), burn's rule for burn's reason.
+              call_tokens = COALESCE(EXCLUDED.call_tokens, session_stats.call_tokens)
             """
         ),
         {
@@ -634,6 +675,11 @@ def _upsert_stats(db, session_id, p: SessionUpload):
             "confidence": p.attrib_confidence,
             "feedback": (json.dumps([n.model_dump() for n in p.feedback]) if p.feedback else None),
             "burn": json.dumps(p.burn.model_dump(mode="json")) if p.burn is not None else None,
+            "call_tokens": (
+                json.dumps(p.call_tokens.model_dump(mode="json"))
+                if p.call_tokens is not None
+                else None
+            ),
         },
     )
 

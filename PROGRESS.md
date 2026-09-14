@@ -159,6 +159,22 @@ section.
   the recording sat in a quarter of a grey frame, and first run storyboards skipped the label check
   (a route named ridegt-fonts would have put another repository's name in a label). A web still can
   take its own page size: the site's Projects page is a two column list at 820 points.
+- 14:00 to 15:00 the now3 defect list (shots/now3/DEFECTS.md, 51 entries from 266 stills): FIXED
+  35aa7de no "0 files" on a live tile (helpers' files never reach the map) and no number read twice on
+  the Projects tab; 8a1ba59 the card never says "Most of these lines are yours" (under half of git
+  says nothing about who wrote the rest; phone and Mac); cef631e the money flow label shows every line
+  it was given room for; 1ed3ab7 the expired cache note says "118,884 of its 118,886 new tokens";
+  7031e51 "All of it", never "About 100%" (Python and phone); 8ed151b the card says "files touched";
+  a133df9 the cache mark is a "gap", not "away"; 179232f a live row silent for two hours leaves
+  mission control, the Live Activity sync and Sessions. CHECKED, not defects: the day counts on project
+  1 (a 30 day window touches 31 dates; commits and sessions share the 04:00 day). LEFT: "3,573.7M" is
+  a deliberate format pinned to Python; Wrapped art against its answers (cards 7, 9, 11, 13, 14); the
+  money flow's colours; the rivers axis labels; "Up 452% on the week before" names no week; colour
+  meanings on project pages. A DATA CHOICE for the owner: project 2's page mixes the phone's sessions
+  (the hook sends this worktree's sittings, started from ~) with the Mac's report, whose corpus does
+  not hold ~/.claude/projects/-Users-vedantbhatt (30 transcripts, 1.8 GB, every project started from
+  home). Adding it makes the report match the phone and brings more projects onto the Projects tab,
+  and moves every number; not done without the owner.
 - 13:30 The overnight report (artifact "Builda, overnight", version 12): "Every screen, right now"
   rebuilt from today's capture (shots/now3, 266 stills, a few a screen), the screenshots entry
   rewritten for stills only, websites and GitHub links, the iPhone entry for the permanent link

@@ -89,6 +89,9 @@ section.
   get no away_seconds. Then burn and the chart ask one `burn.files_record_usage` (58e7c17):
   a window with no counts in files that record them is nothing inside, not "no token counts".
   Stack restarted onto it and re-synced; artifact version 9.
+- 00:05: comparisons say "only lower bounds", not "floors" (8878670). Build 4 on the phone
+  (the text patch and the chart's review fixes). Running: a capture of every screen as it is
+  now into `shots/now2/`, with a defect list, to refresh the artifact's first section.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

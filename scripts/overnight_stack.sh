@@ -505,7 +505,9 @@ cmd_reset() {
 case "${1:-}" in
   up) shift; cmd_up "$@" ;;
   down) shift; cmd_down "$@" ;;
-  restart) shift; cmd_down; cmd_up "$@" ;;
+  # A restart brings the Wi-Fi API back if it was up: a phone on it lost its server for good
+  # the first time an agent restarted the stack to re-sync (2026-09-13, 00:15).
+  restart) shift; had_lan="$(lan_pid)"; cmd_down; cmd_up "$@"; if [ -n "$had_lan" ]; then cmd_lan; fi ;;
   pair) shift; cmd_pair "$@" ;;
   sync) shift; cmd_sync "$@" ;;
   live) shift; cmd_live "$@" ;;

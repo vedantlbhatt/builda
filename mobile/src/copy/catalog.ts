@@ -67,6 +67,7 @@ export const UNREADABLE_VERDICT: string = G.UNREADABLE_VERDICT;
 export const CONTEXT_REPLAY_MIN_SHARE: number = G.CONTEXT_REPLAY_MIN_SHARE;
 export const SAY_SHARE_AT: number = G.SAY_SHARE_AT;
 export const USAGE_READERS: readonly string[] = G.USAGE_READERS;
+export const HARNESS_ANALYSIS_NAME: Readonly<Record<string, string>> = G.HARNESS_ANALYSIS_NAME;
 export const MIN_SEGMENTS_FOR_SPIKES: number = G.MIN_SEGMENTS_FOR_SPIKES;
 
 // ------------------------------------------------------------------ analysis/pricing.py

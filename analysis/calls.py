@@ -235,6 +235,7 @@ def wire(
     *,
     started_at: float,
     previous: Mapping[str, float | None] | None = None,
+    recorded: bool = False,
 ) -> dict:
     """The sitting's `call_tokens` block (`SessionCallTokens`): every key present, absent as
     null, never a zero standing in for a number nobody measured.
@@ -242,9 +243,17 @@ def wire(
     `turns` is the sitting's window (`burn.turns_for_window`), `started_at` its first record,
     `previous` what `previous_calls` says about them (None when the caller has no files, and
     then no call is flagged: a missing annotation, never a wrong one).
+
+    `recorded` says the sitting's FILES record token counts, whatever this window holds. A window
+    with no counted call in files that record them made no call at all: `too_few_calls` with 0,
+    never "this transcript does not record token counts", which is a claim about the file and
+    false. FOUND IN REVIEW (2026-09-13): `91d520d9` holds four `<synthetic>` records and nothing
+    else in its window, while its files hold 2,343 counted calls.
     """
     calls = calls_of(turns)
     if not burn.records_usage(calls):
+        if recorded:
+            return _refused(REFUSE_TOO_FEW, 0)
         return _refused(REFUSE_NO_COUNTS, None)
     if len(calls) < MIN_CALLS:
         return _refused(REFUSE_TOO_FEW, len(calls))
@@ -288,4 +297,10 @@ def session_calls(
     `burn.load_turns` a caller building many payloads passes, so a file is parsed once."""
     paths = list(dict.fromkeys(pathlib.Path(x) for x in paths))
     turns = burn.turns_for_window(paths, start, end, loader=loader)
-    return wire(turns, started_at=start, previous=previous_calls(paths, turns, loader=loader))
+    recorded = any(burn.records_usage(calls_of(loader(p))) for p in paths)
+    return wire(
+        turns,
+        started_at=start,
+        previous=previous_calls(paths, turns, loader=loader),
+        recorded=recorded,
+    )

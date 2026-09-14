@@ -238,7 +238,8 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
         )
 
     # A shared session read by a stranger passes RLS too; only its owner gets the key.
-    out = _row_to_session(row, own=str(row.user_id) == uid)
+    own = str(row.user_id) == uid
+    out = _row_to_session(row, own=own)
     if strip:
         out["strip"] = {
             # base64 on the wire: the phone decodes it with the generated TypeScript
@@ -286,7 +287,7 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
     # burn, so it travels to exactly the viewers burn does (a shared session's stranger
     # included, through the same policies) and nowhere else: not the list, not the feed.
     # Null when no producer computed it; a refusal is the document's own `reason`.
-    out["call_tokens"] = stats.call_tokens if stats else None
+    out["call_tokens"] = _call_tokens_for(stats.call_tokens if stats else None, own)
     # The FULL live state, time lapse and whole map included, while the session runs;
     # null once it is final (the row is deleted then; the state check is the second lock).
     out["live_state"] = live.body if live is not None and row.state == "live" else None
@@ -294,6 +295,17 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
     # has File names on AND names are stored. Never on the live list, a push or a share.
     out["live_names"] = live.names if names_on and row.state == "live" else None
     return out
+
+
+def _call_tokens_for(block: dict | None, own: bool) -> dict | None:
+    """The stored `call_tokens` as this viewer may read it. A rewrite's `away_seconds` measures
+    back to the conversation's previous call, which usually sits in an EARLIER session: on a
+    shared session it would tell a stranger when another, perhaps unshared, session happened.
+    So anyone but the owner reads it as null, and the phone says the cache had expired without
+    saying for how long. FOUND IN REVIEW (2026-09-13)."""
+    if not block or own or not block.get("rewrites"):
+        return block
+    return {**block, "rewrites": [{**r, "away_seconds": None} for r in block["rewrites"]]}
 
 
 #: `window_days` for the builder profile, shared by both routes below.

@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
 import type { ShippedPost } from '../generated/shipped';
-import type { FeedbackNoteWire, SessionBurn, SessionCallTokens, SessionTitleIds } from '../generated/contract';
+import type { FeedbackNoteWire, SessionBurn, SessionCallRewrite, SessionCallTokens, SessionTitleIds } from '../generated/contract';
 import type { Archetype, Dimension, SessionAnalysis } from '../generated/analysis';
 import type { Creature, LiveNames, LiveState } from '../generated/live';
 import type { QuotesUpload } from '../generated/quotes';
@@ -188,8 +188,18 @@ export interface SessionDetail {
    * (`src/session/callsView.ts`). Null when the producer does not compute it; a refusal is
    * `call_tokens.reason`, never a zero. Undefined is a server older than the field (0025).
    */
-  call_tokens?: SessionCallTokens | null;
+  call_tokens?: CallTokensRead | null;
 }
+
+/**
+ * A rewrite as the detail endpoint serves it: the upload's `SessionCallRewrite`, with
+ * `away_seconds` null for anyone but the session's owner (`routes/sessions._call_tokens_for`),
+ * since how long the conversation was away dates an earlier, perhaps unshared, session.
+ */
+export type CallRewriteRead = Omit<SessionCallRewrite, 'away_seconds'> & { away_seconds: number | null };
+
+/** `SessionCallTokens` as read back: its rewrites are `CallRewriteRead`. */
+export type CallTokensRead = Omit<SessionCallTokens, 'rewrites'> & { rewrites?: CallRewriteRead[] | null };
 
 export interface Profile {
   graph: { date: string; active_seconds: number }[];

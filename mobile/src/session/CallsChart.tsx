@@ -1,8 +1,10 @@
 /**
- * What each call sent, one bar per call (`callsView.ts` decides every value): the conversation
- * re-read from the cache in tide at the bottom, what was new that call in brass on it, the reply in
- * ember on top, over hairline gridlines labelled in tokens. A call that came back to an expired
- * cache is the tall brass bar, and a mark over it says how long it was away.
+ * What each call sent, a bar per call or per few calls (`callsView.ts` decides every value): the
+ * conversation re-read from the cache in tide at the bottom, what was new in amber on it, the reply
+ * in ember on top (`callsView.PART_HUE`, chosen against burn's chart above), over hairline
+ * gridlines labelled in tokens a call. A bar of several calls stands as high as ONE of them sent on
+ * average (`CallBar.each`), so the axis means the same thing on every bar. A call that came back to
+ * an expired cache is the tall amber bar, and an amber mark over it says how long it was away.
  *
  * It DRAWS ON when it comes on screen: the bars rise from the floor left to right on the page's
  * spring, a bar every few milliseconds, as if the session were being replayed call by call. Then
@@ -16,22 +18,25 @@
  * or taps a bar; a hairline follows the finger on the UI thread and the section's readout says what
  * that bar sent (Robinhood's scrub line, design-md/finance/robinhood: "a thin vertical line follows
  * the finger ... the hero value updates to that point"). Crossing a marked bar ticks once
- * (`select`), the time lapse scrubber's rule. VoiceOver: an adjustable that steps a bar at a time.
+ * (`select`), the time lapse scrubber's rule. The bar in hand is the section's shared value, and
+ * VoiceOver's adjustable is the section's too, so nothing this component is given changes while a
+ * finger moves. FOUND IN REVIEW (2026-09-13): the readout came in as VoiceOver's value, changed on
+ * every bar crossed, re-rendered the chart through its memo and rebuilt both gestures mid pan.
  *
  * A part that is not zero is never drawn as nothing (`insights/Bars`' rule): new and reply keep a
  * one point cap, drawn on the true stack, so a reply of 300 tokens on a 250,000 token bar is seen.
  */
 import { Canvas, createPicture, Picture, Rect, Skia, type SkCanvas } from '@shopify/react-native-skia';
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { FadeIn, runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, runOnJS, useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { phase, spring } from '../insights/motion';
 import { GROUND, SPECTRUM } from '../insights/palette';
 import { useDrawClock } from '../projects/drawClock';
 import { select } from '../ui/haptics';
-import type { CallBar, RewriteMark } from './callsView';
+import { PART_HUE, placeMarkLabels, type CallBar, type RewriteMark } from './callsView';
 import { AXIS } from './type';
 
 /** Room at the left for the gridline labels, over the bars for the marks, under them for the axis. */
@@ -47,18 +52,17 @@ const BAR_MS = 560;
 /** The smallest a part that is not zero is drawn, in points. */
 const MIN_PART = 1;
 
-/** New and Claude's reply wear Money's bucket colours (`insights/sections/Money.BUCKET_COLOR`): a
- * cache write is brass and output is tide on every screen that splits tokens by kind. The re-read
- * wears the chapter's own ink, as Money's does, so it is a prop. */
-const FRESH = SPECTRUM.brass.ink;
-const REPLY = SPECTRUM.tide.ink;
+const READ = SPECTRUM[PART_HUE.read].ink;
+const FRESH = SPECTRUM[PART_HUE.fresh].ink;
+const REPLY = SPECTRUM[PART_HUE.reply].ink;
 
 /** One bar as plain numbers for the UI thread: where it stands and its three heights, in points. */
 type Laid = { x: number; w: number; read: number; fresh: number; reply: number; at: number };
 
-/** A mark over a bar, laid out: the stem down to the bar's top and the words over it. */
-type MarkAt = { call: number; label: string; stemX: number; stemTop: number; stemH: number; left: number; align: 'left' | 'center' | 'right' };
-const MARK_W = 120;
+/** A mark over a bar, laid out: the stem down to the bar's top, and its words when they fit. */
+type MarkAt = { call: number; label: string; stemX: number; stemTop: number; stemH: number; words: { left: number; align: 'left' | 'center' | 'right' } | null };
+/** The box a mark's words are set in: "46h 34m away" at the axis size is about 76 points. */
+const MARK_W = 88;
 
 /** A bar's height as drawn, its one point caps included. */
 function drawnHeight(b: Laid): number {
@@ -71,7 +75,7 @@ function drawnHeight(b: Laid): number {
 // 2026-09-13, `projects/Swarm.tsx`).
 
 /** The chart at clock `t`: the gridlines, then every bar grown as far as its own start says. */
-function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: readonly number[], left: number, right: number, floor: number, readInk: string): void {
+function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: readonly number[], left: number, right: number, floor: number): void {
   'worklet';
   const line = Skia.Paint();
   line.setAntiAlias(false);
@@ -80,7 +84,7 @@ function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: rea
   canvas.drawRect(Skia.XYWHRect(left, floor, right - left, 1), line);
   const read = Skia.Paint();
   read.setAntiAlias(false);
-  read.setColor(Skia.Color(readInk));
+  read.setColor(Skia.Color(READ));
   const fresh = Skia.Paint();
   fresh.setAntiAlias(false);
   fresh.setColor(Skia.Color(FRESH));
@@ -111,22 +115,19 @@ function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: rea
 
 export interface CallsChartProps {
   bars: readonly CallBar[];
+  /** The tallest bar, in tokens a call. */
   max: number;
   ticks: readonly { value: number; label: string }[];
   axis: readonly { index: number; label: string }[];
   marks: readonly RewriteMark[];
   width: number;
-  initial: number;
+  /** The bar in hand: the section's, which VoiceOver steps and a growing session puts back. */
+  at: SharedValue<number>;
   /** The bar a finger is on, told once each time it changes. */
   onIndex: (i: number) => void;
-  /** VoiceOver's value: the readout of the bar in hand. */
-  valueText: string;
-  label: string;
-  /** The re-read's colour: the chapter's own ink. */
-  readInk: string;
 }
 
-function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onIndex, valueText, label, readInk }: CallsChartProps) {
+function CallsChartInner({ bars, max, ticks, axis, marks, width, at, onIndex }: CallsChartProps) {
   const n = bars.length;
   const right = width - RIGHT;
   const slot = (right - LEFT) / Math.max(1, n);
@@ -140,22 +141,25 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onInde
     () =>
       bars.map((b, i) => {
         const w = slot >= 3 ? slot - 1 : Math.max(0.75, slot * 0.72);
-        return { x: LEFT + i * slot + (slot - w) / 2, w, read: b.read * scale, fresh: b.fresh * scale, reply: b.reply * scale, at: START_MS + i * step };
+        return { x: LEFT + i * slot + (slot - w) / 2, w, read: b.each.read * scale, fresh: b.each.fresh * scale, reply: b.each.reply * scale, at: START_MS + i * step };
       }),
     [bars, slot, scale, step],
   );
   const grid = useMemo(() => ticks.map((t) => Math.round(floor - t.value * scale)), [ticks, floor, scale]);
   const height = floor + 1;
   const marksAt: MarkAt[] = useMemo(() => {
+    const centre = (i: number) => {
+      const bar = laid[i];
+      return bar ? bar.x + bar.w / 2 : LEFT;
+    };
+    // The largest rewrite's words first; any that would sit on words already placed keeps its stem.
+    const words = placeMarkLabels(marks, centre, LEFT, right, MARK_W);
     const out: MarkAt[] = [];
     for (const m of marks) {
       const bar = laid[m.index];
       if (!bar) continue;
       const peak = floor - drawnHeight(bar);
-      const stemX = bar.x + bar.w / 2 - 0.5;
-      const left = Math.max(LEFT, Math.min(right - MARK_W, stemX - MARK_W / 2));
-      const align = left === LEFT ? 'left' : left === right - MARK_W ? 'right' : 'center';
-      out.push({ call: m.call, label: m.label, stemX, stemTop: TOP, stemH: Math.max(0, peak - TOP), left, align });
+      out.push({ call: m.call, label: m.label, stemX: centre(m.index) - 0.5, stemTop: TOP, stemH: Math.max(0, peak - TOP), words: words.get(m.call) ?? null });
     }
     return out;
   }, [marks, laid, floor, right]);
@@ -163,69 +167,53 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onInde
   const { clock, box, landed } = useDrawClock(total);
   const moving = useDerivedValue(() => {
     const t = clock.value;
-    return createPicture((canvas) => drawCalls(canvas, t, laid, grid, LEFT, right, floor, readInk), { width, height });
-  }, [laid, grid, right, floor, width, height, readInk]);
+    return createPicture((canvas) => drawCalls(canvas, t, laid, grid, LEFT, right, floor), { width, height });
+  }, [laid, grid, right, floor, width, height]);
   // Recorded once, on this thread, the moment the bars have landed: nothing is drawn a frame after.
   const still = useMemo(
-    () => (landed ? createPicture((canvas) => drawCalls(canvas, total, laid, grid, LEFT, right, floor, readInk), { width, height }) : null),
-    [landed, laid, grid, right, floor, width, height, total, readInk],
+    () => (landed ? createPicture((canvas) => drawCalls(canvas, total, laid, grid, LEFT, right, floor), { width, height }) : null),
+    [landed, laid, grid, right, floor, width, height, total],
   );
 
-  // The scrub line, on its own: a finger never re-records the bars.
-  const at = useSharedValue(Math.max(0, Math.min(n - 1, initial)));
-  const cursorX = useDerivedValue(() => LEFT + (at.value + 0.5) * slot - 0.5, [slot]);
+  // The scrub line, on its own: a finger never re-records the bars. Held inside the bars whatever
+  // `at` says, since a live session's bars can change under it.
+  const cursorX = useDerivedValue(() => LEFT + (Math.min(n - 1, Math.max(0, at.value)) + 0.5) * slot - 0.5, [slot, n]);
   const marked = useMemo(() => marks.map((m) => m.index), [marks]);
-  const pick = (x: number, feel: boolean) => {
-    'worklet';
-    const i = Math.min(n - 1, Math.max(0, Math.floor((x - LEFT) / slot)));
-    const was = at.value;
-    if (i === was) return;
-    if (feel) {
-      const lo = Math.min(was, i);
-      const hi = Math.max(was, i);
-      let crossed = false;
-      for (let k = 0; k < marked.length; k++) if (marked[k]! > lo && marked[k]! <= hi) crossed = true;
-      if (marked.includes(i)) crossed = true;
-      if (crossed) runOnJS(select)();
-    }
-    at.value = i;
-    runOnJS(onIndex)(i);
-  };
-  const pan = Gesture.Pan()
-    .activeOffsetX([-6, 6])
-    .failOffsetY([-12, 12])
-    .onStart((e) => pick(e.x, true))
-    .onUpdate((e) => pick(e.x, true));
-  const tap = Gesture.Tap()
-    .maxDuration(400)
-    .onEnd((e, success) => {
-      if (success) pick(e.x, false);
-    });
-  const gesture = Gesture.Exclusive(pan, tap);
-
-  const stepBy = useCallback(
-    (d: 1 | -1) => {
-      const i = Math.max(0, Math.min(n - 1, at.value + d));
+  // Built once per layout, never per bar crossed: a gesture rebuilt mid pan is re-attached mid pan.
+  const gesture = useMemo(() => {
+    const pick = (x: number, feel: boolean) => {
+      'worklet';
+      const i = Math.min(n - 1, Math.max(0, Math.floor((x - LEFT) / slot)));
+      const was = at.value;
+      if (i === was) return;
+      if (feel) {
+        const lo = Math.min(was, i);
+        const hi = Math.max(was, i);
+        let crossed = false;
+        for (let k = 0; k < marked.length; k++) if (marked[k]! > lo && marked[k]! <= hi) crossed = true;
+        if (marked.includes(i)) crossed = true;
+        if (crossed) runOnJS(select)();
+      }
       at.value = i;
-      onIndex(i);
-    },
-    [at, n, onIndex],
-  );
+      runOnJS(onIndex)(i);
+    };
+    const pan = Gesture.Pan()
+      .activeOffsetX([-6, 6])
+      .failOffsetY([-12, 12])
+      .onStart((e) => pick(e.x, true))
+      .onUpdate((e) => pick(e.x, true));
+    const tap = Gesture.Tap()
+      .maxDuration(400)
+      .onEnd((e, success) => {
+        if (success) pick(e.x, false);
+      });
+    return Gesture.Exclusive(pan, tap);
+  }, [n, slot, marked, at, onIndex]);
 
   return (
     <View>
       <GestureDetector gesture={gesture}>
-        <Animated.View
-          ref={box}
-          collapsable={false}
-          accessible
-          accessibilityRole="adjustable"
-          accessibilityLabel={label}
-          accessibilityValue={{ text: valueText }}
-          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-          onAccessibilityAction={(e) => stepBy(e.nativeEvent.actionName === 'increment' ? 1 : -1)}
-          style={{ width, height: height + UNDER }}
-        >
+        <Animated.View ref={box} collapsable={false} style={{ width, height: height + UNDER }}>
           <Canvas style={{ width, height }}>
             <Picture picture={still ?? moving} />
             {landed ? <Rect x={cursorX} y={TOP - 4} width={1} height={PLOT + 4} color={GROUND.text} /> : null}
@@ -251,9 +239,11 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onInde
             ? marksAt.map((m) => (
                 <Animated.View key={m.call} entering={FadeIn.duration(220)} pointerEvents="none" style={StyleSheet.absoluteFill}>
                   <View style={[styles.stem, { left: m.stemX, top: m.stemTop, height: m.stemH }]} />
-                  <Text allowFontScaling={false} numberOfLines={1} style={[AXIS, styles.mark, { left: m.left, width: MARK_W, textAlign: m.align }]}>
-                    {m.label}
-                  </Text>
+                  {m.words ? (
+                    <Text allowFontScaling={false} numberOfLines={1} style={[AXIS, styles.mark, { left: m.words.left, width: MARK_W, textAlign: m.words.align }]}>
+                      {m.label}
+                    </Text>
+                  ) : null}
                 </Animated.View>
               ))
             : null}
@@ -263,7 +253,7 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onInde
   );
 }
 
-/** Memoised: the section re-renders on every scrub for its readout, and the bars must not. */
+/** Memoised: the section re-renders on every bar crossed for its readout, and the bars must not. */
 export const CallsChart = memo(CallsChartInner);
 
 const styles = StyleSheet.create({

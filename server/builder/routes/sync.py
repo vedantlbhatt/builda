@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import math
 from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -177,31 +178,59 @@ def sanity_gate(p: SessionUpload) -> str | None:
             return "title_ids must carry a verb and an object, or a reason and neither"
 
     if p.call_tokens is not None:
-        return call_tokens_gate(p.call_tokens)
+        return call_tokens_gate(p.call_tokens, p.burn)
 
     return None
 
 
-def call_tokens_gate(c) -> str | None:
+#: `call_tokens.points` holds at most this many points, the contract's `max_items` (pinned to it
+#: by server/tests/test_contract.py): a session with more calls sums them, `per_point` to a point,
+#: and `per_point` is then exactly ceil(calls / 240) (`analysis/calls.py` MAX_POINTS).
+CALL_POINTS_MAX = 240
+
+#: The cache lifetimes a call's writes can name: five minutes and an hour
+#: (`analysis/calls.py` FIVE_MINUTES_SEC, ONE_HOUR_SEC; pinned by server/tests/test_contract.py).
+CALL_LIFETIMES = (300, 3600)
+
+
+def call_tokens_gate(c, burn=None) -> str | None:
     """`call_tokens` (0025) is a chart or the reason there is none, never both and never half.
 
     The phone labels every bar "calls a to b" from `per_point` and `calls`, and says "call N"
     of a rewrite, so a point count that disagrees with the calls it claims to cover mislabels
     every bar of the chart, and a rewrite past the last call points at a bar that is not there.
     The server cannot recompute any of it (it never sees a transcript), so, as for the other
-    blocks, the consistency of the numbers is the only check it has."""
+    blocks, the consistency of the numbers is the only check it has.
+
+    FOUND IN REVIEW (2026-09-13), each accepted before: `too_few_calls` with 500 calls, a
+    negative `away_seconds` or `written`, a rewrite with no cache lifetime or back sooner than
+    the lifetime, `calls_needed` 0, and a dollar figure of Infinity, which passed this gate and
+    then failed the jsonb insert as a 500 for the whole batch. And the points now have to add up
+    to the tokens `burn` counts for the same window, in the same payload: both are
+    `burn.turns_for_window` over one sitting, and they agree to the token on every session
+    uploaded so far (the review recomputed all 160 from the raw JSONL)."""
     dollars = (c.usd_cache_read, c.usd_cache_write, c.usd_input, c.usd_output)
+    if c.calls_needed < 1:
+        return "call_tokens.calls_needed must be at least 1"
     if c.reason is not None:
         answered = (c.per_point, c.points, c.lifetime_seconds, c.rewrites, c.rewrite_calls)
         if any(x is not None for x in (*answered, *dollars, c.price_reason)):
             return "call_tokens carries a refusal and a chart: one or the other"
-        if (c.calls is None) != (c.reason == "no_token_counts"):
-            return "call_tokens.calls is null exactly when nothing was counted"
+        if c.reason == "no_token_counts":
+            ok = c.calls is None
+            return None if ok else "call_tokens.calls is null exactly when nothing was counted"
+        if c.calls is None or not 0 <= c.calls < c.calls_needed:
+            return (
+                f"call_tokens refuses too_few_calls with {c.calls} calls, "
+                f"where a chart needs {c.calls_needed}"
+            )
         return None
     if None in (c.calls, c.per_point, c.points, c.rewrites, c.rewrite_calls):
         return "call_tokens answers without its calls, points or rewrites"
-    points = -(-c.calls // c.per_point) if c.per_point >= 1 else None
-    if c.calls < c.calls_needed or len(c.points) != points:
+    if c.calls < c.calls_needed:
+        return f"call_tokens draws {c.calls} calls, where a chart needs {c.calls_needed}"
+    per = max(1, -(-c.calls // CALL_POINTS_MAX))
+    if c.per_point != per or len(c.points) != -(-c.calls // per):
         return (
             f"call_tokens has {len(c.points)} points for {c.calls} calls at {c.per_point} a point"
         )
@@ -209,12 +238,31 @@ def call_tokens_gate(c) -> str | None:
     ordered = all(a.at <= b.at for a, b in zip(c.points, c.points[1:], strict=False))
     if any(v < 0 for v in counts) or not ordered:
         return "call_tokens has a negative count or points out of time order"
-    if len(c.rewrites) > c.rewrite_calls or any(not 1 <= r.call <= c.calls for r in c.rewrites):
-        return "call_tokens names a rewrite outside its own calls"
-    priced = all(d is not None and d >= 0 for d in dollars) and c.price_reason is None
+    if c.lifetime_seconds is not None and c.lifetime_seconds not in CALL_LIFETIMES:
+        return f"call_tokens.lifetime_seconds {c.lifetime_seconds} is not a cache lifetime"
+    if not len(c.rewrites) <= c.rewrite_calls <= c.calls:
+        return "call_tokens counts more rewrites than it lists calls, or lists more than it counts"
+    if c.rewrites and c.lifetime_seconds is None:
+        return "call_tokens names a rewrite with no cache lifetime to have outlived"
+    calls = [r.call for r in c.rewrites]
+    if calls != sorted(set(calls)):
+        return "call_tokens lists a rewrite twice or out of call order"
+    for r in c.rewrites:
+        if not 1 <= r.call <= c.calls:
+            return "call_tokens names a rewrite outside its own calls"
+        if r.away_seconds <= c.lifetime_seconds:
+            return "call_tokens names a rewrite back sooner than the cache expires"
+        if not 0 <= r.written <= c.points[(r.call - 1) // c.per_point].cache_write:
+            return "call_tokens names a rewrite that wrote more than its own point did"
+    finite = all(d is not None and math.isfinite(d) and d >= 0 for d in dollars)
+    priced = finite and c.price_reason is None
     refused = c.price_reason is not None and all(d is None for d in dollars)
     if not (priced or refused):
-        return "call_tokens must carry four dollar figures, or a price_reason and none"
+        return "call_tokens must carry four finite dollar figures, or a price_reason and none"
+    if burn is not None and burn.tokens is not None:
+        drawn = sum(x.cache_read + x.cache_write + x.input + x.output for x in c.points)
+        if drawn != burn.tokens:
+            return f"call_tokens draws {drawn} tokens where burn counts {burn.tokens}"
     return None
 
 

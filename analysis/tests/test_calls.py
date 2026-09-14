@@ -197,6 +197,19 @@ class Refusals(unittest.TestCase):
         w = calls.wire([], started_at=T0)
         self.assertEqual((w["reason"], w["calls"], w["points"]), ("no_token_counts", None, None))
 
+    def test_a_window_with_no_real_call_in_files_that_record_counts_made_no_call(self):
+        """FOUND IN REVIEW: `91d520d9` holds four `<synthetic>` records in its window and its
+        files hold 2,343 counted calls; it was told the transcript records no token counts."""
+        path = write([*growing(6), *call(5_000, "fake1", model="<synthetic>"), *call(5_010, "fake2", model="<synthetic>")])
+        w = block([path], 4_900, 6_000)
+        self.assertEqual((w["reason"], w["calls"], w["points"]), ("too_few_calls", 0, None))
+        # The same window in a file that records no counts anywhere is still no counts.
+        bare = growing(6)
+        for r in bare:
+            r["message"]["usage"] = {}
+        path = write([*bare, *call(5_000, "fake1", model="<synthetic>")])
+        self.assertEqual(block([path], 4_900, 6_000)["reason"], "no_token_counts")
+
     def test_under_the_floor_says_how_many_and_draws_nothing(self):
         w = block([write(growing(calls.MIN_CALLS - 1))])
         self.assertEqual((w["reason"], w["calls"], w["points"], w["calls_needed"]), ("too_few_calls", 4, None, 5))

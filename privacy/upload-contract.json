@@ -1017,7 +1017,7 @@
       {
         "name": "away_seconds",
         "type": "int",
-        "doc": "seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds"
+        "doc": "seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds. The session detail serves it to the session's owner only; anyone else reads null, since it would say when an earlier, perhaps unshared, session happened"
       },
       {
         "name": "written",
@@ -1031,7 +1031,7 @@
         "type": "enum",
         "values": "call_tokens_refusal",
         "nullable": true,
-        "doc": "why there is no chart: no_token_counts (the transcript records no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed). Null when answered; then every field below that can be is set"
+        "doc": "why there is no chart: no_token_counts (the sitting's files record no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed; 0 when the files record usage and none of it fell inside this session). Null when answered; then every field below that can be is set"
       },
       {
         "name": "calls",

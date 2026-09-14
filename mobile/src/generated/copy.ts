@@ -589,6 +589,11 @@ export const SAY_SHARE_AT = 0.2 as const;
 /** `burn.USAGE_READERS`: the harnesses whose token counts burn reads; any other is "not shown for this tool yet". */
 export const USAGE_READERS = ["claude_code", "codex", "gemini"] as const;
 
+/** `capture.harnesses._ANALYSIS_NAME`: a session's `harness` as the upload spells it, to the engine's name for it, where the two differ. `USAGE_READERS` is in the engine's names, so a session's harness is mapped before it is asked. */
+export const HARNESS_ANALYSIS_NAME = {
+  "gemini_cli": "gemini",
+} as const;
+
 /** `burn.MIN_SEGMENTS_FOR_SPIKES`: stretches a median needs before any is called a spike. */
 export const MIN_SEGMENTS_FOR_SPIKES = 5 as const;
 
@@ -817,6 +822,7 @@ export const COPY = {
   CONTEXT_REPLAY_MIN_SHARE,
   SAY_SHARE_AT,
   USAGE_READERS,
+  HARNESS_ANALYSIS_NAME,
   MIN_SEGMENTS_FOR_SPIKES,
   FAMILIES,
   PRICES_READ_ON,

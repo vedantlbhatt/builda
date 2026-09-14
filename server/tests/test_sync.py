@@ -26,6 +26,7 @@ from sqlalchemy.engine import make_url
 from test_contract import (
     SAMPLE_ANALYSIS,
     SAMPLE_BURN,
+    SAMPLE_BURN_FOR_CALLS,
     SAMPLE_CALL_TOKENS,
     SAMPLE_CALL_TOKENS_REFUSED,
     SAMPLE_TITLE_IDS,
@@ -688,7 +689,9 @@ def test_call_tokens_round_trip_and_are_not_wiped_by_a_client_that_does_not_comp
     a client that computes none (the Mac, or a server still running the code from before)."""
     uid, headers = paired
     csid = uuid.uuid4().hex * 2
-    first = _payload(client_session_id=csid, burn=SAMPLE_BURN, call_tokens=SAMPLE_CALL_TOKENS)
+    first = _payload(
+        client_session_id=csid, burn=SAMPLE_BURN_FOR_CALLS, call_tokens=SAMPLE_CALL_TOKENS
+    )
     assert _upload(client, headers, first)["accepted"] == 1
     sid = _owner_rows(uid)[0].id
     assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["call_tokens"] == (
@@ -701,7 +704,7 @@ def test_call_tokens_round_trip_and_are_not_wiped_by_a_client_that_does_not_comp
     assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
     detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
     assert detail["call_tokens"] == SAMPLE_CALL_TOKENS
-    assert detail["burn"] == SAMPLE_BURN
+    assert detail["burn"] == SAMPLE_BURN_FOR_CALLS
 
 
 def test_a_call_tokens_refusal_replaces_a_stored_chart(client, paired):
@@ -751,4 +754,34 @@ def test_a_call_tokens_block_that_disagrees_with_itself_is_rejected_and_stores_n
     out = _upload(client, headers, _payload(call_tokens={**SAMPLE_CALL_TOKENS, "calls": 9}))
     assert out["accepted"] == 0
     assert out["rejected"][0]["reason"].startswith("call_tokens"), out
+    assert _owner_rows(uid) == []
+
+
+def test_a_dollar_figure_of_infinity_is_rejected_not_a_500(client, paired):
+    """FOUND IN REVIEW (2026-09-13): JSON's `Infinity` parses to a float the door accepts, and
+    Postgres jsonb refuses it on the INSERT, which failed the whole batch with a 500. The gate
+    refuses it now and says why, and nothing is stored."""
+    import json
+
+    uid, headers = paired
+    p = _payload(call_tokens=SAMPLE_CALL_TOKENS)
+    p["call_tokens"]["usd_output"] = float("inf")
+    body = json.dumps({"sessions": [p]})  # Python writes the bare `Infinity` a client could send
+    assert "Infinity" in body
+    r = client.post(
+        "/v1/sync/sessions:batch",
+        content=body,
+        headers={**headers, "content-type": "application/json"},
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["accepted"] == 0 and out["rejected"][0]["reason"].startswith("call_tokens"), out
+    assert _owner_rows(uid) == []
+
+
+def test_a_chart_that_disagrees_with_its_own_burn_is_rejected(client, paired):
+    uid, headers = paired
+    p = _payload(burn=SAMPLE_BURN, call_tokens=SAMPLE_CALL_TOKENS)
+    out = _upload(client, headers, p)
+    assert out["accepted"] == 0 and "where burn counts" in out["rejected"][0]["reason"], out
     assert _owner_rows(uid) == []

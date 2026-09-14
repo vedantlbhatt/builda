@@ -23,6 +23,7 @@ import {
   CAUSE_SENTENCES,
   CAUSE_SENTENCES_ONE,
   CONTEXT_REPLAY_MIN_SHARE,
+  HARNESS_ANALYSIS_NAME,
   REPEAT_SENTENCES,
   SAY_SHARE_AT,
   UNREADABLE_VERDICT,
@@ -92,6 +93,17 @@ function workClause(b: SessionBurn): string {
 }
 
 /**
+ * Whether burn reads this harness's token counts. `harness` is the session's own, as the upload
+ * spells it; `USAGE_READERS` is in the engine's names, so it is mapped first
+ * (`HARNESS_ANALYSIS_NAME`, generated from `capture/harnesses.py`). FOUND IN REVIEW (2026-09-13):
+ * the upload says `gemini_cli` where burn says `gemini`, so a Gemini session with no counts was
+ * told its tool is not read yet. The one rule for burn's sentence and the call chart's.
+ */
+export function countsRead(harness: string): boolean {
+  return USAGE_READERS.includes(HARNESS_ANALYSIS_NAME[harness] ?? harness);
+}
+
+/**
  * `burn.explain` for one session: the sentences, in order. `harness` is the session's own
  * (`SessionDetail.harness`), because a tool whose counts burn does not read yet is told so
  * differently from a transcript that holds none.
@@ -99,7 +111,7 @@ function workClause(b: SessionBurn): string {
 export function explainBurn(b: SessionBurn, harness: string): string[] {
   if (b.reason === 'not_segmented') return ['Nothing in this transcript could be read yet, so there is no cost to show.'];
   if (b.reason === 'no_token_counts') {
-    if (!USAGE_READERS.includes(harness)) return ['Cost is not shown for this tool yet.'];
+    if (!countsRead(harness)) return ['Cost is not shown for this tool yet.'];
     return ['This transcript does not record token counts, so cost cannot be shown.'];
   }
 

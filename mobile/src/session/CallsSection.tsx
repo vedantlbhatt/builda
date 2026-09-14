@@ -1,19 +1,23 @@
 /**
  * "Tokens, call by call" as a chapter (the owner's question, 2026-09-13: "make a graph showing
- * token usage in a session, I'm confused how 99% is spent reading the cache"). Its own band in its
- * own hue (tide, the re-read's colour, or cobalt when the session itself is tide) with the one big
- * number: how many calls the session made. Then on the ground, in the order the one off page told
- * the story from one RideGT session: the chart, one bar per call, with a readout a finger scrubs
- * (`CallsChart.tsx`); the call that came back to an expired cache, in words; the same tokens
- * counted in tokens and at API list prices, as two bars of three parts; and why re-reading
- * dominates, in two or three plain sentences.
+ * token usage in a session, I'm confused how 99% is spent reading the cache"). Its own band with
+ * the one big number, how many calls the session made, in cobalt, or orchid when the session
+ * itself is cobalt (`crew.sessionHues`): never one of the bars' three hues (tide, amber, ember,
+ * `callsView.PART_HUE`) and never burn's ember or coral, the chapter above. Then on the ground, in
+ * the order the one off page told the story from one RideGT session: the chart, with a readout a
+ * finger scrubs (`CallsChart.tsx`); the call that came back to an expired cache, in words; the
+ * same tokens counted in tokens and at API list prices, as two bars of three parts; and why
+ * re-reading dominates, in two or three plain sentences.
  *
  * Every refusal is a sentence (`Refusal`), on the band, never a chart of zeros. Every word and
- * number is `callsView.ts`'s; nothing here decides one.
+ * number is `callsView.ts`'s; nothing here decides one. The bar in hand lives here (`at`, and the
+ * index the readout says): VoiceOver's adjustable wraps the chart, so the chart is given nothing
+ * that changes while a finger moves, and a live session that grows a bar puts the readout back on
+ * its newest one.
  */
-import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type TextStyle } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, View, type AccessibilityActionEvent, type LayoutChangeEvent, type StyleProp, type TextStyle } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 
 import { Band, BandWords } from '../insights/Band';
 import { StackBar } from '../insights/Bars';
@@ -24,7 +28,13 @@ import { Block, Section } from '../insights/reveal';
 import { commas } from '../copy/numbers';
 import type { SessionDetail } from '../data/api';
 import { CallsChart } from './CallsChart';
-import { CALLS_TITLE, partInk, readout, type CallsView } from './callsView';
+import { CALLS_TITLE, PART_HUE, clampIndex, readout, type CallPart, type CallsView } from './callsView';
+
+/** A part's ink, as the chart draws it. */
+const ink = (part: CallPart): string => SPECTRUM[PART_HUE[part]].ink;
+
+/** VoiceOver steps the chart a bar at a time. */
+const ADJUST = [{ name: 'increment' }, { name: 'decrement' }] as const;
 
 /**
  * A paragraph that never loses its last line. FOUND ON THE SIMULATOR (2026-09-13): the rewrite
@@ -68,9 +78,30 @@ export function CallsSection({ session, view, hue, width }: { session: Pick<Sess
 }
 
 function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, { kind: 'ready' }>; harness: string; hue: Hue; width: number; inner: number }) {
+  const n = view.bars.length;
   const [index, setIndex] = useState(view.initial);
+  const at = useSharedValue(view.initial);
+  // A live session that grows a bar, or is binned afresh, puts the readout back on its newest bar.
+  // FOUND IN REVIEW (2026-09-13): the bar in hand was set once, so a growing session's readout
+  // stayed on an old bar, and a rebinned one could point past the end.
+  const [count, setCount] = useState(n);
+  if (count !== n) {
+    setCount(n);
+    setIndex(view.initial);
+  }
+  useEffect(() => {
+    at.value = view.initial;
+  }, [at, n, view.initial]);
   const onIndex = useCallback((i: number) => setIndex(i), []);
-  const bar = view.bars[Math.min(index, view.bars.length - 1)]!;
+  const onAction = useCallback(
+    (e: AccessibilityActionEvent) => {
+      const i = clampIndex(at.value + (e.nativeEvent.actionName === 'increment' ? 1 : -1), n);
+      at.value = i;
+      setIndex(i);
+    },
+    [at, n],
+  );
+  const bar = view.bars[clampIndex(index, n)]!;
   const said = readout(bar, harness);
   const figure = useMemo(() => numSpec(view.calls, commas(view.calls)), [view.calls]);
 
@@ -98,38 +129,33 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
         <View style={styles.legend}>
           {view.legend.map((l) => (
             <View key={l.part} style={styles.legendItem}>
-              <Swatch color={partInk(l.part, hue.ink)} size={9} />
+              <Swatch color={ink(l.part)} size={9} />
               <Text maxFontSizeMultiplier={1.4} style={type.meta}>
                 {l.label}
               </Text>
             </View>
           ))}
         </View>
-        <View style={styles.chart}>
-          <CallsChart
-            bars={view.bars}
-            max={view.max}
-            ticks={view.ticks}
-            axis={view.axis}
-            marks={view.marks}
-            width={width}
-            initial={view.initial}
-            onIndex={onIndex}
-            valueText={said}
-            label="What each call to the model sent, by call"
-            readInk={hue.ink}
-          />
+        <View
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="What each call to the model sent, by call"
+          accessibilityValue={{ text: said }}
+          accessibilityActions={ADJUST}
+          onAccessibilityAction={onAction}
+          style={styles.chart}
+        >
+          <CallsChart bars={view.bars} max={view.max} ticks={view.ticks} axis={view.axis} marks={view.marks} width={width} at={at} onIndex={onIndex} />
         </View>
+        {/* One paragraph whose words change, never a view remounted per bar crossed. */}
         <View style={styles.readout} accessibilityLiveRegion="polite">
-          <Animated.View key={index} entering={FadeIn.duration(120)}>
-            <Paragraph style={[type.lead, styles.readoutText]}>{said}</Paragraph>
-          </Animated.View>
+          <Paragraph style={[type.lead, styles.readoutText]}>{said}</Paragraph>
         </View>
         {view.rewrite ? (
           <View style={styles.rewrite}>
             <View style={styles.rewriteHead}>
-              <Swatch color={partInk('fresh', hue.ink)} size={9} />
-              <Text maxFontSizeMultiplier={1.4} style={[type.label, { color: partInk('fresh', hue.ink) }]}>
+              <Swatch color={ink('fresh')} size={9} />
+              <Text maxFontSizeMultiplier={1.4} style={[type.label, { color: ink('fresh') }]}>
                 back to an expired cache
               </Text>
             </View>
@@ -150,10 +176,10 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
                 {s.total}
               </Text>
             </View>
-            <StackBar segments={s.segments.map((g) => ({ key: g.part, value: g.value, color: partInk(g.part, hue.ink) }))} height={18} delay={80 + i * 260} />
+            <StackBar segments={s.segments.map((g) => ({ key: g.part, value: g.value, color: ink(g.part) }))} height={18} delay={80 + i * 260} />
             <View style={styles.parts}>
               {s.segments.map((g) => (
-                <Text key={g.part} maxFontSizeMultiplier={1.4} style={[type.meta, { color: partInk(g.part, hue.ink) }]}>
+                <Text key={g.part} maxFontSizeMultiplier={1.4} style={[type.meta, { color: ink(g.part) }]}>
                   {g.text}
                 </Text>
               ))}
@@ -192,7 +218,10 @@ const styles = StyleSheet.create({
   block: { paddingHorizontal: GUTTER, marginTop: 28 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, rowGap: 8, marginBottom: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  chart: { marginLeft: -GUTTER },
+  // Both gutters: the chart is the page's full width, and a touch lands only inside its parent.
+  // FOUND ON THE SIMULATOR (2026-09-13): with the left gutter alone the wrapper stopped 20 points
+  // short of the chart, so the last bars of a 220 call chart could not be tapped.
+  chart: { marginHorizontal: -GUTTER },
   readout: { minHeight: 72, marginTop: 6 },
   readoutText: { fontVariant: ['tabular-nums'] },
   rewrite: { marginTop: 14, gap: 6 },

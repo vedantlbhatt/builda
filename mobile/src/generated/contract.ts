@@ -125,14 +125,14 @@ export interface SessionCallPoint {
 export interface SessionCallRewrite {
   /** the call's number in this session, counting from 1; the first per_point calls are the first point, the next per_point the second */
   call: number;
-  /** seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds */
+  /** seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds. The session detail serves it to the session's owner only; anyone else reads null, since it would say when an earlier, perhaps unshared, session happened */
   away_seconds: number;
   /** the tokens it wrote to the cache again, more than half of everything it sent (calls.REWRITE_MIN_SHARE) */
   written: number;
 }
 
 export interface SessionCallTokens {
-  /** why there is no chart: no_token_counts (the transcript records no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed). Null when answered; then every field below that can be is set */
+  /** why there is no chart: no_token_counts (the sitting's files record no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed; 0 when the files record usage and none of it fell inside this session). Null when answered; then every field below that can be is set */
   reason?: CallTokensRefusal | null;
   /** calls to the model in the session window, each assistant message once and `<synthetic>` placeholders left out (calls.calls_of). Null only with reason no_token_counts, where nothing was counted */
   calls?: number | null;

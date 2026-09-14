@@ -47,6 +47,7 @@ from analysis import contributions as co  # noqa: E402
 from analysis import profile as pf  # noqa: E402
 from analysis import projects as pj  # noqa: E402
 from analysis.tests import burn_fixture, corpus_fixture, projects_fixture  # noqa: E402
+from capture import harnesses  # noqa: E402
 
 COPY_TS = ROOT / "mobile/src/generated/copy.ts"
 CARDS_JSON = ROOT / "spec/fixtures/wrapped/cards.json"
@@ -123,6 +124,7 @@ def tables() -> list[tuple[str, str, object]]:
         ("CONTEXT_REPLAY_MIN_SHARE", "`burn.CONTEXT_REPLAY_MIN_SHARE`: the cache share that earns its own sentence.", burn.CONTEXT_REPLAY_MIN_SHARE),
         ("SAY_SHARE_AT", "`burn.SAY_SHARE_AT`: any other share worth a sentence.", burn.SAY_SHARE_AT),
         ("USAGE_READERS", "`burn.USAGE_READERS`: the harnesses whose token counts burn reads; any other is \"not shown for this tool yet\".", sorted(burn.USAGE_READERS)),
+        ("HARNESS_ANALYSIS_NAME", "`capture.harnesses._ANALYSIS_NAME`: a session's `harness` as the upload spells it, to the engine's name for it, where the two differ. `USAGE_READERS` is in the engine's names, so a session's harness is mapped before it is asked.", dict(sorted(harnesses._ANALYSIS_NAME.items()))),
         ("MIN_SEGMENTS_FOR_SPIKES", "`burn.MIN_SEGMENTS_FOR_SPIKES`: stretches a median needs before any is called a spike.", burn.MIN_SEGMENTS_FOR_SPIKES),
         # ------------------------------------------------------------- analysis/pricing.py
         ("FAMILIES", "`pricing.FAMILIES`, keyed by the price table key (`priced_model`): the name a person says.", {k: pricing.family(k) for k in pricing.PRICES}),

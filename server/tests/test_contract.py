@@ -648,6 +648,16 @@ SAMPLE_CALL_TOKENS: dict = {
     "price_reason": None,
 }
 
+#: The burn block a payload carrying SAMPLE_CALL_TOKENS carries beside it: burn counts the same
+#: window's tokens, and the gate holds the chart's points to it.
+SAMPLE_BURN_FOR_CALLS: dict = {
+    **SAMPLE_BURN,
+    "tokens": sum(
+        p["cache_read"] + p["cache_write"] + p["input"] + p["output"]
+        for p in SAMPLE_CALL_TOKENS["points"]
+    ),
+}
+
 #: The same block refused for a short sitting: how many calls, and nothing drawn.
 SAMPLE_CALL_TOKENS_REFUSED: dict = {
     "reason": "too_few_calls",
@@ -873,13 +883,55 @@ def test_call_tokens_round_trip_and_close_every_level():
             {**SAMPLE_CALL_TOKENS, "rewrites": [{"call": 8, "away_seconds": 4095, "written": 1}]},
             "outside",
         ),
-        ({**SAMPLE_CALL_TOKENS, "rewrite_calls": 0}, "outside"),
-        ({**SAMPLE_CALL_TOKENS, "usd_output": None}, "four dollar figures"),
-        ({**SAMPLE_CALL_TOKENS, "price_reason": "model_not_in_price_table"}, "four dollar figures"),
+        ({**SAMPLE_CALL_TOKENS, "rewrite_calls": 0}, "counts more rewrites"),
+        ({**SAMPLE_CALL_TOKENS, "rewrite_calls": 8}, "counts more rewrites"),
+        ({**SAMPLE_CALL_TOKENS, "usd_output": None}, "four finite dollar figures"),
+        (
+            {**SAMPLE_CALL_TOKENS, "price_reason": "model_not_in_price_table"},
+            "four finite dollar figures",
+        ),
         (
             {**SAMPLE_CALL_TOKENS, "points": list(reversed(SAMPLE_CALL_TOKENS["points"]))},
             "out of time order",
         ),
+        # FOUND IN REVIEW (2026-09-13): each of these was accepted.
+        ({**SAMPLE_CALL_TOKENS_REFUSED, "calls": 500}, "too_few_calls with 500 calls"),
+        ({**SAMPLE_CALL_TOKENS_REFUSED, "calls": -1}, "too_few_calls with -1 calls"),
+        ({**SAMPLE_CALL_TOKENS_REFUSED, "calls": None}, "too_few_calls with None calls"),
+        ({**SAMPLE_CALL_TOKENS, "calls_needed": 0}, "at least 1"),
+        ({**SAMPLE_CALL_TOKENS_REFUSED, "calls_needed": 0}, "at least 1"),
+        (
+            {**SAMPLE_CALL_TOKENS, "rewrites": [{"call": 1, "away_seconds": -5, "written": 1}]},
+            "sooner than the cache expires",
+        ),
+        (
+            {**SAMPLE_CALL_TOKENS, "rewrites": [{"call": 1, "away_seconds": 3600, "written": 1}]},
+            "sooner than the cache expires",
+        ),
+        (
+            {**SAMPLE_CALL_TOKENS, "rewrites": [{"call": 1, "away_seconds": 4095, "written": -1}]},
+            "wrote more than its own point",
+        ),
+        (
+            {
+                **SAMPLE_CALL_TOKENS,
+                "rewrites": [{"call": 2, "away_seconds": 4095, "written": 9999}],
+            },
+            "wrote more than its own point",
+        ),
+        ({**SAMPLE_CALL_TOKENS, "lifetime_seconds": None}, "no cache lifetime"),
+        ({**SAMPLE_CALL_TOKENS, "lifetime_seconds": 1800}, "not a cache lifetime"),
+        (
+            {
+                **SAMPLE_CALL_TOKENS,
+                "rewrites": [SAMPLE_CALL_TOKENS["rewrites"][0]] * 2,
+                "rewrite_calls": 2,
+            },
+            "twice or out of call order",
+        ),
+        ({**SAMPLE_CALL_TOKENS, "usd_cache_read": float("inf")}, "four finite dollar figures"),
+        ({**SAMPLE_CALL_TOKENS, "usd_cache_read": float("nan")}, "four finite dollar figures"),
+        ({**SAMPLE_CALL_TOKENS, "usd_input": -0.01}, "four finite dollar figures"),
     ],
 )
 def test_the_gate_refuses_a_call_tokens_block_that_disagrees_with_itself(bad, says):
@@ -887,6 +939,33 @@ def test_the_gate_refuses_a_call_tokens_block_that_disagrees_with_itself(bad, sa
     disagrees with the points mislabels the whole chart, and the server never sees a
     transcript, so consistency is the one check it has."""
     assert says in (sanity_gate(valid_payload(call_tokens=bad)) or ""), says
+
+
+def test_the_gate_holds_the_points_to_the_tokens_burn_counts_for_the_same_window():
+    """Both blocks are `burn.turns_for_window` over one sitting, so their totals are one number:
+    the review recomputed all 160 stored sittings from the raw JSONL and they agree to the token.
+    A client whose chart and burn disagree is counting two different sets of calls."""
+
+    def gate(burn):
+        return sanity_gate(valid_payload(call_tokens=SAMPLE_CALL_TOKENS, burn=burn)) or ""
+
+    assert gate(SAMPLE_BURN_FOR_CALLS) == ""
+    off = {**SAMPLE_BURN_FOR_CALLS, "tokens": SAMPLE_BURN_FOR_CALLS["tokens"] + 1}
+    assert "where burn counts" in gate(off)
+    # A burn that refused (no token counted) has no total to hold the chart to.
+    refused_burn = {**SAMPLE_BURN, "tokens": None, "reason": "not_segmented", "spikes": None}
+    assert gate(refused_burn) == ""
+
+
+def test_the_gates_constants_are_the_contracts_and_the_engines():
+    _analysis()
+    from analysis import calls
+
+    from builder.routes import sync
+
+    caps = {f["name"]: f.get("max_items") for f in _contract()["objects"]["SessionCallTokens"]}
+    assert sync.CALL_POINTS_MAX == caps["points"] == calls.MAX_POINTS
+    assert sync.CALL_LIFETIMES == (calls.FIVE_MINUTES_SEC, calls.ONE_HOUR_SEC)
 
 
 def test_call_tokens_enums_and_caps_are_the_calls_tables_both_ways():

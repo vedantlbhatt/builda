@@ -26,7 +26,7 @@ import { ease, phase } from '../insights/motion';
 import { GROUND, SPECTRUM } from '../insights/palette';
 import { select } from '../ui';
 import { useDrawClock } from './drawClock';
-import { streamAt, streamLayout, type StreamLayout } from './geometry';
+import { spacedTicks, streamAt, streamLayout, TICK_BOX, tickBox, type StreamLayout } from './geometry';
 import { hoursWords, riverLine, riversLine, type WeeklyView } from './model';
 
 /** How long one river takes to flow across the width, and the step between one river and the next. */
@@ -125,7 +125,7 @@ export function Rivers({ view, width, delay = 80 }: { view: WeeklyView; width: n
 
   const line = held.key ? riverLine(view, held.key, held.week) : riversLine(view);
   const most = Math.max(1, ...view.series.map((s) => s.totalSeconds));
-  const ticks = tickIndexes(view.weeks.length);
+  const ticks = layout.xs.length === 1 ? [0] : spacedTicks(layout.xs, view.weeks.map((w) => w.label), width, GUTTER);
 
   return (
     <View>
@@ -147,11 +147,9 @@ export function Rivers({ view, width, delay = 80 }: { view: WeeklyView; width: n
       <View style={[styles.axis, { width, marginLeft: -GUTTER }]}>
         {ticks.map((i) => {
           const x = layout.xs.length === 1 ? width / 2 : layout.xs[i]!;
-          const w = 64;
-          const left = Math.min(width - GUTTER - w, Math.max(GUTTER, x - w / 2));
-          const align = left <= GUTTER ? 'left' : left >= width - GUTTER - w ? 'right' : 'center';
+          const { left, align } = tickBox(x, width, GUTTER);
           return (
-            <Text key={i} allowFontScaling={false} style={[styles.tick, { left, width: w, textAlign: align }]}>
+            <Text key={i} allowFontScaling={false} style={[styles.tick, { left, width: TICK_BOX, textAlign: align }]}>
               {view.weeks[i]!.label}
             </Text>
           );

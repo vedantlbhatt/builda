@@ -312,3 +312,41 @@ export function dotAt(dots: readonly SwarmDot[], axisY: number, x: number, y: nu
   }
   return best;
 }
+
+/** The box a week's date is set in under the rivers, and about how wide 11 pt semibold runs a letter. */
+export const TICK_BOX = 64;
+const TICK_CHAR = 6.4;
+const TICK_GAP = 10;
+
+/** Where a week's date lands under the chart, as the axis draws it: a `TICK_BOX` held inside the
+ *  gutters, its text set left, right or centred by which edge held it. */
+export function tickBox(x: number, width: number, gutter: number): { left: number; align: 'left' | 'center' | 'right' } {
+  const left = Math.min(width - gutter - TICK_BOX, Math.max(gutter, x - TICK_BOX / 2));
+  const align = left <= gutter ? 'left' : left >= width - gutter - TICK_BOX ? 'right' : 'center';
+  return { left, align };
+}
+
+/**
+ * Which weeks get a date: as many as fit, the first and the latest always, and none closer to the
+ * one before it than its text allows once the edge boxes are held in. FOUND IN THE now3 PASS
+ * (2026-09-14): a fixed five tick rule on six weeks said weeks 0, 1, 3, 4 and 5, so "Aug 10" and
+ * "Aug 17" ran together at the held left edge and "Aug 24" had no date at all.
+ */
+export function spacedTicks(xs: readonly number[], labels: readonly string[], width: number, gutter: number): number[] {
+  const k = Math.min(xs.length, labels.length);
+  if (k <= 1) return k === 1 ? [0] : [];
+  const span = (i: number): [number, number] => {
+    const { left, align } = tickBox(xs[i]!, width, gutter);
+    const w = labels[i]!.length * TICK_CHAR;
+    const from = align === 'left' ? left : align === 'right' ? left + TICK_BOX - w : left + (TICK_BOX - w) / 2;
+    return [from, from + w];
+  };
+  const out = [0];
+  for (let i = 1; i < k; i++) if (span(i)[0] >= span(out[out.length - 1]!)[1] + TICK_GAP) out.push(i);
+  if (out[out.length - 1] !== k - 1) {
+    // The latest week is always said: it takes the place of any date it would touch.
+    while (out.length > 1 && span(k - 1)[0] < span(out[out.length - 1]!)[1] + TICK_GAP) out.pop();
+    out.push(k - 1);
+  }
+  return out;
+}

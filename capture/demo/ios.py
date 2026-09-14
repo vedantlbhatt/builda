@@ -26,6 +26,7 @@ there stops the run: every later picture would carry the wrong label.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -452,6 +453,48 @@ def quiet_logs(app_dir: pathlib.Path) -> str:
     return f"development toasts off in the clone: package.json main is demo-entry.js, which imports {QUIET_LOGS} then {main} (app.quiet_logs)"
 
 
+#: What a JavaScript app's installed dependencies are decided by. A reused work dir is pulled to
+#: the project's newest commit, and that commit can add a dependency the old install lacks.
+DEPENDENCY_FILES = ("package.json", "bun.lock", "bun.lockb", "package-lock.json", "yarn.lock", "pnpm-lock.yaml")
+#: Written into `node_modules` after an install: the fingerprint of `DEPENDENCY_FILES` it installed.
+INSTALL_STAMP = ".builda-demo-install"
+
+
+def dependency_fingerprint(app_path: pathlib.Path) -> str:
+    """sha256 over the dependency files the app has, each named, so a rename changes it too."""
+    h = hashlib.sha256()
+    for name in DEPENDENCY_FILES:
+        p = app_path / name
+        if p.is_file():
+            h.update(name.encode() + b"\0" + p.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
+def needs_install(app_path: pathlib.Path) -> str | None:
+    """Why the app's dependencies must be installed before Metro can serve it, or None.
+
+    FOUND ON A RE-RUN (2026-09-14): the Builda work dir was pulled to a commit that added
+    expo-video, its `node_modules` was from the first run, and this checked only that the folder
+    existed. Metro answered its status page, died on the first bundle with "expo-video is added as
+    a dependency ... but doesn't seem to be installed", and the app filmed "No script URL
+    provided". An install from before this stamp existed is reinstalled once."""
+    modules = app_path / "node_modules"
+    if not modules.is_dir():
+        return "no node_modules yet"
+    stamp = modules / INSTALL_STAMP
+    if not stamp.is_file():
+        return "an install from before the stamp"
+    if stamp.read_text().strip() != dependency_fingerprint(app_path):
+        return "the dependencies changed since the last install"
+    return None
+
+
+def stamp_install(app_path: pathlib.Path) -> None:
+    modules = app_path / "node_modules"
+    if modules.is_dir():
+        (modules / INSTALL_STAMP).write_text(dependency_fingerprint(app_path) + "\n")
+
+
 def start_metro(ws: Workspace, plan: Plan, story: dict, log_dir: pathlib.Path) -> tuple[Server, int]:
     """Metro from the clone, for an app that carries no bundle. On `DEMO_METRO_PORT`, or the
     next free port, never 8081."""
@@ -459,17 +502,19 @@ def start_metro(ws: Workspace, plan: Plan, story: dict, log_dir: pathlib.Path) -
     while not port_free(port):
         port += 1
     app_dir = plan.app_dir
-    if not (ws.src / app_dir / "node_modules").is_dir():
+    why = needs_install(ws.src / app_dir)
+    if why:
         inst = plan.step("install")
         if inst is None:
             raise CaptureError("the app needs Metro, and the plan has no install step for its dependencies")
-        say(f"installing dependencies for Metro: {inst.command}")
+        say(f"installing dependencies for Metro ({why}): {inst.command}")
         r = subprocess.run(["/bin/sh", "-c", inst.command], cwd=str(ws.src / inst.cwd), env=clean_env(), capture_output=True, text=True, timeout=1800, check=False)
         if r.returncode != 0:
             raise CaptureError(f"installing dependencies failed: {r.stderr[-400:]}")
         patch = plan.step("patch")
         if patch:
             subprocess.run(["/bin/sh", "-c", patch.command], cwd=str(ws.src / patch.cwd), env=clean_env(), capture_output=True, timeout=300, check=False)
+        stamp_install(ws.src / app_dir)
     env = {"CI": "1", "EXPO_NO_TELEMETRY": "1", **{k: str(v) for k, v in (story.get("app", {}).get("build_env") or {}).items()}}
     spec = {
         "name": "metro",
@@ -484,7 +529,7 @@ def start_metro(ws: Workspace, plan: Plan, story: dict, log_dir: pathlib.Path) -
     return srv, port
 
 
-def prewarm(port: int, bundle_id: str) -> None:
+def prewarm(port: int, bundle_id: str, metro: Server | None = None) -> None:
     """Ask Metro for the bundle once before the app does, so the first launch does not film a
     minute of bundling. What the request returns is thrown away."""
     # The query React Native's RCTBundleURLProvider sends (0.79); Expo's server adds its own
@@ -498,6 +543,10 @@ def prewarm(port: int, bundle_id: str) -> None:
             while r.read(1 << 20):
                 pass
     except OSError as e:
+        # A Metro that died building the bundle leaves the app "No script URL provided"; filming
+        # that and falling back to the last capture hides why. Say it from Metro's own log.
+        if metro is not None and metro.proc is not None and metro.proc.poll() is not None:
+            raise CaptureError(f"Metro could not build the app's JavaScript ({e}):\n{tail(metro.log)}") from e
         say(f"prewarming Metro did not finish ({e}); the first launch will bundle")
 
 
@@ -539,7 +588,7 @@ def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str |
                 f"the app's ip.txt names {NO_PACKAGER}, so no other Metro could answer"
             )
             say(f"Metro is up on {port} ({metro.how}); prewarming the bundle")
-            prewarm(port, bundle_id)
+            prewarm(port, bundle_id, metro)
         for spec in story.get("servers") or []:
             s = Server(spec, ws, ws.logs, allowed_domains=list(spec.get("allowed_domains") or []))
             say(f"starting {s.name}: {spec['command']}")

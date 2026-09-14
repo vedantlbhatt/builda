@@ -101,5 +101,49 @@ class Apps(unittest.TestCase):
         self.assertNotEqual(a, ios.build_stamp(ws, plan, "Debug", {"API": "1"}))
 
 
+class DependenciesBeforeMetro(unittest.TestCase):
+    """FOUND ON A RE-RUN (2026-09-14): the work dir was pulled to a commit that added expo-video,
+    `node_modules` was from the first run, and the old check was only that the folder existed."""
+
+    def _app(self, root: pathlib.Path) -> pathlib.Path:
+        app = root / "mobile"
+        app.mkdir()
+        (app / "package.json").write_text('{"dependencies": {"expo": "53"}}')
+        (app / "bun.lock").write_text("lock one")
+        return app
+
+    def test_an_app_without_node_modules_installs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(pathlib.Path(tmp))
+            self.assertEqual(ios.needs_install(app), "no node_modules yet")
+
+    def test_an_install_from_before_the_stamp_is_redone_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(pathlib.Path(tmp))
+            (app / "node_modules").mkdir()
+            self.assertEqual(ios.needs_install(app), "an install from before the stamp")
+            ios.stamp_install(app)
+            self.assertIsNone(ios.needs_install(app))
+
+    def test_a_new_dependency_or_lockfile_reinstalls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(pathlib.Path(tmp))
+            (app / "node_modules").mkdir()
+            ios.stamp_install(app)
+            (app / "package.json").write_text('{"dependencies": {"expo": "53", "expo-video": "2.2"}}')
+            self.assertEqual(ios.needs_install(app), "the dependencies changed since the last install")
+            ios.stamp_install(app)
+            (app / "bun.lock").write_text("lock two")
+            self.assertEqual(ios.needs_install(app), "the dependencies changed since the last install")
+
+    def test_the_fingerprint_names_each_file(self):
+        """Moving the same bytes from one lockfile name to another is a different install."""
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(pathlib.Path(tmp))
+            a = ios.dependency_fingerprint(app)
+            (app / "bun.lock").rename(app / "yarn.lock")
+            self.assertNotEqual(a, ios.dependency_fingerprint(app))
+
+
 if __name__ == "__main__":
     unittest.main()

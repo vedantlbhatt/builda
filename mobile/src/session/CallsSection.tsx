@@ -24,7 +24,7 @@ import { Block, Section } from '../insights/reveal';
 import { commas } from '../copy/numbers';
 import type { SessionDetail } from '../data/api';
 import { CallsChart } from './CallsChart';
-import { CALLS_TITLE, PART_HUE, readout, type CallsView } from './callsView';
+import { CALLS_TITLE, partInk, readout, type CallsView } from './callsView';
 
 /**
  * A paragraph that never loses its last line. FOUND ON THE SIMULATOR (2026-09-13): the rewrite
@@ -98,7 +98,7 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
         <View style={styles.legend}>
           {view.legend.map((l) => (
             <View key={l.part} style={styles.legendItem}>
-              <Swatch color={SPECTRUM[PART_HUE[l.part]].ink} size={9} />
+              <Swatch color={partInk(l.part, hue.ink)} size={9} />
               <Text maxFontSizeMultiplier={1.4} style={type.meta}>
                 {l.label}
               </Text>
@@ -117,6 +117,7 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
             onIndex={onIndex}
             valueText={said}
             label="What each call to the model sent, by call"
+            readInk={hue.ink}
           />
         </View>
         <View style={styles.readout} accessibilityLiveRegion="polite">
@@ -127,8 +128,8 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
         {view.rewrite ? (
           <View style={styles.rewrite}>
             <View style={styles.rewriteHead}>
-              <Swatch color={SPECTRUM[PART_HUE.fresh].ink} size={9} />
-              <Text maxFontSizeMultiplier={1.4} style={[type.label, { color: SPECTRUM[PART_HUE.fresh].ink }]}>
+              <Swatch color={partInk('fresh', hue.ink)} size={9} />
+              <Text maxFontSizeMultiplier={1.4} style={[type.label, { color: partInk('fresh', hue.ink) }]}>
                 back to an expired cache
               </Text>
             </View>
@@ -149,10 +150,10 @@ function Ready({ view, harness, hue, width, inner }: { view: Extract<CallsView, 
                 {s.total}
               </Text>
             </View>
-            <StackBar segments={s.segments.map((g) => ({ key: g.part, value: g.value, color: SPECTRUM[PART_HUE[g.part]].ink }))} height={18} delay={80 + i * 260} />
+            <StackBar segments={s.segments.map((g) => ({ key: g.part, value: g.value, color: partInk(g.part, hue.ink) }))} height={18} delay={80 + i * 260} />
             <View style={styles.parts}>
               {s.segments.map((g) => (
-                <Text key={g.part} maxFontSizeMultiplier={1.4} style={[type.meta, { color: SPECTRUM[PART_HUE[g.part]].ink }]}>
+                <Text key={g.part} maxFontSizeMultiplier={1.4} style={[type.meta, { color: partInk(g.part, hue.ink) }]}>
                   {g.text}
                 </Text>
               ))}

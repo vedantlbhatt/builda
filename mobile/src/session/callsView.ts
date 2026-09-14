@@ -21,19 +21,25 @@
  *
  * Pure: no React Native, so `bun test` holds it.
  */
-
 import { dollars, readOn } from '../copy/money';
 import { capital, commas, floorMins, human, mins, shareWords } from '../copy/numbers';
 import { PRICES_READ_ON, USAGE_READERS } from '../copy/catalog';
 import type { SessionDetail } from '../data/api';
 import type { SessionCallPoint, SessionCallTokens } from '../generated/contract';
-import type { HueName } from '../theme';
+import { SPECTRUM } from '../insights/palette';
 
 export type CallPart = 'read' | 'fresh' | 'reply';
 export const CALL_PARTS: readonly CallPart[] = ['read', 'fresh', 'reply'];
 
 /** One hue per part, bottom of the bar to the top. */
-export const PART_HUE: Record<CallPart, HueName> = { read: 'tide', fresh: 'brass', reply: 'ember' };
+/**
+ * Each part's ink. New and Claude's reply wear Money's bucket colours (brass for a cache write,
+ * tide for output, `insights/sections/Money.BUCKET_COLOR`), so a kind of token reads the same on
+ * every screen that splits them; the re-read wears the chapter's own ink, as Money's does.
+ */
+export function partInk(part: CallPart, readInk: string): string {
+  return part === 'read' ? readInk : SPECTRUM[part === 'fresh' ? 'brass' : 'tide'].ink;
+}
 
 /** The chapter's title, on its band. */
 export const CALLS_TITLE = 'Tokens, call by call';

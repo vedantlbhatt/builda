@@ -54,7 +54,8 @@ export function sessionHues(creature: CrewCreature): SessionHues {
   return {
     session,
     burn: session === 'ember' ? 'coral' : 'ember',
-    calls: session === 'tide' ? 'cobalt' : 'tide',
+    // Not tide or brass (the chart's reply and new) and not ember (burn, the chapter above).
+    calls: session === 'cobalt' ? 'orchid' : 'cobalt',
     reading: session === 'iris' ? 'heather' : 'iris',
   };
 }

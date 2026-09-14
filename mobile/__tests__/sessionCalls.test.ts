@@ -20,7 +20,8 @@ import { join } from 'node:path';
 import { hasDash } from '../src/copy/plain';
 import type { SessionDetail } from '../src/data/api';
 import type { SessionCallPoint, SessionCallTokens } from '../src/generated/contract';
-import { callsView, eachBarWords, explainCalls, niceStep, readout, rewriteWords, whenWords, type CallBar, type CallsView } from '../src/session/callsView';
+import { SPECTRUM } from '../src/insights/palette';
+import { callsView, eachBarWords, explainCalls, niceStep, partInk, readout, rewriteWords, whenWords, type CallBar, type CallsView } from '../src/session/callsView';
 import { sessionHues } from '../src/session/crew';
 import { SAMPLE_VARIANTS, sampleOutcome } from '../src/session/samples';
 
@@ -300,13 +301,22 @@ describe('the samples', () => {
 });
 
 describe('the chapter', () => {
-  test("wears the re-read's hue, and cobalt when the session itself is tide", () => {
-    expect(sessionHues('crab').calls).toBe('tide');
-    expect(sessionHues('whale').calls).toBe('cobalt');
+  test("the re-read wears the chapter's hue; new and reply wear Money's bucket colours", () => {
+    // Money splits tokens the same way (insights/sections/Money.BUCKET_COLOR): a cache write is
+    // brass and output is tide there, so they are here, and the re-read wears its chapter's ink.
+    const money = readFileSync(join(import.meta.dir, '..', 'src/insights/sections/Money.tsx'), 'utf8');
+    expect(money).toContain('cache_write: SPECTRUM.brass.ink');
+    expect(money).toContain('output: SPECTRUM.tide.ink');
+    expect(partInk('fresh', '#000000')).toBe(SPECTRUM.brass.ink);
+    expect(partInk('reply', '#000000')).toBe(SPECTRUM.tide.ink);
+    expect(partInk('read', '#123456')).toBe('#123456');
+    expect(sessionHues('crab').calls).toBe('cobalt');
     for (const c of ['cat', 'dog', 'fox', 'owl', 'bee', 'whale', 'octopus', 'crab'] as const) {
       const h = sessionHues(c);
       expect(new Set([h.burn, h.calls, h.reading]).size).toBe(3);
       expect(h.calls).not.toBe(h.session);
+      // The chapter's ink is the re-read's, so it can be neither of the other two parts.
+      expect(['brass', 'tide']).not.toContain(h.calls);
     }
   });
 

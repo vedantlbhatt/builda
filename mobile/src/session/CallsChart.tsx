@@ -47,9 +47,11 @@ const BAR_MS = 560;
 /** The smallest a part that is not zero is drawn, in points. */
 const MIN_PART = 1;
 
-const READ = SPECTRUM.tide.ink;
+/** New and Claude's reply wear Money's bucket colours (`insights/sections/Money.BUCKET_COLOR`): a
+ * cache write is brass and output is tide on every screen that splits tokens by kind. The re-read
+ * wears the chapter's own ink, as Money's does, so it is a prop. */
 const FRESH = SPECTRUM.brass.ink;
-const REPLY = SPECTRUM.ember.ink;
+const REPLY = SPECTRUM.tide.ink;
 
 /** One bar as plain numbers for the UI thread: where it stands and its three heights, in points. */
 type Laid = { x: number; w: number; read: number; fresh: number; reply: number; at: number };
@@ -69,7 +71,7 @@ function drawnHeight(b: Laid): number {
 // 2026-09-13, `projects/Swarm.tsx`).
 
 /** The chart at clock `t`: the gridlines, then every bar grown as far as its own start says. */
-function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: readonly number[], left: number, right: number, floor: number): void {
+function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: readonly number[], left: number, right: number, floor: number, readInk: string): void {
   'worklet';
   const line = Skia.Paint();
   line.setAntiAlias(false);
@@ -78,7 +80,7 @@ function drawCalls(canvas: SkCanvas, t: number, laid: readonly Laid[], grid: rea
   canvas.drawRect(Skia.XYWHRect(left, floor, right - left, 1), line);
   const read = Skia.Paint();
   read.setAntiAlias(false);
-  read.setColor(Skia.Color(READ));
+  read.setColor(Skia.Color(readInk));
   const fresh = Skia.Paint();
   fresh.setAntiAlias(false);
   fresh.setColor(Skia.Color(FRESH));
@@ -120,9 +122,11 @@ export interface CallsChartProps {
   /** VoiceOver's value: the readout of the bar in hand. */
   valueText: string;
   label: string;
+  /** The re-read's colour: the chapter's own ink. */
+  readInk: string;
 }
 
-function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onIndex, valueText, label }: CallsChartProps) {
+function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onIndex, valueText, label, readInk }: CallsChartProps) {
   const n = bars.length;
   const right = width - RIGHT;
   const slot = (right - LEFT) / Math.max(1, n);
@@ -159,12 +163,12 @@ function CallsChartInner({ bars, max, ticks, axis, marks, width, initial, onInde
   const { clock, box, landed } = useDrawClock(total);
   const moving = useDerivedValue(() => {
     const t = clock.value;
-    return createPicture((canvas) => drawCalls(canvas, t, laid, grid, LEFT, right, floor), { width, height });
-  }, [laid, grid, right, floor, width, height]);
+    return createPicture((canvas) => drawCalls(canvas, t, laid, grid, LEFT, right, floor, readInk), { width, height });
+  }, [laid, grid, right, floor, width, height, readInk]);
   // Recorded once, on this thread, the moment the bars have landed: nothing is drawn a frame after.
   const still = useMemo(
-    () => (landed ? createPicture((canvas) => drawCalls(canvas, total, laid, grid, LEFT, right, floor), { width, height }) : null),
-    [landed, laid, grid, right, floor, width, height, total],
+    () => (landed ? createPicture((canvas) => drawCalls(canvas, total, laid, grid, LEFT, right, floor, readInk), { width, height }) : null),
+    [landed, laid, grid, right, floor, width, height, total, readInk],
   );
 
   // The scrub line, on its own: a finger never re-records the bars.

@@ -157,6 +157,18 @@ Plan: `docs/projects.md` (metrics, privacy class, refusals), `analysis/projects.
 `projects` report block, a Projects tab in the house style; the stack page rebuilt around real
 technology logos (Simple Icons, CC0) in brand colours.
 
+## Owner, 2026-09-14 00:20: demos for every project
+
+"Build the tool that allows people to put in a GitHub repo and automatically run whatever project
+they're working on and get screenshots and make a demo of it... look at open source implementations
+first, find the best ones, use those." Every project in Builda carries its demo or screenshots: a
+stack of pictures beside the content that expands on a tap to see them all, and demo videos that
+start playing on their own in the background. The dither and pixel look, react-bits, and even less
+AI looking. First demos: this app and RideGT. Research lands in `docs/research/demo-capture.md`.
+Constraints that carry over: nothing leaves the Mac unless the person opts in, a private
+repository's name never leaves it, and the restraint and scroll performance changes still wait
+for the owner's go.
+
 ## Design mandate
 
 Use these, do not hand roll:

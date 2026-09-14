@@ -1503,3 +1503,22 @@ Yeah. It's pretty important that you don't just use regular guy generate slot fo
 21. take screenshots of everything rn and upload to artifact so i can see very feature
 
 22. are proejcts done or not. also copy and paste the prompt i gave u including everything
+
+23. alr bro i get the design of the like the blocks fo color and how u aniamte it and shi t but ur jsut throwing it everyhwere now it lost its c harm.w hata re you gonna od to fix this? <50 words
+
+24. also simualtor loses frames when we scroll donw analysis with th enaimaion. <50 words dont fuckign code anythign to change th eUI. im asking ot brainstrom retard
+
+25. RUN ON EXPO SO I CAN TEST ON IPHONE
+
+26. Hello? / Why isn't the app working on my iPhone / I'm on a diff wifi I'm on data rn can u make it work / Use a tunnel or something figure it out / Ok cool it works.
+
+27. Can u make a graph showing token usage in a session. I'm confused on how 99% is spent reading the cache.
+
+28. Can u get rid of the Dynamic Island thing I have rn for the current session? I swiped out of the app
+
+29. status what u work on
+
+30. Keep working and build this Yeah. So build the tool build the tool that allows people to put in a get up and are, like, automatically reverse whatever project they're working on and get, like, screenshots and make a demo of it. There are some open source tools. I think they already do this, so do extensive research with GitHub, Reddit, um, LinkedIn, Next, Threads, whatever. Like, so repo clip or something. It makes demos or, like, at least with very minimum get screenshots too. So get screenshots and a demo video. Um, of all the work you've done on the actual other project, And, you know, for every project, it should be it should be attached with a demo or some screenshots. That way, you can populate the views. They look nice too. Like, I like how you made the box so far. Like, things using separate way. Maybe have, like, a stack of pictures, not that they shouldn't at all screen up and screenshots, but, like, on the side somewhere in good click expense. See all them? Like, again, experiment with all React bits and all URL libraries you had access to before and integrate screenshots and demo videos that way. Maybe demo videos like play in the back and neck and neck as, like, a, you know, it's some cool way where you can start playing automatically. Like, just make this flush out a lot. Eruditus UI make and make sure it doesn't look AI at all, like, same design principles. You use React Native. I like how you use Diether effect a lot and, like, pixelated stuff, and they look super nice. Keep applying that. Make it look even less AI and keep working. No stop. And and don't stop. And make this feature. Again, look at open source implementations first. Find the best ones. Use those and and implement it here.
+
+    (Read as: put in a GitHub repo, automatically RUN the project, get screenshots and a demo video; every project in Builda carries its demo or screenshots; a stack of pictures beside the content that expands on a tap to see them all; demo videos autoplay in the background; react-bits and the dither and pixel look; research open source first.)
+

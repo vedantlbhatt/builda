@@ -1525,3 +1525,5 @@ Yeah. It's pretty important that you don't just use regular guy generate slot fo
 31. Dude the demo shouldn't just be a screen recording it should be like an actual cool demo video but don't worry about that just focus on screenshots how is that development? Show me screenshots of that rn
 
 32. ok dont worry abotu screenrercodings or any video demos just screenshots for now. the proejcts page should show a lsit of prooejcts.
+
+33. where the fuck do is ee the screenshots on my perosnal iphone? ido tnsee them bruh / dude it says builda is not reachable nr / im on data on iphone

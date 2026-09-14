@@ -11,6 +11,7 @@
 #   scripts/overnight_stack.sh token     print a valid access token for device.json (refreshing it)
 #   scripts/overnight_stack.sh test      the server pytest suite against the separate test DB
 #   scripts/overnight_stack.sh lan [stop]  a second API on this Mac's Wi-Fi address, for a real iPhone
+#   scripts/overnight_stack.sh link [stop] the API through ngrok at your account's own address, for a phone anywhere
 #   scripts/overnight_stack.sh iphone ID [--onboarded]  sign the app on iPhone ID in with a freshly minted device
 #   scripts/overnight_stack.sh down      stop the API (and the Wi-Fi one)
 #   scripts/overnight_stack.sh restart   down + up
@@ -217,6 +218,8 @@ cmd_up() {
 # prints; the address is baked in at build time (CLAUDE.md).
 LAN_PID_FILE="$STATE_DIR/api-lan.pid"
 LAN_LOG_FILE="$STATE_DIR/api-lan.log"
+LINK_PID_FILE="$STATE_DIR/ngrok.pid"
+LINK_LOG_FILE="$STATE_DIR/ngrok.log"
 lan_ip() { ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true; }
 lan_pid() {
   [ -f "$LAN_PID_FILE" ] || return 0
@@ -226,6 +229,61 @@ lan_pid() {
     echo "$pid"
   fi
 }
+link_pid() {
+  local p
+  p="$(cat "$LINK_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then echo "$p"; fi
+}
+
+link_url() { # the https address ngrok's local API reports; empty when there is none
+  curl -s -m 3 http://127.0.0.1:4040/api/tunnels 2>/dev/null | "$PY" -c '
+import json, sys
+try:
+    t = json.load(sys.stdin).get("tunnels") or []
+except ValueError:
+    t = []
+print(next((x["public_url"] for x in t if str(x.get("public_url", "")).startswith("https://")), ""))'
+}
+
+# A phone on cellular reaches the API through ngrok. FOUND 2026-09-14: a Cloudflare quick
+# tunnel is a new random address every time it starts, the laptop's sleep ended the one the
+# phone's Release build had baked in ("Builda is not reachable"), and the only fix was a new
+# build. A free ngrok account keeps ONE address for good, so a phone build bakes it once and a
+# sleep needs only `link` again. The address is never written into the repository: it is
+# printed here and read from ngrok at run time.
+cmd_link() {
+  if [ "${1:-}" = "stop" ]; then
+    local pid; pid="$(link_pid)"
+    [ -n "$pid" ] && kill "$pid" && say "stopped the link (pid $pid)"
+    rm -f "$LINK_PID_FILE"
+    return
+  fi
+  require_api
+  command -v ngrok >/dev/null || die "ngrok is not installed (brew install ngrok, then ngrok config add-authtoken <yours>)"
+  local u
+  if [ -n "$(link_pid)" ]; then
+    u="$(link_url)"
+  else
+    ensure_state_dir
+    touch "$LINK_LOG_FILE" && chmod 600 "$LINK_LOG_FILE"
+    nohup ngrok http "$PORT" --log stdout --log-format logfmt >>"$LINK_LOG_FILE" 2>&1 </dev/null &
+    echo $! >"$LINK_PID_FILE"
+    chmod 600 "$LINK_PID_FILE"
+    # The Mac does not idle to sleep while the link is up (a closed lid still sleeps it).
+    nohup caffeinate -i -w "$(cat "$LINK_PID_FILE")" >/dev/null 2>&1 &
+    local i
+    for i in $(seq 1 30); do
+      u="$(link_url)"
+      [ -n "$u" ] && break
+      sleep 1
+    done
+  fi
+  [ -n "$u" ] || die "ngrok is running but reports no address; see $LINK_LOG_FILE"
+  curl -s -m 15 "$u/health" | grep -q '"ok"' || die "the link $u does not reach the API; see $LINK_LOG_FILE"
+  say "the API is reachable at $u"
+  say "  a phone build bakes it: BUILDER_API_URL=$u (a free ngrok account keeps this address)"
+}
+
 cmd_lan() {
   if [ "${1:-}" = "stop" ]; then
     local pid; pid="$(lan_pid)"
@@ -527,6 +585,7 @@ case "${1:-}" in
   logs) shift; cmd_logs "$@" ;;
   reset) shift; cmd_reset "$@" ;;
   lan) shift; cmd_lan "$@" ;;
+  link) shift; cmd_link "$@" ;;
   iphone) shift; cmd_iphone "$@" ;;
   *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -159,6 +159,12 @@ section.
   the recording sat in a quarter of a grey frame, and first run storyboards skipped the label check
   (a route named ridegt-fonts would have put another repository's name in a label). A web still can
   take its own page size: the site's Projects page is a two column list at 820 points.
+- 12:10 OUTAGE, fixed: the laptop slept, both Cloudflare quick tunnels lost their addresses for good,
+  and build 6 had the dead one baked in ("Builda is not reachable"; no screenshots, nothing new). Build 7
+  (12:17) bakes the owner's ngrok account address instead, which a free account keeps for good:
+  after a sleep, `scripts/overnight_stack.sh link` brings it back with no rebuild. The address is
+  printed by `link` and never written into the repository. The install page is still a quick tunnel
+  (it only matters while installing); its address goes to the owner with each build.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

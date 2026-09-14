@@ -4,7 +4,7 @@
  * in ember on top (`callsView.PART_HUE`, chosen against burn's chart above), over hairline
  * gridlines labelled in tokens a call. A bar of several calls stands as high as ONE of them sent on
  * average (`CallBar.each`), so the axis means the same thing on every bar. A call that came back to
- * an expired cache is the tall amber bar, and a mark over it says how long it was away: its words
+ * an expired cache is the tall amber bar, and a mark over it says the gap before it: its words
  * at the top, a dotted leader in the neutral ink and a caret whose tip stops short of the bar
  * (`callsView.markShape`), so the mark is never read as the bar's height.
  *
@@ -63,7 +63,7 @@ type Laid = { x: number; w: number; read: number; fresh: number; reply: number; 
 
 /** A mark over a bar, laid out: its words when they fit. The leader and caret are in `markPaths`. */
 type MarkAt = { call: number; label: string; words: { left: number; align: 'left' | 'center' | 'right' } | null };
-/** The box a mark's words are set in: "46h 34m away" at the axis size is about 76 points. */
+/** The box a mark's words are set in: "46h 34m gap" at the axis size is about 70 points. */
 const MARK_W = 88;
 /** Where a mark's leader starts: under its words (`styles.mark`, top 2, 14 points of line). */
 const MARK_WORDS_END = 18;

@@ -53,11 +53,17 @@ export interface DemoGalleryProps {
   startId?: string | null;
   /** The project's name, for VoiceOver. */
   title: string;
+  /**
+   * The entries are the whole demo, so "3 of 7" and the dots may be shown. False while only a
+   * door's preview is in hand: then no count and no dots, because the whole list will change them
+   * (FOUND IN REVIEW, 2026-09-14: "1 of 3" jumped to "1 of 7"). Default true.
+   */
+  counted?: boolean;
   onClose: () => void;
   onError?: () => void;
 }
 
-export function DemoGallery({ visible, entries, sources, hue, startId, title, onClose, onError }: DemoGalleryProps) {
+export function DemoGallery({ visible, entries, sources, hue, startId, title, counted = true, onClose, onError }: DemoGalleryProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const reduce = useReduceMotion();
@@ -113,8 +119,8 @@ export function DemoGallery({ visible, entries, sources, hue, startId, title, on
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom }, stage]}>
             <View style={styles.header}>
-              <Text allowFontScaling={false} style={figure(26, GROUND.text)} accessibilityLabel={current ? `${title}, ${current.count}` : title}>
-                {current?.count ?? ''}
+              <Text allowFontScaling={false} style={figure(26, GROUND.text)} accessibilityLabel={current && counted ? `${title}, ${current.count}` : title}>
+                {counted ? (current?.count ?? '') : ''}
               </Text>
               <Pressable onPress={onClose} hitSlop={14} accessibilityRole="button" accessibilityLabel="Close the demo" style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                 <Text maxFontSizeMultiplier={1.4} style={type.lead}>
@@ -131,8 +137,9 @@ export function DemoGallery({ visible, entries, sources, hue, startId, title, on
                 itemWidth={itemW}
                 initialIndex={start}
                 onIndexChange={setIndex}
+                indicators={counted}
                 keyOf={(e) => e.id}
-                labelFor={(e) => e.a11y}
+                labelFor={(e) => (counted ? e.a11y : e.a11y.replace(/\. \d+ of \d+$/, ''))}
                 accessibilityLabel={`${title}, the demo`}
                 renderItem={(e, i, state) => (
                   <Slide

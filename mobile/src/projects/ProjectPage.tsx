@@ -96,7 +96,7 @@ export function ProjectPage() {
   const lastAt = page ? block?.projects.find((p) => p.key === page.detail.key)?.history.last_at ?? null : null;
   const { sessions, total, error, phone } = useProjectSessions(page?.detail.key ?? (key.length >= 12 ? key : null), firstAt);
   const [naming, setNaming] = useState(false);
-  const { demo, reload: reloadDemo } = useProjectDemo(page?.detail.key ?? null);
+  const { demo, reload: reloadDemo, deleted: demoDeleted } = useProjectDemo(page?.detail.key ?? null);
   const [galleryAt, setGalleryAt] = useState<string | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const openGallery = useCallback((id: string) => {
@@ -171,6 +171,7 @@ export function ProjectPage() {
                   held={galleryOpen}
                   onOpen={openGallery}
                   onDemoError={reloadDemo}
+                  onDemoDeleted={demoDeleted}
                 />
                 {page.time && stage >= 1 ? <TimeChapter page={page} hue={SPECTRUM[timeHue!]} inner={inner} /> : null}
                 {page.build && stage >= 2 ? <BuildChapter page={page} hue={SPECTRUM[buildHue!]} inner={inner} /> : null}
@@ -300,6 +301,7 @@ function HeroChapter({
   held,
   onOpen,
   onDemoError,
+  onDemoDeleted,
 }: {
   page: Page;
   hue: Hue;
@@ -314,6 +316,7 @@ function HeroChapter({
   held: boolean;
   onOpen: (id: string) => void;
   onDemoError: () => void;
+  onDemoDeleted: () => void;
 }) {
   const d = page.detail;
   const h = page.hero;
@@ -389,7 +392,7 @@ function HeroChapter({
     : [d.momentum, recent ? recent.lastSession : d.lastSession];
   return (
     <Section>
-      <HeroDemo band={band} demo={demo} hue={page.hue} width={width} held={held} onOpen={onOpen} onError={onDemoError} />
+      <HeroDemo band={band} demo={demo} hue={page.hue} width={width} held={held} onOpen={onOpen} onError={onDemoError} projectKey={d.key} onDeleted={onDemoDeleted} />
       {naming ? (
         <Block style={styles.block}>
           <NameField projectKey={d.key} current={d.label.source === 'nickname' ? d.label.text : null} onDone={onNamed} />

@@ -10,6 +10,9 @@
  *   4. the guard      a build without expo-video shows the poster and never throws
  *   5. the layout     where the video stands under the hero, and the door's hand of prints
  *   6. the wiring     nothing names expo-video but the one door to it, and every drawing lands
+ *   7. the review     (2026-09-14) a demo held under its own key; pictures not recorded marked on the
+ *                     door and named to VoiceOver; counts only from the whole list; one image per
+ *                     print, decoded at its size; deleting a demo from the page
  */
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -18,19 +21,31 @@ import { join, relative } from 'node:path';
 import { hasDash } from '../src/copy/plain';
 import {
   countLabel,
+  DELETE_DEMO,
+  deleteAsk,
+  deletedSentence,
+  demoFor,
+  demoReducer,
   demoWords,
   doorPrints,
+  doorPrintsLabel,
   durationWords,
   EMPTY_DEMO,
   gallery,
+  holdsWords,
   PHONE_ASPECT,
   PHONE_TOP_SHARE,
   SIDE_ASPECT,
   sourceLine,
   SOURCE_LINES,
+  sourceMark,
+  SOURCE_MARKS,
   STRIP_MAX_H,
   stripLayout,
+  UNKNOWN,
   WIDE_MAX_H,
+  type DemoLoad,
+  type DemoState,
 } from '../src/demos/model';
 import { guardedLoad, onceGuarded } from '../src/demos/videoGuard';
 
@@ -397,5 +412,183 @@ describe('the wiring', () => {
       const literals = [...src.matchAll(/'([^'\n]*)'|`([^`]*)`|>([^<>{}=();\n]+)</g)].map((m) => m[1] ?? m[2]?.replace(/\$\{[^}]*\}/g, ' ') ?? m[3] ?? '');
       for (const s of literals) expect({ file: relative(MOBILE, f), s, dash: hasDash(s) }).toEqual({ file: relative(MOBILE, f), s, dash: false });
     }
+  });
+});
+
+// ------------------------------------------------------------------ 7. the review's five
+
+const ready = (ids: string[]): DemoLoad => ({ kind: 'ready', entries: gallery(ids.map((id, i) => item({ id, position: i + 1 }))), sources: { file: {}, poster: {} } });
+const idsOf = (d: DemoLoad) => (d.kind === 'ready' ? d.entries.map((e) => e.id) : d.kind);
+
+describe('1. a demo is held under its own key', () => {
+  const A = 'a'.repeat(64);
+  const B = 'b'.repeat(64);
+
+  test('a new key starts from nothing: B never shows A\'s pictures, not even for a frame', () => {
+    let s: DemoState = { key: A, seq: 0, demo: UNKNOWN };
+    s = demoReducer(s, { type: 'answer', key: A, seq: 1, demo: ready(['a1', 'a2']) });
+    expect(idsOf(demoFor(s, A))).toEqual(['a1', 'a2']);
+    // The screen asks for B before the reducer has heard: what it shows is nothing, not A.
+    expect(demoFor(s, B)).toEqual(UNKNOWN);
+    s = demoReducer(s, { type: 'key', key: B });
+    expect(s.key).toBe(B);
+    expect(demoFor(s, B)).toEqual(UNKNOWN);
+  });
+
+  test('a failed read for B leaves nothing, never what A had', () => {
+    let s: DemoState = { key: A, seq: 0, demo: UNKNOWN };
+    s = demoReducer(s, { type: 'answer', key: A, seq: 1, demo: ready(['a1']) });
+    s = demoReducer(s, { type: 'key', key: B });
+    // A failure dispatches nothing: B stays unknown.
+    expect(demoFor(s, B)).toEqual(UNKNOWN);
+  });
+
+  test('a late answer for A lands after B was asked for: dropped', () => {
+    let s: DemoState = { key: A, seq: 0, demo: UNKNOWN };
+    s = demoReducer(s, { type: 'key', key: B });
+    s = demoReducer(s, { type: 'answer', key: B, seq: 5, demo: ready(['b1']) });
+    s = demoReducer(s, { type: 'answer', key: A, seq: 4, demo: ready(['a1']) });
+    expect(idsOf(demoFor(s, B))).toEqual(['b1']);
+  });
+
+  test('an older answer for the same key never replaces a newer one', () => {
+    let s: DemoState = { key: A, seq: 0, demo: UNKNOWN };
+    s = demoReducer(s, { type: 'answer', key: A, seq: 7, demo: ready(['new']) });
+    s = demoReducer(s, { type: 'answer', key: A, seq: 6, demo: ready(['old']) });
+    expect(idsOf(demoFor(s, A))).toEqual(['new']);
+  });
+
+  test('deleted is none, and a read that was in flight before the delete cannot bring it back', () => {
+    let s: DemoState = { key: A, seq: 0, demo: UNKNOWN };
+    s = demoReducer(s, { type: 'answer', key: A, seq: 1, demo: ready(['a1']) });
+    s = demoReducer(s, { type: 'deleted', key: A, seq: 3 });
+    expect(demoFor(s, A)).toEqual({ kind: 'none' });
+    s = demoReducer(s, { type: 'answer', key: A, seq: 2, demo: ready(['a1']) });
+    expect(demoFor(s, A)).toEqual({ kind: 'none' });
+    // A delete for another key changes nothing here.
+    expect(demoReducer(s, { type: 'deleted', key: B, seq: 9 })).toBe(s);
+  });
+
+  test('the hooks hold every answer under its key and its order', () => {
+    const src = code(readFileSync(join(MOBILE, 'src/demos/useDemo.ts'), 'utf8'));
+    expect(src).toContain('useReducer(demoReducer');
+    expect(src).toMatch(/dispatch\(\{ type: 'key', key \}\)/);
+    expect(src).toMatch(/dispatch\(\{ type: 'answer', key: k, seq, demo: got \}\)/);
+    expect(src).toContain('demo: demoFor(state, key)');
+    // The tab's lists and previews apply an answer for a key only when it is newer than the one shown.
+    expect((src.match(/\?\? 0\) < seq/g) ?? []).length).toBe(2);
+  });
+});
+
+describe('2. a picture that was not recorded says so, on the door and to VoiceOver', () => {
+  test('the marks: nothing on a recording, a few plain words on each fallback', () => {
+    expect(sourceMark('capture')).toBeNull();
+    expect(sourceMark('previous')).toBe('an earlier run');
+    expect(sourceMark('checkout')).toBe('from the repo');
+    expect(sourceMark('transcript')).toBe('a screenshot');
+    expect(sourceMark('something new')).toBeNull();
+    expect(Object.keys(SOURCE_MARKS).sort()).toEqual(Object.keys(SOURCE_LINES).sort());
+    // Short enough for a door's print, 74 points across at 10 points.
+    for (const m of Object.values(SOURCE_MARKS)) if (m) expect(m.length).toBeLessThanOrEqual(14);
+    const g = gallery([item({ id: 'r', source: 'checkout' }), item({ id: 'c', position: 2 })]);
+    expect(g.map((e) => e.mark)).toEqual(['from the repo', null]);
+  });
+
+  test('the door\'s label names where the top print came from', () => {
+    const prints = doorPrints([item({ id: 'x', label: 'the login screen', source: 'checkout' })]);
+    const label = doorPrintsLabel('Private project 3', prints[0]!, null);
+    expect(label).toBe('Private project 3, its demo. On top, the login screen: from your repository, not recorded. Opens the demo.');
+    const rec = doorPrintsLabel('Private project 2', doorPrints(PUBLISHED)[2]!, null);
+    expect(rec).not.toMatch(/repository|screenshot|earlier run/);
+  });
+
+  test('the door draws the mark on every print that has one, and the pile does too', () => {
+    const door = code(readFileSync(join(MOBILE, 'src/demos/DoorPrints.tsx'), 'utf8'));
+    expect(door).toMatch(/mark=\{prints\[i\]!\.mark\}/);
+    expect(door).toMatch(/accessibilityLabel=\{doorPrintsLabel\(/);
+    const page = code(readFileSync(join(MOBILE, 'src/demos/PageDemo.tsx'), 'utf8'));
+    expect(page).toMatch(/mark=\{s\.mark\}/);
+    // The mark sits on the ground's own dark, not a tinted chip.
+    const print = code(readFileSync(join(MOBILE, 'src/demos/Print.tsx'), 'utf8'));
+    expect(print).toMatch(/mark: \{[^}]*backgroundColor: GROUND\.bg/);
+  });
+});
+
+describe('3. a count is said only from the whole list', () => {
+  test('what a demo holds, counted from the whole of it', () => {
+    const whole = gallery(PUBLISHED);
+    expect(holdsWords(whole)).toBe('a 28 second video and 6 stills');
+    expect(holdsWords(gallery([item({ id: 'one' })]))).toBe('1 still');
+    expect(holdsWords([])).toBeNull();
+  });
+
+  test('the door says how much only once the list is in: never the preview\'s three as the demo', () => {
+    const preview = doorPrints(PUBLISHED);
+    expect(preview.length).toBe(3);
+    const before = doorPrintsLabel('Private project 2', preview[2]!, null);
+    expect(before).not.toMatch(/\d+ of \d+|3 stills|\bstills?\b.*\d/);
+    const after = doorPrintsLabel('Private project 2', preview[2]!, gallery(PUBLISHED));
+    expect(after).toBe('Private project 2, its demo: a 28 second video and 6 stills. On top, the Projects tab. Opens the demo.');
+  });
+
+  test('the tab reads the whole list of every project with prints, and the gallery counts only that', () => {
+    const tab = code(readFileSync(join(MOBILE, 'src/projects/ProjectsScreen.tsx'), 'utf8'));
+    expect(tab).toContain('useDemoLists(listKeys)');
+    expect(tab).toMatch(/counted=\{whole !== null\}/);
+    expect(tab).not.toContain('useProjectDemo(');
+    const g = code(readFileSync(join(MOBILE, 'src/demos/Gallery.tsx'), 'utf8'));
+    expect(g).toMatch(/\{counted \? \(current\?\.count \?\? ''\) : ''\}/);
+    expect(g).toMatch(/indicators=\{counted\}/);
+  });
+});
+
+describe('4. a print is one image, decoded at its own size', () => {
+  test('one Image in the print, on both sides of the transition, early resized', () => {
+    const src = code(readFileSync(join(MOBILE, 'src/demos/Print.tsx'), 'utf8'));
+    expect((src.match(/<Image\b/g) ?? []).length).toBe(1);
+    // Decoded at the print's own size where a print is small (a door, the pile), after the view has
+    // its frame, so a recycled view's old bounds never size the decode.
+    expect(src).toContain("enforceEarlyResizing={fit === 'cover'}");
+    expect(src).toMatch(/source=\{src && sized \?/);
+    expect(src).toContain('onLayout={onLayout}');
+    expect(src).toContain('allowDownscaling');
+    expect(src).toMatch(/style=\{\{ width, height \}\}/);
+    // Both sides are one view with the same key and the same picture first in it: React keeps the
+    // image mounted across the swap, and no hidden copy loads under the cover.
+    expect(src).toMatch(/<View key="print"/);
+    expect(src).toMatch(/first=\{side\(true\)\} second=\{side\(false\)\}/);
+    expect(src).not.toMatch(/opacity: 0/);
+    // One cache entry a file, shared by the door, the pile and the gallery.
+    expect(src).toContain('cacheKey: `demo-${id}`');
+  });
+});
+
+describe('5. deleting a demo from the page', () => {
+  const whole = gallery(PUBLISHED);
+
+  test('it asks first, saying exactly what leaves, and that the Mac keeps its copy', () => {
+    expect(deleteAsk(whole)).toBe(`A 28 second video and 6 stills leave your account and this phone. ${DELETE_DEMO.mac}`);
+    expect(deleteAsk([])).toMatch(/^Every file of it leaves/);
+  });
+
+  test('then says what the server removed, in the server\'s own count', () => {
+    expect(deletedSentence(7, whole)).toBe(`Deleted a 28 second video and 6 stills from your account. ${DELETE_DEMO.mac}`);
+    // A publish half way in was removed with it: the count is files, not dressed as the demo.
+    expect(deletedSentence(9, whole)).toBe(`Deleted 9 files from your account. ${DELETE_DEMO.mac}`);
+    expect(deletedSentence(0, whole)).toMatch(/nothing to delete/);
+    for (const s of [deleteAsk(whole), deletedSentence(7, whole), deletedSentence(1, gallery([item({ id: 'o' })])), ...Object.values(DELETE_DEMO)]) {
+      expect({ s, dash: hasDash(s) }).toEqual({ s, dash: false });
+    }
+  });
+
+  test('the request is sent only from the question\'s destructive answer, and the page forgets the demo only after the server answers', () => {
+    const page = code(readFileSync(join(MOBILE, 'src/demos/PageDemo.tsx'), 'utf8'));
+    expect((page.match(/api\.deleteProjectMedia\(/g) ?? []).length).toBe(1);
+    expect(page).toMatch(/Alert\.alert\(DELETE_DEMO\.title, deleteAsk\(entries\)/);
+    expect(page).toMatch(/style: 'destructive', onPress: \(\) => void remove\(\)/);
+    const i = page.indexOf('await api.deleteProjectMedia(');
+    expect(page.indexOf('onDeleted()', i)).toBeGreaterThan(i);
+    const route = code(readFileSync(join(MOBILE, 'src/projects/ProjectPage.tsx'), 'utf8'));
+    expect(route).toMatch(/onDeleted=\{onDemoDeleted\}/);
   });
 });

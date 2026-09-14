@@ -21,10 +21,11 @@
  * application only).
  */
 import React, { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 
 import { n } from '../copy/numbers';
+import { api } from '../data/client';
 import { FRINGE } from '../insights/Band';
 import { numSpec } from '../insights/format';
 import { figure, GUTTER, type, Words } from '../insights/kit';
@@ -35,7 +36,7 @@ import { EdgeDither, Stack } from '../ui/bits/components';
 import { useClockReached } from '../you/parts';
 import { PageEmptyDemo } from './EmptyPrint';
 import { LoopVideo } from './LoopVideo';
-import { demoWords, PHONE_ASPECT, stripLayout, type GalleryEntry, type StripLayout } from './model';
+import { DELETE_DEMO, deleteAsk, deletedSentence, demoWords, PHONE_ASPECT, stripLayout, type GalleryEntry, type StripLayout } from './model';
 import { Print } from './Print';
 import type { DemoLoad, DemoSources } from './useDemo';
 
@@ -58,6 +59,10 @@ export interface HeroDemoProps {
   /** Open the gallery on this file. */
   onOpen: (id: string) => void;
   onError: () => void;
+  /** The project's full key: what a delete names. */
+  projectKey: string;
+  /** The server deleted it: the page shows nothing of it from now on. */
+  onDeleted: () => void;
 }
 
 /**
@@ -65,8 +70,9 @@ export interface HeroDemoProps {
  * where its solid ink ends; until then, and with no video, the band stands alone and the demo
  * (the pile, or the empty print) follows it as a block of its own.
  */
-export function HeroDemo({ band, demo, hue, width, held, onOpen, onError }: HeroDemoProps) {
+export function HeroDemo({ band, demo, hue, width, held, onOpen, onError, projectKey, onDeleted }: HeroDemoProps) {
   const [bandH, setBandH] = useState(0);
+  const [said, setSaid] = useState<string | null>(null);
   const entries = demo.kind === 'ready' ? demo.entries : [];
   const video = entries.find((e) => e.kind === 'video') ?? null;
   const stills = useMemo(() => entries.filter((e) => e.kind === 'image'), [entries]);
@@ -101,12 +107,58 @@ export function HeroDemo({ band, demo, hue, width, held, onOpen, onError }: Hero
           <StillsWithWords stills={stills} sources={sources} width={width - GUTTER * 2} hue={hue} onOpen={onOpen} onError={onError} words={words} />
         </Block>
       ) : null}
+      {demo.kind === 'ready' ? (
+        <Block style={styles.remove}>
+          <DeleteDemo projectKey={projectKey} entries={entries} onDeleted={onDeleted} onSaid={setSaid} />
+        </Block>
+      ) : null}
       {demo.kind === 'none' ? (
         <Block style={styles.below}>
+          {said ? <Words style={[type.dim, styles.said]}>{said}</Words> : null}
           <PageEmptyDemo hue={hue} width={width - GUTTER * 2} />
         </Block>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Deleting a demo from the page (docs/demos.md, "What leaves the Mac"): one quiet line, a question
+ * that says exactly what leaves, then `DELETE /v1/projects/{key}/media`, which removes every row
+ * and every file in one request, and a sentence with the server's own count. Nothing is taken off
+ * the page until the server has answered; a failure says so and leaves the demo where it was.
+ */
+function DeleteDemo({ projectKey, entries, onDeleted, onSaid }: { projectKey: string; entries: readonly GalleryEntry[]; onDeleted: () => void; onSaid: (s: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const remove = useCallback(async () => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      const { deleted } = await api.deleteProjectMedia(projectKey);
+      onSaid(deletedSentence(deleted, entries));
+      onDeleted();
+    } catch (e) {
+      setFailed(`The demo was not deleted: ${e instanceof Error && e.message ? e.message.replace(/\.?$/, '.') : 'the server did not answer.'}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [projectKey, entries, onDeleted, onSaid]);
+  const ask = useCallback(() => {
+    Alert.alert(DELETE_DEMO.title, deleteAsk(entries), [
+      { text: DELETE_DEMO.keep, style: 'cancel' },
+      { text: DELETE_DEMO.confirm, style: 'destructive', onPress: () => void remove() },
+    ]);
+  }, [entries, remove]);
+  return (
+    <View style={{ gap: 6 }}>
+      <Pressable onPress={ask} disabled={busy} hitSlop={10} accessibilityRole="button" accessibilityHint={deleteAsk(entries)} style={({ pressed }) => ({ opacity: pressed || busy ? 0.5 : 1, alignSelf: 'flex-start' })}>
+        <Text maxFontSizeMultiplier={1.4} style={[type.meta, styles.deleteWord]}>
+          {DELETE_DEMO.link}
+        </Text>
+      </Pressable>
+      {failed ? <Words style={type.meta}>{failed}</Words> : null}
+    </View>
   );
 }
 
@@ -235,7 +287,7 @@ function Pile({
           const s = stills[i]!;
           return (
             <Pressable onPress={() => onOpen(s.id)} accessibilityRole="button" accessibilityLabel={`Open the gallery on ${s.label}`} disabled={!state.top}>
-              <Print id={s.id} src={sources.file[s.id]} width={cardW} height={cardH} arrive={i === 0 ? develop : undefined} hue={hue} wait={GROUND.card} onError={onError} />
+              <Print id={s.id} src={sources.file[s.id]} width={cardW} height={cardH} arrive={i === 0 ? develop : undefined} hue={hue} wait={GROUND.card} mark={s.mark} onError={onError} />
             </Pressable>
           );
         }}
@@ -249,6 +301,9 @@ const styles = StyleSheet.create({
   side: { alignItems: 'flex-start' },
   caption: { paddingHorizontal: GUTTER, marginTop: 10 },
   below: { paddingHorizontal: GUTTER, marginTop: 22 },
+  remove: { paddingHorizontal: GUTTER, marginTop: 10 },
+  deleteWord: { color: GROUND.dim, textDecorationLine: 'underline' },
+  said: { marginBottom: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   wordsBeside: { flex: 1, gap: 6 },
   wordsUnder: { gap: 6, marginTop: 6, paddingRight: 4 },

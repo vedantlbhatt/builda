@@ -28,7 +28,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { n } from '../copy/numbers';
 import { DemoGallery } from '../demos/Gallery';
-import { useDemoPreviews, useProjectDemo } from '../demos/useDemo';
+import { useDemoLists, useDemoPreviews, type DemoLoad } from '../demos/useDemo';
 import { Band, BandWords } from '../insights/Band';
 import { CreaturePrint } from '../insights/Creature';
 import { numSpec } from '../insights/format';
@@ -91,9 +91,13 @@ export function ProjectsScreen() {
   const inner = width - GUTTER * 2;
   const answered = view?.comparisons.filter((c) => c.answered).length ?? 0;
 
-  // The demos: every door's prints in one request, and the gallery of the one a finger opened.
+  // The demos: every door's prints in one request; then the whole list of each project that has
+  // prints, so a door counts what its demo holds and the gallery opens on the whole of it, never on
+  // the preview's three (FOUND IN REVIEW, 2026-09-14: "1 of 3" jumping to "1 of 7").
   const doorKeys = useMemo(() => doors.map((d) => d.key), [doors]);
   const { previews, reload: reloadPreviews } = useDemoPreviews(doorKeys);
+  const listKeys = useMemo(() => doorKeys.filter((k) => (previews[k]?.prints.length ?? 0) > 0), [doorKeys, previews]);
+  const { lists, reload: reloadLists } = useDemoLists(listKeys);
   const phone = useDoorRecency(doorKeys);
   const recents = useMemo(() => {
     const now = Date.now();
@@ -105,15 +109,18 @@ export function ProjectsScreen() {
   }, [block, report, phone]);
   const [opened, setOpened] = useState<{ key: string; id: string | null } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const { demo: openedDemo, reload: reloadOpened } = useProjectDemo(opened?.key ?? null);
   const openDemo = useCallback((key: string, id: string | null) => {
     setOpened({ key, id });
     setGalleryOpen(true);
   }, []);
-  // Until the whole demo arrives, the gallery shows the prints the door already had.
+  // The opened project's own whole list; until it is in, that project's prints and no count at all
+  // (`DemoGallery counted`), so the gallery never shows a number it will change. Never another
+  // project's pictures: every list is held under its own key (`useDemoLists`).
   const galleryDoor = opened ? doors.find((d) => d.key === opened.key) ?? null : null;
-  const galleryEntries = openedDemo.kind === 'ready' ? openedDemo.entries : opened ? previews[opened.key]?.prints ?? [] : [];
-  const gallerySources = openedDemo.kind === 'ready' ? openedDemo.sources : opened ? previews[opened.key]?.sources ?? { file: {}, poster: {} } : { file: {}, poster: {} };
+  const openedList = opened ? lists[opened.key] : undefined;
+  const whole = openedList?.kind === 'ready' ? openedList : null;
+  const galleryEntries = whole ? whole.entries : opened ? previews[opened.key]?.prints ?? [] : [];
+  const gallerySources = whole ? whole.sources : opened ? previews[opened.key]?.sources ?? { file: {}, poster: {} } : { file: {}, poster: {} };
 
   return (
     <>
@@ -224,7 +231,16 @@ export function ProjectsScreen() {
 
                 {doors.map((d, i) =>
                   stage >= 4 + i ? (
-                    <ProjectDoorBand key={d.key} door={d} width={width} demo={previews[d.key]} recent={recents[d.key] ?? null} onOpenDemo={openDemo} onDemoError={reloadPreviews} />
+                    <ProjectDoorBand
+                      key={d.key}
+                      door={d}
+                      width={width}
+                      demo={previews[d.key]}
+                      whole={lists[d.key]?.kind === 'ready' ? (lists[d.key] as Extract<DemoLoad, { kind: 'ready' }>).entries : null}
+                      recent={recents[d.key] ?? null}
+                      onOpenDemo={openDemo}
+                      onDemoError={reloadPreviews}
+                    />
                   ) : null,
                 )}
 
@@ -257,8 +273,9 @@ export function ProjectsScreen() {
           hue={galleryDoor.hue}
           startId={opened.id}
           title={galleryDoor.label.text}
+          counted={whole !== null}
           onClose={() => setGalleryOpen(false)}
-          onError={reloadOpened}
+          onError={reloadLists}
         />
       ) : null}
     </>

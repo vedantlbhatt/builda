@@ -25,6 +25,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { DOOR_PRINTS, DoorPrints } from '../demos/DoorPrints';
+import type { GalleryEntry } from '../demos/model';
 import type { DoorDemo } from '../demos/useDemo';
 import { Band, BandWords, WORDS_AT } from '../insights/Band';
 import { fitSize } from '../insights/format';
@@ -64,6 +65,7 @@ export function ProjectDoorBand({
   door,
   width,
   demo,
+  whole = null,
   recent,
   onOpenDemo,
   onDemoError,
@@ -72,6 +74,8 @@ export function ProjectDoorBand({
   width: number;
   /** The demo's prints; undefined when the phone has not heard, and then no print is drawn at all. */
   demo?: DoorDemo;
+  /** The whole demo once its list has been read, null until then: what the prints' label counts. */
+  whole?: readonly GalleryEntry[] | null;
   /** The report's stage and last session reconciled with this phone's rows; null to say the report's. */
   recent?: Recency | null;
   onOpenDemo?: (key: string, id: string | null) => void;
@@ -85,7 +89,9 @@ export function ProjectDoorBand({
   const title = (recent ? recent.title : door.stage) ?? 'Project';
   // With news, the report's week is out of date: the phone's line, and where the report stops.
   const week = recent?.newer ? [recent.doorLine, recent.doorReport] : [door.momentum, door.hours ? null : (recent?.doorLine ?? door.lastSession)];
-  const a11y = recent?.newer ? `${door.label.text}. ${title}. ${recent.stageSentence ?? ''} Opens the project.` : door.a11y;
+  // The door's own short lines, never the page's count of sessions since: a door reads one saved row
+  // a project, and "after 1 more session" from one row is a count nobody measured.
+  const a11y = recent?.newer ? [`${door.label.text}.`, `${title}.`, recent.doorLine, recent.doorReport, 'Opens the project.'].filter(Boolean).join(' ') : door.a11y;
   return (
     <Section style={styles.section}>
       <Band hue={SPECTRUM[door.hue]} index={String(door.rank).padStart(2, '0')} title={title} onPress={() => router.push(`/project/${door.key}`)} accessibilityLabel={a11y}>
@@ -126,7 +132,7 @@ export function ProjectDoorBand({
       </Band>
       {prints ? (
         <Block enter={false} style={[styles.prints, { top }]}>
-          <DoorPrints prints={demo.prints} sources={demo.sources} hue={door.hue} label={door.label.text} onOpen={(id) => onOpenDemo(door.key, id)} onError={onDemoError} />
+          <DoorPrints prints={demo.prints} sources={demo.sources} hue={door.hue} label={door.label.text} whole={whole} onOpen={(id) => onOpenDemo(door.key, id)} onError={onDemoError} />
         </Block>
       ) : null}
     </Section>

@@ -10,6 +10,10 @@
  * throw a print off the screen). The TOP print arrives through the band's own pixels: it waits in
  * the band's ink, invisible on it, and prints in square by square once it has loaded
  * (`Print.tsx`, react-bits PixelTransition). With no demo, one blank print says how to make one.
+ *
+ * A print that was not recorded from the running app says so on its edge ("from the repo", "an
+ * earlier run"), and VoiceOver hears where the top one came from. FOUND IN REVIEW (2026-09-14):
+ * both were missing, and the label counted the preview's three stills as if they were the demo.
  */
 import React, { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
@@ -20,7 +24,7 @@ import { BounceCards } from '../ui/bits/components';
 import type { FanPose } from '../ui/bits/components/geometry';
 import { useClockReached } from '../you/parts';
 import { DoorEmptyPrint } from './EmptyPrint';
-import type { GalleryEntry } from './model';
+import { doorPrintsLabel, type GalleryEntry } from './model';
 import { Print } from './Print';
 import type { DemoSources } from './useDemo';
 
@@ -46,6 +50,7 @@ export function DoorPrints({
   sources,
   hue,
   label,
+  whole,
   onOpen,
   onError,
 }: {
@@ -54,6 +59,8 @@ export function DoorPrints({
   hue: HueName;
   /** The project's name, for VoiceOver. */
   label: string;
+  /** The whole demo once its list has been read, null until then: what VoiceOver counts. */
+  whole: readonly GalleryEntry[] | null;
   onOpen: (id: string) => void;
   onError?: () => void;
 }) {
@@ -80,31 +87,35 @@ export function DoorPrints({
   if (!open) return <View style={{ width: DOOR_PRINTS.width, height: DOOR_PRINTS.height }} />;
   const top = prints.length - 1;
   return (
-    <BounceCards
-      count={prints.length}
-      containerWidth={DOOR_PRINTS.width}
-      containerHeight={DOOR_PRINTS.height}
-      cardWidth={DOOR_PRINTS.printW}
-      cardHeight={DOOR_PRINTS.printH}
-      poses={poses}
-      spread={false}
-      shape="mark"
-      haptic="select"
-      onPress={onPress}
-      labelFor={(i) => `${label}, demo still ${i + 1} of ${prints.length}: ${prints[i]?.label ?? ''}. Opens the demo.`}
-      renderCard={(i) => (
-        <Print
-          id={prints[i]!.id}
-          src={sources.file[prints[i]!.id]}
-          width={DOOR_PRINTS.printW}
-          height={DOOR_PRINTS.printH}
-          // The top print waits in the band's ink and prints in through its cells; the rest are there.
-          arrive={i === top ? develop : undefined}
-          hue={hue}
-          wait={ink}
-          onError={onError}
-        />
-      )}
-    />
+    // One element for VoiceOver, as it is one press: what the demo holds (counted only from its
+    // whole list), the print on top and where it came from (`model.doorPrintsLabel`).
+    <View accessible accessibilityRole="button" accessibilityLabel={doorPrintsLabel(label, prints[top] ?? null, whole)} onAccessibilityTap={onPress}>
+      <BounceCards
+        count={prints.length}
+        containerWidth={DOOR_PRINTS.width}
+        containerHeight={DOOR_PRINTS.height}
+        cardWidth={DOOR_PRINTS.printW}
+        cardHeight={DOOR_PRINTS.printH}
+        poses={poses}
+        spread={false}
+        shape="mark"
+        haptic="select"
+        onPress={onPress}
+        renderCard={(i) => (
+          <Print
+            id={prints[i]!.id}
+            src={sources.file[prints[i]!.id]}
+            width={DOOR_PRINTS.printW}
+            height={DOOR_PRINTS.printH}
+            // The top print waits in the band's ink and prints in through its cells; the rest are there.
+            arrive={i === top ? develop : undefined}
+            hue={hue}
+            wait={ink}
+            mark={prints[i]!.mark}
+            onError={onError}
+          />
+        )}
+      />
+    </View>
   );
 }

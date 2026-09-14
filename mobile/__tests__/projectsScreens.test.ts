@@ -735,5 +735,8 @@ describe('the Projects tab leads with the projects', () => {
     for (const chart of ['<Rivers', '<RankRace', '<ComparisonBlock']) expect({ chart, after: at(chart) > doors }).toEqual({ chart, after: true });
     // The first door is revealed first, at the page's first stage.
     expect(src).toContain('stage >= 1 + i ?');
+    // The doors carry the numbers; a chapter after them carries none (no "01" read twice).
+    const chapters = src.slice(src.indexOf('<Rivers') - 2000);
+    expect(chapters.match(/<Band [^>]*index=/g) ?? []).toEqual([]);
   });
 });

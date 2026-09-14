@@ -11,11 +11,14 @@
  *                   for every door, `useDemoPreviews`), a tap opening the full screen gallery; or one
  *                   blank print saying how to make a demo. The stage is the report's reconciled with
  *                   the sessions this phone holds (`recency.ts`, `useDoorRecency.ts`)
- *   01 rivers       every project as a river of its hours, week by week, flowing in from the left
+ *   rivers          every project as a river of its hours, week by week, flowing in from the left
  *                   (`Rivers.tsx`); a tap holds one and names it
- *   02 the race     the projects re-ranking week by week, the race run left to right and the latest
+ *   the race        the projects re-ranking week by week, the race run left to right and the latest
  *                   week's order landing at the finish (`RankRace.tsx`)
- *   03 compare      the comparisons across projects, each a sentence with its two numbers
+ *   compare         the comparisons across projects, each a sentence with its two numbers
+ *
+ * The doors carry the numbers (a project's rank, "01 Active"); the chapters after them carry none,
+ * or "01" and "02" each read twice on one page (FOUND IN THE now3 PASS, 2026-09-14).
  *
  * The doors come first, right under the hero. The owner, 2026-09-14: "the projects page should
  * show a list of projects", and "where do I see the screenshots? I don't see them": the list of
@@ -169,7 +172,7 @@ export function ProjectsScreen() {
 
                 {stage >= 1 + doors.length && weekly && view.rows.length > 0 ? (
                   <Section style={styles.chapter}>
-                    <Band hue={SPECTRUM[riversHue!]} index="01" title="Rivers">
+                    <Band hue={SPECTRUM[riversHue!]} title="Rivers">
                       {weekly.refusal ? (
                         <BandWords delay={300}>
                           <Refusal onHue>{weekly.refusal}</Refusal>
@@ -196,7 +199,7 @@ export function ProjectsScreen() {
 
                 {stage >= 2 + doors.length && weekly && !weekly.refusal && race && race.leader ? (
                   <Section style={styles.chapter}>
-                    <Band hue={SPECTRUM[raceHue!]} index="02" title="The rank race">
+                    <Band hue={SPECTRUM[raceHue!]} title="The rank race">
                       <View style={styles.figureRow}>
                         <BandFigure spec={numSpec(race.leader.weeksLed, n(race.leader.weeksLed))} width={inner * 0.3} max={104} delay={200} />
                         <View style={{ flex: 1 }}>
@@ -227,7 +230,7 @@ export function ProjectsScreen() {
 
                 {stage >= 3 + doors.length && view.comparisons.length > 0 ? (
                   <Section style={styles.chapter}>
-                    <Band hue={SPECTRUM[compareHue!]} index="03" title="How they compare">
+                    <Band hue={SPECTRUM[compareHue!]} title="How they compare">
                       <View style={styles.figureRow}>
                         <BandFigure spec={numSpec(answered, n(answered))} width={inner * 0.3} max={104} delay={200} />
                         <View style={{ flex: 1 }}>

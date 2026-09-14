@@ -417,6 +417,13 @@ describe('what a tile says', () => {
     expect(m.dim).toBe(false);
   });
 
+  test('a zero file count is left out: helper agents touch files the map never counts', () => {
+    // FOUND IN THE now3 PASS (2026-09-14): "0 files" beside "Handing work to one helper agent".
+    const m = tileModel(row('c', { live_state: live({ map: { files: [], files_total: 0 } }) }), NOW);
+    expect(m.kind).toBe('working');
+    expect(m.files).toBeNull();
+  });
+
   test('working: the elapsed time, the drawn verdict, files touched and the ETA aged to now', () => {
     const m = tileModel(row('c', { live_state: live() }), NOW);
     expect(m.kind).toBe('working');

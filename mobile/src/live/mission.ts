@@ -279,7 +279,7 @@ export interface TileModel {
   verdict: TileVerdict | null;
   /** A state word when there is no verdict to draw ("starting"), else null. */
   stateWord: string | null;
-  /** Files the session touched (`map.files_total`); null when nothing measured it. */
+  /** Files the session touched (`map.files_total`); null when nothing measured it or it read zero (helpers' files never reach the map). */
   files: number | null;
   /** A finished tile's lines and commits, in place of files and the ETA. */
   landed: TileLanded | null;
@@ -467,8 +467,11 @@ export function tileModel(s: SessionDetail, nowMs: number, names?: RepoNames | n
   const verdict: TileVerdict | null = kind === 'working' && trajectory !== 'none' ? trajectory : null;
   const stateWord = kind === 'working' && verdict === null && s.live_state?.verdict.state === 'starting' ? 'starting' : null;
 
+  // A zero is left out, not printed: the map counts the files the session itself touched, and
+  // the files its helper agents touch never reach it, so "0 files" beside "Handing work to one
+  // helper agent" read as nothing done (FOUND IN THE now3 PASS, 2026-09-14). Absent, not zero.
   const total = s.live_state?.map?.files_total;
-  const files = kind === 'finished' || typeof total !== 'number' ? null : Math.max(0, Math.round(total));
+  const files = kind === 'finished' || typeof total !== 'number' || Math.round(total) <= 0 ? null : Math.round(total);
   const landed = kind === 'finished' ? landedOf(s) : null;
 
   let eta: string | null;

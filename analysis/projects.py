@@ -291,12 +291,15 @@ LAST_SESSION: dict[str, str] = {
     "one": "Last session yesterday.",
     "other": "Last session {n:day} ago.",
 }
+#: Which week is said, not implied: the report's last 7 days against the 7 before them, never a
+#: calendar week. FOUND IN THE now3 PASS (2026-09-14): "Up 452% on the week before" sat on a tab
+#: whose weeks run Monday to Monday and whose latest calendar week the Mac had read no time in.
 MOMENTUM_SENTENCES: dict[str, str | dict[str, str]] = {
-    "up": "Up {move} on the week before.",
-    "down": "Down {move} on the week before.",
-    "steady": "About the same as the week before.",
+    "up": "Up {move} in the last 7 days your Mac read, against the 7 before.",
+    "down": "Down {move} in the last 7 days your Mac read, against the 7 before.",
+    "steady": "About the same in the last 7 days your Mac read as the 7 before.",
     "below_session_floor": "Needs {needed:session} in each of the last two weeks to say which way it is going.",
-    "nothing_before": "Nothing with you there the week before, so there is nothing to compare with.",
+    "nothing_before": "Nothing with you there in the 7 days before the last 7 your Mac read, so there is nothing to compare with.",
 }
 
 #: Constants a phone screen names that no block carries.

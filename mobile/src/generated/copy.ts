@@ -683,11 +683,11 @@ export const PROJECT_LAST_SESSION = {
 
 /** `projects.MOMENTUM_SENTENCES`: by `direction`, or by `reason` on a refusal (`{move}` a share said by `shareWords`). */
 export const PROJECT_MOMENTUM = {
-  "up": "Up {move} on the week before.",
-  "down": "Down {move} on the week before.",
-  "steady": "About the same as the week before.",
+  "up": "Up {move} in the last 7 days your Mac read, against the 7 before.",
+  "down": "Down {move} in the last 7 days your Mac read, against the 7 before.",
+  "steady": "About the same in the last 7 days your Mac read as the 7 before.",
   "below_session_floor": "Needs {needed:session} in each of the last two weeks to say which way it is going.",
-  "nothing_before": "Nothing with you there the week before, so there is nothing to compare with.",
+  "nothing_before": "Nothing with you there in the 7 days before the last 7 your Mac read, so there is nothing to compare with.",
 } as const;
 
 /** `projects.COMPARISONS`: each metric's title, how its values are said, how it is compared and its sentences (`{high}`, `{low}` the projects, `{times}` by `timesWords`). */

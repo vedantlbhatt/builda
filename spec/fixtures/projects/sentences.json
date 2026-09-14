@@ -652,7 +652,7 @@
    "reason": null,
    "needed": null
   },
-  "sentence": "Up 413% on the week before."
+  "sentence": "Up 413% in the last 7 days your Mac read, against the 7 before."
  },
  {
   "kind": "momentum",
@@ -668,7 +668,7 @@
    "reason": null,
    "needed": null
   },
-  "sentence": "Down 42% on the week before."
+  "sentence": "Down 42% in the last 7 days your Mac read, against the 7 before."
  },
  {
   "kind": "momentum",
@@ -684,7 +684,7 @@
    "reason": null,
    "needed": null
   },
-  "sentence": "Down 100% on the week before."
+  "sentence": "Down 100% in the last 7 days your Mac read, against the 7 before."
  },
  {
   "kind": "momentum",
@@ -700,7 +700,7 @@
    "reason": null,
    "needed": null
   },
-  "sentence": "About the same as the week before."
+  "sentence": "About the same in the last 7 days your Mac read as the 7 before."
  },
  {
   "kind": "momentum",
@@ -732,7 +732,7 @@
    "reason": "nothing_before",
    "needed": null
   },
-  "sentence": "Nothing with you there the week before, so there is nothing to compare with."
+  "sentence": "Nothing with you there in the 7 days before the last 7 your Mac read, so there is nothing to compare with."
  },
  {
   "kind": "refusal",

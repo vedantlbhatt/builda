@@ -295,9 +295,13 @@ class Momentum(unittest.TestCase):
         m = pj._momentum(facts, NOW)
         self.assertEqual((m["direction"], m["reason"], m["attended_seconds_before"]), (None, "nothing_before", 0))
 
-    def test_the_copy_says_week_so_the_span_is_seven_days(self):
+    def test_the_copy_names_the_span_it_compares(self):
+        # It says the report's last 7 days against the 7 before, never "the week before", which
+        # read as a calendar week (the now3 pass, 2026-09-14).
         self.assertEqual(pj.MOMENTUM_DAYS, 7)
-        self.assertIn("week", pj.MOMENTUM_SENTENCES["up"])
+        for k in ("up", "down", "steady"):
+            self.assertIn(f"last {pj.MOMENTUM_DAYS} days", pj.MOMENTUM_SENTENCES[k])
+            self.assertNotIn("week", pj.MOMENTUM_SENTENCES[k])
 
 
 class Streaks(unittest.TestCase):

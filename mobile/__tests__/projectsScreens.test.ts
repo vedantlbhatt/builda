@@ -720,3 +720,20 @@ describe('the wiring', () => {
     }
   });
 });
+
+describe('the Projects tab leads with the projects', () => {
+  // The owner, 2026-09-14: "the projects page should show a list of projects", and "where do I
+  // see the screenshots? I don't see them": the doors, each with its prints, sat under eight
+  // screens of rivers, the race and the comparisons.
+  test('the doors come right after the hero, before every chart', () => {
+    const src = readFileSync(join(MOBILE, 'src/projects/ProjectsScreen.tsx'), 'utf8');
+    const at = (s: string) => src.indexOf(s, src.indexOf('export function ProjectsScreen'));
+    const hero = at('<HeroChapter');
+    const doors = at('<ProjectDoorBand');
+    expect(hero).toBeGreaterThan(0);
+    expect(doors).toBeGreaterThan(hero);
+    for (const chart of ['<Rivers', '<RankRace', '<ComparisonBlock']) expect({ chart, after: at(chart) > doors }).toEqual({ chart, after: true });
+    // The first door is revealed first, at the page's first stage.
+    expect(src).toContain('stage >= 1 + i ?');
+  });
+});

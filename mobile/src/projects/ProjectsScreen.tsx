@@ -5,17 +5,22 @@
  *   the hero        a band in your hue (the accent, your creature's): how many projects your Mac
  *                   holds and your hours with you there in the window, both counting up, and your
  *                   creature printed beside them
- *   01 rivers       every project as a river of its hours, week by week, flowing in from the left
- *                   (`Rivers.tsx`); a tap holds one and names it
- *   02 the race     the projects re-ranking week by week, the race run left to right and the latest
- *                   week's order landing at the finish (`RankRace.tsx`)
- *   03 compare      the comparisons across projects, each a sentence with its two numbers
  *   the doors       each project as a band in its own hue: its name, its stage, its hours and share
  *                   counting up, its week in words; the band opens its page. Beside the words, the
  *                   prints of its demo fanned like prints (`src/demos/DoorPrints.tsx`, one request
  *                   for every door, `useDemoPreviews`), a tap opening the full screen gallery; or one
  *                   blank print saying how to make a demo. The stage is the report's reconciled with
  *                   the sessions this phone holds (`recency.ts`, `useDoorRecency.ts`)
+ *   01 rivers       every project as a river of its hours, week by week, flowing in from the left
+ *                   (`Rivers.tsx`); a tap holds one and names it
+ *   02 the race     the projects re-ranking week by week, the race run left to right and the latest
+ *                   week's order landing at the finish (`RankRace.tsx`)
+ *   03 compare      the comparisons across projects, each a sentence with its two numbers
+ *
+ * The doors come first, right under the hero. The owner, 2026-09-14: "the projects page should
+ * show a list of projects", and "where do I see the screenshots? I don't see them": the list of
+ * projects, with each one's prints, sat under eight screens of rivers, the race and ten
+ * comparisons, so the tab read as charts and the screenshots were never reached.
  *
  * Every number is the report's (`src/projects/model.ts`, pinned to the engine's words), every
  * refusal is a sentence, and a project with nothing in the window says so instead of showing 0.
@@ -81,8 +86,9 @@ export function ProjectsScreen() {
   const hero = useMemo(() => (view && block ? projectsHero(view, block, report) : null), [view, block, report]);
   const doors = useMemo(() => (view && block ? projectDoors(view, block, report, Date.now(), registry) : []), [view, block, report, registry]);
   const hues = useMemo(() => (block ? projectHues(block.projects, registry) : {}), [block, registry]);
+  // The chapters follow the doors now: the first clears the last door's hue, and nothing follows the last.
   const [riversHue, raceHue, compareHue] = useMemo(
-    () => chapterHues(['cobalt', 'heather', 'brass'], [accent.name, ...doors.map((d) => d.hue)], accent.name, doors[0]?.hue ?? null),
+    () => chapterHues(['cobalt', 'heather', 'brass'], [accent.name, ...doors.map((d) => d.hue)], doors[doors.length - 1]?.hue ?? accent.name, null),
     [accent.name, doors],
   );
   const heroHue: Hue = useMemo(() => ({ ink: accent.ink, partner: accent.partner, light: accent.light }), [accent.ink, accent.partner, accent.light]);
@@ -146,7 +152,22 @@ export function ProjectsScreen() {
               <>
                 <HeroChapter hero={hero} hue={heroHue} width={width} animal={accent.animal} empty={view.rows.length === 0} />
 
-                {stage >= 1 && weekly && view.rows.length > 0 ? (
+                {doors.map((d, i) =>
+                  stage >= 1 + i ? (
+                    <ProjectDoorBand
+                      key={d.key}
+                      door={d}
+                      width={width}
+                      demo={previews[d.key]}
+                      whole={lists[d.key]?.kind === 'ready' ? (lists[d.key] as Extract<DemoLoad, { kind: 'ready' }>).entries : null}
+                      recent={recents[d.key] ?? null}
+                      onOpenDemo={openDemo}
+                      onDemoError={reloadPreviews}
+                    />
+                  ) : null,
+                )}
+
+                {stage >= 1 + doors.length && weekly && view.rows.length > 0 ? (
                   <Section style={styles.chapter}>
                     <Band hue={SPECTRUM[riversHue!]} index="01" title="Rivers">
                       {weekly.refusal ? (
@@ -173,7 +194,7 @@ export function ProjectsScreen() {
                   </Section>
                 ) : null}
 
-                {stage >= 2 && weekly && !weekly.refusal && race && race.leader ? (
+                {stage >= 2 + doors.length && weekly && !weekly.refusal && race && race.leader ? (
                   <Section style={styles.chapter}>
                     <Band hue={SPECTRUM[raceHue!]} index="02" title="The rank race">
                       <View style={styles.figureRow}>
@@ -204,7 +225,7 @@ export function ProjectsScreen() {
                   </Section>
                 ) : null}
 
-                {stage >= 3 && view.comparisons.length > 0 ? (
+                {stage >= 3 + doors.length && view.comparisons.length > 0 ? (
                   <Section style={styles.chapter}>
                     <Band hue={SPECTRUM[compareHue!]} index="03" title="How they compare">
                       <View style={styles.figureRow}>
@@ -228,21 +249,6 @@ export function ProjectsScreen() {
                       ))}
                   </Section>
                 ) : null}
-
-                {doors.map((d, i) =>
-                  stage >= 4 + i ? (
-                    <ProjectDoorBand
-                      key={d.key}
-                      door={d}
-                      width={width}
-                      demo={previews[d.key]}
-                      whole={lists[d.key]?.kind === 'ready' ? (lists[d.key] as Extract<DemoLoad, { kind: 'ready' }>).entries : null}
-                      recent={recents[d.key] ?? null}
-                      onOpenDemo={openDemo}
-                      onDemoError={reloadPreviews}
-                    />
-                  ) : null,
-                )}
 
                 {stage >= 4 + doors.length ? (
                   <Section style={styles.foot}>

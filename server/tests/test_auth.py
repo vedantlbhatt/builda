@@ -458,31 +458,90 @@ def test_refresh_rotates_and_reuse_actually_revokes(client, pairing_user):
     )
     assert r.status_code == 404, "authenticated, but no such pairing code"
 
+    # The successor is redeemed, so the phone had the answer: the spent token is not a
+    # retry any more (REFRESH_RETRY_GRACE_SECONDS), and replaying it is reuse.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair1["refresh_token"]})
+    assert r.status_code == 200, r.text
+    pair2 = r.json()
+
     # Replay the spent token.
     r = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
     assert r.status_code == 401
     assert "reuse" in r.json()["detail"]
 
+    assert _chain(pairing_user) == [True, True, True], "the whole chain must be revoked"
+
+    # And the not-yet-used successor is dead too.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair2["refresh_token"]})
+    assert r.status_code == 401
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": "never-issued"})
+    assert r.status_code == 401
+
+
+def _chain(user_id: str) -> list[bool]:
+    """Whether each of the user's refresh tokens is revoked, oldest first."""
     with owner_engine().connect() as c:
         rows = c.execute(
             text(
                 """
                 SELECT t.revoked_at FROM device_tokens t
                 JOIN devices d ON d.id = t.device_id
-                WHERE d.user_id = :u
+                WHERE d.user_id = :u ORDER BY t.issued_at, t.id
                 """
             ),
-            {"u": pairing_user},
+            {"u": user_id},
         ).all()
-    assert len(rows) == 2
-    assert all(r.revoked_at is not None for r in rows), "the whole chain must be revoked"
+    return [r.revoked_at is not None for r in rows]
 
-    # And the not-yet-used successor is dead too.
-    r = client.post("/v1/auth/refresh", json={"refresh_token": pair1["refresh_token"]})
-    assert r.status_code == 401
 
-    r = client.post("/v1/auth/refresh", json={"refresh_token": "never-issued"})
+def test_a_refresh_whose_answer_was_lost_is_retried_not_a_sign_out(client, pairing_user):
+    """MEASURED 2026-09-14: the simulator's app reloaded between the server's rotation and
+    saving the new pair, presented the spent token 3 seconds later, and was signed out by
+    reuse detection. A phone on cellular losing one response is the same shape: inside the
+    grace, with the successor never redeemed, the spent token gets a new pair instead."""
+    code = _approved_grant(client, pairing_user)
+    pair0 = client.post("/v1/auth/device/poll", json={"device_code": code}).json()
+    lost = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]}).json()
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
+    assert r.status_code == 200, r.text
+    again = r.json()
+    assert again["refresh_token"] not in (pair0["refresh_token"], lost["refresh_token"])
+    # The spent token, the lost successor revoked in its place, the new one live.
+    assert _chain(pairing_user) == [False, True, False]
+
+    # The new pair is the chain now.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": again["refresh_token"]})
+    assert r.status_code == 200, r.text
+
+    # The lost answer surfacing later is a revoked token: reuse, and the chain ends.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": lost["refresh_token"]})
     assert r.status_code == 401
+    assert "reuse" in r.json()["detail"]
+    assert all(_chain(pairing_user))
+
+
+def test_a_spent_token_past_the_grace_is_reuse(client, pairing_user):
+    from builder.auth import REFRESH_RETRY_GRACE_SECONDS
+
+    code = _approved_grant(client, pairing_user)
+    pair0 = client.post("/v1/auth/device/poll", json={"device_code": code}).json()
+    client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
+    with owner_engine().begin() as c:
+        c.execute(
+            text(
+                "UPDATE device_tokens t SET used_at = used_at - make_interval(secs => :g) "
+                "FROM devices d WHERE d.id = t.device_id AND d.user_id = :u "
+                "AND t.used_at IS NOT NULL"
+            ),
+            {"u": pairing_user, "g": REFRESH_RETRY_GRACE_SECONDS + 1},
+        )
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
+    assert r.status_code == 401
+    assert "reuse" in r.json()["detail"]
+    assert all(_chain(pairing_user))
 
 
 def test_revoked_device_is_401_within_the_token_ttl(client, pairing_user):

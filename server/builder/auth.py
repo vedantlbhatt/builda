@@ -128,6 +128,21 @@ def issue_refresh_token(db, device_id: str, prev_id: str | None = None) -> str:
     return raw
 
 
+#: A refresh whose ANSWER never reached the phone: the server spent the token and minted its
+#: successor, the phone never saw the successor, and presents the spent one again. MEASURED
+#: 2026-09-14 on the local stack: the simulator's app reloaded between the server's rotation
+#: (12:31:30) and saving the new pair, presented the spent token 3 seconds later, and every token
+#: for the device was revoked, signing the person out through their own app. A phone on cellular
+#: that loses one response is the same shape. Within this window, and ONLY while the successor has
+#: never been redeemed, the spent token is a retry: the unused successor is revoked and a new
+#: pair issued in its place. Once the successor has been redeemed, or after the window, it is
+#: reuse and the whole chain goes, as before. 60 s: the longest grace the common identity
+#: providers offer for rotation (Okta's), twenty times the 3 s measured. The cost is bounded: a
+#: thief replaying inside the window revokes the phone's successor, and the phone's next refresh
+#: presents that revoked token, which is reuse, and ends both chains.
+REFRESH_RETRY_GRACE_SECONDS = 60
+
+
 def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     """Exchange a refresh token for a new pair, detecting reuse.
 
@@ -160,13 +175,21 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     if row is None:
         raise HTTPException(401, "unknown refresh token")
 
-    if row.used_at is not None or row.revoked_at is not None:
+    def reuse() -> HTTPException:
         db.execute(
             text("UPDATE device_tokens SET revoked_at = now() WHERE device_id = :d"),
             {"d": str(row.device_id)},
         )
         db.commit()
-        raise HTTPException(401, "refresh token reuse detected; all tokens for this device revoked")
+        return HTTPException(
+            401, "refresh token reuse detected; all tokens for this device revoked"
+        )
+
+    # A revoked token is never a retry; a spent one may be (REFRESH_RETRY_GRACE_SECONDS).
+    retry = row.revoked_at is None and row.used_at is not None
+    spent_late = row.used_at is not None and not _within_retry_grace(db, row.id)
+    if row.revoked_at is not None or spent_late:
+        raise reuse()
 
     if row.expires_at < datetime.now(UTC):
         raise HTTPException(401, "refresh token expired")
@@ -182,28 +205,57 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     if revoked is None or revoked.revoked_at is not None:
         raise HTTPException(401, "device revoked")
 
-    # Compare-and-set, not check-then-act. Under READ COMMITTED two presentations of the
-    # same token both pass the Python-side check above; the second's unconditional UPDATE
-    # would wait on the row lock, re-match, and succeed, leaving two live chains and no
-    # reuse ever detected. Zero rows here means someone else spent it first — treat it as
-    # reuse, exactly like an already-used row.
-    spent = db.execute(
-        text(
-            "UPDATE device_tokens SET used_at = now() "
-            "WHERE id = :i AND used_at IS NULL AND revoked_at IS NULL RETURNING id"
-        ),
-        {"i": str(row.id)},
-    ).first()
-    if spent is None:
-        db.execute(
-            text("UPDATE device_tokens SET revoked_at = now() WHERE device_id = :d"),
-            {"d": str(row.device_id)},
-        )
-        db.commit()
-        raise HTTPException(401, "refresh token reuse detected; all tokens for this device revoked")
+    if retry:
+        # The retry of a lost answer: the successor nobody has redeemed is revoked, in one
+        # compare-and-set that also re-checks the window, and a new successor takes its place.
+        # Zero rows means the successor was redeemed (the answer arrived after all) or the
+        # window closed while this ran: reuse.
+        replaced = db.execute(
+            text(
+                "UPDATE device_tokens SET revoked_at = now() "
+                "WHERE prev_id = :i AND used_at IS NULL AND revoked_at IS NULL "
+                "AND (SELECT used_at FROM device_tokens WHERE id = :i) "
+                ">= now() - make_interval(secs => :g) "
+                "RETURNING id"
+            ),
+            {"i": str(row.id), "g": REFRESH_RETRY_GRACE_SECONDS},
+        ).all()
+        if len(replaced) != 1:
+            raise reuse()
+    else:
+        # Compare-and-set, not check-then-act. Under READ COMMITTED two presentations of the
+        # same token both pass the Python-side check above; the second's unconditional UPDATE
+        # would wait on the row lock, re-match, and succeed, leaving two live chains and no
+        # reuse ever detected. Zero rows here means someone else spent it first — treat it as
+        # reuse, exactly like an already-used row.
+        spent = db.execute(
+            text(
+                "UPDATE device_tokens SET used_at = now() "
+                "WHERE id = :i AND used_at IS NULL AND revoked_at IS NULL RETURNING id"
+            ),
+            {"i": str(row.id)},
+        ).first()
+        if spent is None:
+            raise reuse()
     new_refresh = issue_refresh_token(db, str(row.device_id), prev_id=str(row.id))
     access = issue_access_token(str(user_id), str(row.device_id))
     return access, new_refresh, str(user_id)
+
+
+def _within_retry_grace(db, token_id) -> bool:
+    """The spent token was spent inside `REFRESH_RETRY_GRACE_SECONDS` and its successor has
+    never been redeemed nor revoked: the shape of a retry after a lost answer."""
+    return bool(
+        db.execute(
+            text(
+                "SELECT 1 FROM device_tokens t WHERE t.id = :i "
+                "AND t.used_at >= now() - make_interval(secs => :g) "
+                "AND EXISTS (SELECT 1 FROM device_tokens s WHERE s.prev_id = t.id "
+                "AND s.used_at IS NULL AND s.revoked_at IS NULL)"
+            ),
+            {"i": str(token_id), "g": REFRESH_RETRY_GRACE_SECONDS},
+        ).first()
+    )
 
 
 # --------------------------------------------------------------------------- devices

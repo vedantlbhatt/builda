@@ -82,7 +82,9 @@ export function RecapCard({ model, width, scheme = 'dark', accent }: Props) {
   const stats: [string, string][] = [[duration(model.activeSeconds), 'active']];
   if (model.commits > 0) stats.push([`${model.commits}`, 'commits']);
   if (model.agentLines > 0) stats.push([`+${model.agentLines.toLocaleString()}`, 'lines']);
-  if (model.filesTouched > 0) stats.push([`${model.filesTouched}`, 'files']);
+  // Touched, reads included: the title counts the files CHANGED ("seven source files"), so a bare
+  // "files" read as a second count of the same thing ("28 files"; FOUND IN THE now3 PASS).
+  if (model.filesTouched > 0) stats.push([`${model.filesTouched}`, 'files touched']);
   stats.push([`${model.prompts}`, model.prompts === 1 ? 'prompt' : 'prompts']);
   // Tokens only when the harness reports them. Cursor never does, and a "0" there reads
   // as a bug in Builda rather than as a fact about Cursor.

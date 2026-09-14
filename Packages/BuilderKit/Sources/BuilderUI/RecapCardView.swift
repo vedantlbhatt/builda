@@ -148,7 +148,8 @@ public struct RecapCardView: View {
             if model.agentLinesAdded > 0 {
                 stat("+\(int(model.agentLinesAdded))", "lines")
             }
-            if model.filesTouched > 0 { stat("\(model.filesTouched)", "files") }
+            // Touched, reads included, never a bare "files" beside a title that counts files changed.
+            if model.filesTouched > 0 { stat("\(model.filesTouched)", "files touched") }
             stat("\(model.prompts)", model.prompts == 1 ? "prompt" : "prompts")
             // Tokens appear only when the harness actually reports them. Cursor never
             // does, and a "0" there would read as a bug in Builder rather than as a fact

@@ -48,7 +48,7 @@ import { COUNT_MS, ease, phase, SECTION_CLOCK_MS } from '../insights/motion';
 import { GROUND } from '../insights/palette';
 import { useClock, useReducedSV } from '../insights/reveal';
 import { MASKED_DOLLARS } from '../you/numbers';
-import { hitTest, LABEL_KNOCKOUT_PAD, litBy, type FlowNode, type LaidLabel, type MoneyFlow, type Ribbon, type SankeyLayout } from './flow';
+import { hitTest, LABEL_KNOCKOUT_PAD, labelNameLines, litBy, type FlowNode, type LaidLabel, type MoneyFlow, type Ribbon, type SankeyLayout } from './flow';
 
 // ------------------------------------------------------------------ timing (above the worklets: a worklet's closure is read where it is declared)
 
@@ -456,7 +456,7 @@ function FlowLabel({
       onAccessibilityTap={onSelect}
       style={[styles.label, { left: label.x, top: label.y, width: label.w, alignItems: right ? 'flex-end' : 'flex-start' }, style]}
     >
-      <Text allowFontScaling={false} numberOfLines={3} style={[type.label, styles.name, right ? styles.right : null, node ? null : styles.greyName, cut]}>
+      <Text allowFontScaling={false} numberOfLines={labelNameLines(label)} style={[type.label, styles.name, right ? styles.right : null, node ? null : styles.greyName, cut]}>
         {name}
       </Text>
       <View style={cut}>

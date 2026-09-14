@@ -23,6 +23,7 @@ import {
   GEOMETRY,
   GREY_CLEAR,
   hitTest,
+  labelNameLines,
   layoutSankey,
   litBy,
   MAX_PROJECTS,
@@ -389,6 +390,13 @@ describe('the layout loses and invents no width', () => {
     expect([up.y1a, up.y1b]).toEqual([tr.bottom - g.thick, tr.bottom]);
     expect(close(g.thick, Math.max(GEOMETRY.minGrey, f.grey!.share * (tr.bottom - tr.top)), 1e-9)).toBe(true);
     expect(down.y1b).toBeGreaterThan(tr.bottom);
+  });
+
+  test('a label is drawn with every line the layout made room for, never a fixed three', () => {
+    // FOUND IN THE now3 PASS (2026-09-14): the grouped token name read "cache writes, output, an..."
+    expect(labelNameLines({ h: 4 * GEOMETRY.nameLine + GEOMETRY.figureLine })).toBe(4);
+    expect(labelNameLines({ h: GEOMETRY.nameLine + GEOMETRY.figureLine })).toBe(1);
+    for (const l of L.labels) expect(labelNameLines(l)).toBeGreaterThanOrEqual(1);
   });
 
   test('columns left to right, the rule between the tokens and the models, no label over another in a lane', () => {

@@ -840,8 +840,16 @@ export const GEOMETRY = {
   labelGap: 4,
 } as const;
 
-/** About how wide 12 pt semibold text runs, per character: enough to decide where a name wraps. */
-const CHAR_W = 6.6;
+/** About how wide 12 pt semibold text runs, per character: enough to decide where a name wraps.
+ *  On the generous side: an estimate under the real width reserved three lines for a name that
+ *  wraps to four, and the fourth was cut ("cache writes, output, an...", FOUND IN THE now3 PASS). */
+const CHAR_W = 7;
+
+/** The name lines a laid label was given room for: the Sankey draws exactly that many, never
+ *  fewer (a fixed cap of three cut a grouped name the layout had made room for). */
+export function labelNameLines(l: { h: number }): number {
+  return Math.max(1, Math.round((l.h - GEOMETRY.figureLine) / GEOMETRY.nameLine));
+}
 
 function nameLines(text: string, width: number): number {
   const words = text.split(' ');

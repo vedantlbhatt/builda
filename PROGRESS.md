@@ -149,6 +149,14 @@ the Paxel cards, the live engine, Live Activity and widget, mission control, the
   on the xcodebuild command line only (`DEVELOPMENT_TEAM=...`, never in a tracked file);
   `-allowProvisioningUpdates` registered both bundle ids and the App Group. Then
   `overnight_stack.sh iphone <id>` signs it in with a device of its own.
+- the phone off the home Wi-Fi (00:15): the Debug build has no embedded bundle, so away from
+  the Mac it cannot start at all, and a build cannot be installed until the phone is on the
+  Mac's network or cabled. Also, the Projects agent's `overnight_stack.sh restart` stopped the
+  Wi-Fi API through `down` (fixed: restart restores it, 722332a). Now: a Cloudflare quick tunnel
+  to 127.0.0.1:8787 (`~/.builder-overnight/tunnel.log`, pid in `tunnel.pid`, the Mac kept awake
+  by `caffeinate -w` on it) and a Release device build with the JS embedded and
+  `BUILDER_API_URL` set to the tunnel, installed automatically when the phone reappears. A quick
+  tunnel's address dies with the process, and the address is baked into the build.
 - the phone's first sign in made a second, empty user, and it was NOT an app bug (a first
   note here said it was; retracted). The dev-auth link never applied: the log has no
   authenticated request before `POST /v1/auth/apple`, and the minted device was never used.

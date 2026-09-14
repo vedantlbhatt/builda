@@ -108,8 +108,12 @@ section.
   (`$OVERNIGHT_HOME/media`). Landed 03:40 with the generator (5cf2fa0); both demos published to
   the owner's account on the local stack (Builda: a 12.6 s video and six stills; RideGT, built
   in a clone and filmed from its own recordings through a local feed: 10.0 s and four stills).
-  The Builda demo is re-run after the defect fixes (it shows two of them). Running: the phone
-  side (stacks, gallery, the video, expo-video) and the defect fixes.
+  Landed 05:10: the phone side (0c1872e): prints fanned beside each project (BounceCards, the
+  top one developing through PixelTransition), the video looping muted under the band's
+  dither edge and pausing off screen, a full screen gallery (Carousel, the video first with
+  sound); expo-video loaded only when its native module exists. And the capture pass's
+  defects (e340624), each with a test. The stack restarted and re-synced (28 corrected).
+  Running: the Builda demo re-shot on the fixed screens, and build 5 for the phone.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

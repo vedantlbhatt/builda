@@ -144,6 +144,11 @@ section.
   fires on none of this corpus (other notes: one file over and over 23, failed in a row 1),
   with a test proving it fires on a real read only stretch of 184 character commands. Both demos
   still serve through MEDIA_STORE_ENDPOINT; the Builda demo republished from the stricter check.
+- Owner, 08:30: "the demo shouldn't just be a screen recording, it should be an actual cool demo
+  video, but don't worry about that, just focus on screenshots." LATER, not now: a composed demo
+  (the research's section 3 ideas: zoom on each action from the driver's log, tap rings, a device
+  frame, titled beats, Remotion or Motion Canvas over the raw capture) instead of a cut recording.
+  Screenshots are the focus: shown in the app as prints, a gallery and the page's stack.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

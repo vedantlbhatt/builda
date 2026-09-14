@@ -5,7 +5,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .boot import run_startup_checks
-from .routes import auth_routes, capture_keys, ingest, privacy, push, sessions, social, sync, users
+from .routes import (
+    auth_routes,
+    capture_keys,
+    ingest,
+    media,
+    privacy,
+    push,
+    sessions,
+    social,
+    sync,
+    users,
+)
 from .settings import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +48,10 @@ app.include_router(auth_routes.router)
 app.include_router(sync.router)
 app.include_router(capture_keys.router)
 app.include_router(ingest.router)
+# media BEFORE sessions: `GET /v1/projects/media:preview` must be matched ahead of
+# `GET /v1/projects/{key}`, or the literal "media:preview" is handed to the project route as
+# a key and refused as one.
+app.include_router(media.router)
 app.include_router(sessions.router)
 app.include_router(push.router)
 app.include_router(privacy.router)

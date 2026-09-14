@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from sqlalchemy import text
 
 from .. import builder_profile, live_store, quotes
+from .. import project_media as pm
 from ..auth import CurrentDevice, current_device, current_phone, current_uploader
 from ..contract import ANONYMOUS_FIELDS, CONTRACT_VERSION, PUBLIC_FIELDS
 from ..db import db_session
@@ -174,6 +175,7 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
     if body.visibility not in {"public", "anonymous", "excluded"}:
         return JSONResponse({"error": "invalid visibility"}, status_code=422)
 
+    demo_objects: list[str] = []
     with db_session(viewer_id=str(device.user_id)) as db:
         repo = db.execute(
             text("SELECT id FROM repos WHERE repo_hash = :h"), {"h": body.repo_hash}
@@ -219,6 +221,10 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
             # of numbers under the repository's key is something about it on the server.
             # The read filters it too; this is the sweep, so nothing stays behind a filter.
             builder_profile.forget_project(db, str(device.user_id), body.repo_hash)
+            # And its demo (0026, docs/demos.md): pictures of the project are the most
+            # recognisable thing about it the server could hold. The rows go here, the
+            # objects once this transaction has committed.
+            _, demo_objects = pm.forget_project(db, str(device.user_id), body.repo_hash)
         elif body.visibility == "anonymous":
             # Dropping to anonymous must strip the name and the title everywhere it was
             # already stored, not just stop sending them from now on.
@@ -233,6 +239,7 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
                 text("UPDATE repos SET public_name = NULL WHERE id = :r"), {"r": str(repo.id)}
             )
 
+    pm.delete_objects(demo_objects)
     return {"status": "ok", "visibility": body.visibility, "sessions_deleted": deleted}
 
 
@@ -247,6 +254,10 @@ def delete_account(device: CurrentDevice = Depends(current_device)):
     user_id = str(device.user_id)
     with db_session(viewer_id=user_id) as db:
         counts = {}
+        # Project demos (0026): the rows cascade from users below, but the images and the
+        # video live in the object store, which no cascade reaches. Their keys are read now,
+        # while the viewer can still see the rows, and the objects go after the commit.
+        counts["project_media"], demo_objects = pm.account_objects(db, user_id)
         for table, sql in [
             ("sessions", "SELECT COUNT(*) FROM sessions WHERE user_id = :u"),
             ("devices", "SELECT COUNT(*) FROM devices WHERE user_id = :u"),
@@ -276,4 +287,5 @@ def delete_account(device: CurrentDevice = Depends(current_device)):
         # Everything else cascades from users.
         db.execute(text("DELETE FROM users WHERE id = :u"), {"u": user_id})
 
+    pm.delete_objects(demo_objects)
     return {"status": "deleted", "row_counts": counts, "receipt": receipt}

@@ -1336,6 +1336,9 @@ def test_no_person_read_doc_carries_a_dash():
     docs += [f.get("doc", "") for fs in c["objects"].values() for f in fs]
     docs += [f.get("doc", "") for fs in c["quotes"]["objects"].values() for f in fs]
     docs += c["quotes"]["doc"]
+    m = c["project_media"]
+    docs += [f.get("doc", "") for fs in [*m["objects"].values(), m["fields"]] for f in fs]
+    docs += [*m["doc"], *m["measured"], m["label_rule"]]
     s = _live_spec()
     docs += [f.get("doc", "") for fs in [*s["objects"].values(), s["fields"]] for f in fs]
     dashed = [d for d in docs if plain.has_dash(d)]
@@ -1360,3 +1363,135 @@ def test_the_grant_flow_check_is_the_auth_table_both_ways():
     m = re.search(r"^GRANT_FLOWS = \(([^)]*)\)$", src, re.M)
     assert m, "0024 names its CHECK list"
     assert tuple(re.findall(r'"([a-z_]+)"', m.group(1))) == auth.GRANT_FLOWS
+
+
+# ------------------------------------------------------------ project_media (0026)
+
+#: A complete presign, every field set: what one file of a published demo carries.
+SAMPLE_MEDIA_PRESIGN = {
+    "publish_id": "0123456789abcdef",
+    "kind": "video",
+    "content_type": "video/mp4",
+    "bytes": 12_000_000,
+    "width": 1206,
+    "height": 2622,
+    "duration_ms": 18000,
+    "position": 0,
+    "label": "the session page, scrolled to the chart",
+    "source": "capture",
+    "poster": {"content_type": "image/jpeg", "bytes": 120_000},
+}
+
+#: The migration's CHECK columns and the contract enum each one copies.
+_MEDIA_CHECKED = {
+    "kind": "media_kind",
+    "content_type": "media_content_type",
+    "source": "media_source",
+    "poster_content_type": "poster_content_type",
+}
+
+
+def test_every_project_media_enum_is_the_migrations_check_list_both_ways():
+    """A contract enum value is always also a migration (CLAUDE.md): a `source` the Mac
+    starts sending, added to the contract alone, would pass the generated door and die on
+    the INSERT as a 500. Read off 0026 itself, list for list, order included."""
+    enums = _contract()["project_media"]["enums"]
+    found = _check_lists((MIGRATIONS / "0026_project_media.py").read_text())
+    assert set(_MEDIA_CHECKED) <= set(found), (
+        f"0026 declares no CHECK list for {set(_MEDIA_CHECKED) - set(found)}"
+    )
+    for column, enum in _MEDIA_CHECKED.items():
+        assert found[column] == enums[enum], (column, found[column], enums[enum])
+    assert set(enums) == set(_MEDIA_CHECKED.values()), "a contract enum with no column"
+
+
+def test_the_project_media_caps_are_the_migrations_and_the_contracts():
+    """The numbers the door enforces are the numbers the table enforces: the largest side,
+    the longest video, each type's size cap, the label's length and characters."""
+    from builder import media_spec
+
+    m = _contract()["project_media"]
+    src = (MIGRATIONS / "0026_project_media.py").read_text()
+    num = lambda pattern: int(re.search(pattern, src).group(1))  # noqa: E731
+    assert (
+        num(r"width\s+integer NOT NULL CHECK \(width BETWEEN 1 AND (\d+)\)") == m["caps"]["pixels"]
+    )
+    assert num(r"height BETWEEN 1 AND (\d+)") == m["caps"]["pixels"]
+    assert num(r"duration_ms BETWEEN 1 AND (\d+)") == m["caps"]["video_ms"]
+    assert num(r"bytes\s+bigint NOT NULL CHECK \(bytes BETWEEN 1 AND (\d+)\)") == max(
+        t["max_bytes"] for t in m["content_types"].values()
+    )
+    images = {t["max_bytes"] for t in m["content_types"].values() if t["kind"] == "image"}
+    assert {num(r"AND bytes <= (\d+)")} == images
+    assert {num(r"poster_bytes BETWEEN 1 AND (\d+)")} == images
+    # Written inside an f-string in 0026, so its braces are doubled there.
+    label = re.search(r"label ~ '\^(\[[^\]]*\])\{\{1,(\d+)\}\}\$'", src)
+    assert label, "0026 bounds the label with a character class and a length"
+    assert int(label.group(2)) == m["max_lengths"]["label"]
+    assert label.group(1).replace("''", "'") == m["label_pattern"][1:-2], "the same characters"
+    # The generated door carries the same numbers (make gen writes them; this reads them).
+    assert m["caps"] == media_spec.MEDIA_CAPS
+    assert m["content_types"] == media_spec.MEDIA_CONTENT_TYPES
+    assert m["label_pattern"] == media_spec.MEDIA_LABEL_PATTERN
+
+
+def test_project_media_leaf_paths_are_published():
+    published = json.loads(PUBLISHED.read_text())
+    doc = published["documents"]["project_media"]
+    m = _contract()["project_media"]
+    assert doc["route"] == "POST /v1/projects/{key}/media:presign" == m["route"]
+    assert doc["default"] == "off"
+    assert set(_scalar_paths(SAMPLE_MEDIA_PRESIGN, "")) == set(doc["leaf_paths"])
+    assert doc["content_types"] == m["content_types"] and doc["caps"] == m["caps"]
+    # A presign is a document of its own: none of its paths is a session field, and no
+    # session field rides on it.
+    assert not {p.split(".")[0] for p in doc["leaf_paths"]} & set(published["fields"])
+
+
+def test_a_presign_carries_numbers_one_enum_and_a_label_and_nothing_else():
+    from builder import media_spec
+
+    doc = media_spec.ProjectMediaPresign(**SAMPLE_MEDIA_PRESIGN)
+    assert doc.model_dump(mode="json") == SAMPLE_MEDIA_PRESIGN
+    strings = [
+        f["name"]
+        for fs in [
+            *_contract()["project_media"]["objects"].values(),
+            _contract()["project_media"]["fields"],
+        ]
+        for f in fs
+        if f["type"] == "string"
+    ]
+    assert strings == ["label"], "the label is the one free string, and it is capped"
+    for bad in (
+        {**SAMPLE_MEDIA_PRESIGN, "commit": "a" * 40},
+        {**SAMPLE_MEDIA_PRESIGN, "file": "demo.mp4"},
+        {
+            **SAMPLE_MEDIA_PRESIGN,
+            "poster": {"content_type": "image/jpeg", "bytes": 1, "file": "p.jpg"},
+        },
+        {**SAMPLE_MEDIA_PRESIGN, "source": "generated"},
+        {**SAMPLE_MEDIA_PRESIGN, "label": "x" * 81},
+        {**SAMPLE_MEDIA_PRESIGN, "publish_id": "0123456789ABCDEF"},
+    ):
+        with pytest.raises(ValidationError):
+            media_spec.ProjectMediaPresign(**bad)
+
+
+def test_privacy_md_says_what_a_published_demo_sends():
+    from builder import project_media
+
+    flat = " ".join((REPO / "PRIVACY.md").read_text().split())
+    assert "## Project demos" in (REPO / "PRIVACY.md").read_text()
+    for phrase in (
+        "nothing sends it until you publish it, one project at a time",
+        "`python -m capture demo --publish` prints how many files and how many bytes",
+        "at most 8 images",
+        "at most one video",
+        "each at most 6 MiB",
+        "at most 31 seconds and 40 MiB",
+        f"stops working after {project_media.READ_URL_SECONDS // 60} minutes",
+        "Never the file names, the commit it was taken at, or the project's name",
+        "Only you can see a demo, whatever you share",
+    ):
+        assert phrase in flat, phrase

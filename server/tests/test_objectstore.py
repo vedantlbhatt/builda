@@ -113,3 +113,104 @@ def test_unconfigured_store_is_none_not_a_bad_signature(monkeypatch):
         )
     finally:
         settings.cache_clear()
+
+
+# ------------------------------------------------------------------ project demos (0026)
+
+
+def test_a_presigned_put_can_bind_the_size_too():
+    """A project demo's upload signs `content-length` beside the type, so the bucket refuses
+    any other size (routes/media.py); the post photos' form is unchanged above."""
+    url = presign_put(
+        "project-media/u/k/m.png", "image/png", 900, content_length=1234, now=NOW, store=STORE
+    )
+    q = {k: v[0] for k, v in parse_qs(urlsplit(url).query).items()}
+    assert q["X-Amz-SignedHeaders"] == "content-length;content-type;host"
+    other = presign_put(
+        "project-media/u/k/m.png", "image/png", 900, content_length=1235, now=NOW, store=STORE
+    )
+    assert parse_qs(urlsplit(other).query)["X-Amz-Signature"][0] != q["X-Amz-Signature"]
+
+
+def test_a_presigned_get_is_short_lived_and_signs_only_the_host():
+    from builder.objectstore import presign_get
+
+    url = presign_get("project-media/u/k/m.mp4", 900, now=NOW, store=STORE)
+    parts = urlsplit(url)
+    q = {k: v[0] for k, v in parse_qs(parts.query).items()}
+    assert parts.path == "/builder-media/project-media/u/k/m.mp4"
+    assert (q["X-Amz-Expires"], q["X-Amz-SignedHeaders"]) == ("900", "host")
+    # The same chain as the documented GET: a HEAD or a DELETE differs only in the method.
+    head = presign_get("project-media/u/k/m.mp4", 900, method="HEAD", now=NOW, store=STORE)
+    assert parse_qs(urlsplit(head).query)["X-Amz-Signature"][0] != q["X-Amz-Signature"]
+
+
+@pytest.fixture
+def file_env(monkeypatch, tmp_path):
+    from builder.settings import settings
+
+    def use(endpoint: str, environment: str = "development"):
+        monkeypatch.setenv("OBJECT_STORE_ENDPOINT", endpoint)
+        monkeypatch.setenv("ENVIRONMENT", environment)
+        for var in ("OBJECT_STORE_BUCKET", "OBJECT_STORE_KEY", "OBJECT_STORE_SECRET"):
+            monkeypatch.delenv(var, raising=False)
+        settings.cache_clear()
+
+    yield use, tmp_path
+    settings.cache_clear()
+
+
+def test_the_file_backend_maps_keys_inside_its_root_and_nowhere_else(file_env):
+    use, tmp = file_env
+    use(f"file://{tmp}/media")
+    assert objectstore.backend() == "file" and objectstore.from_settings() is None
+    root = objectstore.file_root()
+    assert root == tmp / "media"
+    assert objectstore.file_path("project-media/u-1/k/m.png") == root / "project-media/u-1/k/m.png"
+    for bad in (
+        "../etc/passwd",
+        "/etc/passwd",
+        "a/../../b",
+        "a//b",
+        "a/./b",
+        "",
+        "a/b c",
+        ".hidden",
+    ):
+        with pytest.raises(ValueError):
+            objectstore.file_path(bad)
+    for bad in ("file://media", "file://host/abs/dir"):
+        use(bad)
+        with pytest.raises(ValueError):
+            objectstore.file_root()
+
+
+def test_the_file_backend_is_refused_in_production_here_and_at_boot(file_env):
+    from builder import boot
+
+    use, tmp = file_env
+    use(f"file://{tmp}/media", "production")
+    with pytest.raises(objectstore.FileStoreRefused):
+        objectstore.backend()
+    with pytest.raises(SystemExit) as exc:
+        boot.assert_object_store_safe()
+    assert "file://" in str(exc.value)
+    use(f"file://{tmp}/media", "development")
+    boot.assert_object_store_safe()
+    use("https://acct.r2.cloudflarestorage.com", "production")
+    boot.assert_object_store_safe()
+
+
+def test_the_file_backend_stats_reads_and_deletes(file_env):
+    use, tmp = file_env
+    use(f"file://{tmp}/media")
+    key = "project-media/u/k/m.png"
+    assert objectstore.stat(key) is None and objectstore.head_bytes(key) is None
+    path = objectstore.file_path(key)
+    objectstore.ensure_private_dir(path.parent)
+    assert all((p.stat().st_mode & 0o777) == 0o700 for p in (tmp / "media", path.parent))
+    path.write_bytes(b"\x89PNG\r\n\x1a\nrest")
+    assert objectstore.stat(key) == 12 and objectstore.head_bytes(key, 8) == b"\x89PNG\r\n\x1a\n"
+    objectstore.delete(key)
+    objectstore.delete(key)  # gone twice is still gone
+    assert objectstore.stat(key) is None

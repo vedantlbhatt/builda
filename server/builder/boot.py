@@ -97,6 +97,9 @@ def assert_policies_present() -> None:
         # 0022. Where a Live Activity's pushes go. Another viewer's token is another
         # person's Lock Screen.
         "live_activity_tokens",
+        # 0026. A project's published demo: images of a person's own app, which may show a
+        # private repository's name. Owner only whatever else is shared.
+        "project_media",
     }
     with engine().connect() as conn:
         rows = conn.execute(
@@ -124,7 +127,24 @@ def assert_policies_present() -> None:
         )
 
 
+def assert_object_store_safe() -> None:
+    """Refuse to start in production with the local stack's `file://` object store.
+
+    objectstore.py refuses it on every call too, which would surface as a 500 on the first
+    demo anybody publishes; a production box writing people's images to its own container
+    disk (lost on the next deploy, served from nowhere backed up) is a configuration error
+    that should stop the deploy instead."""
+    from . import objectstore
+
+    if settings().is_production and objectstore.is_file_endpoint():
+        raise UnsafeDatabaseRole(
+            "FATAL: OBJECT_STORE_ENDPOINT is a file:// directory, the local stack's backend. "
+            "Production stores project demos in S3. Refusing to start."
+        )
+
+
 def run_startup_checks() -> None:
+    assert_object_store_safe()
     if settings().environment == "test":
         return
     assert_rls_enforced()

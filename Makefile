@@ -68,7 +68,7 @@ check-gen: gen
 		mobile/src/generated server/builder/contract.py server/builder/strip.py \
 		server/builder/analysis_spec.py server/builder/report_spec.py \
 		server/builder/narrative_spec.py server/builder/shipped_spec.py \
-		server/builder/live_spec.py server/builder/quotes_spec.py analysis \
+		server/builder/live_spec.py server/builder/quotes_spec.py server/builder/media_spec.py analysis \
 		Packages/BuilderKit/Sources/BuilderAnalysis/Resources/analysis_schema.json \
 		server/builder/static/upload-fields.json PRIVACY.md spec/fixtures \
 		mobile/targets/widget/_shared/Palette.swift mobile/targets/widget/_shared/HarnessMarks.swift \

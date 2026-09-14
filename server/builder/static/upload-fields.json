@@ -290,7 +290,50 @@
         "quotes.tool_calls_after",
         "quotes_version"
       ]
+    },
+    "project_media": {
+      "route": "POST /v1/projects/{key}/media:presign",
+      "default": "off",
+      "leaf_paths": [
+        "bytes",
+        "content_type",
+        "duration_ms",
+        "height",
+        "kind",
+        "label",
+        "position",
+        "poster.bytes",
+        "poster.content_type",
+        "publish_id",
+        "source",
+        "width"
+      ],
+      "content_types": {
+        "image/png": {
+          "kind": "image",
+          "max_bytes": 6291456
+        },
+        "image/jpeg": {
+          "kind": "image",
+          "max_bytes": 6291456
+        },
+        "video/mp4": {
+          "kind": "video",
+          "max_bytes": 41943040
+        }
+      },
+      "caps": {
+        "images": 8,
+        "videos": 1,
+        "video_ms": 31000,
+        "pixels": 8192,
+        "label_word": 24
+      },
+      "max_lengths": {
+        "label": 80
+      },
+      "label_rule": "letters A to Z and a to z, digits, the space and , . ' ( ) : ? ! & only, at least one letter, no word over 24 characters, no dash of any kind and no hyphen"
     }
   },
-  "note": "`fields` are the top-level keys. `leaf_paths` expands every structured one (tokens, models, strip_marks, feedback, tool_calls, analysis, live, live_names, burn, title_ids, call_tokens) so a scalar-path walk of a real payload matches exactly, with list indices stripped. tool_calls keys are tool names from the fixed allowlist `tool_call_keys`; unknown and MCP tools bucket to mcp_other / other. analysis, live_names and the quotes document are opt-in; analysis is shaped by spec/analysis.v1.json and live and live_names by spec/live.v1.json. `documents` lists what is uploaded outside a session payload, each with its own route and leaf paths."
+  "note": "`fields` are the top-level keys. `leaf_paths` expands every structured one (tokens, models, strip_marks, feedback, tool_calls, analysis, live, live_names, burn, title_ids, call_tokens) so a scalar-path walk of a real payload matches exactly, with list indices stripped. tool_calls keys are tool names from the fixed allowlist `tool_call_keys`; unknown and MCP tools bucket to mcp_other / other. analysis, live_names and the quotes document are opt-in; analysis is shaped by spec/analysis.v1.json and live and live_names by spec/live.v1.json. `documents` lists what is uploaded outside a session payload, each with its own route and leaf paths: the quotes document, and `project_media`, the presign that goes before each file of a published project demo (the file itself is a PNG, JPEG or MP4 of the stated size and nothing else)."
 }

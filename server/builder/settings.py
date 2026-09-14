@@ -56,11 +56,14 @@ class Settings(BaseSettings):
     apns_topic: str = "com.vedantlbhatt.Builder"
     apns_use_sandbox: bool = True
 
-    # Object storage for post photos and voice notes (docs/social.md). S3-compatible,
-    # presigned PUTs from the phone; the API never proxies bytes. All unset is a valid
-    # configuration: media upload answers 503 and the rest of social works without it.
-    # `region` is "auto" because the first target is Cloudflare R2, which wants exactly
-    # that string in the credential scope; AWS wants the real region name.
+    # Object storage for post photos and voice notes (docs/social.md) and project demos
+    # (docs/demos.md). S3-compatible, presigned PUTs from the client; the API never proxies
+    # bytes. All unset is a valid configuration: media upload answers 503 and the rest of
+    # the app works without it. `region` is "auto" because the first target is Cloudflare
+    # R2, which wants exactly that string in the credential scope; AWS wants the real
+    # region name. `file:///abs/dir` is the local stack's backend for project demos only
+    # (objectstore.py): uploads PUT to the API and reads stream from disk behind the
+    # bearer. Refused in production, at boot.
     object_store_endpoint: str = ""
     object_store_bucket: str = ""
     object_store_region: str = "auto"

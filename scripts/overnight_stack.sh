@@ -18,7 +18,9 @@
 #   scripts/overnight_stack.sh reset     drop the two overnight DBs and the minted state (asks first)
 #
 # Nothing secret is written inside the repository. Keys, tokens, the log and the pid file
-# live in $OVERNIGHT_HOME (default ~/.builder-overnight, mode 0700, secrets 0600). Every
+# live in $OVERNIGHT_HOME (default ~/.builder-overnight, mode 0700, secrets 0600), and so do
+# published project demos ($OVERNIGHT_HOME/media, 0700: OBJECT_STORE_ENDPOINT=file://..., the
+# object store's development backend, for both APIs). Every
 # child process runs under `env -i` with only the variables set here, so a DATABASE_URL,
 # APNS key or BUILDER_CAPTURE_KEY exported in your shell for other work cannot leak into
 # this stack, and ~/.builder/credentials.json is never read or written
@@ -63,6 +65,10 @@ LOG_FILE="$STATE_DIR/api.log"
 DEVICE_JSON="$STATE_DIR/device.json"
 CAPTURE_DIR="$STATE_DIR/capture"
 CAPTURE_CREDS="$CAPTURE_DIR/credentials.json"
+# Project demos (docs/demos.md): the object store's development backend, a directory both
+# APIs share. Uploads PUT to the API and reads stream from disk behind the bearer, so a phone
+# on the tunnel walks the flow production runs against S3. 0700: it holds a person's images.
+MEDIA_DIR="$STATE_DIR/media"
 
 die() { echo "overnight_stack: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
@@ -89,8 +95,8 @@ psql_owner() { # psql_owner DB [psql args...]
 }
 
 ensure_state_dir() {
-  mkdir -p "$STATE_DIR" "$CAPTURE_DIR"
-  chmod 700 "$STATE_DIR" "$CAPTURE_DIR"
+  mkdir -p "$STATE_DIR" "$CAPTURE_DIR" "$MEDIA_DIR"
+  chmod 700 "$STATE_DIR" "$CAPTURE_DIR" "$MEDIA_DIR"
 }
 
 ensure_venv() {
@@ -168,6 +174,7 @@ start_api() {
       ENVIRONMENT=development \
       APP_DATABASE_URL="$(db_url "$APP_ROLE" "$DB")" \
       JWT_PRIVATE_KEY="$(cat "$KEY_FILE")" \
+      OBJECT_STORE_ENDPOINT="file://$MEDIA_DIR" \
       BASE_URL="$API" \
       nohup "$PY" -c 'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
       "$VENV/bin/uvicorn" builder.main:app --host 127.0.0.1 --port "$PORT" \
@@ -231,6 +238,7 @@ cmd_lan() {
   [ -n "$ip" ] || die "no Wi-Fi address on en0 or en1; is this Mac on a network?"
   local url="http://$ip:$PORT"
   if [ -n "$(lan_pid)" ]; then say "Wi-Fi API already running at $url"; return; fi
+  ensure_state_dir
   say "starting a second API on $url (log $LAN_LOG_FILE)"
   touch "$LAN_LOG_FILE" && chmod 600 "$LAN_LOG_FILE"
   (
@@ -239,6 +247,7 @@ cmd_lan() {
       ENVIRONMENT=development \
       APP_DATABASE_URL="$(db_url "$APP_ROLE" "$DB")" \
       JWT_PRIVATE_KEY="$(cat "$KEY_FILE")" \
+      OBJECT_STORE_ENDPOINT="file://$MEDIA_DIR" \
       BASE_URL="$url" \
       nohup "$PY" -c 'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
       "$VENV/bin/uvicorn" builder.main:app --host "$ip" --port "$PORT" \

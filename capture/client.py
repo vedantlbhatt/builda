@@ -37,6 +37,7 @@ import pathlib
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from . import CLIENT_VERSION, identity
@@ -473,6 +474,43 @@ class Client:
         if not isinstance(n, int) or isinstance(n, bool) or n < 0:
             raise HTTPFailure(200, f"the offset route answered {json.dumps(r)}")
         return n
+
+    # -- project demos (docs/demos.md, capture/demo_publish.py) -------------------------
+
+    def media_presign(self, key: str, body: dict) -> dict:
+        """POST /v1/projects/{key}/media:presign: where one file of a publish goes."""
+        return self._authenticated("POST", f"/v1/projects/{key}/media:presign", body)
+
+    def media_commit(self, key: str, media_id: str) -> dict:
+        """POST /v1/projects/{key}/media/{id}:commit: the file is there; the server checks."""
+        return self._authenticated("POST", f"/v1/projects/{key}/media/{media_id}:commit", None)
+
+    def media_delete(self, key: str) -> dict:
+        """DELETE /v1/projects/{key}/media: every file of the project's demo, answered with how
+        many went."""
+        return self._authenticated("DELETE", f"/v1/projects/{key}/media", None)
+
+    def put_object(self, url: str, data: bytes, headers: dict[str, str], timeout: float = 600) -> int:
+        """PUT `data` to a presigned upload URL and return the status.
+
+        The URL is absolute (a bucket) or relative to this server (the local stack's file
+        backend), and it IS the grant: NO bearer is sent, because the device token must never
+        reach a bucket and the file backend's URL carries a token of its own. The headers are
+        the presign's, sent verbatim (the bucket signed them). Ten minutes: 40 MiB over a
+        0.5 Mb/s uplink."""
+        full = urllib.parse.urljoin(self.server + "/", url)
+        req = urllib.request.Request(full, data=data, method="PUT", headers=dict(headers))
+        try:
+            with self._open(req, timeout=timeout) as resp:
+                status = resp.status
+                resp.read()
+        except urllib.error.HTTPError as e:
+            raise HTTPFailure(e.code, e.read().decode("utf-8", "replace")) from e
+        except (urllib.error.URLError, OSError) as e:
+            raise HTTPFailure(0, f"network error: {e}") from e
+        if not 200 <= status < 300:
+            raise HTTPFailure(status, "")
+        return status
 
     def upload(self, sessions: list[dict], chunk_size: int = 200) -> dict:
         """POST /v1/sync/sessions:batch in chunks of 200, as the Mac does."""

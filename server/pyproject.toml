@@ -34,6 +34,7 @@ extend-exclude = [
   "builder/report_spec.py",
   "builder/live_spec.py",
   "builder/quotes_spec.py",
+  "builder/media_spec.py",
 ]
 
 [tool.ruff.lint]

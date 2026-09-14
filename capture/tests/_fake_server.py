@@ -5,8 +5,10 @@ checking, refresh-token ROTATION with reuse detection (a spent token presented a
 revokes the device), capture keys (`bck_…`, accepted on the write only routes as
 `auth.current_uploader` accepts them; revoked == unknown == 401), the device-grant
 start/poll pair, `/v1/sync/known`, the batch upload, the hook's transcript route
-(`routes/ingest.py`: offsets, the 409 gap, gzip) and the report and quotes PUTs. Every
-request is recorded so a test can assert what was, and was not, sent.
+(`routes/ingest.py`: offsets, the 409 gap, gzip), the report and quotes PUTs, and a project
+demo's presign, upload URL, commit and delete (`routes/media.py`, which refuses a capture key
+as every route off `_KEY_ROUTES` does). Every request is recorded so a test can assert what
+was, and was not, sent.
 """
 
 from __future__ import annotations
@@ -44,6 +46,12 @@ class FakeBuilder:
         self.quotes: list[dict] = []
         self.quotes_on = True
         self.quotes_deleted = 0
+        #: Project demos (routes/media.py): rows by media id, what each upload URL received
+        #: (path, headers, bytes, the bearer it carried: there must be none), and statuses to
+        #: answer the next uploads with, for a publish that fails part way.
+        self.media: dict[str, dict] = {}
+        self.media_uploads: list[tuple[str, dict, bytes, str | None]] = []
+        self.media_upload_status: list[int] = []
         self.lock = threading.Lock()
         server = self
 
@@ -97,6 +105,14 @@ class FakeBuilder:
                     with server.lock:
                         server.requests.append((method, self.path, None, token))
                         status, out = server.ingest(headers, raw, token)
+                    self._send(status, out)
+                    return
+                if method == "PUT" and self.path.startswith("/v1/media-upload/"):
+                    raw = self._raw()
+                    headers = {k.lower(): v for k, v in self.headers.items()}
+                    with server.lock:
+                        server.requests.append((method, self.path, None, token))
+                        status, out = server.media_upload(self.path, headers, raw, token)
                     self._send(status, out)
                     return
                 body = self._body() if method in ("POST", "PUT") else None
@@ -212,7 +228,76 @@ class FakeBuilder:
                     self.known[s["client_session_id"]] = s["content_hash"]
                     accepted += 1
             return 200, {"accepted": accepted, "unchanged": unchanged, "rejected": []}
+        media = self.media_route(method, path, body)
+        if media is not None:
+            return media
         return 404, {"detail": "no route"}
+
+    def media_route(self, method, path, body):
+        """routes/media.py: presign, commit and delete, a set replacing the one before it."""
+        m = re.match(r"^/v1/projects/([0-9a-f]{64})/media:presign$", path)
+        if m and method == "POST":
+            mid = f"m{len(self.media) + 1:04d}"
+            b = body or {}
+            self.media[mid] = {"key": m.group(1), "body": b, "committed": False, "objects": {}}
+            slot = lambda name, ct, n: {  # noqa: E731
+                "upload_url": f"/v1/media-upload/{name}",
+                "method": "PUT",
+                "headers": {"Content-Type": ct, "Content-Length": str(n)},
+                "expires_in": 900,
+            }
+            poster = b.get("poster")
+            return 200, {
+                "media_id": mid,
+                **slot(mid, b.get("content_type"), b.get("bytes")),
+                "poster": slot(f"{mid}-poster", poster["content_type"], poster["bytes"]) if poster else None,
+            }
+        m = re.match(r"^/v1/projects/([0-9a-f]{64})/media/([^/]+):commit$", path)
+        if m and method == "POST":
+            row = self.media.get(m.group(2))
+            if row is None or row["key"] != m.group(1):
+                return 404, {"detail": "not found"}
+            want = {m.group(2): row["body"]["bytes"]}
+            if row["body"].get("poster"):
+                want[f"{m.group(2)}-poster"] = row["body"]["poster"]["bytes"]
+            for name, n in want.items():
+                if len(row["objects"].get(name, b"")) != n:
+                    return 409, {"detail": f"nothing of {n} bytes was uploaded for {name}"}
+            newly = not row["committed"]
+            row["committed"] = True
+            pub = row["body"]["publish_id"]
+            same = [r for r in self.media.values() if r["key"] == row["key"]]
+            pending = sum(1 for r in same if r["body"]["publish_id"] == pub and not r["committed"])
+            replaced = 0
+            if pending == 0 and newly:  # only the commit that completes a set replaces
+                for mid, r in list(self.media.items()):
+                    if r["key"] == row["key"] and r["body"]["publish_id"] != pub:
+                        del self.media[mid]
+                        replaced += 1
+            return 200, {"item": {"id": m.group(2)}, "pending": pending, "replaced": replaced}
+        m = re.match(r"^/v1/projects/([0-9a-f]{64})/media$", path)
+        if m and method == "DELETE":
+            gone = [mid for mid, r in self.media.items() if r["key"] == m.group(1)]
+            for mid in gone:
+                del self.media[mid]
+            return 200, {"deleted": len(gone)}
+        return None
+
+    def media_upload(self, path: str, headers: dict, body: bytes, token):
+        """The file backend's upload URL: the URL is the grant, and a bearer is never sent."""
+        self.media_uploads.append((path, headers, body, token))
+        if self.media_upload_status:
+            status = self.media_upload_status.pop(0)
+            if status != 204:
+                return status, {"detail": "the store refused this upload"}
+        name = path.rsplit("/", 1)[1]
+        row = self.media.get(name.removesuffix("-poster"))
+        if row is None:
+            return 404, {"detail": "nothing is waiting for this upload"}
+        if int(headers.get("content-length", "-1")) != len(body):
+            return 400, {"detail": "the size is the presign's"}
+        row["objects"][name] = body
+        return 204, {}
 
     def _auth(self, path, token):
         if token is not None and token.startswith("bck_"):

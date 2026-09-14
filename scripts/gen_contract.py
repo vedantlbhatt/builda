@@ -10,6 +10,8 @@ the contract's own objects (`burn`, `title_ids`, `call_tokens`: numbers, bools a
 emitted into contract.py beside SessionUpload), the `live` and `live_names` fields (shaped by
 spec/live.v1.json, which gen_live.py emits; read here only for the published leaf paths),
 and the `quotes` document (its own route, emitted to quotes_spec.py and quotes.ts).
+`project_media` (docs/demos.md) is the same shape as `quotes`: a channel with its own route,
+emitted to media_spec.py and media.ts, with a section of its own in PRIVACY.md.
 
 The structural guarantee is the SERIALIZER, not the test: BuilderSync's SessionUpload
 encodes through the generated `UploadField` CodingKey enum with a hand-written
@@ -647,6 +649,187 @@ export const QUOTES_MAX_LENGTHS = {{
 """
 
 
+# ----------------------------------------------------------------- project media
+MEDIA_TOP = "ProjectMediaPresign"
+
+
+def media_spec(c: dict) -> dict:
+    """The `project_media` presign request (docs/demos.md) as a spec the shared emitters
+    read. Its one free string is the label, capped here and bounded in characters by
+    `label_rule`; the checks below keep a second string from arriving uncapped, and hold the
+    tables that restate one another to each other, so the content types a presign may name
+    are exactly the ones with a size cap, each of a declared kind."""
+    m = c["project_media"]
+    s = {"enums": m["enums"], "objects": m["objects"], "max_lengths": m["max_lengths"], "fields": m["fields"]}
+    for owner, fs in ga.all_fields(s, MEDIA_TOP):
+        for f in fs:
+            if f["type"] == "string":
+                assert "max" in f, f"project_media {owner}.{f['name']} is a string with no cap"
+    assert list(m["content_types"]) == m["enums"]["media_content_type"], (
+        "project_media.content_types and enums.media_content_type must list the same types in one order"
+    )
+    kinds = {v["kind"] for v in m["content_types"].values()}
+    assert kinds == set(m["enums"]["media_kind"]), f"a content type of an undeclared kind: {kinds}"
+    assert set(m["enums"]["poster_content_type"]) <= {
+        t for t, v in m["content_types"].items() if v["kind"] == "image"
+    }, "a poster is an image the stills could be"
+    return s
+
+
+def media_read_seconds() -> int:
+    """`project_media.READ_URL_SECONDS`, read from the source as `transcript_retention_days`
+    reads the ingest route's number, so PRIVACY.md and the presigned GET say one number."""
+    import re
+
+    src = (ROOT / "server" / "builder" / "project_media.py").read_text()
+    m = re.search(r"^READ_URL_SECONDS = (\d+)", src, re.M)
+    if m is None:
+        raise SystemExit("gen_contract: READ_URL_SECONDS not found in server/builder/project_media.py")
+    return int(m.group(1))
+
+
+def gen_media_py(c: dict) -> str:
+    s = media_spec(c)
+    m = c["project_media"]
+    models = "\n\n".join(
+        [
+            ga.py_model(
+                s,
+                name,
+                fs,
+                scalars=ga.PY_SCALARS_AWARE,
+                enum_table="MEDIA_ENUM_VALUES",
+                fields_table="MEDIA_ENUM_FIELDS",
+            )
+            for name, fs in s["objects"].items()
+        ]
+        + [
+            ga.py_model(
+                s,
+                MEDIA_TOP,
+                s["fields"],
+                scalars=ga.PY_SCALARS_AWARE,
+                enum_table="MEDIA_ENUM_VALUES",
+                fields_table="MEDIA_ENUM_FIELDS",
+            )
+        ]
+    ).rstrip("\n")
+    content_types = "\n".join(
+        f"    {json.dumps(t)}: {json.dumps(v, sort_keys=True)}," for t, v in m["content_types"].items()
+    )
+    caps = "\n".join(f"    {json.dumps(k)}: {v}," for k, v in m["caps"].items())
+    max_lengths = "\n".join(f"    {json.dumps(k)}: {v}," for k, v in s["max_lengths"].items())
+    enum_values = "\n".join(f"    {json.dumps(k)}: {json.dumps(v)}," for k, v in s["enums"].items())
+    enum_fields = "\n".join(
+        f"    {json.dumps(owner)}: "
+        + json.dumps({f["name"]: f["values"] for f in fs if f["type"] == "enum"})
+        + ","
+        for owner, fs in ga.all_fields(s, MEDIA_TOP)
+    )
+    doc = "\n".join(m["doc"])
+    return f'''{PY_BANNER}
+"""A project demo's presign request, server side (`{m["route"]}`, default {m["default"]}).
+
+{doc}
+
+`extra="forbid"` at every level, the enums and the numeric bounds are this door's half. The
+other half is `server/builder/project_media.py presign_refusal`, which holds the content type
+to its kind and its size cap, a video to its length and an image to none, and the label to
+MEDIA_LABEL_PATTERN and the word length, before anything is stored or signed.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+Hex16 = Annotated[str, Field(pattern=r"^[0-9a-f]{{16}}$")]
+
+MEDIA_ROUTE = {json.dumps(m["route"])}
+
+#: Every content type a presign may name: its kind, and the most bytes one file of it may be.
+MEDIA_CONTENT_TYPES: dict[str, dict] = {{
+{content_types}
+}}
+
+#: Counts per publish, the longest video in ms, the largest side in pixels, the longest word
+#: of a label in characters.
+MEDIA_CAPS: dict[str, int] = {{
+{caps}
+}}
+
+#: Character caps by size class; the document's `max` on a string field names one of these.
+MEDIA_MAX_LENGTHS: dict[str, int] = {{
+{max_lengths}
+}}
+
+#: The characters a label may carry, whole: {m["label_rule"]}.
+MEDIA_LABEL_PATTERN = {json.dumps(m["label_pattern"])}
+MEDIA_LABEL_RULE = {json.dumps(m["label_rule"])}
+
+#: Legal values for every enum, in contract order. Named for this module; the validators
+#: below read these two tables by name.
+MEDIA_ENUM_VALUES: dict[str, list[str]] = {{
+{enum_values}
+}}
+
+#: Which fields of which model carry which enum, read by the validators below.
+MEDIA_ENUM_FIELDS: dict[str, dict[str, str]] = {{
+{enum_fields}
+}}
+
+
+{models}
+'''
+
+
+def gen_media_ts(c: dict) -> str:
+    s = media_spec(c)
+    m = c["project_media"]
+    unions = "\n".join(
+        f"export type {ga.pascal(name)} = " + " | ".join(json.dumps(v) for v in values) + ";"
+        for name, values in s["enums"].items()
+    )
+    interfaces = "\n\n".join(
+        [ga.ts_interface(s, name, fs) for name, fs in s["objects"].items()]
+        + [ga.ts_interface(s, MEDIA_TOP, s["fields"])]
+    )
+    content_types = "\n".join(
+        f"  {json.dumps(t)}: {{ kind: {json.dumps(v['kind'])}, max_bytes: {v['max_bytes']} }},"
+        for t, v in m["content_types"].items()
+    )
+    caps = "\n".join(f"  {k}: {v}," for k, v in m["caps"].items())
+    max_lengths = "\n".join(f"  {k}: {v}," for k, v in s["max_lengths"].items())
+    return f"""{SWIFT_BANNER.replace('Swift', 'TypeScript')}
+
+/** A project demo's presign: {m["route"]}, default {m["default"]}. Owner only, opt in per publish. */
+export const MEDIA_ROUTE = {json.dumps(m["route"])};
+
+/** Every content type a presign may name: its kind, and the most bytes one file of it may be. */
+export const MEDIA_CONTENT_TYPES = {{
+{content_types}
+}} as const;
+
+/** Counts per publish, the longest video in ms, the largest side in pixels, the longest word of a label. */
+export const MEDIA_CAPS = {{
+{caps}
+}} as const;
+
+/** Character caps by size class; string fields below name one of these in their doc. */
+export const MEDIA_MAX_LENGTHS = {{
+{max_lengths}
+}} as const;
+
+/** The characters a label may carry, whole: {m["label_rule"]}. */
+export const MEDIA_LABEL_PATTERN = {json.dumps(m["label_pattern"])};
+
+{unions}
+
+{interfaces}
+"""
+
+
 # ------------------------------------------------------------------------- prose
 def transcript_retention_days() -> int:
     """`routes/ingest.py RETENTION_DAYS`, read from the source (this generator runs on a
@@ -658,6 +841,49 @@ def transcript_retention_days() -> int:
     if m is None:
         raise SystemExit("gen_contract: RETENTION_DAYS not found in server/builder/routes/ingest.py")
     return int(m.group(1))
+
+
+def _size(n: int) -> str:
+    mib = 1024 * 1024
+    return f"{n // mib} MiB" if n % mib == 0 else f"{n:,} bytes"
+
+
+def gen_media_md(c: dict) -> str:
+    """PRIVACY.md's section on project demos, every number from the contract or the route."""
+    m = c["project_media"]
+    caps = m["caps"]
+    types = m["content_types"]
+    image_types = [t for t, v in types.items() if v["kind"] == "image"]
+    video_types = [t for t, v in types.items() if v["kind"] == "video"]
+    still = max(types[t]["max_bytes"] for t in image_types)
+    video = max(types[t]["max_bytes"] for t in video_types)
+    sources = ", ".join(f"`{s}`" for s in m["enums"]["media_source"])
+    minutes = media_read_seconds() // 60
+    seconds = caps["video_ms"] // 1000
+    videos = "one" if caps["videos"] == 1 else str(caps["videos"])
+    return f"""## Project demos
+
+A demo is the screenshots and one short video of a project you are building, made on your
+Mac by `python -m capture demo` from the running app. It stays in `~/.builder/demos/` on your
+Mac, and nothing sends it until you publish it, one project at a time:
+`python -m capture demo --publish` prints how many files and how many bytes it will send and
+waits for your yes. It refuses a demo whose privacy check has not run, or found the
+repository's name or something shaped like a key in a picture, and says which file.
+
+A publish sends at most {caps["images"]} images ({" or ".join(f"`{t}`" for t in image_types)}, each at most {_size(still)})
+and at most {videos} video ({" or ".join(f"`{t}`" for t in video_types)}, at most {seconds} seconds and {_size(video)}) with its
+still frame. With each file go only its numbers (size, width, height, length and its place
+in the set), where it came from ({sources}), a random id for the
+publish, and a label of at most {m["max_lengths"]["label"]} characters saying what the screen shows, made of
+{m["label_rule"]}. Never the file names, the commit it was taken at, or the project's name.
+
+Only you can see a demo, whatever you share. It is never in a post, a feed, a share, a push
+or a Live Activity, and no link to it works for anyone else: the phone reads each file through
+a link that stops working after {minutes} minutes, or through your Builder server checking your
+sign in. Deleting a demo on the phone, or `python -m capture demo --delete`, deletes its files
+and their records in one request. Publishing again replaces the demo that was there. Deleting
+your account, or excluding the repository, deletes every demo it had.
+"""
 
 
 def gen_privacy_md(c: dict) -> str:
@@ -674,6 +900,7 @@ def gen_privacy_md(c: dict) -> str:
     most = next(f["max_items"] for f in q["fields"] if f["name"] == "quotes")
     tool_keys = ", ".join(f"`{k}`" for k in tool_call_keys(c))
     retention = transcript_retention_days()
+    media = gen_media_md(c)
 
     return f"""<!-- GENERATED by scripts/gen_contract.py from privacy/upload-contract.json — DO NOT EDIT. -->
 
@@ -704,6 +931,10 @@ One channel is different, and nothing sends by it until you install it: **the ra
 transcript channel** (the Claude Code hook, or `python -m capture live`) sends the
 transcript itself, everything above included, to your Builder server, which keeps only the
 fields in the table below. It has its own section.
+
+And one thing is not a session at all: **a project demo**, the screenshots and short video
+of something you are building, which leaves only when you publish it, one project at a time.
+It has its own section too.
 
 `tool_calls` counts calls by tool, and its keys can only be {tool_keys}: any other tool,
 an MCP server's included, is counted under `mcp_other` or `other`, and the server refuses
@@ -787,6 +1018,7 @@ Activity. Turning the setting off deletes them.
 account. Only you can see them, on the session screen; the Lock Screen, the widget, pushes
 and shares never receive one. Turning it off deletes the names already stored.
 
+{media}
 ## The raw transcript channel
 
 The Claude Code hook (`curl $BUILDER_URL/v1/ingest/hook.sh`, `docs/hooks-capture.md`) and
@@ -835,7 +1067,8 @@ builder sync --dry-run --print-payload \\
   | sed 's/^tool_calls\\..*/tool_calls.<allowlisted tool name>/' \\
   | sort -u > /tmp/actual
 curl -s "$BUILDER_BASE_URL/upload-fields.json" | jq -r '.leaf_paths[]' | sort -u > /tmp/declared
-# (`documents.quotes.leaf_paths` is the same list for the quotes document.)
+# (`documents.quotes.leaf_paths` is the same list for the quotes document, and
+# `documents.project_media.leaf_paths` for each file of a published demo.)
 
 # Anything on the left that is not on the right is a field we send and did not declare.
 comm -23 /tmp/actual /tmp/declared
@@ -961,7 +1194,12 @@ def main() -> None:
         else:
             leaves.append(f["name"])
 
+    write(ROOT / "server/builder/media_spec.py", gen_media_py(c))
+    write(ROOT / "mobile/src/generated/media.ts", gen_media_ts(c))
+
     qs = quotes_spec(c)
+    ms = media_spec(c)
+    media = c["project_media"]
     write(
         ROOT / "server/builder/static/upload-fields.json",
         json.dumps(
@@ -975,7 +1213,17 @@ def main() -> None:
                         "route": c["quotes"]["route"],
                         "default": c["quotes"]["default"],
                         "leaf_paths": sorted(spec_leaf_paths(qs, qs["fields"], "")),
-                    }
+                    },
+                    # One presign per file; the bytes follow to the URL it returns.
+                    "project_media": {
+                        "route": media["route"],
+                        "default": media["default"],
+                        "leaf_paths": sorted(spec_leaf_paths(ms, ms["fields"], "")),
+                        "content_types": media["content_types"],
+                        "caps": media["caps"],
+                        "max_lengths": media["max_lengths"],
+                        "label_rule": media["label_rule"],
+                    },
                 },
                 "note": (
                     "`fields` are the top-level keys. `leaf_paths` expands every structured "
@@ -986,7 +1234,10 @@ def main() -> None:
                     "bucket to mcp_other / other. analysis, live_names and the quotes document "
                     "are opt-in; analysis is shaped by spec/analysis.v1.json and live and "
                     "live_names by spec/live.v1.json. `documents` lists what is uploaded "
-                    "outside a session payload, each with its own route and leaf paths."
+                    "outside a session payload, each with its own route and leaf paths: the "
+                    "quotes document, and `project_media`, the presign that goes before each "
+                    "file of a published project demo (the file itself is a PNG, JPEG or MP4 "
+                    "of the stated size and nothing else)."
                 ),
             },
             indent=2,

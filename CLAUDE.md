@@ -414,6 +414,9 @@ python -m capture quotes --delete  delete every quote the server holds
 python -m capture sync --dry-run   what a cloud container would upload, without sending
 python -m capture sync --live      a running session's upload carries its live state (--live-names: basenames, opt in)
 python -m capture live --transcript T  the hook's route with no hook installed: tail a running transcript to the server
+python -m capture demo [PATH] --plan  how it would run the project (kind, steps, why each); runs nothing
+python -m capture demo --project P [--app A.app]  stills + a 10 to 30 s video of it running, in a clone, Vision checked (docs/demos.md)
+python -m capture demo --publish   a project's demo to your account, after it prints every file and you say yes (--delete removes it)
 curl $SERVER/v1/ingest/hook.sh   the Claude Code hook: nothing installed, sessions on the phone (docs/hooks-capture.md)
 scripts/overnight_stack.sh up|sync|live T|token|phone|test|status   the local end to end stack, API on 127.0.0.1:8787
 ```

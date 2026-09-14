@@ -9,6 +9,8 @@
     "  web/public/upload-fields.json         (publicly served; what the verification curl fetches)",
     "  server/builder/quotes_spec.py         (v4: the quotes document, Pydantic, extra='forbid')",
     "  mobile/src/generated/quotes.ts",
+    "  server/builder/media_spec.py          (project_media: a presign request, Pydantic, extra='forbid')",
+    "  mobile/src/generated/media.ts",
     "  PRIVACY.md                            (the prose claim, from the same source)",
     "",
     "THE STRUCTURAL GUARANTEE IS THE SERIALIZER, NOT THE TEST.",
@@ -72,7 +74,12 @@
     "  * `call_tokens`: what every call to the model sent and got back, as at most 240 points of five token counts, the calls that",
     "    came back to an expired cache and the list price of each bucket (`objects` below). Numbers and two enums: no word, no model name.",
     "  * `quotes`: THE SECOND OPT-IN EXCEPTION, a document of its own with its own route, modelled on `analysis`: up to three prompts",
-    "    verbatim, for the Wrapped cards that quote you. Off unless the phone's setting AND the machine's --quotes flag both say yes."
+    "    verbatim, for the Wrapped cards that quote you. Off unless the phone's setting AND the machine's --quotes flag both say yes.",
+    "",
+    "`project_media` (2026-09-14, docs/demos.md): a project's demo, a channel of its own. Off by default and opt in per project AND per",
+    "publish: `python -m capture demo --publish` prints what it will send and waits for a yes. It carries the stills and one short video",
+    "the person made of their own project, PNG, JPEG and MP4 only, capped in size and count, and per file only the numbers, the `source`",
+    "enum and a short plain label (`project_media.fields`). Owner only; never in a post, feed, share, push or activity."
   ],
   "version": 4,
   "modes": [
@@ -1183,6 +1190,139 @@
         "type": "list",
         "item": "QuoteWire",
         "max_items": 3
+      }
+    ]
+  },
+  "project_media": {
+    "doc": [
+      "PROJECT DEMOS (docs/demos.md). The stills and the one short video of a project, made on the Mac by `python -m capture demo`.",
+      "Nothing leaves by default. Opt in per project and per publish: `python -m capture demo --publish` prints how many files and how many",
+      "bytes it will send and waits for a yes. Owner only, whatever the session sharing settings; never in a post, feed, share, push or",
+      "activity. The phone reads them through short lived links or the API's own bearer check, never a public URL. Deleting a demo deletes",
+      "its objects and rows in one request, and deleting the account or excluding the repository deletes them too."
+    ],
+    "route": "POST /v1/projects/{key}/media:presign",
+    "default": "off",
+    "measured": [
+      "Still cap, 6 MiB: 1,043 simulator screenshots at 1206x2622 in this repository's shots/ (2026-09-14) run p50 252,957, p90 2,301,149",
+      "and max 4,122,031 bytes (a Lock Screen over a photo wallpaper). A 1320x2868 Pro Max frame has 1.20 times the pixels, about 4.9 MB",
+      "at the same content, so 6 MiB takes both. Video cap, 40 MiB: 30 s of 1206x2622 at 60 fps, H.264 CRF 18, fresh grain in every frame",
+      "(the worst case tried) came to 17,828,912 bytes; a smooth 30 s scroll through four real screens at CRF 23, 2,372,236. 40 MiB is 2.35",
+      "times the worst. Video length, 31,000 ms: the design's 30 s cut plus one second for frame rounding (a 29.97 fps cut of 30 s is 30.03 s)."
+    ],
+    "content_types": {
+      "image/png": {"kind": "image", "max_bytes": 6291456},
+      "image/jpeg": {"kind": "image", "max_bytes": 6291456},
+      "video/mp4": {"kind": "video", "max_bytes": 41943040}
+    },
+    "caps": {
+      "images": 8,
+      "videos": 1,
+      "video_ms": 31000,
+      "pixels": 8192,
+      "label_word": 24
+    },
+    "label_rule": "letters A to Z and a to z, digits, the space and , . ' ( ) : ? ! & only, at least one letter, no word over 24 characters, no dash of any kind and no hyphen",
+    "label_pattern": "^[A-Za-z0-9 ,.'():?!&]+$",
+    "max_lengths": {
+      "label": 80
+    },
+    "enums": {
+      "media_kind": [
+        "image",
+        "video"
+      ],
+      "media_content_type": [
+        "image/png",
+        "image/jpeg",
+        "video/mp4"
+      ],
+      "media_source": [
+        "capture",
+        "checkout",
+        "transcript",
+        "previous"
+      ],
+      "poster_content_type": [
+        "image/jpeg",
+        "image/png"
+      ]
+    },
+    "objects": {
+      "MediaPoster": [
+        {
+          "name": "content_type",
+          "type": "enum",
+          "values": "poster_content_type"
+        },
+        {
+          "name": "bytes",
+          "type": "int",
+          "doc": "1-6291456: the poster file's size in bytes, what the upload must send exactly"
+        }
+      ]
+    },
+    "fields": [
+      {
+        "name": "publish_id",
+        "type": "hex16",
+        "doc": "a random id the Mac mints for one publish run, so the server can tell the new set of files from the set it replaces. It says nothing about you or the project"
+      },
+      {
+        "name": "kind",
+        "type": "enum",
+        "values": "media_kind"
+      },
+      {
+        "name": "content_type",
+        "type": "enum",
+        "values": "media_content_type",
+        "doc": "PNG or JPEG for an image, MP4 for the video; the server checks the file starts like one"
+      },
+      {
+        "name": "bytes",
+        "type": "int",
+        "doc": "1-41943040: the file's size in bytes, what the upload must send exactly (an image at most 6291456)"
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "doc": "1-8192: pixels across"
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "doc": "1-8192: pixels down"
+      },
+      {
+        "name": "duration_ms",
+        "type": "int",
+        "nullable": true,
+        "doc": "1-31000: the video's length. Null for an image"
+      },
+      {
+        "name": "position",
+        "type": "int",
+        "doc": "0-63: its place in the set, one file per place"
+      },
+      {
+        "name": "label",
+        "type": "string",
+        "max": "label",
+        "doc": "the state it shows, in plain words (the session page, scrolled to the chart); the characters are bounded by label_rule"
+      },
+      {
+        "name": "source",
+        "type": "enum",
+        "values": "media_source",
+        "doc": "where it came from: capture (recorded from the running app), checkout (an image already in the repository), transcript (one your coding tool saved), previous (the last good capture)"
+      },
+      {
+        "name": "poster",
+        "type": "object",
+        "item": "MediaPoster",
+        "nullable": true,
+        "doc": "the video's still frame, shown before it plays and under Reduce Motion. Null for an image"
       }
     ]
   }

@@ -1,4 +1,5 @@
-"""`python -m capture pair`, `sync`, `live`, `report`, `narrative` and `quotes`."""
+"""`python -m capture pair`, `sync`, `live`, `report`, `narrative` and `quotes`; `demo --publish`
+and `demo --delete` are capture/demo_publish.py, dispatched from `main`."""
 
 from __future__ import annotations
 
@@ -970,11 +971,24 @@ def make_parser() -> argparse.ArgumentParser:
     q.add_argument("--server", help="API base URL (or BUILDER_API_URL)")
     q.add_argument("--key", help="capture key (or BUILDER_CAPTURE_KEY); replaces pairing")
     q.set_defaults(fn=cmd_quotes)
+
+    # `python -m capture demo`: stills and a short video of a project, running (docs/demos.md).
+    from .demo import cli as demo_cli
+
+    demo_cli.add_parser(sub)
     return ap
 
 
 def main(argv: list[str] | None = None) -> int:
-    a = make_parser().parse_args(argv)
+    args = list(sys.argv[1:] if argv is None else argv)
+    # `demo --publish` and `demo --delete` are capture/demo_publish.py, with a parser of its
+    # own, answered before `make_parser` so the `demo` subcommand stays the generator's
+    # (capture/demo/, making a demo) and the two never define one flag twice.
+    from . import demo_publish
+
+    if demo_publish.claims(args):
+        return demo_publish.main(args[1:])
+    a = make_parser().parse_args(args)
     try:
         return a.fn(a)
     except cl.NotPaired as e:

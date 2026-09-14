@@ -28,6 +28,10 @@ transcript channel** (the Claude Code hook, or `python -m capture live`) sends t
 transcript itself, everything above included, to your Builder server, which keeps only the
 fields in the table below. It has its own section.
 
+And one thing is not a session at all: **a project demo**, the screenshots and short video
+of something you are building, which leaves only when you publish it, one project at a time.
+It has its own section too.
+
 `tool_calls` counts calls by tool, and its keys can only be `Read`, `Edit`, `Write`, `Bash`, `mcp_other`, `other`: any other tool,
 an MCP server's included, is counted under `mcp_other` or `other`, and the server refuses
 a key outside that list.
@@ -170,6 +174,29 @@ Activity. Turning the setting off deletes them.
 account. Only you can see them, on the session screen; the Lock Screen, the widget, pushes
 and shares never receive one. Turning it off deletes the names already stored.
 
+## Project demos
+
+A demo is the screenshots and one short video of a project you are building, made on your
+Mac by `python -m capture demo` from the running app. It stays in `~/.builder/demos/` on your
+Mac, and nothing sends it until you publish it, one project at a time:
+`python -m capture demo --publish` prints how many files and how many bytes it will send and
+waits for your yes. It refuses a demo whose privacy check has not run, or found the
+repository's name or something shaped like a key in a picture, and says which file.
+
+A publish sends at most 8 images (`image/png` or `image/jpeg`, each at most 6 MiB)
+and at most one video (`video/mp4`, at most 31 seconds and 40 MiB) with its
+still frame. With each file go only its numbers (size, width, height, length and its place
+in the set), where it came from (`capture`, `checkout`, `transcript`, `previous`), a random id for the
+publish, and a label of at most 80 characters saying what the screen shows, made of
+letters A to Z and a to z, digits, the space and , . ' ( ) : ? ! & only, at least one letter, no word over 24 characters, no dash of any kind and no hyphen. Never the file names, the commit it was taken at, or the project's name.
+
+Only you can see a demo, whatever you share. It is never in a post, a feed, a share, a push
+or a Live Activity, and no link to it works for anyone else: the phone reads each file through
+a link that stops working after 15 minutes, or through your Builder server checking your
+sign in. Deleting a demo on the phone, or `python -m capture demo --delete`, deletes its files
+and their records in one request. Publishing again replaces the demo that was there. Deleting
+your account, or excluding the repository, deletes every demo it had.
+
 ## The raw transcript channel
 
 The Claude Code hook (`curl $BUILDER_URL/v1/ingest/hook.sh`, `docs/hooks-capture.md`) and
@@ -218,7 +245,8 @@ builder sync --dry-run --print-payload \
   | sed 's/^tool_calls\..*/tool_calls.<allowlisted tool name>/' \
   | sort -u > /tmp/actual
 curl -s "$BUILDER_BASE_URL/upload-fields.json" | jq -r '.leaf_paths[]' | sort -u > /tmp/declared
-# (`documents.quotes.leaf_paths` is the same list for the quotes document.)
+# (`documents.quotes.leaf_paths` is the same list for the quotes document, and
+# `documents.project_media.leaf_paths` for each file of a published demo.)
 
 # Anything on the left that is not on the right is a field we send and did not declare.
 comm -23 /tmp/actual /tmp/declared

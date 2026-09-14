@@ -153,17 +153,22 @@ class Rules(unittest.TestCase):
         def c(**kw):
             return {"label": "the portfolio page", "refused": None, "pattern": "(?i)portfolio", "shot": "/w/still-03.png", **kw}
 
-        self.assertEqual(web._verify([c(pattern=None)]), [])
+        self.assertEqual(web._verify([c(pattern=None)]), ([], set()))
         with self.assertRaisesRegex(CaptureError, "opened /portfolio.html and the server answered 404"):
             web._verify([c(refused=["/portfolio.html", 404])])
         # Read on the PICTURE: text below the fold is not on it.
         shown = [{"file": "/w/still-03.png", "lines": [{"text": "My Portfolio"}]}]
         with mock.patch("capture.demo.privacy.ocr", return_value=shown):
-            self.assertEqual(len(web._verify([c()])), 1)
+            self.assertEqual(web._verify([c()])[1], set())
         error_page = [{"file": "/w/still-03.png", "lines": [{"text": "Error response"}, {"text": "File not found"}]}]
         with mock.patch("capture.demo.privacy.ocr", return_value=error_page):
             with self.assertRaisesRegex(CaptureError, "expects /\\(\\?i\\)portfolio/ on the page"):
                 web._verify([c()])
+        # An optional still that shows nothing it expects is left out, not a stopped run.
+        with mock.patch("capture.demo.privacy.ocr", return_value=[{"file": "/w/still-03.png", "lines": []}]):
+            notes, left_out = web._verify([c(optional=True, pattern=".")])
+            self.assertEqual(left_out, {"/w/still-03.png"})
+            self.assertIn("left out", notes[1])
         # Vision failing is a failed beat, never a passing one.
         with mock.patch("capture.demo.privacy.ocr", side_effect=RuntimeError("no helper")):
             with self.assertRaisesRegex(CaptureError, "could not be read"):
@@ -250,8 +255,22 @@ class Defaults(unittest.TestCase):
         from capture.demo.detect import Plan
 
         plan = Plan(project=None, commit="c", kind="web", kind_reason="", app_dir="", package_manager=None, expo=None, steps=[], evidence=None, routes=["/", "/recipes.html"])
-        labels = [b["label"] for b in storyboard.validate(storyboard.default(plan))["beats"]]
-        self.assertEqual(labels, ["the home page", "the recipes page"])
+        beats = storyboard.validate(storyboard.default(plan))["beats"]
+        self.assertEqual([b["label"] for b in beats][:2], ["the home page", "the recipes page"])
+
+    def test_a_short_site_gets_optional_stills_further_down_its_first_page(self):
+        # A one or two page site is mostly below the fold; each further still is optional, so a
+        # page with nothing more below it still makes one honest still.
+        from capture.demo.detect import Plan
+
+        plan = Plan(project=None, commit="c", kind="web", kind_reason="", app_dir="", package_manager=None, expo=None, steps=[], evidence=None, routes=["/"])
+        beats = storyboard.validate(storyboard.default(plan))["beats"]
+        self.assertEqual([b["label"] for b in beats], ["the home page", "the home page, scrolled down", "the home page, scrolled further", "the home page, scrolled further still"])
+        self.assertEqual([len(b["actions"]) for b in beats[1:]], [2, 3, 4])
+        self.assertTrue(all(b["optional"] and not b["video"] and b["expect"] for b in beats[1:]))
+        self.assertFalse(beats[0]["optional"])
+        four = Plan(project=None, commit="c", kind="web", kind_reason="", app_dir="", package_manager=None, expo=None, steps=[], evidence=None, routes=["/", "/a", "/b", "/c"])
+        self.assertFalse(any(b["optional"] for b in storyboard.validate(storyboard.default(four))["beats"]))
 
 
     def test_a_first_storyboard_never_names_a_repository(self):

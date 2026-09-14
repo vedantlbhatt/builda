@@ -59,6 +59,8 @@ from . import KINDS
 ACTIONS = ("open", "wait", "settle", "tap", "swipe", "type", "key", "back", "run", "maestro", "relaunch")
 SWIPES = ("up", "down", "left", "right")
 MIN_STILLS, MAX_STILLS = 4, 6
+#: The labels of a first storyboard's "further down" stills, a swipe (600 points) apart.
+FURTHER_DOWN = ("scrolled down", "scrolled further", "scrolled further still")
 MIN_BEATS, MAX_BEATS = 3, 5
 LABEL_MAX, CAPTION_MAX = 80, 48
 _ENV_REF = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
@@ -317,6 +319,16 @@ def _check_viewport(where: str, v, video: bool) -> dict | None:
     return {"width": v["width"], "height": v["height"]}
 
 
+def _check_optional(where: str, v, video: bool) -> bool:
+    """`optional`: a web still left out, not a stopped run, when its picture does not show its
+    `expect` (a generated "further down" still on a page with nothing more below)."""
+    if not isinstance(v, bool):
+        raise StoryboardError(f"{where}: optional is true or false")
+    if v and video:
+        raise StoryboardError(f"{where}: an optional beat is a still only; add video: false")
+    return v
+
+
 def _strings(v):
     if isinstance(v, str):
         yield v
@@ -371,6 +383,7 @@ def validate(data) -> dict:
                 "expect": _check_expect(f"beat {i}", b.get("expect")),
                 "film": _check_film(f"beat {i}", b.get("film", "all")),
                 "viewport": _check_viewport(f"beat {i}", b.get("viewport"), bool(b.get("video", True))),
+                "optional": _check_optional(f"beat {i}", b.get("optional", False), bool(b.get("video", True))),
             }
         )
     stills = []
@@ -384,10 +397,13 @@ def validate(data) -> dict:
                 "settle": float(s.get("settle", 8.0)),
                 "expect": _check_expect(f"still {i}", s.get("expect")),
                 "viewport": _check_viewport(f"still {i}", s.get("viewport"), False),
+                "optional": _check_optional(f"still {i}", s.get("optional", False), False),
             }
         )
     if kind != "web" and any(x["viewport"] for x in [*out_beats, *stills]):
         raise StoryboardError("viewport: only a web page takes its own size; a device's screen is its own")
+    if kind != "web" and any(x["optional"] for x in [*out_beats, *stills]):
+        raise StoryboardError("optional: only a web still may be left out when it shows nothing")
     n_stills = sum(1 for b in out_beats if b["still"]) + len(stills)
     if n_stills > MAX_STILLS:
         raise StoryboardError(f"{n_stills} stills; a demo keeps {MIN_STILLS} to {MAX_STILLS}")
@@ -496,6 +512,12 @@ def default(plan, named=None) -> dict:
 
         for r in [r for r in (plan.routes or ["/"]) if r == "/" or not named(page_label(r))][:4]:
             beats.append({"label": page_label(r), "actions": [{"open": r}], "hold": 2.0, "expect": _expect_from(_route_words(r))})
+        # A site of one or two pages is mostly below the fold: stills further down its first
+        # page, each left out when the page has nothing more (the same picture again, or no
+        # text on it), so a short page still makes one honest still.
+        for k, where in enumerate(FURTHER_DOWN[: max(0, MIN_STILLS - len(beats))], 1):
+            beats.append({"label": f"the home page, {where}", "actions": [{"open": "/"}, *[{"swipe": "up"}] * k], "hold": 0.0,
+                          "expect": ".", "video": False, "optional": True})  # fmt: skip
     else:
         cmds = [s.command for s in plan.steps if s.role == "run"][:4]
         if kind == "cli" and cmds and len(cmds) < MIN_BEATS and not any("--help" in c for c in cmds):

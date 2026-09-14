@@ -114,13 +114,13 @@ def act(page, a):
     elif k == "back":
         page.go_back()
 
-def check(label, pattern, shot, path):
+def check(label, pattern, shot, path, optional=False):
     """What `_verify` needs to hold the picture to its label: the refused open, and the settled
     picture (a beat that is not a still keeps one for Vision)."""
     if pattern and path is None:
         path = f"{job['run_dir']}/check-{len(out['checks']) + 1:02d}.png"
         open(path, "wb").write(shot)
-    out["checks"].append({"label": label, "refused": state["refused"], "pattern": pattern, "shot": path})
+    out["checks"].append({"label": label, "refused": state["refused"], "pattern": pattern, "shot": path, "optional": optional})
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
@@ -191,7 +191,7 @@ with sync_playwright() as p:
         shot = settle(pg, s["settle"])
         open(path, "wb").write(shot)
         out["stills"].append({"path": path, "label": s["label"]})
-        check(s["label"], s.get("expect"), shot, path)
+        check(s["label"], s.get("expect"), shot, path, bool(s.get("optional")))
         if own:
             own.close()
     ctx2.close()
@@ -236,7 +236,7 @@ def _venv_pip(command: str, ws: Workspace, sandbox: Sandbox) -> tuple[str, str]:
     return command.replace("pip install", f"{venv}/bin/pip install", 1), str(venv / "bin")
 
 
-def _verify(checks: list[dict]) -> list[str]:
+def _verify(checks: list[dict]) -> tuple[list[str], set[str]]:
     """Every picture is what its label says, or the run stops, as on iOS (`ios.Driver.expect`).
 
     A page the server refused is never a state of the app, and `expect` is read from the settled
@@ -244,7 +244,11 @@ def _verify(checks: list[dict]) -> list[str]:
     below the fold (a beat scrolled 200 points passed on a heading 900 points down). FOUND ON THE
     FIRST WEB DEMO (2026-09-14): the web driver never read `expect` at all, though every
     generated beat carries one so a storyboard "never films a screen it never checked", and the
-    Personal Website's "portfolio page" still was Python's 404 page. Returns the notes."""
+    Personal Website's "portfolio page" still was Python's 404 page.
+
+    An OPTIONAL still (a generated "further down" one) whose picture does not show its `expect`
+    is left out rather than stopping the run: a page with nothing more below it scrolls onto a
+    blank. Returns the notes and the pictures to leave out."""
     for c in checks:
         if c.get("refused"):
             path, status = c["refused"]
@@ -254,7 +258,7 @@ def _verify(checks: list[dict]) -> list[str]:
             )
     wanted = [c for c in checks if c.get("pattern")]
     if not wanted:
-        return []
+        return [], set()
     from . import privacy
 
     shots = [pathlib.Path(c["shot"]) for c in wanted]
@@ -263,13 +267,22 @@ def _verify(checks: list[dict]) -> list[str]:
     except (RuntimeError, tools.ToolError) as e:
         raise CaptureError(f"the storyboard did not replay: {wanted[0]['label']!r} and the rest could not be read to check what they show ({e})") from e
     text = {pathlib.Path(str(r.get("file"))).name: "\n".join(line.get("text", "") for line in r.get("lines") or []) for r in results}
+    notes: list[str] = []
+    left_out: set[str] = set()
     for c, shot in zip(wanted, shots):
-        if not re.search(c["pattern"], text.get(shot.name, "")):
-            raise CaptureError(
-                f"the storyboard did not replay: {c['label']!r} expects /{c['pattern']}/ on the page and it is "
-                f"not there ({shot.name}), so that picture would not be what its label says"
-            )
-    return [f"every picture shows what its storyboard expects ({len(wanted)} read with Vision)"]
+        if re.search(c["pattern"], text.get(shot.name, "")):
+            continue
+        if c.get("optional"):
+            left_out.add(str(shot))
+            notes.append(f"left out {c['label']!r}: /{c['pattern']}/ is not on its picture")
+            continue
+        raise CaptureError(
+            f"the storyboard did not replay: {c['label']!r} expects /{c['pattern']}/ on the page and it is "
+            f"not there ({shot.name}), so that picture would not be what its label says"
+        )
+    kept = len(wanted) - len(left_out)
+    notes.insert(0, f"every picture shows what its storyboard expects ({kept} read with Vision)")
+    return notes, left_out
 
 
 def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: Sandbox | None = None) -> Capture:
@@ -322,7 +335,7 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
             "run_dir": str(run_dir),
             "block_hosts": list(BLOCK_HOSTS),
             "beats": [b for b in story["beats"] if b["video"]],
-            "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect"), "viewport": b.get("viewport")} for b in story["beats"] if not b["video"]] + story["stills"],
+            "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect"), "viewport": b.get("viewport"), "optional": b.get("optional")} for b in story["beats"] if not b["video"]] + story["stills"],
         }
         jp, rp = run_dir / "web-job.json", run_dir / "web-result.json"
         jp.write_text(json.dumps(job))
@@ -336,8 +349,8 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
     finally:
         for s in servers:
             s.stop()
-    checked = _verify(res.get("checks") or [])
-    stills = [Still(pathlib.Path(s["path"]), s["label"]) for s in res["stills"]]
+    checked, left_out = _verify(res.get("checks") or [])
+    stills = [Still(pathlib.Path(s["path"]), s["label"]) for s in res["stills"] if s["path"] not in left_out]
     beats = [BeatWindow(b["label"], b["caption"], b["start"], b["end"]) for b in res["beats"]]
     notes = [f"the dev server ran from the clone ({srv.how}) on {base}", f"requests to {len(BLOCK_HOSTS)} analytics hosts were aborted"]
     notes.extend(res.get("notes") or [])

@@ -1069,6 +1069,12 @@ class TheFirstSentence(unittest.TestCase):
                 base["totals"][k] = v
         return base
 
+    def test_all_of_it_is_never_about(self):
+        # FOUND IN THE now3 PASS (2026-09-14): a whole share read "About 100% went into ...".
+        self.assertEqual(burn._about(1.0), "All of it")
+        self.assertEqual(burn._about(0.996), "Over 99%")
+        self.assertEqual(burn._about(0.4), "About 40%")
+
     def test_lines_are_added_and_removed_never_changed(self):
         rep = self.report(lines_removed={"value": 40})
         self.assertEqual(burn.explain(rep)[0], "This session used 1.2M tokens and removed 40 lines.")

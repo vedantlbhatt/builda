@@ -1608,6 +1608,10 @@ def _about(share: float) -> str:
     "under 1%", which need no "about"). FOUND IN REVIEW: a 0.996 share read "About 100%
     went into stretches where nothing was written" under a numbers block saying "over
     99%"."""
+    if share >= 1:
+        # All of it is exact, not about: FOUND IN THE now3 PASS (2026-09-14), "About 100% went
+        # into stretches whose commands or helper agents may have changed files".
+        return "All of it"
     said = _share_words(share)
     if said.startswith(("under", "over")):
         return said[0].upper() + said[1:]

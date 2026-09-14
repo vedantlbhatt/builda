@@ -147,6 +147,7 @@ describe('profile.py and feedback.py, said the same way', () => {
     expect(shareWords(0.005)).toBe('1%');
     expect(about(0.4)).toBe('About 40%');
     expect(about(0.996)).toBe('Over 99%');
+    expect(about(1)).toBe('All of it'); // never "About 100%" (the now3 pass)
   });
 
   test('fill: slots, agreed nouns, forms by n, and a hole is null, never a sentence', () => {

@@ -278,8 +278,9 @@ export function shareWords(share: number): string {
   return pct(share);
 }
 
-/** `burn._about`: a share opening a sentence, "About 40%", and never "About 100%". */
+/** `burn._about`: a share opening a sentence, "About 40%", and never "About 100%": all of it is "All of it". */
 export function about(share: number): string {
+  if (share >= 1) return 'All of it';
   const said = shareWords(share);
   if (said.startsWith('under') || said.startsWith('over')) return capital(said);
   return `About ${said}`;

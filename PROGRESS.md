@@ -78,6 +78,16 @@ section.
 - Landed 21:55: Settings > Live Activities (05dd8e4). The owner swiped the app away and the
   card stayed in the Dynamic Island; the only way down was iOS Settings. On by default, per
   phone; off takes every card down at once (one from before launch too) and starts none.
+- Landed 22:45: a paragraph never loses its last line on iOS (d461d7e, a bun patch to RN 0.79's
+  RCTTextLayoutManager: Yoga framed four lines of 23pt at 91.99975 and the last line vanished).
+  Reproduced with the chapter's JS workaround off on the unpatched app, whole on the patched
+  one (`shots/tokens/textfix-*`). Native, so the phone needs build 4 for it.
+- Token chart review (22:50): all 160 stored blocks match raw JSONL to the token. Being fixed:
+  my a2adb51 put tide on Claude's reply under a burn chapter that draws re-reading in tide (same
+  page beats cross page, so re-read goes back to tide); binned bars drawn as sums under a per
+  call axis; "before this session began" missing on 57 of 58 rewrites; share bars not summing
+  to 100; overlapping rewrite labels; the upload gate accepting Infinity dollars (500 on insert);
+  a readout number with no unit; scrub re-renders; away_seconds shown to strangers.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

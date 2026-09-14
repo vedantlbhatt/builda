@@ -166,7 +166,10 @@ section.
   it was given room for; 1ed3ab7 the expired cache note says "118,884 of its 118,886 new tokens";
   7031e51 "All of it", never "About 100%" (Python and phone); 8ed151b the card says "files touched";
   a133df9 the cache mark is a "gap", not "away"; 179232f a live row silent for two hours leaves
-  mission control, the Live Activity sync and Sessions. CHECKED, not defects: the day counts on project
+  mission control, the Live Activity sync and Sessions; 9acdeca momentum names its span ("the last 7
+  days your Mac read"); 7757270 the rivers' dates by the room each takes; 0b36e1c and 2d6a249 Wrapped
+  streak, deep sessions and prompts a session draw what their answers say. NOT YET ON THE PHONE: every
+  fix since build 8 waits for the next build. CHECKED, not defects: the day counts on project
   1 (a 30 day window touches 31 dates; commits and sessions share the 04:00 day). LEFT: "3,573.7M" is
   a deliberate format pinned to Python; Wrapped art against its answers (cards 7, 9, 11, 13, 14); the
   money flow's colours; the rivers axis labels; "Up 452% on the week before" names no week; colour

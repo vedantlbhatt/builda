@@ -238,6 +238,16 @@ export interface SwarmOptions {
   rMax: number;
   gap: number;
   pad: number;
+  /**
+   * What a dot draws past its own radius (the arc round it, the ring a press puts on it), which
+   * must stay inside the width as well. Default 0.
+   *
+   * FOUND IN THE CAPTURE PASS (2026-09-14, shots/now2 `11-project-1-20`, `12-project-2-14`):
+   * the dots were kept inside the width by their radius alone, so a session on the axis's first
+   * or last day sat with its disc touching the edge and its arc, 2.9 points outside the disc, cut
+   * flat by the canvas: the busiest day of a project read as a column of clipped rings.
+   */
+  rim?: number;
 }
 
 /** Area by length: a session twice as long is twice the ink. Never under `rMin`, so a short one is still a dot a finger can find. */
@@ -266,8 +276,10 @@ export function beeswarm(all: readonly SwarmIn[], width: number, o: SwarmOptions
     .map((s, i) => ({ s, i, r: swarmRadius(s.size, max, o) }))
     .sort((a, b) => b.r - a.r || a.s.at - b.s.at || a.i - b.i);
   const placed: SwarmDot[] = [];
+  const rim = Math.max(0, o.rim ?? 0);
   for (const { s, r } of order) {
-    const x = Math.min(width - r, Math.max(r, xOf(s.at)));
+    // The whole mark inside the width: the disc and whatever it draws round itself.
+    const x = Math.min(width - r - rim, Math.max(r + rim, xOf(s.at)));
     const blocked: [number, number][] = [];
     for (const p of placed) {
       const reach = r + p.r + o.gap;

@@ -504,6 +504,53 @@ export interface ProjectSlice {
   next_before?: string | null;
 }
 
+// ------------------------------------------------------------------ project demos
+// `server/builder/routes/media.py` (docs/demos.md, "The API"). Owner only, bearer auth.
+
+/**
+ * One file of a project's demo as the list and the preview serve it: a still or the one video.
+ * `url` and `poster_url` are presigned GETs in production and RELATIVE in development
+ * (`/v1/media/{id}`), which the phone fetches from the API with its bearer
+ * (`resolveMediaUrl`). `poster_url` is null on a still.
+ */
+export interface ProjectMediaItem {
+  id: string;
+  kind: 'image' | 'video';
+  content_type: string;
+  width: number;
+  height: number;
+  /** The video's length; null on a still. */
+  duration_ms: number | null;
+  position: number;
+  /** The state it shows, in plain words. */
+  label: string;
+  /** Where it came from: `capture`, `checkout`, `transcript` or `previous`. */
+  source: string;
+  url: string;
+  poster_url: string | null;
+}
+
+/** Where a media file is fetched from, and the header it needs there (none off the API's own origin). */
+export interface MediaSourceRef {
+  uri: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * A media url the server returned, made fetchable. A relative one (the local stack's
+ * `/v1/media/{id}`) is resolved against the API and carries the bearer, as every API read does;
+ * an absolute one on the API's own origin carries it too. Any other absolute url is a presigned
+ * GET on the object store, which IS the grant: it gets no bearer, because the phone's token
+ * must never travel to another host (and S3 refuses a request that brings a second credential).
+ */
+export function resolveMediaUrl(url: string, baseUrl: string, bearer: string | null | undefined): MediaSourceRef {
+  const base = baseUrl.replace(/\/+$/, '');
+  const auth = bearer ? { headers: { Authorization: `Bearer ${bearer}` } } : {};
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return { uri: `${base}${url.startsWith('/') ? '' : '/'}${url}`, ...auth };
+  const origin = (u: string) => /^([a-z][a-z0-9+.-]*:\/\/[^/?#]+)/i.exec(u)?.[1]?.toLowerCase() ?? null;
+  return origin(url) !== null && origin(url) === origin(base) ? { uri: url, ...auth } : { uri: url };
+}
+
 // ------------------------------------------------------------------ privacy
 // `server/builder/routes/privacy.py` (docs/overnight-integration.md 2.3 and 2.4). Two
 // switches, both OFF by default, each one the only thing that lets its data reach the
@@ -976,6 +1023,27 @@ export class Api {
     if (opts.limit !== undefined) q.set('limit', String(opts.limit));
     const qs = q.toString();
     return this.request('GET', `/v1/projects/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`);
+  }
+
+  /** A project's demo: the video first, then the stills by position (docs/demos.md). 404 for a key that is not yours. */
+  projectMedia(key: string): Promise<{ items: ProjectMediaItem[] }> {
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}/media`);
+  }
+
+  /** Up to three stills of each project, for the Projects tab: `[]` for a project with no demo. At most 50 keys. */
+  projectMediaPreview(keys: readonly string[]): Promise<{ projects: Record<string, ProjectMediaItem[]> }> {
+    return this.request('GET', `/v1/projects/media:preview?keys=${keys.map(encodeURIComponent).join(',')}`);
+  }
+
+  /** Delete a project's demo: every file and every row, in one request. */
+  deleteProjectMedia(key: string): Promise<{ deleted: number }> {
+    return this.request('DELETE', `/v1/projects/${encodeURIComponent(key)}/media`);
+  }
+
+  /** A media url from `projectMedia` or `projectMediaPreview`, made fetchable (`resolveMediaUrl`). */
+  async mediaSource(url: string): Promise<MediaSourceRef> {
+    await this.loadTokens();
+    return resolveMediaUrl(url, this.baseUrl, this.access);
   }
 
   sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean } = {}): Promise<{

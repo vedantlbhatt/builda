@@ -50,6 +50,14 @@ const RING_ROOM = 5;
 /** The arc: its stroke, and how far outside the rim it runs. */
 const RING_W = 1.75;
 const RING_OUT = 2;
+/** The ring a press puts round a dot: this far outside its rim, 2 points wide. */
+const HOT_OUT = RING_OUT + 3;
+/**
+ * What a dot draws past its radius, at the most: the press ring's outer edge. The layout keeps it
+ * inside the width (`geometry.SwarmOptions.rim`) and the height leaves it room, so no mark is ever
+ * cut flat by the canvas's edge (FOUND IN THE CAPTURE PASS, 2026-09-14).
+ */
+const RIM = HOT_OUT + 1;
 /** Read once, so the UI thread gets a number. */
 const BUTT = StrokeCap.Butt;
 
@@ -118,13 +126,13 @@ export function Swarm({
       beeswarm(
         sessions.map((s) => ({ id: s.id, at: s.at, size: s.activeSeconds })),
         width,
-        { rMin: 3, rMax: Math.min(16, Math.round(width * 0.042)), gap: RING_ROOM, pad: 4 },
+        { rMin: 3, rMax: Math.min(16, Math.round(width * 0.042)), gap: RING_ROOM, pad: 4, rim: RIM },
         Number.isFinite(lo) ? lo : undefined,
         Number.isFinite(hi) ? hi : undefined,
       ),
     [sessions, width, lo, hi],
   );
-  const half = Math.max(24, Math.ceil(swarm.extent) + 6);
+  const half = Math.max(24, Math.ceil(swarm.extent + RIM) + 1);
   const height = half * 2;
   const axis = half;
 
@@ -166,7 +174,7 @@ export function Swarm({
       if (!d) return;
       hotX.value = d.x;
       hotY.value = axis + d.dy;
-      hotR.value = d.r + RING_OUT + 3;
+      hotR.value = d.r + HOT_OUT;
       hotOn.value = 1;
       select();
     },

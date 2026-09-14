@@ -5,6 +5,11 @@
  * (`model.swarmSessions`). Read on focus, the rule the tabs follow; the saved rows first, so the
  * swarm is there before the network answers.
  *
+ * The same rows, and the live rows the phone holds, are what the hero reconciles the Mac's report
+ * against (`recency.ts`): `phone.finals` is every finished row read here, `phone.live` the live
+ * list as the root's poll keeps it, read again every 30 seconds while the page is in front, so
+ * "Running now" goes when the session does.
+ *
  * FOUND IN REVIEW (2026-09-13): the first version read one page of 50 and every saved row, and
  * the saved rows are the newest 50 NOTABLE sessions, so before the last fortnight every dot was a
  * notable one and the axis began at the first dot, hiding the weeks it had not read. It also parsed
@@ -18,9 +23,12 @@ import { api } from '../data/client';
 import { OFFLINE_MESSAGE, type SessionDetail } from '../data/api';
 import { SWARM_MAX } from './geometry';
 import { swarmSessions, type SwarmSession } from './model';
+import type { PhoneSession } from './recency';
 
 /** One page of a project's sessions: the most the route gives at once. */
 const PAGE = 200;
+/** How often the live list is read again while the page is in front. */
+const LIVE_EVERY_MS = 30_000;
 
 export interface ProjectSessions {
   /** Newest first when capped, the swarm's order otherwise; null until the first read. */
@@ -28,24 +36,34 @@ export interface ProjectSessions {
   /** How many the server holds for this project in all, or null when it did not say. */
   total: number | null;
   error: string | null;
+  /** What the phone holds for the reconciliation: this project's finished rows, and every live row. */
+  phone: { finals: PhoneSession[]; live: PhoneSession[] };
 }
+
+const NONE: ProjectSessions['phone'] = { finals: [], live: [] };
 
 /**
  * `key` is the project's full key (or a prefix the route resolves); `firstAt` is the project's
  * first session as the report has it, where paging may stop.
  */
 export function useProjectSessions(key: string | null, firstAt: string | null): ProjectSessions {
-  const [state, setState] = useState<ProjectSessions>({ sessions: null, total: null, error: null });
+  const [state, setState] = useState<ProjectSessions>({ sessions: null, total: null, error: null, phone: NONE });
   useFocusEffect(
     useCallback(() => {
       if (!key) return undefined;
       let live = true;
+      const readLive = async () => {
+        const rows = await cache.listLive();
+        if (live) setState((s) => ({ ...s, phone: { ...s.phone, live: rows } }));
+      };
+      void readLive();
+      const timer = setInterval(() => void readLive(), LIVE_EVERY_MS);
       void (async () => {
         const full = key.length === 64 ? key : null;
         const saved = full ? await cache.listSessionsForRepo(full, SWARM_MAX) : [];
-        if (live && saved.length) setState((s) => ({ ...s, sessions: swarmSessions([], saved, full!) }));
+        if (live && saved.length) setState((s) => ({ ...s, sessions: swarmSessions([], saved, full!), phone: { ...s.phone, finals: saved } }));
         if (!(await api.isSignedIn())) {
-          if (live) setState({ sessions: full ? swarmSessions([], saved, full) : [], total: null, error: null });
+          if (live) setState((s) => ({ ...s, sessions: full ? swarmSessions([], saved, full) : [], total: null, error: null, phone: { ...s.phone, finals: saved } }));
           return;
         }
         const rows: SessionDetail[] = [];
@@ -65,18 +83,21 @@ export function useProjectSessions(key: string | null, firstAt: string | null): 
           }
           const k = resolved ?? key;
           const cached = full ? saved : await cache.listSessionsForRepo(k, SWARM_MAX);
-          if (live) setState({ sessions: swarmSessions(rows, cached, k), total, error: null });
+          if (live) setState((s) => ({ ...s, sessions: swarmSessions(rows, cached, k), total, error: null, phone: { ...s.phone, finals: [...rows, ...cached.filter((c) => c.repo_key === k)] } }));
         } catch (e) {
           if (live)
-            setState({
+            setState((s) => ({
+              ...s,
               sessions: rows.length || saved.length ? swarmSessions(rows, saved, resolved ?? key) : [],
               total,
               error: e instanceof Error && e.message ? e.message : OFFLINE_MESSAGE,
-            });
+              phone: { ...s.phone, finals: [...rows, ...saved] },
+            }));
         }
       })();
       return () => {
         live = false;
+        clearInterval(timer);
       };
     }, [key, firstAt]),
   );

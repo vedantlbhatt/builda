@@ -17,7 +17,7 @@
  *                  helper a worklet calls is itself a worklet defined before it
  */
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { hasDash } from '../src/copy/plain';
@@ -464,6 +464,26 @@ describe('the swarm', () => {
     }
   });
 
+  test('the whole mark stays inside: the arc and the press ring past the disc too (capture pass, 2026-09-14)', () => {
+    // The capture's shape: most of a project's sessions on its first and last days, so whole columns
+    // stand at the axis's two ends, where the disc alone used to be kept in and its arc was cut flat.
+    const ends = Array.from({ length: 40 }, (_, i) => ({ id: `e${i}`, at: i < 20 ? Date.UTC(2026, 7, 15) : Date.UTC(2026, 8, 13), size: ((i * 53) % 13) * 700 + 60 }));
+    const rim = 6;
+    const { dots, extent } = beeswarm(ends, 353, { ...o, gap: 5, rim });
+    expect(dots.length).toBe(40);
+    for (const d of dots) {
+      expect(d.x - d.r - rim).toBeGreaterThanOrEqual(-1e-6);
+      expect(d.x + d.r + rim).toBeLessThanOrEqual(353 + 1e-6);
+    }
+    // The Swarm leaves the rim above and below as well: its half height covers the farthest mark.
+    const swarm = readFileSync(join(MOBILE, 'src/projects/Swarm.tsx'), 'utf8');
+    expect(swarm).toMatch(/const half = Math\.max\(24, Math\.ceil\(swarm\.extent \+ RIM\) \+ 1\);/);
+    expect(swarm).toMatch(/rim: RIM/);
+    expect(extent).toBeGreaterThan(0);
+    // Without a rim, the old rule: the disc alone inside.
+    expect(Math.min(...beeswarm(ends, 353, { ...o, gap: 5 }).dots.map((d) => d.x - d.r))).toBeCloseTo(0, 6);
+  });
+
   test('area by length, a floor a finger can find, and the same swarm every time', () => {
     expect(swarmRadius(4, 16, o) / swarmRadius(16, 16, o)).toBeCloseTo(0.5, 6);
     expect(swarmRadius(0, 16, o)).toBe(3);
@@ -630,8 +650,38 @@ describe('the wiring', () => {
     expect(root).toContain('<Stack.Screen name="project/[key]"');
   });
 
+  test('every drawing lands to a still picture: recorded once when it has landed, never again a frame', () => {
+    // Two reviews on 2026-09-13 found charts re-recording their whole picture every frame long
+    // after they had landed. Every picture a project drawing records on a clock goes through the
+    // drawing clock, and a still one recorded once replaces it.
+    const drawings = ['Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx', 'DayDial.tsx'];
+    // The ones that record a moving picture on the clock, and must swap in a still one.
+    const recorded = ['Swarm.tsx', 'CommitDays.tsx', 'DayDial.tsx'];
+    for (const f of drawings) {
+      const src = code(readFileSync(join(MOBILE, 'src/projects', f), 'utf8'));
+      expect({ f, clock: src.includes('useDrawClock(') }).toEqual({ f, clock: true });
+      expect({ f, rests: /\blanded \?/.test(src) }).toEqual({ f, rests: true });
+      if (recorded.includes(f)) {
+        expect({ f, still: /landed \? createPicture\(/.test(src) }).toEqual({ f, still: true });
+        expect({ f, shown: /still \?\? moving/.test(src) }).toEqual({ f, shown: true });
+      }
+      // Never the block's own clock, which runs 3.2 seconds whatever the drawing is doing.
+      expect({ f, block: /\buseClock\(\)/.test(src) }).toEqual({ f, block: false });
+    }
+    // Any other file here that records a picture is one of those.
+    for (const name of readdirSync(join(MOBILE, 'src/projects'))) {
+      if (!/\.tsx$/.test(name)) continue;
+      const src = code(readFileSync(join(MOBILE, 'src/projects', name), 'utf8'));
+      if (src.includes('createPicture(')) expect(drawings).toContain(name);
+    }
+    // The project page's day clock is its own (the analysis page's re-records on the block clock).
+    const page = code(readFileSync(join(MOBILE, 'src/projects/ProjectPage.tsx'), 'utf8'));
+    expect(page).not.toMatch(/\bDayClock\b/);
+    expect(page).toMatch(/<DayDial [^>]*night=\{t\.nightShare !== null\}/);
+  });
+
   test('every helper a drawing\'s worklet calls is a worklet, defined before the first worklet', () => {
-    for (const f of ['Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx', 'drawClock.ts']) {
+    for (const f of ['Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx', 'DayDial.tsx', 'drawClock.ts']) {
       const src = code(readFileSync(join(MOBILE, 'src/projects', f), 'utf8'));
       const firstWorklet = src.search(/use(?:DerivedValue|FrameCallback)\(/);
       expect(firstWorklet).toBeGreaterThan(0);
@@ -661,7 +711,7 @@ describe('the wiring', () => {
   });
 
   test('no dash in any word the new screens say', () => {
-    for (const f of ['ProjectsScreen.tsx', 'ProjectPage.tsx', 'Door.tsx', 'Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx', 'Comparisons.tsx', 'NameField.tsx', 'model.ts']) {
+    for (const f of ['ProjectsScreen.tsx', 'ProjectPage.tsx', 'Door.tsx', 'Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx', 'DayDial.tsx', 'Comparisons.tsx', 'NameField.tsx', 'model.ts', 'recency.ts']) {
       const src = code(readFileSync(join(MOBILE, 'src/projects', f), 'utf8'));
       // String literals, the words of a template (its `${...}` holes are code), and JSX text.
       const literals = [...src.matchAll(/'([^'\n]*)'|`([^`]*)`|>([^<>{}=();\n]+)</g)].map((m) => (m[1] ?? m[2]?.replace(/\$\{[^}]*\}/g, ' ') ?? m[3] ?? ''));

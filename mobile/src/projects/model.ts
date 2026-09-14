@@ -1197,6 +1197,13 @@ export interface ProjectPage {
     peak: NumSpec | null;
     peakHour: number | null;
     spanDays: NumSpec;
+    /**
+     * The share of its active time between 10pm and 4am, the night owl rule's own value on this
+     * project (`window.scores`, metric `night_share`), and that share as a figure. Null when the
+     * report sent none: then the dial draws no night window and nothing is said about the night.
+     */
+    nightShare: number | null;
+    night: NumSpec | null;
   } | null;
   build: {
     type: string | null;
@@ -1309,11 +1316,15 @@ export function projectPage(
   };
   if (!w) return { detail, hue, scope, hero, time: null, build: null, shipping: null, money: null };
 
+  const nightScore = w.scores.find((s) => s.metric === 'night_share') ?? null;
+  const nightShare = nightScore && num(nightScore.value) && nightScore.value >= 0 && nightScore.value <= 1 ? nightScore.value : null;
   const time: ProjectPage['time'] = {
     activeDays: w.active_days > 0 ? numSpec(w.active_days, n(w.active_days)) : null,
     peak: num(w.clock.peak_hour) ? numSpec(w.clock.peak_hour, hourOfDay(w.clock.peak_hour), { kind: 'hour' }) : null,
     peakHour: num(w.clock.peak_hour) ? w.clock.peak_hour : null,
     spanDays: numSpec(h.spans_days, n(h.spans_days)),
+    nightShare,
+    night: nightShare !== null ? numSpec(nightShare * 100, pct(nightShare)) : null,
   };
 
   const byId = new Map(detail.cards.map((c) => [c.id as string, c]));

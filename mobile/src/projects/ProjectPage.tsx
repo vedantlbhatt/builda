@@ -4,9 +4,14 @@
  *
  *   the hero        a band in the project's own hue: its name large (with the pencil that names a
  *                   private one, on this phone only), its stage, its hours with you there and its
- *                   share of your time counting up; under it the ledger (the hours it ran alone, its
- *                   sessions, its streaks) and its week in words
- *   01 time         the days you built it, and the hour you build it most on the day clock
+ *                   share of your time counting up; under it THE DEMO (`src/demos/PageDemo.tsx`):
+ *                   the video playing muted in a frame of its own, sunk under the band's pixel
+ *                   edge, the stills beside it as a pile, a tap opening the full screen gallery;
+ *                   then the ledger (the hours it ran alone, its sessions, its streaks) and its
+ *                   week in words. The stage and the last session are the Mac's report reconciled
+ *                   with the sessions this phone holds (`recency.ts`): never idle while one ran
+ *   01 time         the days you built it, and the hour you build it most on the day clock, with
+ *                   the night window and the share of the time that falls in it
  *   02 how you      the archetype asked of this project and its six rules against their bars, how
  *      build it     often you take the wheel back, prompts a session, tool calls a prompt, the tests
  *                   already green on one ring and the time back to green on a stopwatch, the helper
@@ -29,9 +34,12 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { n } from '../copy/numbers';
+import { DemoGallery } from '../demos/Gallery';
+import { HeroDemo } from '../demos/PageDemo';
+import { useProjectDemo, type DemoLoad } from '../demos/useDemo';
 import { Band, BandWords } from '../insights/Band';
 import { DiffBar, GrowBar, RuleTrack, StackBar } from '../insights/Bars';
-import { DayClock, Donut, PassRing, StopwatchRing } from '../insights/Charts';
+import { Donut, PassRing, StopwatchRing } from '../insights/Charts';
 import { CreatureMark } from '../insights/Creature';
 import { numSpec } from '../insights/format';
 import { BandFigure, figure, GUTTER, Kicker, Ledger, Refusal, Swatch, type, Words, type LedgerItem } from '../insights/kit';
@@ -51,11 +59,13 @@ import { useBuilderProfile } from '../you/hooks';
 import { ChapterSkeleton, ErrorChapter, RefusalChapter, SignedOutChapter, StaleLine } from '../you/parts';
 import { CommitDays } from './CommitDays';
 import { ComparisonBlock } from './Comparisons';
+import { DayDial } from './DayDial';
 import { BandName } from './Door';
 import { PROJECT_CONSTANTS } from '../generated/copy';
 import { chapterHues, projectHues, projectPage, swarmLine, type ProjectPage as Page } from './model';
 import { NameField } from './NameField';
 import { useNicknames, useProjectRegistry } from './nicknames';
+import { recency, type Recency } from './recency';
 import { Swarm } from './Swarm';
 import { useProjectSessions } from './useProjectSessions';
 
@@ -84,8 +94,20 @@ export function ProjectPage() {
   const page = useMemo(() => projectPage(block, key, names, nicknames, report, Date.now(), registry), [block, key, names, nicknames, report, registry]);
   const firstAt = page ? block?.projects.find((p) => p.key === page.detail.key)?.history.first_at ?? null : null;
   const lastAt = page ? block?.projects.find((p) => p.key === page.detail.key)?.history.last_at ?? null : null;
-  const { sessions, total, error } = useProjectSessions(page?.detail.key ?? (key.length >= 12 ? key : null), firstAt);
+  const { sessions, total, error, phone } = useProjectSessions(page?.detail.key ?? (key.length >= 12 ? key : null), firstAt);
   const [naming, setNaming] = useState(false);
+  const { demo, reload: reloadDemo } = useProjectDemo(page?.detail.key ?? null);
+  const [galleryAt, setGalleryAt] = useState<string | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const openGallery = useCallback((id: string) => {
+    setGalleryAt(id);
+    setGalleryOpen(true);
+  }, []);
+  const history = page ? block?.projects.find((p) => p.key === page.detail.key)?.history ?? null : null;
+  const recent = useMemo(
+    () => (page && history ? recency({ key: page.detail.key, history, reportAt: report?.generated_at ?? null, finals: phone.finals, live: phone.live, now: Date.now() }) : null),
+    [page, history, report, phone],
+  );
 
   const hues = useMemo(() => (block ? projectHues(block.projects, registry) : {}), [block, registry]);
   const own: Hue = page ? SPECTRUM[page.hue] : { ink: accent.ink, partner: accent.partner, light: accent.light };
@@ -136,7 +158,20 @@ export function ProjectPage() {
 
             {page ? (
               <>
-                <HeroChapter page={page} hue={own} inner={inner} naming={naming} onName={() => setNaming(true)} onNamed={() => setNaming(false)} />
+                <HeroChapter
+                  page={page}
+                  hue={own}
+                  inner={inner}
+                  width={width}
+                  naming={naming}
+                  onName={() => setNaming(true)}
+                  onNamed={() => setNaming(false)}
+                  recent={recent}
+                  demo={demo}
+                  held={galleryOpen}
+                  onOpen={openGallery}
+                  onDemoError={reloadDemo}
+                />
                 {page.time && stage >= 1 ? <TimeChapter page={page} hue={SPECTRUM[timeHue!]} inner={inner} /> : null}
                 {page.build && stage >= 2 ? <BuildChapter page={page} hue={SPECTRUM[buildHue!]} inner={inner} /> : null}
                 {page.shipping && stage >= 3 ? <ShippingChapter page={page} hue={SPECTRUM[shipHue!]} spark={page.hue} inner={inner} /> : null}
@@ -234,13 +269,52 @@ export function ProjectPage() {
           </>
         )}
       </ChapterPage>
+      {page && demo.kind === 'ready' ? (
+        <DemoGallery
+          visible={galleryOpen}
+          entries={demo.entries}
+          sources={demo.sources}
+          hue={page.hue}
+          startId={galleryAt}
+          title={page.detail.label.text}
+          onClose={() => setGalleryOpen(false)}
+          onError={reloadDemo}
+        />
+      ) : null}
     </>
   );
 }
 
 // ------------------------------------------------------------------ the hero
 
-function HeroChapter({ page, hue, inner, naming, onName, onNamed }: { page: Page; hue: Hue; inner: number; naming: boolean; onName: () => void; onNamed: () => void }) {
+function HeroChapter({
+  page,
+  hue,
+  inner,
+  width,
+  naming,
+  onName,
+  onNamed,
+  recent,
+  demo,
+  held,
+  onOpen,
+  onDemoError,
+}: {
+  page: Page;
+  hue: Hue;
+  inner: number;
+  width: number;
+  naming: boolean;
+  onName: () => void;
+  onNamed: () => void;
+  /** The report's stage and last session, reconciled with the sessions this phone holds. */
+  recent: Recency | null;
+  demo: DemoLoad;
+  held: boolean;
+  onOpen: (id: string) => void;
+  onDemoError: () => void;
+}) {
   const d = page.detail;
   const h = page.hero;
   const editable = d.label.source !== 'public';
@@ -250,61 +324,72 @@ function HeroChapter({ page, hue, inner, naming, onName, onNamed }: { page: Page
   if (h.autonomous) ledger.push({ key: 'alone', num: h.autonomous, label: 'hours the agent ran with nobody there', note: `on your Mac, ${page.scope}` });
   if (h.sessions) ledger.push({ key: 'sessions', num: h.sessions, label: h.sessions.final === '1' ? 'session your Mac read' : 'sessions your Mac read', note: page.scope.charAt(0).toUpperCase() + page.scope.slice(1) + '.' });
   if (h.currentStreak) ledger.push({ key: 'streak', num: h.currentStreak, label: 'days in a row, still going', note: h.longestStreak ? `The longest run was ${h.longestStreak.final} days.` : null });
-  else if (h.longestStreak) ledger.push({ key: 'longest', num: h.longestStreak, label: 'days in a row at the longest', note: 'The run is not going now.' });
+  // "Not going now" is the report's to say, and the phone may know it is going again.
+  else if (h.longestStreak) ledger.push({ key: 'longest', num: h.longestStreak, label: 'days in a row at the longest', note: recent?.streakNote ?? 'The run is not going now.' });
   ledger.push({ key: 'all', num: h.historySessions, label: `sessions your Mac read here since ${h.since}`, note: `${h.historyHours.final} hours with you there in all of them.` });
-  return (
-    <Section>
-      <Band hue={hue} title={d.stageLabel ?? 'Project'}>
-        <View style={styles.nameRow}>
-          <View style={{ flex: 1 }}>
-            <BandName text={d.label.text} width={inner - (editable ? 44 : 0)} max={56} />
-          </View>
-          {editable ? (
-            <Pressable
-              onPress={onName}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={d.label.source === 'nickname' ? 'Rename this project' : 'Name this project'}
-              style={({ pressed }) => [styles.pencil, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
-            >
-              <SymbolView name="pencil" tintColor={ON_HUE} weight="bold" size={20} />
-            </Pressable>
-          ) : null}
+  const title = recent ? recent.title : d.stageLabel;
+  const stageWords = recent ? recent.stageSentence : d.stageSentence;
+  const band = (
+    <Band hue={hue} title={title ?? 'Project'}>
+      <View style={styles.nameRow}>
+        <View style={{ flex: 1 }}>
+          <BandName text={d.label.text} width={inner - (editable ? 44 : 0)} max={56} />
         </View>
-        {h.hours ? (
-          <BandWords delay={380}>
-            <View style={styles.heroNumbers}>
+        {editable ? (
+          <Pressable
+            onPress={onName}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={d.label.source === 'nickname' ? 'Rename this project' : 'Name this project'}
+            style={({ pressed }) => [styles.pencil, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
+          >
+            <SymbolView name="pencil" tintColor={ON_HUE} weight="bold" size={20} />
+          </Pressable>
+        ) : null}
+      </View>
+      {h.hours ? (
+        <BandWords delay={380}>
+          <View style={styles.heroNumbers}>
+            <View style={styles.pair}>
+              <Num spec={h.hours} textStyle={figure(52, ON_HUE)} delay={420} accessibilityLabel={`${h.hours.final} hours with you there`} />
+              <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
+                {`hours with you there on your Mac, ${page.scope}`}
+              </Text>
+            </View>
+            {h.share ? (
               <View style={styles.pair}>
-                <Num spec={h.hours} textStyle={figure(52, ON_HUE)} delay={420} accessibilityLabel={`${h.hours.final} hours with you there`} />
+                <Num spec={h.share} textStyle={figure(52, ON_HUE)} delay={540} accessibilityLabel={`${h.share.final} of your time, ${page.scope}`} />
                 <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                  {`hours with you there on your Mac, ${page.scope}`}
+                  {`of your time, ${page.scope}`}
                 </Text>
               </View>
-              {h.share ? (
-                <View style={styles.pair}>
-                  <Num spec={h.share} textStyle={figure(52, ON_HUE)} delay={540} accessibilityLabel={`${h.share.final} of your time, ${page.scope}`} />
-                  <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                    {`of your time, ${page.scope}`}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </BandWords>
-        ) : (
-          <BandWords delay={380}>
-            <View style={{ marginTop: 10 }}>
-              <Refusal onHue>{d.window ? `Your Mac read no time with you there in ${page.scope}: the agent ran here alone.` : `Your Mac read nothing here in ${page.scope}.`}</Refusal>
-            </View>
-          </BandWords>
-        )}
-        {d.stageSentence ? (
-          <BandWords delay={500}>
-            <Text maxFontSizeMultiplier={1.3} style={[type.bandCaption, { marginTop: 10 }]}>
-              {d.stageSentence}
-            </Text>
-          </BandWords>
-        ) : null}
-      </Band>
+            ) : null}
+          </View>
+        </BandWords>
+      ) : (
+        <BandWords delay={380}>
+          <View style={{ marginTop: 10 }}>
+            <Refusal onHue>{d.window ? `Your Mac read no time with you there in ${page.scope}: the agent ran here alone.` : `Your Mac read nothing here in ${page.scope}.`}</Refusal>
+          </View>
+        </BandWords>
+      )}
+      {stageWords ? (
+        <BandWords delay={500}>
+          <Text maxFontSizeMultiplier={1.3} style={[type.bandCaption, { marginTop: 10 }]}>
+            {stageWords}
+          </Text>
+        </BandWords>
+      ) : null}
+    </Band>
+  );
+  // With news the phone's own sentence comes first, then what the report read and when; the
+  // report's week is said to be the report's. Without it, the report's words, as they were.
+  const said = recent?.newer
+    ? [recent.lastSession, recent.reportLine, d.momentum ? `Your Mac's report: ${d.momentum.charAt(0).toLowerCase()}${d.momentum.slice(1)}` : null]
+    : [d.momentum, recent ? recent.lastSession : d.lastSession];
+  return (
+    <Section>
+      <HeroDemo band={band} demo={demo} hue={page.hue} width={width} held={held} onOpen={onOpen} onError={onDemoError} />
       {naming ? (
         <Block style={styles.block}>
           <NameField projectKey={d.key} current={d.label.source === 'nickname' ? d.label.text : null} onDone={onNamed} />
@@ -318,8 +403,8 @@ function HeroChapter({ page, hue, inner, naming, onName, onNamed }: { page: Page
         <Ledger items={ledger} color={hue.ink} size={44} delay={60} />
       </Block>
       <Block style={[styles.block, { gap: 6 }]}>
-        {[d.momentum, d.lastSession].filter(Boolean).map((s) => (
-          <Words key={s} style={type.body}>
+        {said.filter((s): s is string => Boolean(s)).map((s, i) => (
+          <Words key={s} style={i === 0 || !recent?.newer ? type.body : type.dim}>
             {s}
           </Words>
         ))}
@@ -362,10 +447,16 @@ function TimeChapter({ page, hue, inner }: { page: Page; hue: Hue; inner: number
         <Kicker>when in the day</Kicker>
         {t.peak && t.peakHour !== null ? (
           <View style={styles.clockRow}>
-            <DayClock size={Math.min(200, Math.floor(inner * 0.56))} peakHour={t.peakHour} night={false} ink={hue.ink} partner={hue.partner} delay={60} />
+            <DayDial size={Math.min(200, Math.floor(inner * 0.56))} peakHour={t.peakHour} night={t.nightShare !== null} ink={hue.ink} partner={hue.partner} delay={60} />
             <View style={{ flex: 1, gap: 4 }}>
               <Num spec={t.peak} textStyle={figure(40, hue.ink)} delay={420} duration={950} />
               <Words style={type.dim}>you build it most, by the active time in each hour</Words>
+              {t.night ? (
+                <View style={styles.nightLine}>
+                  <Num spec={t.night} textStyle={figure(28, hue.partner)} delay={620} duration={900} />
+                  <Words style={type.dim}>of it between 10pm and 4am, the arc on the dial</Words>
+                </View>
+              ) : null}
             </View>
           </View>
         ) : (
@@ -748,6 +839,7 @@ const styles = StyleSheet.create({
   pair: { flex: 1 },
   figureRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 14 },
   clockRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  nightLine: { marginTop: 10, gap: 2 },
   ruleHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   ringRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   ringCenter: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },

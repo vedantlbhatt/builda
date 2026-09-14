@@ -11,7 +11,11 @@
  *                   week's order landing at the finish (`RankRace.tsx`)
  *   03 compare      the comparisons across projects, each a sentence with its two numbers
  *   the doors       each project as a band in its own hue: its name, its stage, its hours and share
- *                   counting up, its week in words; the band opens its page
+ *                   counting up, its week in words; the band opens its page. Beside the words, the
+ *                   prints of its demo fanned like prints (`src/demos/DoorPrints.tsx`, one request
+ *                   for every door, `useDemoPreviews`), a tap opening the full screen gallery; or one
+ *                   blank print saying how to make a demo. The stage is the report's reconciled with
+ *                   the sessions this phone holds (`recency.ts`, `useDoorRecency.ts`)
  *
  * Every number is the report's (`src/projects/model.ts`, pinned to the engine's words), every
  * refusal is a sentence, and a project with nothing in the window says so instead of showing 0.
@@ -19,10 +23,12 @@
  * one you gave it on this phone, or "Private project" and the number this phone gave it, never a
  * character of its key (`model.projectLabel`).
  */
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { n } from '../copy/numbers';
+import { DemoGallery } from '../demos/Gallery';
+import { useDemoPreviews, useProjectDemo } from '../demos/useDemo';
 import { Band, BandWords } from '../insights/Band';
 import { CreaturePrint } from '../insights/Creature';
 import { numSpec } from '../insights/format';
@@ -50,7 +56,9 @@ import {
 } from './model';
 import { useNicknames, useProjectRegistry } from './nicknames';
 import { RankRace } from './RankRace';
+import { recency } from './recency';
 import { Rivers } from './Rivers';
+import { useDoorRecency } from './useDoorRecency';
 
 /** Said when the Mac's report predates the projects block. */
 const NO_BLOCK = 'Your Mac sent a report without projects. A newer Mac sends them, and this tab fills in.';
@@ -83,137 +91,177 @@ export function ProjectsScreen() {
   const inner = width - GUTTER * 2;
   const answered = view?.comparisons.filter((c) => c.answered).length ?? 0;
 
+  // The demos: every door's prints in one request, and the gallery of the one a finger opened.
+  const doorKeys = useMemo(() => doors.map((d) => d.key), [doors]);
+  const { previews, reload: reloadPreviews } = useDemoPreviews(doorKeys);
+  const phone = useDoorRecency(doorKeys);
+  const recents = useMemo(() => {
+    const now = Date.now();
+    const out: Record<string, ReturnType<typeof recency>> = {};
+    for (const p of block?.projects ?? []) {
+      out[p.key] = recency({ key: p.key, history: p.history, reportAt: report?.generated_at ?? null, finals: phone.finals[p.key] ?? [], live: phone.live, lastStartedAt: phone.listed[p.key] ?? null, now });
+    }
+    return out;
+  }, [block, report, phone]);
+  const [opened, setOpened] = useState<{ key: string; id: string | null } | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const { demo: openedDemo, reload: reloadOpened } = useProjectDemo(opened?.key ?? null);
+  const openDemo = useCallback((key: string, id: string | null) => {
+    setOpened({ key, id });
+    setGalleryOpen(true);
+  }, []);
+  // Until the whole demo arrives, the gallery shows the prints the door already had.
+  const galleryDoor = opened ? doors.find((d) => d.key === opened.key) ?? null : null;
+  const galleryEntries = openedDemo.kind === 'ready' ? openedDemo.entries : opened ? previews[opened.key]?.prints ?? [] : [];
+  const gallerySources = openedDemo.kind === 'ready' ? openedDemo.sources : opened ? previews[opened.key]?.sources ?? { file: {}, poster: {} } : { file: {}, poster: {} };
+
   return (
-    <ChapterPage chapters={3 + doors.length + 1} ready={accent.ready && registered && view !== null} refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : () => void refresh()}>
-      {(stage) => (
-        <>
-          {load.kind === 'signedOut' || load.kind === 'error' || (load.kind === 'ready' && load.stale) ? (
-            <View style={styles.lead}>
-              {load.kind === 'signedOut' ? <SignedOutChapter what="projects" /> : null}
-              {load.kind === 'error' ? <ErrorChapter message={load.message} onRetry={() => void refresh()} /> : null}
-              {load.kind === 'ready' && load.stale ? <StaleLine stale={load.stale} /> : null}
-            </View>
-          ) : null}
+    <>
+      <ChapterPage chapters={3 + doors.length + 1} ready={accent.ready && registered && view !== null} refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : () => void refresh()}>
+        {(stage) => (
+          <>
+            {load.kind === 'signedOut' || load.kind === 'error' || (load.kind === 'ready' && load.stale) ? (
+              <View style={styles.lead}>
+                {load.kind === 'signedOut' ? <SignedOutChapter what="projects" /> : null}
+                {load.kind === 'error' ? <ErrorChapter message={load.message} onRetry={() => void refresh()} /> : null}
+                {load.kind === 'ready' && load.stale ? <StaleLine stale={load.stale} /> : null}
+              </View>
+            ) : null}
 
-          {load.kind === 'loading' || (data !== null && !accent.ready) ? <ChapterSkeleton /> : null}
+            {load.kind === 'loading' || (data !== null && !accent.ready) ? <ChapterSkeleton /> : null}
 
-          {data && accent.ready && !report ? (
-            <RefusalChapter hue={heroHue} title="Your projects" refusal="This arrives with the report from your Mac, which has not been sent yet." command={REPORT_COMMAND} />
-          ) : null}
-          {data && accent.ready && report && !block ? <RefusalChapter hue={heroHue} title="Your projects" refusal={NO_BLOCK} command={REPORT_COMMAND} /> : null}
+            {data && accent.ready && !report ? (
+              <RefusalChapter hue={heroHue} title="Your projects" refusal="This arrives with the report from your Mac, which has not been sent yet." command={REPORT_COMMAND} />
+            ) : null}
+            {data && accent.ready && report && !block ? <RefusalChapter hue={heroHue} title="Your projects" refusal={NO_BLOCK} command={REPORT_COMMAND} /> : null}
 
-          {view && hero && accent.ready ? (
-            <>
-              <HeroChapter hero={hero} hue={heroHue} width={width} animal={accent.animal} empty={view.rows.length === 0} />
+            {view && hero && accent.ready ? (
+              <>
+                <HeroChapter hero={hero} hue={heroHue} width={width} animal={accent.animal} empty={view.rows.length === 0} />
 
-              {stage >= 1 && weekly && view.rows.length > 0 ? (
-                <Section style={styles.chapter}>
-                  <Band hue={SPECTRUM[riversHue!]} index="01" title="Rivers">
-                    {weekly.refusal ? (
-                      <BandWords delay={300}>
-                        <Refusal onHue>{weekly.refusal}</Refusal>
-                      </BandWords>
-                    ) : (
-                      <>
-                        <BandFigure spec={hoursFigure(weekly.totalSeconds)} width={inner} max={96} delay={200} label={`${hoursFigure(weekly.totalSeconds).final} hours with you there`} />
-                        <BandWords delay={360}>
-                          <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                            {`hours with you there on your Mac, ${weekly.weeks.length === 1 ? 'in one week' : `over ${weekly.weeks.length} weeks`}`}
-                          </Text>
+                {stage >= 1 && weekly && view.rows.length > 0 ? (
+                  <Section style={styles.chapter}>
+                    <Band hue={SPECTRUM[riversHue!]} index="01" title="Rivers">
+                      {weekly.refusal ? (
+                        <BandWords delay={300}>
+                          <Refusal onHue>{weekly.refusal}</Refusal>
                         </BandWords>
-                      </>
-                    )}
-                  </Band>
-                  {!weekly.refusal ? (
-                    <Block style={styles.block}>
-                      <Kicker>every project, week by week</Kicker>
-                      <Rivers view={weekly} width={width} delay={120} />
-                    </Block>
-                  ) : null}
-                </Section>
-              ) : null}
+                      ) : (
+                        <>
+                          <BandFigure spec={hoursFigure(weekly.totalSeconds)} width={inner} max={96} delay={200} label={`${hoursFigure(weekly.totalSeconds).final} hours with you there`} />
+                          <BandWords delay={360}>
+                            <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
+                              {`hours with you there on your Mac, ${weekly.weeks.length === 1 ? 'in one week' : `over ${weekly.weeks.length} weeks`}`}
+                            </Text>
+                          </BandWords>
+                        </>
+                      )}
+                    </Band>
+                    {!weekly.refusal ? (
+                      <Block style={styles.block}>
+                        <Kicker>every project, week by week</Kicker>
+                        <Rivers view={weekly} width={width} delay={120} />
+                      </Block>
+                    ) : null}
+                  </Section>
+                ) : null}
 
-              {stage >= 2 && weekly && !weekly.refusal && race && race.leader ? (
-                <Section style={styles.chapter}>
-                  <Band hue={SPECTRUM[raceHue!]} index="02" title="The rank race">
-                    <View style={styles.figureRow}>
-                      <BandFigure spec={numSpec(race.leader.weeksLed, n(race.leader.weeksLed))} width={inner * 0.3} max={104} delay={200} />
-                      <View style={{ flex: 1 }}>
-                        <BandWords delay={320}>
-                          <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                            {`${race.leader.weeksLed === 1 ? 'week' : 'weeks'} at the top for ${race.leader.label.text}`}
-                          </Text>
-                          <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                            {`of the ${race.weeksRead} ${race.weeksRead === 1 ? 'week' : 'weeks'} your Mac read`}
-                          </Text>
-                        </BandWords>
+                {stage >= 2 && weekly && !weekly.refusal && race && race.leader ? (
+                  <Section style={styles.chapter}>
+                    <Band hue={SPECTRUM[raceHue!]} index="02" title="The rank race">
+                      <View style={styles.figureRow}>
+                        <BandFigure spec={numSpec(race.leader.weeksLed, n(race.leader.weeksLed))} width={inner * 0.3} max={104} delay={200} />
+                        <View style={{ flex: 1 }}>
+                          <BandWords delay={320}>
+                            <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
+                              {`${race.leader.weeksLed === 1 ? 'week' : 'weeks'} at the top for ${race.leader.label.text}`}
+                            </Text>
+                            <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
+                              {`of the ${race.weeksRead} ${race.weeksRead === 1 ? 'week' : 'weeks'} your Mac read`}
+                            </Text>
+                          </BandWords>
+                        </View>
                       </View>
-                    </View>
-                  </Band>
-                  <Block style={styles.block}>
-                    <Kicker>place each week, by hours with you there</Kicker>
-                    <RankRace view={weekly} summary={race} width={inner} delay={120} />
-                    <View style={styles.lines}>
-                      {race.lines.map((l) => (
-                        <Words key={l} style={type.body}>
-                          {l}
+                    </Band>
+                    <Block style={styles.block}>
+                      <Kicker>place each week, by hours with you there</Kicker>
+                      <RankRace view={weekly} summary={race} width={inner} delay={120} />
+                      <View style={styles.lines}>
+                        {race.lines.map((l) => (
+                          <Words key={l} style={type.body}>
+                            {l}
+                          </Words>
+                        ))}
+                      </View>
+                    </Block>
+                  </Section>
+                ) : null}
+
+                {stage >= 3 && view.comparisons.length > 0 ? (
+                  <Section style={styles.chapter}>
+                    <Band hue={SPECTRUM[compareHue!]} index="03" title="How they compare">
+                      <View style={styles.figureRow}>
+                        <BandFigure spec={numSpec(answered, n(answered))} width={inner * 0.3} max={104} delay={200} />
+                        <View style={{ flex: 1 }}>
+                          <BandWords delay={320}>
+                            <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
+                              {`of ${view.comparisons.length} ${answered === 1 ? 'shows' : 'show'} a real difference`}
+                            </Text>
+                            <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
+                              the rest are too close to call, rest on too few sessions, or are both lower bounds
+                            </Text>
+                          </BandWords>
+                        </View>
+                      </View>
+                    </Band>
+                    {[...view.comparisons]
+                      .sort((a, b) => Number(b.answered) - Number(a.answered))
+                      .map((c, i) => (
+                        <ComparisonBlock key={c.metric} c={c} raw={rawByMetric.get(c.metric) ?? null} hues={hues} first={i === 0} />
+                      ))}
+                  </Section>
+                ) : null}
+
+                {doors.map((d, i) =>
+                  stage >= 4 + i ? (
+                    <ProjectDoorBand key={d.key} door={d} width={width} demo={previews[d.key]} recent={recents[d.key] ?? null} onOpenDemo={openDemo} onDemoError={reloadPreviews} />
+                  ) : null,
+                )}
+
+                {stage >= 4 + doors.length ? (
+                  <Section style={styles.foot}>
+                    <Block style={{ gap: 10 }}>
+                      {hero.small.map((s) => (
+                        <Words key={s} style={type.meta}>
+                          {s}
                         </Words>
                       ))}
-                    </View>
-                  </Block>
-                </Section>
-              ) : null}
-
-              {stage >= 3 && view.comparisons.length > 0 ? (
-                <Section style={styles.chapter}>
-                  <Band hue={SPECTRUM[compareHue!]} index="03" title="How they compare">
-                    <View style={styles.figureRow}>
-                      <BandFigure spec={numSpec(answered, n(answered))} width={inner * 0.3} max={104} delay={200} />
-                      <View style={{ flex: 1 }}>
-                        <BandWords delay={320}>
-                          <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                            {`of ${view.comparisons.length} ${answered === 1 ? 'shows' : 'show'} a real difference`}
-                          </Text>
-                          <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                            the rest are too close to call, rest on too few sessions, or are both lower bounds
-                          </Text>
-                        </BandWords>
-                      </View>
-                    </View>
-                  </Band>
-                  {[...view.comparisons]
-                    .sort((a, b) => Number(b.answered) - Number(a.answered))
-                    .map((c, i) => (
-                      <ComparisonBlock key={c.metric} c={c} raw={rawByMetric.get(c.metric) ?? null} hues={hues} first={i === 0} />
-                    ))}
-                </Section>
-              ) : null}
-
-              {doors.map((d, i) =>
-                stage >= 4 + i ? <ProjectDoorBand key={d.key} door={d} width={width} /> : null,
-              )}
-
-              {stage >= 4 + doors.length ? (
-                <Section style={styles.foot}>
-                  <Block style={{ gap: 10 }}>
-                    {hero.small.map((s) => (
-                      <Words key={s} style={type.meta}>
-                        {s}
-                      </Words>
-                    ))}
-                    {view.rows.some((r) => r.label.source === 'private') ? (
-                      <Words style={type.meta}>
-                        A private project goes by a number this phone gave it, because its name never leaves your Mac. Open one to give it a name only this phone knows.
-                      </Words>
-                    ) : null}
-                  </Block>
-                </Section>
-              ) : null}
-            </>
-          ) : null}
-        </>
-      )}
-    </ChapterPage>
+                      {view.rows.some((r) => r.label.source === 'private') ? (
+                        <Words style={type.meta}>
+                          A private project goes by a number this phone gave it, because its name never leaves your Mac. Open one to give it a name only this phone knows.
+                        </Words>
+                      ) : null}
+                    </Block>
+                  </Section>
+                ) : null}
+              </>
+            ) : null}
+          </>
+        )}
+      </ChapterPage>
+      {opened && galleryDoor && galleryEntries.length ? (
+        <DemoGallery
+          visible={galleryOpen}
+          entries={galleryEntries}
+          sources={gallerySources}
+          hue={galleryDoor.hue}
+          startId={opened.id}
+          title={galleryDoor.label.text}
+          onClose={() => setGalleryOpen(false)}
+          onError={reloadOpened}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -130,11 +130,16 @@ section.
   storage (e07f008: a private MEDIA_STORE bucket, boot refusing a shared or public one, R2 safe
   signed deletes, short upload links, sweeps) and the phone (65f1de8: each project's own
   pictures, marked sources, true counts, a delete). Still running: the generator's sandboxing.
-- Numbers review of the defect fixes (06:20), being fixed: the "nothing written" note cannot fire
+- Numbers review of the defect fixes (06:20), fixed in d8ee71b: the "nothing written" note could not fire
   (shell commands are cut at 160 characters and a cut command counted as a possible write: 10,313
   of 14,100 calls, so 0 of 368 sittings instead of the true handful); an old rule note survives
   on a session never re uploaded; the Sessions totals can overstate from the cache; the Lock
   Screen names a private project two ways; a few numbers rounded twice.
+- 07:30: stack restarted onto e07f008 and d8ee71b; the rules version in content_hash re-uploaded
+  all 160 sittings, the stale note on 8a4fc6ea is gone, and the corrected "nothing written" rule
+  fires on none of this corpus (other notes: one file over and over 23, failed in a row 1),
+  with a test proving it fires on a real read only stretch of 184 character commands. Both demos
+  still serve through MEDIA_STORE_ENDPOINT. Still running: the generator's sandboxing.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

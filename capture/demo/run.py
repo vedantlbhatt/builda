@@ -293,14 +293,17 @@ def main(a: argparse.Namespace) -> int:
     others = tuple(
         n for n in privacy.other_names(evidence.others if evidence else [], project.names) if n.lower() not in allowed
     )
-    if story is not None:
+    def leaked(story: dict) -> bool:
         texts = [story.get("video_label") or ""] + [b["label"] for b in story["beats"]] + [b["caption"] or "" for b in story["beats"]] + [s["label"] for s in story["stills"]]
         leaks = privacy.label_leaks([t for t in texts if t], names, others)
         if leaks:
             say("Refused before running: a label or caption names a repository, and labels travel with the demo as text:")
             for x in leaks:
                 say(f"  {x}")
-            return 2
+        return bool(leaks)
+
+    if story is not None and leaked(story):
+        return 2
     cap: Capture | None = None
     composed: dict | None = None
     if reason is None:
@@ -314,9 +317,17 @@ def main(a: argparse.Namespace) -> int:
                 say(f"  made without: {', '.join(plan.analytics)} (never passed to the build or the run)")
             say(f"  {detect.sandbox_status()}")
             if story is None:
-                story = storyboard.validate(storyboard.default(plan))
+                # A generated storyboard is held to the same rule as a written one: its labels
+                # travel as text too, and the first run used to skip the check.
+                story = storyboard.validate(storyboard.default(plan, named=lambda text: bool(privacy.label_leaks([text], names, others))))
                 ws.storyboard_path().write_text(json.dumps(story, indent=1) + "\n")
                 say(f"  wrote a first storyboard to {ws.storyboard_path()}; edit its beats and run again")
+                if leaked(story):
+                    return 2
+            if a.no_video:
+                # Stills only (the owner, 2026-09-14: "just screenshots for now"): nothing is
+                # filmed, and every beat is shot the way a still only beat is.
+                story = {**story, "beats": [{**b, "video": False} for b in story["beats"]]}
             if a.until == "workspace":
                 return 0
             sandbox = _sandbox_for(project, evidence, plan, ws)

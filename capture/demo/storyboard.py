@@ -302,6 +302,21 @@ def _check_expect(where: str, v) -> str | None:
     return v
 
 
+def _check_viewport(where: str, v, video: bool) -> dict | None:
+    """A web picture's own page size, CSS points: a page whose list only shows at a wider width
+    (the Personal Website's Projects page is one card a screen on a phone and two columns at
+    820). The video keeps the storyboard's one size, so such a beat is a still only."""
+    if v is None:
+        return None
+    if not (isinstance(v, dict) and set(v) == {"width", "height"} and all(isinstance(v[k], int) for k in v)):
+        raise StoryboardError(f"{where}: viewport is {{width, height}} in whole points")
+    if not (320 <= v["width"] <= 1600 and 480 <= v["height"] <= 3200):
+        raise StoryboardError(f"{where}: viewport is 320 to 1600 points wide and 480 to 3200 tall")
+    if video:
+        raise StoryboardError(f"{where}: a beat with its own viewport is a still only; add video: false")
+    return {"width": v["width"], "height": v["height"]}
+
+
 def _strings(v):
     if isinstance(v, str):
         yield v
@@ -355,6 +370,7 @@ def validate(data) -> dict:
                 "settle": float(b.get("settle", 8.0)),
                 "expect": _check_expect(f"beat {i}", b.get("expect")),
                 "film": _check_film(f"beat {i}", b.get("film", "all")),
+                "viewport": _check_viewport(f"beat {i}", b.get("viewport"), bool(b.get("video", True))),
             }
         )
     stills = []
@@ -367,8 +383,11 @@ def validate(data) -> dict:
                 "actions": [_check_action(f"still {i}", a) for a in (s.get("actions") or [])],
                 "settle": float(s.get("settle", 8.0)),
                 "expect": _check_expect(f"still {i}", s.get("expect")),
+                "viewport": _check_viewport(f"still {i}", s.get("viewport"), False),
             }
         )
+    if kind != "web" and any(x["viewport"] for x in [*out_beats, *stills]):
+        raise StoryboardError("viewport: only a web page takes its own size; a device's screen is its own")
     n_stills = sum(1 for b in out_beats if b["still"]) + len(stills)
     if n_stills > MAX_STILLS:
         raise StoryboardError(f"{n_stills} stills; a demo keeps {MIN_STILLS} to {MAX_STILLS}")
@@ -451,23 +470,32 @@ def _expect_from(words: list[str]) -> str:
     return "(?i)" + "|".join(real) if real else "."
 
 
-def default(plan) -> dict:
+def default(plan, named=None) -> dict:
     """A first storyboard from the plan, for the person to edit: a beat per route (tabs first),
-    a beat per README command, or the tests. Written to the work dir on the first run."""
+    a beat per README command, or the tests. Written to the work dir on the first run.
+
+    `named(text)` says a text names a repository (`privacy.label_leaks`). A route whose label
+    would is left out, since its page is likely to show that name as well, and a command's label
+    falls back to plain words. FOUND ON THE FIRST WEB DEMO (2026-09-14): the Personal Website's
+    fourth route is ridegt-fonts.html, and the first run never checked generated labels at all."""
+    named = named or (lambda _text: False)
     kind = plan.kind
     beats: list[dict] = []
     if kind == "expo_ios":
         # The scheme is the repository's, so it is checked before it becomes a deep link; an
         # invalid one leaves the beat without an `open` rather than reaching `simctl openurl`.
         scheme = plan.expo.scheme if (plan.expo and valid_scheme(plan.expo.scheme)) else None
-        routes = [r for r in plan.routes if not r.startswith(("/dev", "/debug", "/onboarding"))][:4]
+        routes = [r for r in plan.routes if not r.startswith(("/dev", "/debug", "/onboarding")) and not named(_route_label(r))][:4]
         for r in routes:
             beats.append({"label": _route_label(r), "actions": [{"open": f"{scheme}://{r.lstrip('/')}"}] if scheme else [], "hold": 2.0, "expect": _expect_from(_route_words(r))})
         if not beats:
             beats.append({"label": "the first screen", "actions": [], "hold": 3.0, "expect": "."})
     elif kind == "web":
-        for r in (plan.routes or ["/"])[:4]:
-            beats.append({"label": "the home page" if r == "/" else _route_label(r).replace("screen", "page"), "actions": [{"open": r}], "hold": 2.0, "expect": _expect_from(_route_words(r))})
+        def page_label(r: str) -> str:
+            return "the home page" if r == "/" else _route_label(r).replace("screen", "page")
+
+        for r in [r for r in (plan.routes or ["/"]) if r == "/" or not named(page_label(r))][:4]:
+            beats.append({"label": page_label(r), "actions": [{"open": r}], "hold": 2.0, "expect": _expect_from(_route_words(r))})
     else:
         cmds = [s.command for s in plan.steps if s.role == "run"][:4]
         if kind == "cli" and cmds and len(cmds) < MIN_BEATS and not any("--help" in c for c in cmds):
@@ -480,5 +508,7 @@ def default(plan) -> dict:
                 label = "what the command can do, its help"
             else:
                 label = "running it on " + " ".join(words) if words else "running it"
+            if named(label):
+                label = "running it"
             beats.append({"label": label[:LABEL_MAX], "actions": [{"run": c}], "hold": 2.0, "expect": _expect_from(re.findall(r"[A-Za-z0-9]+", c))})
     return {"version": 1, "kind": kind, "app": {}, "device": {}, "setup": [], "beats": beats, "stills": []}

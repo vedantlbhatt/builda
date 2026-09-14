@@ -169,6 +169,22 @@ class Rules(unittest.TestCase):
             with self.assertRaisesRegex(CaptureError, "could not be read"):
                 web._verify([c()])
 
+    def test_a_still_can_take_its_own_page_size(self):
+        # The owner, 2026-09-14: "the projects page should show a list of projects"; on a phone
+        # the Personal Website's Projects page is one card a screen, at 820 points two columns.
+        wide = {"width": 820, "height": 1783}
+
+        def web(**beat):
+            return {**self.base(**beat), "kind": "web"}
+
+        sb = storyboard.validate(web(viewport=wide, video=False))
+        self.assertEqual(sb["beats"][0]["viewport"], wide)
+        self.assertIsNone(storyboard.validate(web())["beats"][0]["viewport"])
+        self.refused(web(viewport=wide), "still only")
+        self.refused(web(viewport={"width": 5000, "height": 900}, video=False), "320 to 1600")
+        self.refused(web(viewport={"width": 820}, video=False), "whole points")
+        self.refused(self.base(viewport=wide, video=False), "only a web page")
+
     def test_the_shape(self):
         self.refused({"version": 2, "kind": "web", "beats": [{"label": "a"}]}, "version")
         self.refused({"version": 1, "kind": "desktop", "beats": [{"label": "a"}]}, "kind")
@@ -236,6 +252,26 @@ class Defaults(unittest.TestCase):
         plan = Plan(project=None, commit="c", kind="web", kind_reason="", app_dir="", package_manager=None, expo=None, steps=[], evidence=None, routes=["/", "/recipes.html"])
         labels = [b["label"] for b in storyboard.validate(storyboard.default(plan))["beats"]]
         self.assertEqual(labels, ["the home page", "the recipes page"])
+
+
+    def test_a_first_storyboard_never_names_a_repository(self):
+        # FOUND ON THE FIRST WEB DEMO (2026-09-14): the Personal Website's fourth route is
+        # ridegt-fonts.html, another repository's name, and the first run never checked the
+        # labels it generated, which travel with the demo as text.
+        from capture.demo import privacy
+        from capture.demo.detect import Plan, Step
+
+        def named(text):
+            return bool(privacy.label_leaks([text], ("personal-website",), ("RideGT",)))
+
+        plan = Plan(project=None, commit="c", kind="web", kind_reason="", app_dir="", package_manager=None, expo=None, steps=[], evidence=None,
+                    routes=["/", "/expedia.html", "/ridegt-fonts.html", "/projects.html", "/blog.html"])  # fmt: skip
+        labels = [b["label"] for b in storyboard.validate(storyboard.default(plan, named=named))["beats"]]
+        self.assertEqual(labels, ["the home page", "the expedia page", "the projects page", "the blog page"])
+        cli = Plan(project=None, commit="c", kind="cli", kind_reason="", app_dir="", package_manager=None, expo=None, evidence=None,
+                   steps=[Step("run", "tidy --help", "", "x"), Step("run", "tidy ridegt/src", "", "x")])  # fmt: skip
+        labels = [b["label"] for b in storyboard.validate(storyboard.default(cli, named=named))["beats"]]
+        self.assertEqual(labels, ["what the command can do, its help", "running it"])
 
 
 class Drivers(unittest.TestCase):

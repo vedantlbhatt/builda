@@ -124,61 +124,76 @@ def check(label, pattern, shot, path):
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
-    ctx = browser.new_context(
-        viewport=job["viewport"], device_scale_factor=job["scale"], is_mobile=True, has_touch=True,
-        color_scheme=job.get("color_scheme") or "light",
-        record_video_dir=job["video_dir"],
-        # The viewport's own size: Playwright records CSS pixels whatever the device scale and
-        # only ever scales DOWN, so twice the viewport put the page in the top left quarter of a
-        # grey frame (FOUND ON THE FIRST WEB DEMO, 2026-09-14). Softer than the 3x stills.
-        record_video_size={"width": job["viewport"]["width"], "height": job["viewport"]["height"]},
-    )
-    t0 = time.monotonic()
-    ctx.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
-    page = ctx.new_page()
     n = 0
-    last = None
-    for b in job["beats"]:
-        state["refused"] = None
-        start = time.monotonic() - t0
-        for a in b["actions"]:
-            act(page, a)
-        shot = settle(page, b["settle"])
-        if last is not None and shot == last and b["actions"]:
-            # The page did not change: act once more, then keep what it shows (the run's
-            # manifest step still refuses the same picture twice).
-            out["notes"].append("re-shot " + b["label"] + ": the page did not change")
+    out["video"] = None
+    # Nothing is filmed when no beat is (`--no-video` makes every beat a still).
+    if job["beats"]:
+        ctx = browser.new_context(
+            viewport=job["viewport"], device_scale_factor=job["scale"], is_mobile=True, has_touch=True,
+            color_scheme=job.get("color_scheme") or "light",
+            record_video_dir=job["video_dir"],
+            # The viewport's own size: Playwright records CSS pixels whatever the device scale and
+            # only ever scales DOWN, so twice the viewport put the page in the top left quarter of a
+            # grey frame (FOUND ON THE FIRST WEB DEMO, 2026-09-14). Softer than the 3x stills.
+            record_video_size={"width": job["viewport"]["width"], "height": job["viewport"]["height"]},
+        )
+        t0 = time.monotonic()
+        ctx.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
+        page = ctx.new_page()
+        last = None
+        for b in job["beats"]:
+            state["refused"] = None
+            start = time.monotonic() - t0
             for a in b["actions"]:
                 act(page, a)
             shot = settle(page, b["settle"])
-        last = shot
-        if b.get("film") == "settled":
-            start = time.monotonic() - t0
-        path = None
-        if b["still"]:
-            n += 1
-            path = f"{job['run_dir']}/still-{n:02d}.png"
-            open(path, "wb").write(shot)
-            out["stills"].append({"path": path, "label": b["label"]})
-        check(b["label"], b.get("expect"), shot, path)
-        time.sleep(b["hold"])
-        out["beats"].append({"label": b["label"], "caption": b["caption"], "start": start, "end": time.monotonic() - t0})
-    video = page.video.path() if page.video else None
-    ctx.close()
-    out["video"] = str(video) if video else None
-    ctx2 = browser.new_context(viewport=job["viewport"], device_scale_factor=job["scale"], is_mobile=True, has_touch=True)
-    ctx2.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
+            if last is not None and shot == last and b["actions"]:
+                # The page did not change: act once more, then keep what it shows (the run's
+                # manifest step still refuses the same picture twice).
+                out["notes"].append("re-shot " + b["label"] + ": the page did not change")
+                for a in b["actions"]:
+                    act(page, a)
+                shot = settle(page, b["settle"])
+            last = shot
+            if b.get("film") == "settled":
+                start = time.monotonic() - t0
+            path = None
+            if b["still"]:
+                n += 1
+                path = f"{job['run_dir']}/still-{n:02d}.png"
+                open(path, "wb").write(shot)
+                out["stills"].append({"path": path, "label": b["label"]})
+            check(b["label"], b.get("expect"), shot, path)
+            time.sleep(b["hold"])
+            out["beats"].append({"label": b["label"], "caption": b["caption"], "start": start, "end": time.monotonic() - t0})
+        video = page.video.path() if page.video else None
+        ctx.close()
+        out["video"] = str(video) if video else None
+    def context(viewport, scale):
+        c = browser.new_context(viewport=viewport, device_scale_factor=scale, is_mobile=True, has_touch=True, color_scheme=job.get("color_scheme") or "light")
+        c.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
+        return c
+
+    ctx2 = context(job["viewport"], job["scale"])
     page = ctx2.new_page()
     for s in job["stills"]:
         state["refused"] = None
+        own = None
+        if s.get("viewport"):
+            # A page of its own size, from a fresh page (so its actions open one), at the scale
+            # that keeps the picture as wide as the phone's stills.
+            own = context(s["viewport"], round(job["viewport"]["width"] * job["scale"] / s["viewport"]["width"], 3))
+        pg = own.new_page() if own else page
         for a in s["actions"]:
-            act(page, a)
+            act(pg, a)
         n += 1
         path = f"{job['run_dir']}/still-{n:02d}.png"
-        shot = settle(page, s["settle"])
+        shot = settle(pg, s["settle"])
         open(path, "wb").write(shot)
         out["stills"].append({"path": path, "label": s["label"]})
         check(s["label"], s.get("expect"), shot, path)
+        if own:
+            own.close()
     ctx2.close()
     browser.close()
 json.dump(out, open(sys.argv[2], "w"))
@@ -307,7 +322,7 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
             "run_dir": str(run_dir),
             "block_hosts": list(BLOCK_HOSTS),
             "beats": [b for b in story["beats"] if b["video"]],
-            "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect")} for b in story["beats"] if not b["video"]] + story["stills"],
+            "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect"), "viewport": b.get("viewport")} for b in story["beats"] if not b["video"]] + story["stills"],
         }
         jp, rp = run_dir / "web-job.json", run_dir / "web-result.json"
         jp.write_text(json.dumps(job))

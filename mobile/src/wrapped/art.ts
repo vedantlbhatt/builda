@@ -72,6 +72,7 @@ export type ArtBasis =
   | 'peak_overlap'
   | 'commit_days'
   | 'streak_days'
+  | 'deep_count'
   | 'cumulative_lines'
   | 'card_share'
   | 'role_split'
@@ -526,11 +527,19 @@ export function attendedBars(sessions: readonly ArtSession[]): { h: number; d: n
   return bars.length >= 3 && bars.some((b) => b.h > 0) ? bars : null;
 }
 
-export function promptBars(sessions: readonly ArtSession[]): { h: number; d: number }[] | null {
+/**
+ * A bar a session, its prompts against three times the card's own average (a session at the
+ * average stands a third of the way up, a busier one tops out), or against the busiest when there
+ * is no average. FOUND IN THE now3 PASS (2026-09-14): scaled to the busiest session alone, one
+ * sitting of hundreds of prompts left every other bar a pixel or two, and "6.6 prompts a
+ * session" stood over a blank card.
+ */
+export function promptBars(sessions: readonly ArtSession[], mean: number | null = null): { h: number; d: number }[] | null {
   const withPrompts = byStart(sessions).filter((s) => typeof s.prompts === 'number');
   const max = withPrompts.reduce((m, s) => Math.max(m, s.prompts ?? 0), 0);
   if (withPrompts.length < 3 || max <= 0) return null;
-  return withPrompts.map((s) => ({ h: (s.prompts ?? 0) / max, d: 0.86 }));
+  const top = mean !== null && mean > 0 ? Math.min(max, 3 * mean) : max;
+  return withPrompts.map((s) => ({ h: Math.min(1, (s.prompts ?? 0) / top), d: 0.86 }));
 }
 
 /** The shares behind the kind of work card, largest first, from the basis that answered. */
@@ -664,11 +673,20 @@ function shapeFor(card: ReportWrappedCard, src: ArtSources, aspect: number): Art
       return split ? { kind: 'bands', shares: split.shares, basis: split.basis } : fallback;
     }
     case 'deep_sessions': {
+      // Each session's bar only when the sessions this phone holds count the card's own deep
+      // sessions; otherwise the card's counts, every session with you there a square and the deep
+      // ones in ink. FOUND IN THE now3 PASS (2026-09-14): "15 deep sessions" over three ink bars,
+      // because the phone holds a page of sessions and the card counts the window.
       const bars = src.sessions ? attendedBars(src.sessions) : null;
-      return bars ? { kind: 'bars', bars, basis: 'attended_per_session' } : fallback;
+      if (bars && typeof card.value === 'number' && bars.filter((b) => b.d === 1).length === Math.round(card.value)) {
+        return { kind: 'bars', bars, basis: 'attended_per_session' };
+      }
+      return typeof card.n === 'number' && card.n > 0 && typeof card.value === 'number' && card.value > 0
+        ? { kind: 'tally', total: Math.min(MAX_TALLY, Math.round(card.n)), lit: Math.min(Math.round(card.n), Math.round(card.value)), basis: 'deep_count' }
+        : fallback;
     }
     case 'prompts_per_session': {
-      const bars = src.sessions ? promptBars(src.sessions) : null;
+      const bars = src.sessions ? promptBars(src.sessions, typeof card.value === 'number' ? card.value : null) : null;
       return bars ? { kind: 'bars', bars, basis: 'prompts_per_session' } : fallback;
     }
     case 'go_to_prompt': {

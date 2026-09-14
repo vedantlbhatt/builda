@@ -69,9 +69,10 @@ describe('never random: the same card draws the same header, every render', () =
 
   test('with no sources the data cards fall back to a seeded field, and say so', () => {
     const procedural = REPORT_ENUMS.wrapped_card.filter((id) => artFor(card(id), NO_SOURCES).basis === 'procedural');
-    // Six cards carry their own data on the wire: the share, the split, the sends, the
-    // average prompt with its median, the helper agents with their peak, and the streak's days.
-    const onTheWire = new Set(['change_course', 'kind_of_work', 'go_to_prompt', 'prompt_length', 'agents_at_once', 'streak']);
+    // Seven cards carry their own data on the wire: the share, the split, the sends, the average
+    // prompt with its median, the helper agents with their peak, the streak's days, and the deep
+    // sessions among the sessions with you there.
+    const onTheWire = new Set(['change_course', 'kind_of_work', 'go_to_prompt', 'prompt_length', 'agents_at_once', 'streak', 'deep_sessions']);
     expect(procedural.sort()).toEqual([...REPORT_ENUMS.wrapped_card].filter((id) => !onTheWire.has(id)).sort());
   });
 
@@ -114,7 +115,7 @@ describe('real data where the phone holds it', () => {
     shipped: 'cumulative_lines',
     change_course: 'card_share',
     kind_of_work: 'role_split',
-    deep_sessions: 'attended_per_session',
+    deep_sessions: 'deep_count', // the sample's sessions do not count its 19 deep ones
     prompts_per_session: 'prompts_per_session',
     go_to_prompt: 'send_count',
     prompt_length: 'prompt_words',
@@ -130,6 +131,21 @@ describe('real data where the phone holds it', () => {
     // FOUND IN THE now3 PASS (2026-09-14): a 17 day commit run under "8 days straight".
     const spec = artFor(card('streak'), SAMPLE_SOURCES);
     expect(spec).toMatchObject({ kind: 'tally', total: 20, lit: 11, basis: 'streak_days' });
+  });
+
+  test("deep sessions: each session's bar when the phone's sessions count the card, else the card's own squares", () => {
+    // FOUND IN THE now3 PASS (2026-09-14): "15 deep sessions" over three ink bars.
+    const deep = (SAMPLE_SOURCES.sessions ?? []).filter((s) => (s.attended_seconds ?? 0) >= 3600).length;
+    const agrees = { ...card('deep_sessions'), value: deep };
+    expect(artFor(agrees, SAMPLE_SOURCES).basis).toBe('attended_per_session');
+    expect(artFor(card('deep_sessions'), SAMPLE_SOURCES)).toMatchObject({ kind: 'tally', total: 132, lit: 19, basis: 'deep_count' });
+  });
+
+  test("prompt bars stand against three times the card's average, so one busy session cannot flatten the rest", () => {
+    const sessions = [1, 2, 3, 4, 5, 6].map((i) => ({ started_at: `2026-09-0${i}T12:00:00Z`, prompts: i === 6 ? 400 : 6, attended_seconds: 600 }));
+    const bars = promptBars(sessions as never, 6)!;
+    expect(bars.slice(0, 5).every((b) => Math.abs(b.h - 1 / 3) < 1e-9)).toBe(true);
+    expect(bars[5]!.h).toBe(1);
   });
 
   test('a refused card never draws data: it has no answer to draw', () => {

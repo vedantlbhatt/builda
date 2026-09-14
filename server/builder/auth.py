@@ -188,7 +188,9 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
             """
         ),
         {"h": sha256(raw)},
-    ).one()
+    ).first()
+    if row is None:  # deleted between the two reads, with its account
+        raise HTTPException(401, "unknown refresh token")
 
     def reuse() -> HTTPException:
         db.execute(

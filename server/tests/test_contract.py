@@ -1493,5 +1493,8 @@ def test_privacy_md_says_what_a_published_demo_sends():
         f"stops working after {project_media.READ_URL_SECONDS // 60} minutes",
         "Never the file names, the commit it was taken at, or the project's name",
         "Only you can see a demo, whatever you share",
+        # The security review (2026-09-14): demos never in the publicly served posts store.
+        "kept in a private store of their own, never the one public post photos are served from",
+        "Each upload link is good only for as long as that one file's upload needs",
     ):
         assert phrase in flat, phrase

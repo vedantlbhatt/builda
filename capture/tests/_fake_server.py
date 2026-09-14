@@ -52,6 +52,11 @@ class FakeBuilder:
         self.media: dict[str, dict] = {}
         self.media_uploads: list[tuple[str, dict, bytes, str | None]] = []
         self.media_upload_status: list[int] = []
+        #: Commits: which one (counting from 1) answers 500, and whether the server still
+        #: acts on it first (its answer lost on the way back, after the demo was replaced).
+        self.media_commits = 0
+        self.media_commit_fails_at: int | None = None
+        self.media_commit_acts_anyway = False
         self.lock = threading.Lock()
         server = self
 
@@ -254,34 +259,51 @@ class FakeBuilder:
             }
         m = re.match(r"^/v1/projects/([0-9a-f]{64})/media/([^/]+):commit$", path)
         if m and method == "POST":
-            row = self.media.get(m.group(2))
-            if row is None or row["key"] != m.group(1):
-                return 404, {"detail": "not found"}
-            want = {m.group(2): row["body"]["bytes"]}
-            if row["body"].get("poster"):
-                want[f"{m.group(2)}-poster"] = row["body"]["poster"]["bytes"]
-            for name, n in want.items():
-                if len(row["objects"].get(name, b"")) != n:
-                    return 409, {"detail": f"nothing of {n} bytes was uploaded for {name}"}
-            newly = not row["committed"]
-            row["committed"] = True
-            pub = row["body"]["publish_id"]
-            same = [r for r in self.media.values() if r["key"] == row["key"]]
-            pending = sum(1 for r in same if r["body"]["publish_id"] == pub and not r["committed"])
-            replaced = 0
-            if pending == 0 and newly:  # only the commit that completes a set replaces
-                for mid, r in list(self.media.items()):
-                    if r["key"] == row["key"] and r["body"]["publish_id"] != pub:
-                        del self.media[mid]
-                        replaced += 1
-            return 200, {"item": {"id": m.group(2)}, "pending": pending, "replaced": replaced}
+            self.media_commits += 1
+            if self.media_commits == self.media_commit_fails_at:
+                if self.media_commit_acts_anyway:
+                    self._commit(m.group(1), m.group(2))
+                return 500, {"detail": "the answer to this commit was lost"}
+            return self._commit(m.group(1), m.group(2))
         m = re.match(r"^/v1/projects/([0-9a-f]{64})/media$", path)
+        if m and method == "GET":
+            shown = [
+                {"id": mid, "position": r["body"]["position"], **{k: r["body"][k] for k in (
+                    "kind", "width", "height", "duration_ms", "label")}}
+                for mid, r in self.media.items()
+                if r["key"] == m.group(1) and r["committed"]
+            ]
+            return 200, {"items": shown}
         if m and method == "DELETE":
             gone = [mid for mid, r in self.media.items() if r["key"] == m.group(1)]
             for mid in gone:
                 del self.media[mid]
             return 200, {"deleted": len(gone)}
         return None
+
+    def _commit(self, key: str, media_id: str):
+        """routes/media.py's commit: the object at its size, then the set replaces."""
+        row = self.media.get(media_id)
+        if row is None or row["key"] != key:
+            return 404, {"detail": "not found"}
+        want = {media_id: row["body"]["bytes"]}
+        if row["body"].get("poster"):
+            want[f"{media_id}-poster"] = row["body"]["poster"]["bytes"]
+        for name, n in want.items():
+            if len(row["objects"].get(name, b"")) != n:
+                return 409, {"detail": f"nothing of {n} bytes was uploaded for {name}"}
+        newly = not row["committed"]
+        row["committed"] = True
+        pub = row["body"]["publish_id"]
+        same = [r for r in self.media.values() if r["key"] == key]
+        pending = sum(1 for r in same if r["body"]["publish_id"] == pub and not r["committed"])
+        replaced = 0
+        if pending == 0 and newly:  # only the commit that completes a set replaces
+            for mid, r in list(self.media.items()):
+                if r["key"] == key and r["body"]["publish_id"] != pub:
+                    del self.media[mid]
+                    replaced += 1
+        return 200, {"item": {"id": media_id}, "pending": pending, "replaced": replaced}
 
     def media_upload(self, path: str, headers: dict, body: bytes, token):
         """The file backend's upload URL: the URL is the grant, and a bearer is never sent."""

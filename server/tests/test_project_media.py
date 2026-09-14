@@ -16,10 +16,13 @@ that was already vetted, a demo left on disk after the account that made it is g
 from __future__ import annotations
 
 import json
+import urllib.error
+import urllib.request
 import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
+import fake_s3
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
@@ -51,15 +54,25 @@ LABEL = "the session page, scrolled to the chart"
 # ----------------------------------------------------------------------------- fixtures
 
 
+#: Every store setting, both stores: each fixture starts from none of them.
+_STORES = [
+    f"{side}_STORE_{part}"
+    for side in ("OBJECT", "MEDIA")
+    for part in ("ENDPOINT", "BUCKET", "KEY", "SECRET", "PUBLIC_BASE")
+]
+DEMOS = "builder-demos"
+POSTS = "builder-posts"
+
+
 @pytest.fixture
 def store(app_env, monkeypatch, tmp_path):
-    """The local stack's backend: OBJECT_STORE_ENDPOINT=file:///<tmp>/media."""
+    """The local stack's backend: MEDIA_STORE_ENDPOINT=file:///<tmp>/media."""
     from builder.settings import settings
 
     root = tmp_path / "media"
-    monkeypatch.setenv("OBJECT_STORE_ENDPOINT", f"file://{root}")
-    for var in ("OBJECT_STORE_BUCKET", "OBJECT_STORE_KEY", "OBJECT_STORE_SECRET"):
+    for var in _STORES:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MEDIA_STORE_ENDPOINT", f"file://{root}")
     settings.cache_clear()
     yield root
     settings.cache_clear()
@@ -67,16 +80,27 @@ def store(app_env, monkeypatch, tmp_path):
 
 @pytest.fixture
 def s3(app_env, monkeypatch):
-    """Production's backend, configured; the bucket itself is stood in for per test."""
+    """Production's shape against a fake bucket server (fake_s3.py): the demos in a private
+    bucket of their own, and the posts' PUBLIC bucket configured beside it on the same
+    endpoint, so a test can say nothing of a demo ever lands there."""
+    from builder import objectstore
     from builder.settings import settings
 
-    monkeypatch.setenv("OBJECT_STORE_ENDPOINT", "https://acct.r2.cloudflarestorage.com")
-    monkeypatch.setenv("OBJECT_STORE_BUCKET", "builder-media")
-    monkeypatch.setenv("OBJECT_STORE_KEY", "AKIAIOSFODNN7EXAMPLE")
-    monkeypatch.setenv("OBJECT_STORE_SECRET", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+    fake = fake_s3.FakeS3()
+    url = fake.start()
+    for var in _STORES:
+        monkeypatch.delenv(var, raising=False)
+    for side, bucket in (("MEDIA", DEMOS), ("OBJECT", POSTS)):
+        monkeypatch.setenv(f"{side}_STORE_ENDPOINT", url)
+        monkeypatch.setenv(f"{side}_STORE_BUCKET", bucket)
+        monkeypatch.setenv(f"{side}_STORE_KEY", fake_s3.ACCESS)
+        monkeypatch.setenv(f"{side}_STORE_SECRET", fake_s3.SECRET)
+    monkeypatch.setenv("OBJECT_STORE_PUBLIC_BASE", "https://media.builda.app")
     settings.cache_clear()
-    yield
+    assert objectstore.store_config_problem() is None, "the fixture is a configuration that boots"
+    yield fake
     settings.cache_clear()
+    fake.stop()
 
 
 def _person(client, created_users) -> dict:
@@ -456,10 +480,10 @@ def test_the_upload_url_is_one_object_one_type_one_size_one_use(client, store, c
     forged = client.put(f"/v1/media-upload/{access}", content=PNG, headers=slot["headers"])
     assert forged.status_code == 401
 
-    # Expired: made fifteen minutes and a second ago.
+    # Expired: good for a minute, made a minute and a second ago.
     old = pm.upload_token(
         a["uid"], slot["media_id"], "x", "image/png", len(PNG),
-        now=datetime.now(UTC) - timedelta(seconds=pm.UPLOAD_URL_SECONDS + 1),
+        expires=60, now=datetime.now(UTC) - timedelta(seconds=61),
     )  # fmt: skip
     assert (
         client.put(f"/v1/media-upload/{old}", content=PNG, headers=slot["headers"]).status_code
@@ -746,63 +770,227 @@ def test_a_viewer_cannot_commit_delete_or_reassign_someone_elses_row(two_with_me
 # ----------------------------------------------------------------------- the S3 backend
 
 
-def test_s3_mode_presigns_the_size_and_reads_through_short_lived_gets(
-    client, s3, created_users, monkeypatch
-):
-    from builder import objectstore
+def _http(method: str, url: str, data: bytes | None = None, headers: dict | None = None):
+    """(status, body) of a request straight to the fake bucket: a Mac's upload, a phone's
+    read. Never through the API, which never proxies a byte in this mode."""
+    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def _put_s3(slot: dict, data: bytes, **headers) -> int:
+    return _http("PUT", slot["upload_url"], data, {**slot["headers"], **headers})[0]
+
+
+def _publish_s3(client, p: dict, files: list[tuple[dict, bytes]]) -> list[str]:
+    """The Mac's order: each file presigned right before its upload, then every commit."""
+    ids = []
+    for body, data in files:
+        slot = _presign(client, p, body).json()
+        assert _put_s3(slot, data) == 200
+        if slot["poster"]:
+            assert _put_s3(slot["poster"], JPEG) == 200
+        ids.append(slot["media_id"])
+    for mid in ids:
+        assert _commit(client, p, mid).status_code == 200
+    return ids
+
+
+def _under(fake, uid: str) -> set[str]:
+    return {k for k in fake.keys(DEMOS) if k.startswith(f"project-media/{uid}/")}
+
+
+def test_s3_mode_round_trip_through_the_private_demos_bucket(client, s3, created_users):
+    from builder import project_media as pm
 
     a = _person(client, created_users)
-    pub = _pub()
-    slot = _presign(client, a, _video(pub)).json()
+    slot = _presign(client, a, _video(_pub())).json()
     url = urlsplit(slot["upload_url"])
     q = {k: v[0] for k, v in parse_qs(url.query).items()}
-    assert url.netloc == "acct.r2.cloudflarestorage.com"
-    assert url.path.startswith(f"/builder-media/project-media/{a['uid']}/{a['key']}/")
+    assert url.path.startswith(f"/{DEMOS}/project-media/{a['uid']}/{a['key']}/"), "the demos bucket"
     assert q["X-Amz-SignedHeaders"] == "content-length;content-type;host", "the size is signed"
-    assert q["X-Amz-Expires"] == "900"
-    assert slot["poster"]["headers"]["Content-Length"] == str(len(JPEG))
-
-    stored: dict[str, bytes] = {}
-    monkeypatch.setattr(
-        objectstore,
-        "s3_stat",
-        lambda k, store=None: (len(stored[k]), None) if k in stored else None,
-    )
-    monkeypatch.setattr(
-        objectstore,
-        "s3_head_bytes",
-        lambda k, n, store=None: stored[k][:n] if k in stored else None,
-    )
-    deleted: list[str] = []
-    monkeypatch.setattr(objectstore, "s3_delete", lambda k, store=None: deleted.append(k))
-    (row,) = _rows(a["uid"])
+    expires = pm.upload_seconds(len(MP4) + len(JPEG))
+    assert int(q["X-Amz-Expires"]) == slot["expires_in"] == slot["poster"]["expires_in"] == expires
+    assert _put_s3(slot, MP4, **{"Content-Type": "text/html"}) == 403, "the type is signed"
     assert _commit(client, a, slot["media_id"]).status_code == 409, "nothing in the bucket yet"
-    stored[row.object_key] = MP4
-    stored[row.poster_object_key] = JPEG[:-1]
-    assert _commit(client, a, slot["media_id"]).status_code == 409, "the poster is short"
-    stored[row.poster_object_key] = JPEG
+    assert _put_s3(slot, MP4) == 200 and _put_s3(slot["poster"], JPEG) == 200
     assert _commit(client, a, slot["media_id"]).status_code == 200
 
     (item,) = _listed(client, a)
+    assert _http("GET", item["url"]) == (200, MP4)
+    assert _http("GET", item["poster_url"]) == (200, JPEG)
     for link in (item["url"], item["poster_url"]):
-        parts = urlsplit(link)
-        q = {k: v[0] for k, v in parse_qs(parts.query).items()}
-        assert parts.scheme == "https" and q["X-Amz-SignedHeaders"] == "host"
-        assert q["X-Amz-Expires"] == "900"
+        q = {k: v[0] for k, v in parse_qs(urlsplit(link).query).items()}
+        assert (q["X-Amz-SignedHeaders"], q["X-Amz-Expires"]) == ("host", str(pm.READ_URL_SECONDS))
+        # The security review's finding, as a test: a presigned GET cut down to its path is
+        # nothing, because the demos bucket is private and no public base reaches it.
+        status, _ = _http("GET", link.split("?", 1)[0])
+        assert status == 403
     assert client.get(f"/v1/media/{item['id']}", headers=a["phone"]).status_code == 404
+    assert fake_keys_posts(s3) == set(), "nothing of a demo in the public posts bucket"
+    # The server's own calls went with an Authorization header, which R2 takes for all four.
+    own = {m for m, _, how in s3.requests if how == "header"}
+    assert own == {"HEAD", "GET"}
 
-    assert client.delete(f"/v1/projects/{a['key']}/media", headers=a["phone"]).json() == {
-        "deleted": 1
-    }
-    assert sorted(deleted) == sorted([row.object_key, row.poster_object_key])
+    r = client.delete(f"/v1/projects/{a['key']}/media", headers=a["phone"])
+    assert r.json() == {"deleted": 1}
+    assert _under(s3, a["uid"]) == set()
+    assert _http("GET", item["url"])[0] == 404
+    assert ("GET", f"/{DEMOS}", "header") in s3.requests, "the delete listed the prefix"
 
 
-def test_social_media_stays_s3_only_on_the_local_store(client, store, created_users):
-    """A post's presign signs S3 URLs; with only a file:// endpoint it answers 503, as it
-    does unconfigured, rather than signing a URL against a directory."""
+def fake_keys_posts(fake) -> set[str]:
+    return fake.keys(POSTS)
+
+
+def test_an_upload_url_that_outlives_its_row_leaves_nothing_behind(client, s3, created_users):
+    """FOUND IN THE SECURITY REVIEW (2026-09-14): two Macs publishing one project at once.
+    Mac B's presign drops Mac A's unfinished publish, but the bucket still honours Mac A's URL,
+    and nothing at the bucket checks a row. Mac A's commit then finds its row gone and the
+    prefix is swept, keeping Mac B's upload, which is still running."""
+    a = _person(client, created_users)
+    mac_a = _presign(client, a, _image(_pub(), 1)).json()
+    b_pub = _pub()
+    mac_b = _presign(client, a, _image(b_pub, 1)).json()
+    assert {r.publish_id for r in _rows(a["uid"])} == {b_pub}
+    assert _put_s3(mac_a, PNG) == 200, "the bucket honours a URL whose row is gone"
+    assert _put_s3(mac_b, PNG) == 200
+    assert len(_under(s3, a["uid"])) == 2, "one of them is kept by no row"
+
+    assert _commit(client, a, mac_a["media_id"]).status_code == 404
+    (b_row,) = _rows(a["uid"])
+    assert _under(s3, a["uid"]) == {b_row.object_key}, "Mac A's object swept, Mac B's kept"
+    assert _commit(client, a, mac_b["media_id"]).status_code == 200
+    assert [i["id"] for i in _listed(client, a)] == [mac_b["media_id"]]
+
+
+def test_every_deletion_sweeps_the_prefix_and_only_its_own(client, s3, created_users):
+    """A replacing commit, a delete and an exclusion each sweep the project's prefix of
+    objects no row keeps; another person's prefix, and another project's, are not touched."""
+    a = _person(client, created_users)
+    b = _person(client, created_users)
+    _publish_s3(client, b, [(_image(_pub(), 1), PNG)])
+    b_keys = _under(s3, b["uid"])
+
+    def stray(p: dict, name: str) -> str:
+        key = f"project-media/{p['uid']}/{p['key']}/{name}.png"
+        s3.objects[(DEMOS, key)] = (PNG, "image/png")  # landed through a URL past its row
+        return key
+
+    _publish_s3(client, a, [(_image(_pub(), 1), PNG)])
+    old = stray(a, "late-for-the-first-set")
+    _publish_s3(client, a, [(_image(_pub(), 1), PNG), (_image(_pub(), 2), PNG)][:1])
+    assert old not in s3.keys(DEMOS), "the replacing commit swept it"
+    assert len(_under(s3, a["uid"])) == 1
+
+    late = stray(a, "late-for-the-delete")
+    assert client.delete(f"/v1/projects/{a['key']}/media", headers=a["phone"]).status_code == 200
+    assert late not in s3.keys(DEMOS) and _under(s3, a["uid"]) == set()
+
+    _publish_s3(client, a, [(_image(_pub(), 1), PNG)])
+    stray(a, "late-for-the-exclusion")
+    r = client.post(
+        "/v1/repos/visibility",
+        json={"repo_hash": a["key"], "visibility": "excluded"},
+        headers=a["phone"],
+    )
+    assert r.status_code == 200 and _under(s3, a["uid"]) == set()
+    assert _under(s3, b["uid"]) == b_keys, "nobody else's prefix"
+
+
+def test_account_deletion_sweeps_and_media_sweep_catches_what_lands_after(
+    client, s3, created_users
+):
+    from builder import media_sweep
+
+    a = _person(client, created_users)
+    b = _person(client, created_users)
+    _publish_s3(client, a, [(_video(_pub()), MP4), (_image(_pub(), 1), PNG)][:1])
+    _publish_s3(client, b, [(_image(_pub(), 1), PNG)])
+    b_keys = _under(s3, b["uid"])
+    late = _presign(client, a, _image(_pub(), 2)).json()  # a live URL, not used yet
+    assert len(_under(s3, a["uid"])) == 2
+
+    assert client.post("/v1/account/delete", headers=a["phone"]).status_code == 200
+    assert _under(s3, a["uid"]) == set(), "the rows cascaded; the prefix went with them"
+    assert _put_s3(late, PNG) == 200, "the bucket still honours the URL after the account"
+    (orphan,) = _under(s3, a["uid"])
+
+    dry = media_sweep.sweep_all(owner_engine(), dry_run=True)
+    assert orphan in dry["orphans"] and dry["deleted"] == 0 and orphan in s3.keys(DEMOS)
+    done = media_sweep.sweep_all(owner_engine())
+    assert orphan in done["orphans"] and done["deleted"] >= 1
+    assert _under(s3, a["uid"]) == set()
+    assert _under(s3, b["uid"]) == b_keys, "a committed demo is never swept"
+
+
+def test_media_sweep_deletes_an_abandoned_publish_and_keeps_one_still_running(
+    client, s3, created_users
+):
+    from builder import media_sweep
+
+    a = _person(client, created_users)
+    abandoned = _presign(client, a, _image(_pub(), 1)).json()
+    assert _put_s3(abandoned, PNG) == 200
+    with owner_engine().begin() as c:  # abandoned half an hour and a minute ago
+        c.execute(
+            text(
+                "UPDATE project_media SET created_at = now() - interval '31 minutes' "
+                "WHERE user_id = :u"
+            ),
+            {"u": a["uid"]},
+        )
+    b = _person(client, created_users)
+    running = _presign(client, b, _image(_pub(), 1)).json()
+    assert _put_s3(running, PNG) == 200
+
+    done = media_sweep.sweep_all(owner_engine())
+    assert done["abandoned_rows"] >= 1
+    assert _rows(a["uid"]) == [] and _under(s3, a["uid"]) == set()
+    (b_row,) = _rows(b["uid"])
+    assert _under(s3, b["uid"]) == {b_row.object_key}, "a publish still running is kept"
+    assert _commit(client, b, running["media_id"]).status_code == 200
+
+
+def test_media_sweep_refuses_a_connection_row_level_security_limits(s3):
+    """Under the owner policy with no viewer every row is invisible, every object would look
+    unkept, and the bucket would be emptied. It refuses before listing anything."""
+    from builder import media_sweep
+
+    s3.objects[(DEMOS, "project-media/x/y/z.png")] = (PNG, "image/png")
+    with pytest.raises(media_sweep.CannotSeeEveryRow):
+        media_sweep.sweep_all(app_engine())
+    assert (DEMOS, "project-media/x/y/z.png") in s3.objects
+    assert s3.requests == [], "not even a listing"
+
+
+def test_upload_urls_live_as_long_as_one_file_needs(client, store, created_users):
+    """FOUND IN THE SECURITY REVIEW: a flat fifteen minutes left a URL live long past the
+    upload it was for. Now: one file's bytes at 1 Mbit/s and a minute, the same in both
+    backends, and the Mac presigns each file right before its upload."""
+    import jwt
+
+    from builder import project_media as pm
+
+    assert (pm.upload_seconds(6 * 2**20), pm.upload_seconds(46 * 2**20)) == (111, 446)
+    a = _person(client, created_users)
+    slot = _presign(client, a, _image(_pub(), 1)).json()
+    claims = jwt.decode(slot["upload_url"].rsplit("/", 1)[1], options={"verify_signature": False})
+    assert claims["exp"] - claims["iat"] == pm.upload_seconds(len(PNG)) == slot["expires_in"]
+    video = _presign(client, a, _video(_pub())).json()
+    both = pm.upload_seconds(len(MP4) + len(JPEG))
+    assert video["expires_in"] == video["poster"]["expires_in"] == both
+
+
+def test_social_posts_never_use_the_demos_store(client, store, created_users):
+    """A post's presign signs S3 URLs in the posts store; with only the demos' file:// store
+    configured it answers 503, as it does unconfigured, rather than signing against it."""
     from builder import objectstore
 
-    assert objectstore.backend() == "file" and objectstore.from_settings() is None
+    assert objectstore.media_backend() == "file" and objectstore.from_settings() is None
     a = _person(client, created_users)
     with owner_engine().connect() as c:
         sid = str(
@@ -817,19 +1005,21 @@ def test_social_media_stays_s3_only_on_the_local_store(client, store, created_us
     assert r.status_code == 503
 
 
-def test_unconfigured_storage_is_a_503_that_says_what_to_set(
+def test_no_demos_store_is_a_503_never_the_posts_bucket(
     client, app_env, created_users, monkeypatch
 ):
+    """With the posts store configured and no MEDIA_STORE_*, a demo has nowhere to go: 503
+    and the settings to set, never a fall back to the posts' public bucket."""
     from builder.settings import settings
 
-    for var in (
-        "OBJECT_STORE_ENDPOINT",
-        "OBJECT_STORE_BUCKET",
-        "OBJECT_STORE_KEY",
-        "OBJECT_STORE_SECRET",
-    ):
+    for var in _STORES:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OBJECT_STORE_ENDPOINT", "https://acct.r2.cloudflarestorage.com")
+    monkeypatch.setenv("OBJECT_STORE_BUCKET", POSTS)
+    monkeypatch.setenv("OBJECT_STORE_KEY", "k")
+    monkeypatch.setenv("OBJECT_STORE_SECRET", "s")
     settings.cache_clear()
     a = _person(client, created_users)
     r = _presign(client, a, _image(_pub(), 1))
-    assert r.status_code == 503 and "OBJECT_STORE_ENDPOINT" in r.json()["detail"]
+    assert r.status_code == 503 and "MEDIA_STORE_ENDPOINT" in r.json()["detail"]
+    assert _rows(a["uid"]) == []

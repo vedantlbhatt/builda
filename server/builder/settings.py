@@ -56,14 +56,12 @@ class Settings(BaseSettings):
     apns_topic: str = "com.vedantlbhatt.Builder"
     apns_use_sandbox: bool = True
 
-    # Object storage for post photos and voice notes (docs/social.md) and project demos
-    # (docs/demos.md). S3-compatible, presigned PUTs from the client; the API never proxies
-    # bytes. All unset is a valid configuration: media upload answers 503 and the rest of
-    # the app works without it. `region` is "auto" because the first target is Cloudflare
-    # R2, which wants exactly that string in the credential scope; AWS wants the real
-    # region name. `file:///abs/dir` is the local stack's backend for project demos only
-    # (objectstore.py): uploads PUT to the API and reads stream from disk behind the
-    # bearer. Refused in production, at boot.
+    # Object storage for post photos and voice notes (docs/social.md). S3-compatible,
+    # presigned PUTs from the phone; the API never proxies bytes. All unset is a valid
+    # configuration: photo upload answers 503 and the rest of social works without it.
+    # `region` is "auto" because the first target is Cloudflare R2, which wants exactly
+    # that string in the credential scope; AWS wants the real region name. Project demos
+    # are NEVER stored here (see media_store_* below and objectstore.py).
     object_store_endpoint: str = ""
     object_store_bucket: str = ""
     object_store_region: str = "auto"
@@ -72,6 +70,22 @@ class Settings(BaseSettings):
     # Public read base (a CDN or bucket domain). Photo `url`s are only built when set;
     # otherwise the phone gets the object key and no URL, not a guessed one.
     object_store_public_base: str = ""
+
+    # Project demos (docs/demos.md): a PRIVATE bucket of their own, never the posts bucket,
+    # read only through presigned GETs. FOUND IN THE SECURITY REVIEW (2026-09-14): in the
+    # posts bucket, a demo's presigned GET with its query cut off was a permanent public
+    # link through OBJECT_STORE_PUBLIC_BASE. Boot refuses one bucket for both, a posts
+    # public base that reaches this bucket, and half a configuration. Give it credentials
+    # scoped to this bucket alone. `file:///abs/dir` is the local stack's backend: uploads
+    # PUT to the API and reads stream from disk behind the bearer; refused in production.
+    media_store_endpoint: str = ""
+    media_store_bucket: str = ""
+    media_store_region: str = "auto"
+    media_store_key: str = ""
+    media_store_secret: str = ""
+    # Must stay empty. It exists so that setting it is an error with a sentence (boot.py)
+    # rather than a variable nothing reads: a demo has no public read path.
+    media_store_public_base: str = ""
 
     environment: str = "development"
     posthog_api_key: str = ""

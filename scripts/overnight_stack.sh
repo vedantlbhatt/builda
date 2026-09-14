@@ -19,8 +19,8 @@
 #
 # Nothing secret is written inside the repository. Keys, tokens, the log and the pid file
 # live in $OVERNIGHT_HOME (default ~/.builder-overnight, mode 0700, secrets 0600), and so do
-# published project demos ($OVERNIGHT_HOME/media, 0700: OBJECT_STORE_ENDPOINT=file://..., the
-# object store's development backend, for both APIs). Every
+# published project demos ($OVERNIGHT_HOME/media, 0700: MEDIA_STORE_ENDPOINT=file://..., the
+# demos store's development backend, for both APIs; never the posts store). Every
 # child process runs under `env -i` with only the variables set here, so a DATABASE_URL,
 # APNS key or BUILDER_CAPTURE_KEY exported in your shell for other work cannot leak into
 # this stack, and ~/.builder/credentials.json is never read or written
@@ -174,7 +174,7 @@ start_api() {
       ENVIRONMENT=development \
       APP_DATABASE_URL="$(db_url "$APP_ROLE" "$DB")" \
       JWT_PRIVATE_KEY="$(cat "$KEY_FILE")" \
-      OBJECT_STORE_ENDPOINT="file://$MEDIA_DIR" \
+      MEDIA_STORE_ENDPOINT="file://$MEDIA_DIR" \
       BASE_URL="$API" \
       nohup "$PY" -c 'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
       "$VENV/bin/uvicorn" builder.main:app --host 127.0.0.1 --port "$PORT" \
@@ -247,7 +247,7 @@ cmd_lan() {
       ENVIRONMENT=development \
       APP_DATABASE_URL="$(db_url "$APP_ROLE" "$DB")" \
       JWT_PRIVATE_KEY="$(cat "$KEY_FILE")" \
-      OBJECT_STORE_ENDPOINT="file://$MEDIA_DIR" \
+      MEDIA_STORE_ENDPOINT="file://$MEDIA_DIR" \
       BASE_URL="$url" \
       nohup "$PY" -c 'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
       "$VENV/bin/uvicorn" builder.main:app --host "$ip" --port "$PORT" \

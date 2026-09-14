@@ -485,6 +485,10 @@ class Client:
         """POST /v1/projects/{key}/media/{id}:commit: the file is there; the server checks."""
         return self._authenticated("POST", f"/v1/projects/{key}/media/{media_id}:commit", None)
 
+    def media_list(self, key: str) -> dict:
+        """GET /v1/projects/{key}/media: what the phone shows for the project now."""
+        return self._authenticated("GET", f"/v1/projects/{key}/media", None)
+
     def media_delete(self, key: str) -> dict:
         """DELETE /v1/projects/{key}/media: every file of the project's demo, answered with how
         many went."""

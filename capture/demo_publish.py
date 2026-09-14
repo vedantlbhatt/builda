@@ -29,9 +29,12 @@ commit SHA, on the never list), `taken_at`, `kind` and every file NAME stay here
 are the file's own where the file says them (a PNG's or JPEG's size, an MP4's length), so a
 manifest that disagrees with its pictures cannot put a wrong number on the phone.
 
-The order is the server's contract for a set (routes/media.py): presign every file under one
-fresh `publish_id`, upload every file, then commit every file; the commit that completes the
-set replaces the demo the project had. A failure part way leaves the old demo showing.
+The order is the server's contract for a set (routes/media.py): under one fresh `publish_id`,
+presign each file right before its upload (so its URL lives only as long as that upload), then
+commit every file; the commit that completes the set replaces the demo the project had. A
+failure before the commits leaves the old demo showing. A failure DURING them cannot be read
+from here: the answer to the last commit can be lost after the server replaced the demo, so
+the command says it cannot tell and how to look (`--list`, the phone's own list).
 
 AUTH: the paired Mac's device credentials (`python -m capture pair`), refreshed and rotated
 by `capture.client`. Never a capture key: the server refuses one on every demo route
@@ -504,26 +507,43 @@ def publish(key: str, server: str, yes: bool) -> int:
     publish_id = secrets.token_hex(8)
     slots: list[dict] = []
     step = ""
+    committing = False
     try:
+        # Each file is presigned right before its upload: its URL lives only as long as that
+        # one upload needs (server/builder/project_media.py upload_seconds), and a URL that
+        # outlives its use is one an object can still land through at the bucket.
         for a in assets:
             step = f"the presign of {a.file.name}"
-            slots.append(c.media_presign(key, a.presign(publish_id)))
-        for a, slot in zip(assets, slots, strict=True):
+            slot = c.media_presign(key, a.presign(publish_id))
+            slots.append(slot)
             step = a.file.name
             c.put_object(slot["upload_url"], a.file.read_bytes(), slot["headers"])
             if a.poster:
                 step = a.poster.name
                 c.put_object(slot["poster"]["upload_url"], a.poster.read_bytes(), slot["poster"]["headers"])
         replaced = 0
+        committing = True
         for a, slot in zip(assets, slots, strict=True):
             step = f"the commit of {a.file.name}"
             replaced += int(c.media_commit(key, slot["media_id"]).get("replaced") or 0)
     except cl.HTTPFailure as e:
-        print(
-            f"The publish stopped at {step}: {e}. The demo on the server is still the one "
-            "that was there; run the publish again.",
-            file=sys.stderr,
-        )
+        if not committing:
+            # Nothing of this publish was committed, and only a complete set replaces.
+            print(
+                f"The publish stopped at {step}: {e}. Nothing of it was committed, so the demo "
+                "on the server is still the one that was there; run the publish again.",
+                file=sys.stderr,
+            )
+        else:
+            # A commit's answer can be lost after the server acted on it, and the last commit
+            # is the one that replaces: this side cannot know which happened.
+            print(
+                f"The publish stopped at {step}: {e}. This Mac cannot tell whether the server "
+                "finished it, so the project's demo may be the one that was there or this one. "
+                f"See which with `python -m capture demo --list --key {key}`, and run the "
+                "publish again to be sure.",
+                file=sys.stderr,
+            )
         return 4
     videos = sum(1 for a in assets if a.kind == "video")
     images = len(assets) - videos
@@ -538,6 +558,20 @@ def publish(key: str, server: str, yes: bool) -> int:
         if replaced
         else "This is the first demo of this project on the server."
     )
+    return 0
+
+
+def listing(key: str, server: str) -> int:
+    """What the server shows for this project now: the phone's list, read with this Mac's
+    device token. The way to see how a publish that lost an answer ended."""
+    items = _client(server).media_list(key).get("items") or []
+    if not items:
+        print(f"The server shows no demo of project {key[:12]}.")
+        return 0
+    print(f"The server shows this demo of project {key[:12]}:")
+    for i in items:
+        length = f" {i['duration_ms'] / 1000:.1f} s" if i.get("duration_ms") else ""
+        print(f"  {i['kind']:<6} {i['position']:>2}  {i['width']}x{i['height']}{length}  \"{i['label']}\"")
     return 0
 
 
@@ -559,12 +593,14 @@ def delete(key: str, server: str, yes: bool) -> int:
 def make_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="python -m capture demo",
-        description="Publish a project's demo to your account, or delete the published one. "
-        "Making a demo is `python -m capture demo` without either flag.",
+        description="Publish a project's demo to your account, list what the server shows "
+        "for it, or delete the published one. Making a demo is `python -m capture demo` "
+        "without any of these flags.",
     )
     act = ap.add_mutually_exclusive_group(required=True)
     act.add_argument("--publish", action="store_true", help="send this project's demo, after a yes")
     act.add_argument("--delete", action="store_true", help="delete this project's published demo")
+    act.add_argument("--list", action="store_true", help="what the server shows for this project now")
     which = ap.add_mutually_exclusive_group()
     which.add_argument("--project", help="the project's directory (default: the current one)")
     which.add_argument("--key", help="the project key, the repository's 64 hex salted hash")
@@ -579,9 +615,12 @@ def main(argv: list[str]) -> int:
     try:
         key = resolve_key(a.project, a.key)
     except Refused as e:
-        print(f"Not {'publishing' if a.publish else 'deleting'}: {e}", file=sys.stderr)
+        doing = "publishing" if a.publish else "deleting" if a.delete else "listing"
+        print(f"Not {doing}: {e}", file=sys.stderr)
         return 2
     try:
+        if a.list:
+            return listing(key, server)
         return publish(key, server, a.yes) if a.publish else delete(key, server, a.yes)
     except cl.NotPaired as e:
         print(str(e), file=sys.stderr)
@@ -592,9 +631,9 @@ def main(argv: list[str]) -> int:
 
 
 def claims(argv: list[str]) -> bool:
-    """Whether a `python -m capture` command line is this module's: `demo` with `--publish` or
-    `--delete`. Everything else about `demo` is the generator's (capture/demo/)."""
-    return argv[:1] == ["demo"] and bool({"--publish", "--delete"} & set(argv[1:]))
+    """Whether a `python -m capture` command line is this module's: `demo` with `--publish`,
+    `--delete` or `--list`. Everything else about `demo` is the generator's (capture/demo/)."""
+    return argv[:1] == ["demo"] and bool({"--publish", "--delete", "--list"} & set(argv[1:]))
 
 
 __all__ = ["Asset", "Refused", "claims", "load", "main", "resolve_key", "summary"]

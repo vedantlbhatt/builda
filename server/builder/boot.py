@@ -128,19 +128,19 @@ def assert_policies_present() -> None:
 
 
 def assert_object_store_safe() -> None:
-    """Refuse to start in production with the local stack's `file://` object store.
+    """Refuse to start with an object store configuration that would expose project demos.
 
-    objectstore.py refuses it on every call too, which would surface as a 500 on the first
-    demo anybody publishes; a production box writing people's images to its own container
-    disk (lost on the next deploy, served from nowhere backed up) is a configuration error
-    that should stop the deploy instead."""
+    `objectstore.store_config_problem` is the rule: the demos bucket must be its own and
+    private (not the posts bucket, not reached by the posts' public base, no public base of
+    its own, all four settings or none), and a file:// store is the local stack's, never
+    production's. FOUND IN THE SECURITY REVIEW (2026-09-14): demos sharing the posts bucket
+    were one cut query string from a permanent public link. Every environment, test
+    included: a wrong store configuration is wrong wherever it is set."""
     from . import objectstore
 
-    if settings().is_production and objectstore.is_file_endpoint():
-        raise UnsafeDatabaseRole(
-            "FATAL: OBJECT_STORE_ENDPOINT is a file:// directory, the local stack's backend. "
-            "Production stores project demos in S3. Refusing to start."
-        )
+    problem = objectstore.store_config_problem()
+    if problem:
+        raise UnsafeDatabaseRole(f"FATAL: {problem} Refusing to start.")
 
 
 def run_startup_checks() -> None:

@@ -23,11 +23,14 @@ private repository's name inside the app they recorded; so:
 
 - publishing is explicit, per project, and says what it sends (how many images, the video's size);
 - demo media is visible to its owner only, whatever the session sharing settings (RLS, owner policy);
-- reads are authorised: production hands the owner short lived presigned GET URLs; the local stack
-  serves the bytes itself behind the bearer token. Never a public bucket URL, which would be a
-  capability link anyone holding it could open;
+- reads are authorised: production hands the owner short lived presigned GET URLs from a PRIVATE
+  bucket of the demos' own; the local stack serves the bytes itself behind the bearer token. Never
+  a public bucket URL, which would be a capability link anyone holding it could open, and never
+  the posts bucket, whose public base would make any presigned GET a public link once its query is
+  cut off (found in the security review, 2026-09-14; see Storage);
 - deleting a demo on the phone deletes the objects and the rows in one request, and deleting the
-  account deletes every demo (`account/delete` already sweeps owned rows; objects go with them);
+  account deletes every demo (`account/delete` already sweeps owned rows; objects go with them,
+  and the person's whole prefix is swept);
 - `privacy/upload-contract.json` declares the channel (`project_media`: image/png, image/jpeg,
   video/mp4 only, size caps, and the metadata fields, numbers and the state label only) and
   `PRIVACY.md` regenerates from it.
@@ -38,11 +41,42 @@ A `project_media` table (migration 0026): id, user_id, project key, publish_id, 
 video), object key, content type, width, height, duration_ms (video), bytes, position, the state
 label, source, the video's poster (object key, type, bytes), committed, created_at. Owner only
 RLS: one policy per command, each `user_id = the viewer`, no public policy; `builder_app` may
-update only `committed` and `committed_at`. Objects go through `objectstore.py` as post media do,
-under `project-media/<user>/<project key>/<media id>[-poster].<ext>`, with a second backend for the
-local stack (`OBJECT_STORE_ENDPOINT=file:///...`, which `scripts/overnight_stack.sh` points at
-`$OVERNIGHT_HOME/media`, 0700): uploads PUT to the API itself and reads stream from disk, dev
-only (refused at boot when ENVIRONMENT is production), so the phone on the tunnel sees the same
+update only `committed` and `committed_at`. Objects go through `objectstore.py` under
+`project-media/<user>/<project key>/<media id>[-poster].<ext>`.
+
+**A private bucket of their own.** Demos never share the posts bucket (`OBJECT_STORE_*`), which
+serves post photos publicly through `OBJECT_STORE_PUBLIC_BASE`: in it, a demo's presigned GET
+with the query cut off was a permanent public link. The demos store has its own settings,
+`MEDIA_STORE_ENDPOINT`, `MEDIA_STORE_BUCKET`, `MEDIA_STORE_KEY`, `MEDIA_STORE_SECRET` (and
+`MEDIA_STORE_REGION`, "auto" for R2), and NO public base. Give it a bucket with public access off
+and an API token scoped to that bucket alone. Presigned GETs (15 minutes) are the only read path
+in production. Boot refuses to start (`objectstore.store_config_problem`) when the demos bucket is
+the posts bucket, when `OBJECT_STORE_PUBLIC_BASE` reaches it (its host is the demos endpoint's,
+or its first host label or first path segment is the demos bucket's name), when
+`MEDIA_STORE_PUBLIC_BASE` is set at all, when only part of `MEDIA_STORE_*` is set, and when either
+store is a `file://` directory in production. With no `MEDIA_STORE_*` a presign answers 503: never
+a fall back to the posts bucket. What boot cannot see is a bucket made public by its own policy;
+keeping public access off on it is part of deploying this.
+
+**Nothing left behind.** A presigned PUT stays good at the bucket after its row is deleted (by a
+newer publish, a delete or the account's deletion), and nothing at the bucket checks the row, so
+two Macs publishing one project at once, or an upload finishing after a delete, leave objects no
+row names. Upload links therefore live only as long as one file's upload needs (the Mac presigns
+each file right before sending it: 60 s plus its bytes at 1 Mbit/s, 111 s for a 6 MiB still, 446 s
+for the video with its poster), and every deletion (a delete, a replacing commit, a commit whose
+row is gone, an exclusion, an account deletion) ends by sweeping the person's prefix: list it, and
+delete every object no committed row keeps (a pending row keeps its object for 30 minutes, longer
+than the largest publish takes, so a publish still running is never cut). For uploads that land
+after the last of those, run `cd server && python -m builder.media_sweep [--dry-run]` on a schedule
+(hourly is plenty): the same rule over every prefix, plus the rows of publishes abandoned for over
+30 minutes. It connects as `WORKER_DATABASE_URL` (builder_worker) or `DATABASE_URL` and refuses to
+run as a role row level security limits, which would see no rows and delete everything. The
+server's own calls to the bucket (HEAD, ranged GET, DELETE, listing) are signed with an
+Authorization header, which R2 accepts for all four; its presigned URLs cover reads and writes only.
+
+The local stack's backend is `MEDIA_STORE_ENDPOINT=file:///...` (`scripts/overnight_stack.sh` points
+it at `$OVERNIGHT_HOME/media`, 0700): uploads PUT to the API itself and reads stream from disk,
+dev only (refused at boot when ENVIRONMENT is production), so the phone on the tunnel sees the same
 flow as production.
 
 ## On the phone
@@ -153,18 +187,22 @@ the whole 64 hex hash, never the 12 character prefix.
 - `POST /v1/projects/{key}/media:presign` (the Mac): `{publish_id, kind, content_type, bytes,
   width, height, duration_ms, position, label, source, poster}` (`poster: {content_type, bytes}`
   on a video, else null) -> `{media_id, upload_url, method: "PUT", headers: {Content-Type,
-  Content-Length}, expires_in: 900, poster: {upload_url, method, headers, expires_in} | null}`.
+  Content-Length}, expires_in, poster: {upload_url, method, headers, expires_in} | null}`, where
+  `expires_in` is what this one file's upload needs (`project_media.upload_seconds`; a video's
+  two URLs share the time of both uploads).
   `publish_id` is 16 random hex the Mac mints per run: a publish is a SET. A presign for a new
   publish drops the unfinished rows of an older one; the caps (8 images, 1 video) count one
   publish's rows, so a full set refuses the next presign (409). 413 over a size cap, 422 for
   anything the contract does not declare or the label rule refuses.
 - The upload: `PUT upload_url` with exactly those headers and no bearer. In production a
-  presigned S3 PUT (type and size signed); in development `PUT /v1/media-upload/{token}`, a JWT
-  for one object, type and size, 15 minutes, used once (the file is created exclusively).
+  presigned S3 PUT into the demos bucket (type and size signed); in development
+  `PUT /v1/media-upload/{token}`, a JWT for one object, type and size, as long-lived as the S3 URL
+  would be, used once (the file is created exclusively).
 - `POST /v1/projects/{key}/media/{media_id}:commit` (the Mac): checks the object is there, the
   size matches and it starts like its type (409 otherwise), marks it committed, and answers
   `{item, pending, replaced}`. The commit that leaves nothing of its publish pending deletes the
-  project's rows of every other publish and their objects.
+  project's rows of every other publish and their objects, then sweeps the project's prefix. A
+  commit whose row is gone (a newer publish took it) sweeps the prefix and answers 404.
 - `GET /v1/projects/{key}/media` (the phone): `{items: [{id, kind, content_type, width, height,
   duration_ms, position, label, source, url, poster_url}]}`, videos first then stills by position,
   from the one publish with nothing pending (half a new set never shows beside the old one).
@@ -172,13 +210,17 @@ the whole 64 hex hash, never the 12 character prefix.
   development (`/v1/media/{id}`, `/v1/media/{id}/poster`, ranges supported), fetched with the bearer.
 - `GET /v1/projects/media:preview?keys=a,b` (the Projects tab, up to 50 keys): `{projects: {key:
   [items]}}`, up to 3 stills each, `[]` for a key with no demo of the caller's.
-- `DELETE /v1/projects/{key}/media` (the phone or the Mac): every row, then every object, in one
-  request: `{deleted: n}`. Account deletion and excluding the repository do the same.
+- `DELETE /v1/projects/{key}/media` (the phone or the Mac): every row, then every object, then the
+  prefix swept, in one request: `{deleted: n}`. Account deletion and excluding the repository do
+  the same.
 
-The Mac's side is `python -m capture demo --publish [--project DIR | --key KEY] [--yes]` and
-`--delete` (`capture/demo_publish.py`): it refuses a manifest whose privacy check did not run or
-refused anything, checks every file against the contract (by its own first bytes and size; the
-numbers sent are the file's own), prints every file, the counts and the bytes, waits for a yes,
-then presigns every file, uploads every file and commits every file. Labels: ASCII letters,
+The Mac's side is `python -m capture demo --publish [--project DIR | --key KEY] [--yes]`,
+`--list` and `--delete` (`capture/demo_publish.py`): it refuses a manifest whose privacy check did
+not run or refused anything, checks every file against the contract (by its own first bytes and
+size; the numbers sent are the file's own), prints every file, the counts and the bytes, waits for
+a yes, then presigns and uploads each file in turn and commits every file. A failure before the
+commits leaves the old demo showing and says so. A failure during them cannot be read from the Mac
+(the last commit's answer can be lost after the server replaced the demo), so it says it cannot
+tell and names `--list`, which prints what the server shows for the project. Labels: ASCII letters,
 digits, the space and `, . ' ( ) : ? ! &`, at most 80 characters, no word over 24, no dash and no
 hyphen. The caps and why are in `privacy/upload-contract.json` (`project_media.measured`).

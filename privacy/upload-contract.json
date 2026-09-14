@@ -1198,8 +1198,11 @@
       "PROJECT DEMOS (docs/demos.md). The stills and the one short video of a project, made on the Mac by `python -m capture demo`.",
       "Nothing leaves by default. Opt in per project and per publish: `python -m capture demo --publish` prints how many files and how many",
       "bytes it will send and waits for a yes. Owner only, whatever the session sharing settings; never in a post, feed, share, push or",
-      "activity. The phone reads them through short lived links or the API's own bearer check, never a public URL. Deleting a demo deletes",
-      "its objects and rows in one request, and deleting the account or excluding the repository deletes them too."
+      "activity. They are stored in a PRIVATE bucket of their own, never the one public post photos are served from, and no public address",
+      "reaches it: the phone reads each file through a presigned link good for 15 minutes (on the local stack, through the API's own bearer",
+      "check). Each upload link lives only as long as that one file's upload needs. Deleting a demo deletes its objects and rows in one",
+      "request, and deleting the account or excluding the repository deletes them too; whatever an upload leaves after its row is gone",
+      "(a link still good at the bucket) is swept by the same request, or by `python -m builder.media_sweep` when it lands later."
     ],
     "route": "POST /v1/projects/{key}/media:presign",
     "default": "off",

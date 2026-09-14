@@ -149,16 +149,22 @@ class _Demo(unittest.TestCase):
 
 
 class Publish(_Demo):
-    def test_a_yes_presigns_every_file_then_uploads_then_commits(self):
+    def test_a_yes_presigns_each_file_before_its_upload_then_commits_them_all(self):
         rc, out, err = self.run_cli("--publish", "--yes")
         self.assertEqual(rc, 0, out + err)
         paths = [p for _, p, _, _ in self.server.requests]
-        presigns = [i for i, p in enumerate(paths) if p.endswith("media:presign")]
-        uploads = [i for i, p in enumerate(paths) if p.startswith("/v1/media-upload/")]
-        commits = [i for i, p in enumerate(paths) if p.endswith(":commit")]
-        self.assertEqual((len(presigns), len(uploads), len(commits)), (3, 4, 3))
-        self.assertLess(max(presigns), min(uploads), "every presign before any upload")
-        self.assertLess(max(uploads), min(commits), "every upload before any commit")
+        kinds = [
+            "presign" if p.endswith("media:presign") else "put" if p.startswith("/v1/media-upload/")
+            else "commit" if p.endswith(":commit") else "other"
+            for p in paths
+        ]  # fmt: skip
+        # The video and its poster, then each still: presign, upload, presign, upload... and
+        # only then every commit. A URL is made right before the one upload it is for, so it
+        # lives only as long as that upload needs (the security review, 2026-09-14).
+        self.assertEqual(
+            kinds,
+            ["presign", "put", "put", "presign", "put", "presign", "put", "commit", "commit", "commit"],
+        )
 
         # The bytes went exactly as they are on disk, to the URL, with no bearer.
         got = {path.rsplit("/", 1)[1]: (body, headers, token) for path, headers, body, token in self.server.media_uploads}
@@ -229,8 +235,29 @@ class Publish(_Demo):
         self.server.media_upload_status = [204, 500]
         rc, _, err = self.run_cli("--publish", "--yes")
         self.assertEqual(rc, 4)
-        self.assertIn("The demo on the server is still the one that was there", err)
+        self.assertIn("Nothing of it was committed, so the demo on the server is still the one", err)
         self.assertEqual(self.sent("/v1/projects/" + KEY + "/media/"), [], "nothing committed")
+
+    def test_a_lost_commit_answer_says_it_cannot_tell_and_how_to_look(self):
+        """The last commit is the one that replaces, and its answer can be lost after the
+        server acted on it: this side must not say the old demo still shows."""
+        self.server.media_commit_fails_at = 3  # the last of three: the one that replaces
+        self.server.media_commit_acts_anyway = True
+        rc, _, err = self.run_cli("--publish", "--yes")
+        self.assertEqual(rc, 4)
+        self.assertIn("This Mac cannot tell whether the server finished it", err)
+        self.assertIn(f"`python -m capture demo --list --key {KEY}`", err)
+        self.assertNotIn("still the one that was there", err)
+        # And the command it names says what the server shows: here, the new demo.
+        rc, out, _ = self.run_cli("--list")
+        self.assertEqual(rc, 0)
+        self.assertIn("The server shows this demo of project 3f3f3f3f3f3f:", out)
+        self.assertIn('"a pass through the app"', out)
+        self.assertIn('"the session page, scrolled to the chart"', out)
+
+    def test_list_says_when_the_server_shows_no_demo(self):
+        rc, out, _ = self.run_cli("--list")
+        self.assertEqual((rc, out.strip()), (0, "The server shows no demo of project 3f3f3f3f3f3f."))
 
 
 class Refusals(_Demo):
@@ -353,6 +380,7 @@ class Wiring(unittest.TestCase):
     def test_only_publish_and_delete_are_this_modules(self):
         self.assertTrue(demo_publish.claims(["demo", "--publish"]))
         self.assertTrue(demo_publish.claims(["demo", "--key", KEY, "--delete"]))
+        self.assertTrue(demo_publish.claims(["demo", "--list"]))
         self.assertFalse(demo_publish.claims(["demo", "."]), "making a demo is the generator's")
         self.assertFalse(demo_publish.claims(["sync", "--publish"]))
 

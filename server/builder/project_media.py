@@ -15,25 +15,33 @@ A PROJECT MUST BE YOURS. `held` is the rule the project page answers by (routes/
 and never one it excluded. So a key typed from nowhere cannot collect files, and an excluded
 repository, which has NOTHING on the server, cannot start having something.
 
-AN OBJECT IS DELETED AFTER ITS ROW. Every sweep deletes rows inside the caller's transaction
-and returns the object keys; the caller deletes the objects once that transaction has
-committed (`delete_objects`). The other order leaves rows that name objects already gone,
-which the phone draws as broken images; this one can leave an object no row names, which
-nobody can read (every read goes through a row) and which sits under
-`project-media/<user id>/` for a sweep by prefix.
+AN OBJECT IS DELETED AFTER ITS ROW, AND THEN THE PREFIX IS SWEPT. Every deletion removes rows
+inside the caller's transaction and returns the object keys; the caller deletes the objects
+once that transaction has committed (`delete_objects`). The other order leaves rows that name
+objects already gone, which the phone draws as broken images. This order can leave an object
+no row names, and in S3 mode it WILL (FOUND IN THE SECURITY REVIEW, 2026-09-14): a presigned
+PUT stays good at the bucket after its row is deleted by a newer publish, a delete or the
+account's deletion, and nothing at the bucket checks the row as the file backend's upload
+route does, so two Macs publishing one project at once left objects behind every time. So
+`sweep` lists the person's prefix (`project-media/<user id>/[<project key>/]`) and deletes
+every object no row keeps (`kept_keys`): after a delete, a replacing commit, a commit whose
+row is gone, an exclusion and an account deletion; and `python -m builder.media_sweep` runs
+the same rule over every prefix, for the uploads that land after the last of those.
 
 THE FILE BACKEND'S UPLOAD URL IS A TOKEN, NOT A BEARER. A presigned S3 URL is the bucket's
 capability; the local stack's equivalent is `PUT /v1/media-upload/<token>`, a JWT signed with
-the API's own key for ONE object: its row, its key, its content type and its size, for
-`UPLOAD_URL_SECONDS`. Its audience is `UPLOAD_AUDIENCE`, so it is never an access token (the
-access token verifier refuses any token with an audience) and an access token is never an
-upload token (this verifier requires one). Single use is the store's: the route creates the
-file exclusively, so a token that has uploaded once can never write again.
+the API's own key for ONE object: its row, its key, its content type and its size, for as
+long as that one file's upload needs (`upload_seconds`). Its audience is `UPLOAD_AUDIENCE`,
+so it is never an access token (the access token verifier refuses any token with an
+audience) and an access token is never an upload token (this verifier requires one). Single
+use is the store's: the route creates the file exclusively, so a token that has uploaded once
+can never write again.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import re
 import secrets
 import uuid
@@ -45,6 +53,7 @@ from sqlalchemy import text
 
 from . import objectstore
 from .builder_profile import _report_keys, builder_report, excluded_keys
+from .db import db_session
 from .media_spec import (
     MEDIA_CAPS,
     MEDIA_CONTENT_TYPES,
@@ -63,11 +72,28 @@ log = logging.getLogger("builder.project_media")
 #: the list returned and play it through. PRIVACY.md reads this number from here.
 READ_URL_SECONDS = 900
 
-#: How long an upload URL stays good, either backend: the post photos' 15 minutes
-#: (routes/social.py), which is 40 MiB at 0.36 Mb/s, slower than any uplink a Mac on a
-#: network has. A URL the Mac never used is dead after that; its row is swept by the next
-#: publish of the project or deleted with the project's demo.
-UPLOAD_URL_SECONDS = 900
+#: How long an upload URL stays good: what ONE file's upload needs, not a flat fifteen
+#: minutes (FOUND IN THE SECURITY REVIEW, 2026-09-14: a URL outlives its row at the bucket,
+#: so every second past the upload is a second an object can land with nothing keeping it).
+#: The Mac presigns each file right before its upload (capture/demo_publish.py), so the URL
+#: needs the time to send its bytes at the slowest uplink a publish is sized for, plus a
+#: minute to connect: 1 Mbit/s, UNMEASURED JUDGEMENT CALL (hotel wifi; slower than that, a
+#: publish should fail and be run again rather than hold a live URL). A 6 MiB still gets
+#: 111 s, the 40 MiB video with a 6 MiB poster 446 s.
+UPLOAD_BYTES_PER_SECOND = 125_000
+UPLOAD_SLACK_SECONDS = 60
+
+#: How long a PENDING row keeps its object from a sweep: longer than the largest publish
+#: takes at that uplink (8 stills of 6 MiB, the video and its poster, 96 MiB: 13.4 minutes),
+#: so a sweep another request starts never deletes the upload of a publish still running.
+#: Past it the publish is abandoned: its objects go, and `media_sweep` deletes its rows.
+PENDING_GRACE_SECONDS = 30 * 60
+
+
+def upload_seconds(n: int) -> int:
+    """The lifetime of an upload URL for `n` bytes (`UPLOAD_BYTES_PER_SECOND`)."""
+    return UPLOAD_SLACK_SECONDS + math.ceil(n / UPLOAD_BYTES_PER_SECOND)
+
 
 UPLOAD_AUDIENCE = "builder-media-upload"
 
@@ -203,11 +229,11 @@ def read_url(media_id, key: str | None, *, poster: bool = False) -> str | None:
     fetched with the bearer), a presigned GET good for `READ_URL_SECONDS` in production."""
     if key is None:
         return None
-    kind = objectstore.backend()
+    kind = objectstore.media_backend()
     if kind == "file":
         return f"/v1/media/{media_id}" + ("/poster" if poster else "")
     if kind == "s3":
-        return objectstore.presign_get(key, READ_URL_SECONDS)
+        return objectstore.presign_get(key, READ_URL_SECONDS, store=objectstore.media_store())
     return None
 
 
@@ -276,20 +302,78 @@ def delete_objects(keys: list[str]) -> int:
     n = 0
     for key in keys:
         try:
-            objectstore.delete(key)
+            objectstore.media_delete(key)
             n += 1
         except Exception:  # noqa: BLE001 - logged, and the sweep goes on
             log.exception("could not delete demo object %s", key)
     return n
 
 
+def prefix_of(user_id: str, project_key: str | None = None) -> str:
+    """The prefix every object of a person (or of one of their projects) lives under, the
+    first part of `object_key`."""
+    out = f"project-media/{uuid.UUID(user_id)}/"
+    return out + f"{project_key}/" if project_key else out
+
+
+def kept_keys(rows, now: datetime) -> set[str]:
+    """The object keys these rows keep from a sweep: a committed row's, and a pending row's
+    while its publish may still be running (`PENDING_GRACE_SECONDS`). Everything else under
+    the prefix is an object no row keeps: its row was deleted (a newer publish, a delete, the
+    account), it landed after that through a URL still good at the bucket, or its publish
+    was abandoned."""
+    cutoff = now - timedelta(seconds=PENDING_GRACE_SECONDS)
+    keep: set[str] = set()
+    for r in rows:
+        if r.committed or r.created_at > cutoff:
+            keep.add(r.object_key)
+            if r.poster_object_key:
+                keep.add(r.poster_object_key)
+    return keep
+
+
+def sweep(user_id: str, project_key: str | None = None, *, now: datetime | None = None) -> int:
+    """Delete every object under this person's prefix (or one project's) that no row keeps;
+    how many went. Runs after the caller's transaction, in one of its own AS THE PERSON: the
+    owner policy shows exactly their rows, and the prefix holds exactly their objects, so a
+    deleted account's rows read as none and its whole prefix goes. A store that cannot be
+    listed is logged and skipped: the rows are already right, and `media_sweep` comes later."""
+    prefix = prefix_of(user_id, project_key)
+    try:
+        listed = objectstore.media_list(prefix)
+    except Exception:  # noqa: BLE001 - logged; the caller's answer does not wait on the bucket
+        log.exception("could not list %s for a sweep", prefix)
+        return 0
+    if not listed:
+        return 0
+    clause = " AND project_key = :k" if project_key else ""
+    with db_session(viewer_id=user_id) as db:
+        rows = db.execute(
+            text(
+                "SELECT object_key, poster_object_key, committed, created_at FROM project_media "
+                f"WHERE user_id = CAST(:u AS uuid){clause}"
+            ),
+            {"u": user_id, "k": project_key},
+        ).all()
+    keep = kept_keys(rows, now or datetime.now(UTC))
+    return delete_objects([k for k in listed if k not in keep])
+
+
 # ------------------------------------------------------------------------ upload tokens
 
 
 def upload_token(
-    user_id: str, media_id: str, key: str, content_type: str, n: int, *, now: datetime | None = None
+    user_id: str,
+    media_id: str,
+    key: str,
+    content_type: str,
+    n: int,
+    *,
+    expires: int,
+    now: datetime | None = None,
 ) -> str:
-    """The file backend's upload URL token for ONE object (the module docstring)."""
+    """The file backend's upload URL token for ONE object, good for `expires` seconds (the
+    module docstring; the caller passes `upload_seconds` of what the presign covers)."""
     now = now or datetime.now(UTC)
     payload = {
         "aud": UPLOAD_AUDIENCE,
@@ -299,7 +383,7 @@ def upload_token(
         "ct": content_type,
         "n": int(n),
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(seconds=UPLOAD_URL_SECONDS)).timestamp()),
+        "exp": int((now + timedelta(seconds=expires)).timestamp()),
         "jti": secrets.token_urlsafe(9),
     }
     return jwt.encode(payload, settings().jwt_private_key, algorithm="EdDSA")

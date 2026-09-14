@@ -191,11 +191,14 @@ publish, and a label of at most 80 characters saying what the screen shows, made
 letters A to Z and a to z, digits, the space and , . ' ( ) : ? ! & only, at least one letter, no word over 24 characters, no dash of any kind and no hyphen. Never the file names, the commit it was taken at, or the project's name.
 
 Only you can see a demo, whatever you share. It is never in a post, a feed, a share, a push
-or a Live Activity, and no link to it works for anyone else: the phone reads each file through
-a link that stops working after 15 minutes, or through your Builder server checking your
-sign in. Deleting a demo on the phone, or `python -m capture demo --delete`, deletes its files
-and their records in one request. Publishing again replaces the demo that was there. Deleting
-your account, or excluding the repository, deletes every demo it had.
+or a Live Activity. Its files are kept in a private store of their own, never the one public
+post photos are served from, and nothing there has a public address: the phone reads each
+file through a link that stops working after 15 minutes (or, on a Builder server you run
+on your own Mac, through the server checking your sign in). Each upload link is good only for
+as long as that one file's upload needs. Deleting a demo on the phone, or
+`python -m capture demo --delete`, deletes its files and their records in one request, along
+with anything an interrupted upload left behind. Publishing again replaces the demo that was
+there. Deleting your account, or excluding the repository, deletes every demo it had.
 
 ## The raw transcript channel
 

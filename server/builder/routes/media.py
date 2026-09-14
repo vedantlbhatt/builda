@@ -16,9 +16,11 @@ key that could publish could delete the demo a person had. Keeping keys to their
 routes keeps the rule "a leaked key writes what a container with the transcripts writes, and
 nothing else" true.
 
-A PUBLISH IS A SET. The Mac mints `publish_id` for one run and presigns every file under it
-before uploading any. Rows start uncommitted; a commit checks the object is in the store at
-the declared size and starts like its type, then marks the row. The list and the preview show
+A PUBLISH IS A SET. The Mac mints `publish_id` for one run, presigns each file under it right
+before uploading it (so an upload URL lives only as long as that file's upload,
+`project_media.upload_seconds`), and commits every file once all are uploaded. Rows start
+uncommitted; a commit checks the object is in the store at the declared size and starts like
+its type, then marks the row. The list and the preview show
 only a publish with nothing left uncommitted (`_SHOWN`), and the commit that completes one
 deletes the project's rows of every OTHER publish, with their objects: publishing replaces,
 and the phone never shows half of the new set beside the old one. A presign for a new publish
@@ -27,6 +29,11 @@ shows and one set in flight; and only the commit that completes a set replaces a
 a retried commit can never wipe a newer publish.
 The caps (8 images, 1 video) count the rows of one publish, committed or not, so a full set
 refuses the next presign; the one video is also a unique index.
+
+THE BYTES LIVE IN THE DEMOS STORE, a private bucket of their own (`objectstore.media_store`,
+`MEDIA_STORE_*`), never the posts bucket, whose public base would serve a demo to anyone who
+cut a presigned GET down to its path. Every deletion here ends with `project_media.sweep` of
+the project's prefix, for the uploads that land through a URL that outlived its row.
 """
 
 from __future__ import annotations
@@ -59,9 +66,10 @@ PREVIEW_STILLS = 3
 HEAD_BYTES = 16
 
 _UNCONFIGURED = (
-    "media storage is not configured on this server: set OBJECT_STORE_ENDPOINT to "
+    "demo storage is not configured on this server: set MEDIA_STORE_ENDPOINT to "
     "file:///an/absolute/dir for the local stack, or to an S3 endpoint with "
-    "OBJECT_STORE_BUCKET, OBJECT_STORE_KEY and OBJECT_STORE_SECRET"
+    "MEDIA_STORE_BUCKET (a private bucket, never the posts bucket), MEDIA_STORE_KEY and "
+    "MEDIA_STORE_SECRET"
 )
 
 #: The columns every read selects.
@@ -98,7 +106,7 @@ def _media_id(value: str) -> str:
 
 
 def _backend() -> str:
-    kind = objectstore.backend()
+    kind = objectstore.media_backend()
     if kind is None:
         raise HTTPException(503, _UNCONFIGURED)
     return kind
@@ -111,18 +119,18 @@ def _lock_person(db, uid: str) -> None:
     db.execute(text("SELECT id FROM users WHERE id = CAST(:u AS uuid) FOR UPDATE"), {"u": uid})
 
 
-def _upload(kind: str, uid: str, media_id: str, key: str, content_type: str, n: int) -> dict:
+def _upload(
+    kind: str, uid: str, media_id: str, key: str, content_type: str, n: int, expires: int
+) -> dict:
     headers = {"Content-Type": content_type, "Content-Length": str(n)}
     if kind == "file":
-        url = f"/v1/media-upload/{pm.upload_token(uid, media_id, key, content_type, n)}"
+        token = pm.upload_token(uid, media_id, key, content_type, n, expires=expires)
+        url = f"/v1/media-upload/{token}"
     else:
-        url = objectstore.presign_put(key, content_type, pm.UPLOAD_URL_SECONDS, content_length=n)
-    return {
-        "upload_url": url,
-        "method": "PUT",
-        "headers": headers,
-        "expires_in": pm.UPLOAD_URL_SECONDS,
-    }
+        url = objectstore.presign_put(
+            key, content_type, expires, content_length=n, store=objectstore.media_store()
+        )
+    return {"upload_url": url, "method": "PUT", "headers": headers, "expires_in": expires}
 
 
 # ----------------------------------------------------------------------------- preview
@@ -274,22 +282,27 @@ def presign(key: str, body: ProjectMediaPresign, device: CurrentDevice = Depends
                 409, f"this publish already has {pm.article(body.kind)} at position {body.position}"
             ) from e
     pm.delete_objects(pm.object_keys_of(stale))
+    # Both of a video's URLs live as long as the two uploads take together: the Mac sends
+    # the video, then its poster, straight after this answer (pm.upload_seconds).
+    expires = pm.upload_seconds(body.bytes + (body.poster.bytes if body.poster else 0))
     out = {
         "media_id": media_id,
-        **_upload(kind, uid, media_id, okey, body.content_type, body.bytes),
+        **_upload(kind, uid, media_id, okey, body.content_type, body.bytes, expires),
         "poster": None,
     }
     if body.poster is not None:
         poster = body.poster
-        out["poster"] = _upload(kind, uid, media_id, pkey, poster.content_type, poster.bytes)
+        out["poster"] = _upload(
+            kind, uid, media_id, pkey, poster.content_type, poster.bytes, expires
+        )
     return out
 
 
 def _object_problem(key: str, n: int, content_type: str, what: str) -> str | None:
     """Why the object at `key` is not the file the presign declared, or None."""
     try:
-        size = objectstore.stat(key)
-        head = objectstore.head_bytes(key, HEAD_BYTES) if size else None
+        size = objectstore.media_stat(key)
+        head = objectstore.media_head_bytes(key, HEAD_BYTES) if size else None
     except OSError as e:
         raise HTTPException(503, f"the object store did not answer: {e}") from e
     if size is None:
@@ -318,6 +331,10 @@ def commit(key: str, media_id: str, device: CurrentDevice = Depends(current_devi
     with db_session(viewer_id=uid) as db:
         row = db.execute(select, params).first()
     if row is None:
+        # Its row is gone (a newer publish, a delete): the upload this Mac just made through
+        # a URL still good at the bucket is an object nothing keeps. Sweep it now, while the
+        # Mac that made it is the one asking.
+        pm.sweep(uid, key)
         raise HTTPException(404, "not found")
     if not row.committed:
         problem = _object_problem(row.object_key, row.bytes, row.content_type, row.kind)
@@ -328,6 +345,7 @@ def commit(key: str, media_id: str, device: CurrentDevice = Depends(current_devi
         if problem is not None:
             raise HTTPException(409, problem)
     replaced: list = []
+    pending = 0
     with db_session(viewer_id=uid) as db:
         _lock_person(db, uid)
         now_committed = db.execute(
@@ -338,33 +356,40 @@ def commit(key: str, media_id: str, device: CurrentDevice = Depends(current_devi
             {"m": mid},
         ).first()
         row = db.execute(select, params).first()
-        if row is None:  # a newer publish or a delete took it between the two transactions
-            raise HTTPException(404, "not found")
-        pending = db.execute(
-            text(
-                """
-                SELECT count(*) FROM project_media
-                WHERE user_id = CAST(:u AS uuid) AND project_key = :k
-                  AND publish_id = :p AND NOT committed
-                """
-            ),
-            {"u": uid, "k": key, "p": row.publish_id},
-        ).scalar()
-        # Only the commit that COMPLETES a set replaces anything. A retried commit of a file
-        # already committed (its answer lost on the way back) must not: its set may be the old
-        # one a newer publish is part way through replacing, and it would wipe that publish.
-        if pending == 0 and now_committed is not None:
-            replaced = db.execute(
+        if row is not None:
+            pending = db.execute(
                 text(
                     """
-                    DELETE FROM project_media
-                    WHERE user_id = CAST(:u AS uuid) AND project_key = :k AND publish_id <> :p
-                    RETURNING object_key, poster_object_key
+                    SELECT count(*) FROM project_media
+                    WHERE user_id = CAST(:u AS uuid) AND project_key = :k
+                      AND publish_id = :p AND NOT committed
                     """
                 ),
                 {"u": uid, "k": key, "p": row.publish_id},
-            ).all()
-    pm.delete_objects(pm.object_keys_of(replaced))
+            ).scalar()
+            # Only the commit that COMPLETES a set replaces anything. A retried commit of a
+            # file already committed (its answer lost on the way back) must not: its set may
+            # be the old one a newer publish is part way through replacing.
+            if pending == 0 and now_committed is not None:
+                replaced = db.execute(
+                    text(
+                        """
+                        DELETE FROM project_media
+                        WHERE user_id = CAST(:u AS uuid) AND project_key = :k
+                          AND publish_id <> :p
+                        RETURNING object_key, poster_object_key
+                        """
+                    ),
+                    {"u": uid, "k": key, "p": row.publish_id},
+                ).all()
+    if row is None:  # a newer publish or a delete took it between the two transactions
+        pm.sweep(uid, key)
+        raise HTTPException(404, "not found")
+    if replaced:
+        pm.delete_objects(pm.object_keys_of(replaced))
+        # And whatever landed for the replaced sets after their rows went (a second Mac's
+        # upload through a URL still good at the bucket): the prefix, swept.
+        pm.sweep(uid, key)
     return {"item": pm.item(row), "pending": int(pending), "replaced": len(replaced)}
 
 
@@ -464,7 +489,7 @@ async def upload(token: str, request: Request):
     and its size (`project_media.upload_token`): the request must send that Content-Type and
     that Content-Length, the bytes must be that many and start like that type, and the file
     is created exclusively, so a token that has uploaded once never writes again."""
-    root = objectstore.file_root()
+    root = objectstore.media_file_root()
     if root is None:
         raise HTTPException(404, "not found")
     claims = pm.read_upload_token(token)
@@ -518,8 +543,9 @@ async def upload(token: str, request: Request):
 @router.delete("/projects/{key}/media")
 def delete_media(key: str, device: CurrentDevice = Depends(current_device)):
     """Every file of this project's demo, committed or not: the rows in this transaction,
-    then the objects (`project_media` module docstring, "an object is deleted after its
-    row"). The phone's delete and `capture demo --delete`. Answers how many went."""
+    then the objects, then the project's prefix swept for anything no row names (an upload
+    through a URL that outlived its row; `project_media` module docstring). The phone's
+    delete and `capture demo --delete`. Answers how many rows went."""
     uid = str(device.user_id)
     _key(key)
     with db_session(viewer_id=uid) as db:
@@ -527,4 +553,5 @@ def delete_media(key: str, device: CurrentDevice = Depends(current_device)):
         if n == 0 and not pm.held(db, uid, key):
             raise HTTPException(404, "not found")
     pm.delete_objects(keys)
+    pm.sweep(uid, key)
     return {"deleted": n}

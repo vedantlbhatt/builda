@@ -239,7 +239,9 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
                 text("UPDATE repos SET public_name = NULL WHERE id = :r"), {"r": str(repo.id)}
             )
 
-    pm.delete_objects(demo_objects)
+    if body.visibility == "excluded":
+        pm.delete_objects(demo_objects)
+        pm.sweep(str(device.user_id), body.repo_hash)
     return {"status": "ok", "visibility": body.visibility, "sessions_deleted": deleted}
 
 
@@ -288,4 +290,8 @@ def delete_account(device: CurrentDevice = Depends(current_device)):
         db.execute(text("DELETE FROM users WHERE id = :u"), {"u": user_id})
 
     pm.delete_objects(demo_objects)
+    # And the whole prefix: an upload that landed after its row went, through a URL still
+    # good at the bucket, is under it too. The rows are gone, so nothing under it is kept.
+    # One that lands after this is `python -m builder.media_sweep`'s.
+    pm.sweep(user_id)
     return {"status": "deleted", "row_counts": counts, "receipt": receipt}

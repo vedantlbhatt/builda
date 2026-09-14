@@ -92,6 +92,13 @@ section.
 - 00:05: comparisons say "only lower bounds", not "floors" (8878670). Build 4 on the phone
   (the text patch and the chart's review fixes). Running: a capture of every screen as it is
   now into `shots/now2/`, with a defect list, to refresh the artifact's first section.
+- Owner, 00:20: demos for every project (brief.md). Research landed (`docs/research/demo-capture.md`:
+  "repo clip" is RepoClip, closed and AI illustrated; build on simctl, Maestro, Playwright, VHS,
+  ffmpeg, sandbox-runtime), design in `docs/demos.md` (80314be). Running: the generator
+  (`capture/demo/`, first demos of Builda and RideGT on the "Builder Screens" simulator) and
+  the storage and publish path (migration 0026, owner only media, a dev file backend, the
+  contract channel, `capture demo --publish`). Next: the phone (a stack of stills beside each
+  project, a gallery, the video looping muted behind the hero, expo-video, a build).
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

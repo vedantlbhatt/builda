@@ -67,14 +67,21 @@ section.
 - Owner, 20:40: "make a graph showing token usage in a session, I'm confused how 99% is spent
   reading the cache". Answered with a web page from one real RideGT session (206 calls, 55k to
   253k tokens re-sent per call, 98.6% of tokens and 72.7% of list price cost re-reads, a cache
-  expiry after a 68 minute break rewrote 140,553 tokens). Running: the same chart on every
-  session page, end to end (engine series, contract field, capture, server, phone).
+  expiry after a 68 minute break rewrote 140,553 tokens). Landed 22:15 on every session page
+  (026b155, a2adb51): `analysis/calls.py` over `burn.turns_for_window`, contract field
+  `call_tokens`, migration 0025, capture and the hook through `build_payload`, the chapter
+  on the phone; 220 of 220 points identical to the one off script. All 17,575 cache writes here
+  are the one hour TTL; 49 of 160 sittings have a call back to an expired cache. The stack was
+  restarted onto the new code (the tunnel kept its address); 4 hook only sessions from before
+  the restart carry no series. The phone's `bun run lint` has no eslint installed (was already
+  so); tsc is the gate.
 - Landed 21:55: Settings > Live Activities (05dd8e4). The owner swiped the app away and the
   card stayed in the Dynamic Island; the only way down was iOS Settings. On by default, per
   phone; off takes every card down at once (one from before launch too) and starts none.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
-  profile, so no App Store Connect). Rebuilding it with every fix above as build 2.
+  profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart
+  and the Live Activities switch. Artifact version 8.
 - Visualizations the owner liked the sound of (16:40): project rivers, the rank race and the
   session swarm are built (bf7407d); the Money Sankey is built and in review fixes. Still on
   the list, not started: day ridgelines, tool chords, commit constellation, session

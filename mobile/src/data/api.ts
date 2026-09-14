@@ -477,8 +477,12 @@ export interface ProjectSlice {
   comparisons: ReportProjectComparison[];
   /** Public names for this key and every key those comparisons name. */
   project_names: Record<string, string>;
-  /** Its final, visible sessions from the server's rows, newest first, at most 50. */
+  /** Its final, visible sessions from the server's rows, newest first: one page (50 by default, `limit` up to 200). */
   sessions: SessionDetail[];
+  /** How many final, visible sessions it has on the server in all. Undefined from an older server. */
+  sessions_total?: number;
+  /** Pass as `before` for the next page; null on the last. Undefined from an older server. */
+  next_before?: string | null;
 }
 
 // ------------------------------------------------------------------ privacy
@@ -947,8 +951,12 @@ export class Api {
    * that name it and its own sessions (docs/projects.md). `key` is 12 to 64 lowercase hex; a
    * prefix that names two projects is a 409, an unknown or excluded one a 404.
    */
-  project(key: string): Promise<ProjectSlice> {
-    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}`);
+  project(key: string, opts: { before?: string | null; limit?: number } = {}): Promise<ProjectSlice> {
+    const q = new URLSearchParams();
+    if (opts.before) q.set('before', opts.before);
+    if (opts.limit !== undefined) q.set('limit', String(opts.limit));
+    const qs = q.toString();
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`);
   }
 
   sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean } = {}): Promise<{

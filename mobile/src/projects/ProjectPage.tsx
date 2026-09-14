@@ -52,9 +52,10 @@ import { ChapterSkeleton, ErrorChapter, RefusalChapter, SignedOutChapter, StaleL
 import { CommitDays } from './CommitDays';
 import { ComparisonBlock } from './Comparisons';
 import { BandName } from './Door';
+import { PROJECT_CONSTANTS } from '../generated/copy';
 import { chapterHues, projectHues, projectPage, swarmLine, type ProjectPage as Page } from './model';
 import { NameField } from './NameField';
-import { useNicknames } from './nicknames';
+import { useNicknames, useProjectRegistry } from './nicknames';
 import { Swarm } from './Swarm';
 import { useProjectSessions } from './useProjectSessions';
 
@@ -79,11 +80,14 @@ export function ProjectPage() {
   const report = data?.report ?? null;
   const block = report?.projects ?? null;
   const names = data?.project_names ?? null;
-  const page = useMemo(() => projectPage(block, key, names, nicknames, report), [block, key, names, nicknames, report]);
-  const { sessions, error } = useProjectSessions(page?.detail.key ?? (key.length >= 12 ? key : null));
+  const { registry, ready: registered } = useProjectRegistry(block?.projects);
+  const page = useMemo(() => projectPage(block, key, names, nicknames, report, Date.now(), registry), [block, key, names, nicknames, report, registry]);
+  const firstAt = page ? block?.projects.find((p) => p.key === page.detail.key)?.history.first_at ?? null : null;
+  const lastAt = page ? block?.projects.find((p) => p.key === page.detail.key)?.history.last_at ?? null : null;
+  const { sessions, total, error } = useProjectSessions(page?.detail.key ?? (key.length >= 12 ? key : null), firstAt);
   const [naming, setNaming] = useState(false);
 
-  const hues = useMemo(() => (block ? projectHues(block.projects) : {}), [block]);
+  const hues = useMemo(() => (block ? projectHues(block.projects, registry) : {}), [block, registry]);
   const own: Hue = page ? SPECTRUM[page.hue] : { ink: accent.ink, partner: accent.partner, light: accent.light };
   const [timeHue, buildHue, shipHue, moneyHue, stackHue, sessionsHue, compareHue] = useMemo(() => {
     // The sessions chapter wears the builder's own hue, because its arcs are theirs; so the five
@@ -105,7 +109,7 @@ export function ProjectPage() {
   }, [data, report, block, page, stackHue]);
   const hueOfThing = useCallback((_t: StackThing): HueName => stackHue ?? 'cobalt', [stackHue]);
 
-  const ready = accent.ready && (page !== null || load.kind !== 'loading');
+  const ready = accent.ready && registered && (page !== null || load.kind !== 'loading');
 
   return (
     <>
@@ -182,22 +186,22 @@ export function ProjectPage() {
                           <View style={{ flex: 1 }}>
                             <BandWords delay={320}>
                               <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                                {sessions.length === 1 ? 'session on this phone, a dot' : 'sessions on this phone, a dot each'}
+                                {sessions.length === 1 ? 'session uploaded here, a dot' : 'sessions uploaded here, a dot each'}
                               </Text>
                             </BandWords>
                           </View>
                         </View>
                       ) : (
                         <BandWords delay={300}>
-                          <Refusal onHue>{sessions === null ? 'Reading its sessions.' : swarmLine(0, page.detail.history.sessions)}</Refusal>
+                          <Refusal onHue>{sessions === null ? 'Reading its sessions.' : swarmLine(0, page.detail.history.sessions, total)}</Refusal>
                         </BandWords>
                       )}
                     </Band>
                     {sessions && sessions.length ? (
                       <Block style={styles.block}>
                         <Kicker>every session, when it started, as big as it ran</Kicker>
-                        <Swarm sessions={sessions} width={inner} ink={own.ink} core={accent.ink} delay={100} />
-                        <Words style={[type.meta, styles.caption]}>{swarmLine(sessions.length, page.detail.history.sessions)}</Words>
+                        <Swarm sessions={sessions} width={inner} ink={own.ink} core={accent.ink} from={firstAt} to={lastAt} delay={100} />
+                        <Words style={[type.meta, styles.caption]}>{swarmLine(sessions.length, page.detail.history.sessions, total)}</Words>
                         {error ? <Words style={[type.meta, styles.caption]}>{`${error.replace(/\.?$/, '.')} Showing the sessions saved on this phone.`}</Words> : null}
                       </Block>
                     ) : null}
@@ -214,7 +218,7 @@ export function ProjectPage() {
                         </BandWords>
                       ) : (
                         <BandWords delay={300}>
-                          <Refusal onHue>{`No comparison names this project yet: each one needs two projects with ${n(5)} sessions in ${page.scope}.`}</Refusal>
+                          <Refusal onHue>{`No comparison names this project yet: each one needs two projects with ${n(PROJECT_CONSTANTS.min_group)} sessions in ${page.scope}.`}</Refusal>
                         </BandWords>
                       )}
                     </Band>
@@ -241,11 +245,13 @@ function HeroChapter({ page, hue, inner, naming, onName, onNamed }: { page: Page
   const h = page.hero;
   const editable = d.label.source !== 'public';
   const ledger: LedgerItem[] = [];
-  if (h.autonomous) ledger.push({ key: 'alone', num: h.autonomous, label: 'hours the agent ran with nobody there', note: `in ${page.scope}` });
-  if (h.sessions) ledger.push({ key: 'sessions', num: h.sessions, label: h.sessions.final === '1' ? 'session' : 'sessions', note: `in ${page.scope}` });
+  // Every number here is the Mac's report, and says so: the swarm below counts every session
+  // uploaded, from any machine, and a second machine's are not in this report.
+  if (h.autonomous) ledger.push({ key: 'alone', num: h.autonomous, label: 'hours the agent ran with nobody there', note: `on your Mac, ${page.scope}` });
+  if (h.sessions) ledger.push({ key: 'sessions', num: h.sessions, label: h.sessions.final === '1' ? 'session your Mac read' : 'sessions your Mac read', note: page.scope.charAt(0).toUpperCase() + page.scope.slice(1) + '.' });
   if (h.currentStreak) ledger.push({ key: 'streak', num: h.currentStreak, label: 'days in a row, still going', note: h.longestStreak ? `The longest run was ${h.longestStreak.final} days.` : null });
   else if (h.longestStreak) ledger.push({ key: 'longest', num: h.longestStreak, label: 'days in a row at the longest', note: 'The run is not going now.' });
-  ledger.push({ key: 'all', num: h.historySessions, label: `sessions since ${h.since}`, note: `${h.historyHours.final} hours with you there in all of them.` });
+  ledger.push({ key: 'all', num: h.historySessions, label: `sessions your Mac read here since ${h.since}`, note: `${h.historyHours.final} hours with you there in all of them.` });
   return (
     <Section>
       <Band hue={hue} title={d.stageLabel ?? 'Project'}>
@@ -271,14 +277,14 @@ function HeroChapter({ page, hue, inner, naming, onName, onNamed }: { page: Page
               <View style={styles.pair}>
                 <Num spec={h.hours} textStyle={figure(52, ON_HUE)} delay={420} accessibilityLabel={`${h.hours.final} hours with you there`} />
                 <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                  {`hours with you there, ${page.scope}`}
+                  {`hours with you there on your Mac, ${page.scope}`}
                 </Text>
               </View>
               {h.share ? (
                 <View style={styles.pair}>
-                  <Num spec={h.share} textStyle={figure(52, ON_HUE)} delay={540} accessibilityLabel={`${h.share.final} of your time`} />
+                  <Num spec={h.share} textStyle={figure(52, ON_HUE)} delay={540} accessibilityLabel={`${h.share.final} of your time, ${page.scope}`} />
                   <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                    of your time
+                    {`of your time, ${page.scope}`}
                   </Text>
                 </View>
               ) : null}
@@ -287,7 +293,7 @@ function HeroChapter({ page, hue, inner, naming, onName, onNamed }: { page: Page
         ) : (
           <BandWords delay={380}>
             <View style={{ marginTop: 10 }}>
-              <Refusal onHue>{d.window ? `No time with you there in ${page.scope}: the agent ran here alone.` : `Nothing here in ${page.scope}.`}</Refusal>
+              <Refusal onHue>{d.window ? `Your Mac read no time with you there in ${page.scope}: the agent ran here alone.` : `Your Mac read nothing here in ${page.scope}.`}</Refusal>
             </View>
           </BandWords>
         )}

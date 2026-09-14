@@ -15,16 +15,15 @@
  * numbered track rows of a chart); the start of a line is a hollow dot and its latest week a
  * filled one, Strava's route start and end markers.
  */
-import { Canvas, ClipOp, createPicture, PaintStyle, Picture, Skia, StrokeCap, StrokeJoin, type SkPath } from '@shopify/react-native-skia';
+import { Canvas, createPicture, Group, Line, Path, Picture, Skia, vec, type SkCanvas, type SkPath } from '@shopify/react-native-skia';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useDerivedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, useDerivedValue } from 'react-native-reanimated';
 
 import { type } from '../insights/kit';
-import { ease, phase, spring } from '../insights/motion';
+import { ease, phase } from '../insights/motion';
 import { GROUND, SPECTRUM } from '../insights/palette';
-import { useClock } from '../insights/reveal';
-import { Arrive } from '../you/parts';
+import { useDrawClock } from './drawClock';
 import { raceLayout } from './geometry';
 import { hoursWords, type RaceSummary, type WeeklyView } from './model';
 import { tickIndexes } from './Rivers';
@@ -36,9 +35,6 @@ const PAD = 14;
 /** The place numbers at the left, and the finish order at the right. */
 const NUMERALS = 22;
 const FINISH = 128;
-const INTERSECT = ClipOp.Intersect;
-const ROUND = StrokeCap.Round;
-const ROUND_JOIN = StrokeJoin.Round;
 
 // Worklet helpers first, each defined before the worklet that calls it.
 
@@ -70,118 +66,106 @@ function bumpYAt(x0: number, y0: number, x1: number, y1: number, x: number): num
   return u * u * u * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t * t * t * y1;
 }
 
+/** The runners: each run's head where the sweep's edge crosses it, while the race is on. */
+function drawHeads(canvas: SkCanvas, lines: readonly { ink: string; runs: readonly { xs: readonly number[]; ys: readonly number[] }[] }[], edge: number): void {
+  'worklet';
+  const dot = Skia.Paint();
+  dot.setAntiAlias(true);
+  const ground = Skia.Paint();
+  ground.setAntiAlias(true);
+  ground.setColor(Skia.Color(GROUND.bg));
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i]!;
+    dot.setColor(Skia.Color(L.ink));
+    for (let k = 0; k < L.runs.length; k++) {
+      const run = L.runs[k]!;
+      const n = run.xs.length;
+      if (n < 2 || edge <= run.xs[0]! || edge >= run.xs[n - 1]!) continue;
+      let j = 1;
+      while (j < n - 1 && run.xs[j]! < edge) j++;
+      const y = bumpYAt(run.xs[j - 1]!, run.ys[j - 1]!, run.xs[j]!, run.ys[j]!, edge);
+      canvas.drawCircle(edge, y, 7, dot);
+      canvas.drawCircle(edge, y, 2.5, ground);
+    }
+  }
+}
+
 export function RankRace({ view, summary, width, delay = 80 }: { view: WeeklyView; summary: RaceSummary; width: number; delay?: number }) {
-  const clock = useClock();
   const chart = Math.max(120, width - NUMERALS - FINISH);
   const layout = useMemo(() => raceLayout(view.series.map((s) => ({ key: s.key, ranks: s.ranks })), chart, ROW_GAP, PAD), [view, chart]);
   const height = layout.rows.length ? PAD * 2 + (layout.rows.length - 1) * ROW_GAP : 0;
+  const rows = layout.rows;
 
-  // Plain arrays for the UI thread.
+  // Every run's path built once, on this thread; plain numbers for the runners' heads.
   const lines = useMemo(
     () =>
       layout.lines.map((l) => {
         const s = view.series.find((x) => x.key === l.key)!;
-        return { ink: SPECTRUM[s.hue].ink, runs: l.runs.map((r) => ({ xs: r.points.map((p) => p.x), ys: r.points.map((p) => p.y) })) };
+        const runs = l.runs.map((r) => ({ xs: r.points.map((p) => p.x), ys: r.points.map((p) => p.y) }));
+        const paths = runs.filter((r) => r.xs.length > 1).map((r) => {
+          const p = Skia.Path.Make();
+          addRun(p, r.xs, r.ys);
+          return p;
+        });
+        return { key: l.key, ink: SPECTRUM[s.hue].ink, runs, paths };
       }),
     [layout, view],
   );
-  const rows = layout.rows;
-
-  const picture = useDerivedValue(() => {
-    const t = clock.value;
-    const sweep = ease(phase(t, delay, RACE_MS));
-    const edge = sweep * chart;
-    return createPicture(
-      (canvas) => {
-        const guide = Skia.Paint();
-        guide.setAntiAlias(true);
-        guide.setStyle(PaintStyle.Stroke);
-        guide.setStrokeWidth(1);
-        guide.setColor(Skia.Color(GROUND.border));
-        for (let r = 0; r < rows.length; r++) canvas.drawLine(0, rows[r]!, chart, rows[r]!, guide);
-        if (sweep <= 0) return;
-
-        const halo = Skia.Paint();
-        halo.setAntiAlias(true);
-        halo.setStyle(PaintStyle.Stroke);
-        halo.setStrokeWidth(11);
-        halo.setStrokeCap(ROUND);
-        halo.setStrokeJoin(ROUND_JOIN);
-        halo.setColor(Skia.Color(GROUND.bg));
-        const ink = Skia.Paint();
-        ink.setAntiAlias(true);
-        ink.setStyle(PaintStyle.Stroke);
-        ink.setStrokeWidth(4);
-        ink.setStrokeCap(ROUND);
-        ink.setStrokeJoin(ROUND_JOIN);
-        const dot = Skia.Paint();
-        dot.setAntiAlias(true);
-        const ground = Skia.Paint();
-        ground.setAntiAlias(true);
-        ground.setColor(Skia.Color(GROUND.bg));
-
-        canvas.save();
-        canvas.clipRect(Skia.XYWHRect(-8, -8, edge + 8, rows.length * ROW_GAP + PAD * 2 + 16), INTERSECT, true);
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const L = lines[i]!;
-          ink.setColor(Skia.Color(L.ink));
-          for (let k = 0; k < L.runs.length; k++) {
-            const run = L.runs[k]!;
-            if (run.xs.length > 1) {
-              const p = Skia.Path.Make();
-              addRun(p, run.xs, run.ys);
-              canvas.drawPath(p, halo);
-              canvas.drawPath(p, ink);
-            }
-          }
-        }
-        canvas.restore();
-
-        // The dots: each week's pops as the sweep passes it; a run's first is hollow, its last filled.
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const L = lines[i]!;
-          dot.setColor(Skia.Color(L.ink));
-          for (let k = 0; k < L.runs.length; k++) {
-            const run = L.runs[k]!;
-            for (let j = 0; j < run.xs.length; j++) {
-              const x = run.xs[j]!;
-              const pop = spring(Math.min(1, Math.max(0, (edge - x + 6) / 40)));
-              if (pop <= 0) continue;
-              const first = j === 0 && run.xs.length > 1;
-              const r = (j === run.xs.length - 1 ? 6 : 4.5) * pop;
-              canvas.drawCircle(x, run.ys[j]!, r, dot);
-              if (first) canvas.drawCircle(x, run.ys[j]!, Math.max(0, r - 2.2), ground);
-            }
-          }
-        }
-
-        // The runners: while the race is on, each line's head rides the sweep.
-        if (sweep < 1) {
-          for (let i = 0; i < lines.length; i++) {
+  // The dots at rest, recorded once: a run's first week hollow, its latest filled.
+  const dots = useMemo(
+    () =>
+      createPicture(
+        (canvas) => {
+          const dot = Skia.Paint();
+          dot.setAntiAlias(true);
+          const ground = Skia.Paint();
+          ground.setAntiAlias(true);
+          ground.setColor(Skia.Color(GROUND.bg));
+          for (let i = lines.length - 1; i >= 0; i--) {
             const L = lines[i]!;
             dot.setColor(Skia.Color(L.ink));
-            for (let k = 0; k < L.runs.length; k++) {
-              const run = L.runs[k]!;
-              const n = run.xs.length;
-              if (n < 2 || edge <= run.xs[0]! || edge >= run.xs[n - 1]!) continue;
-              let j = 1;
-              while (j < n - 1 && run.xs[j]! < edge) j++;
-              const y = bumpYAt(run.xs[j - 1]!, run.ys[j - 1]!, run.xs[j]!, run.ys[j]!, edge);
-              canvas.drawCircle(edge, y, 7, dot);
-              canvas.drawCircle(edge, y, 2.5, ground);
+            for (const run of L.runs) {
+              for (let j = 0; j < run.xs.length; j++) {
+                const r = j === run.xs.length - 1 ? 6 : 4.5;
+                canvas.drawCircle(run.xs[j]!, run.ys[j]!, r, dot);
+                if (j === 0 && run.xs.length > 1) canvas.drawCircle(run.xs[j]!, run.ys[j]!, r - 2.2, ground);
+              }
             }
           }
-        }
-      },
-      { width: chart, height },
-    );
-  }, [lines, rows, chart, height, delay]);
+        },
+        { width: chart, height },
+      ),
+    [lines, chart, height],
+  );
+
+  // Plain numbers only for the UI thread: a worklet never captures a path.
+  const plain = useMemo(() => lines.map((L) => ({ ink: L.ink, runs: L.runs })), [lines]);
+  const { clock, box, landed } = useDrawClock(delay + RACE_MS);
+  const sweep = useDerivedValue(() => Skia.XYWHRect(-8, -8, ease(phase(clock.value, delay, RACE_MS)) * chart + 8, height + 16), [chart, height, delay]);
+  // Only while the race is on: each line's head riding the sweep.
+  const heads = useDerivedValue(() => {
+    const edge = ease(phase(clock.value, delay, RACE_MS)) * chart;
+    return createPicture((canvas) => drawHeads(canvas, plain, edge), { width: chart, height });
+  }, [plain, chart, height, delay]);
 
   if (!rows.length) return null;
   // Five dates need about 56 points each; a narrower race says its ends and its middle.
   const all = tickIndexes(view.weeks.length);
   const ticks = all.length > 1 && chart / (all.length - 1) < 58 ? [...new Set([0, Math.floor((view.weeks.length - 1) / 2), view.weeks.length - 1])] : all;
-  const finishAt = delay + RACE_MS - 120;
+
+  const race = (
+    <>
+      {lines.map((L) =>
+        L.paths.map((p, k) => (
+          <React.Fragment key={`${L.key}.${k}`}>
+            <Path path={p} color={GROUND.bg} style="stroke" strokeWidth={11} strokeCap="round" strokeJoin="round" />
+            <Path path={p} color={L.ink} style="stroke" strokeWidth={4} strokeCap="round" strokeJoin="round" />
+          </React.Fragment>
+        )),
+      )}
+      <Picture picture={dots} />
+    </>
+  );
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={summary.lines.join(' ')}>
@@ -193,24 +177,38 @@ export function RankRace({ view, summary, width, delay = 80 }: { view: WeeklyVie
             </Text>
           ))}
         </View>
-        <Canvas style={{ width: chart, height }}>
-          <Picture picture={picture} />
-        </Canvas>
+        <Animated.View ref={box} collapsable={false} style={{ width: chart, height }}>
+          <Canvas style={{ width: chart, height }}>
+            {rows.map((y, i) => (
+              <Line key={i} p1={vec(0, y)} p2={vec(chart, y)} color={GROUND.border} strokeWidth={1} />
+            ))}
+            {landed ? (
+              race
+            ) : (
+              <>
+                <Group clip={sweep}>{race}</Group>
+                <Picture picture={heads} />
+              </>
+            )}
+          </Canvas>
+        </Animated.View>
         <View style={{ width: FINISH, height }}>
-          {summary.order.map((o, i) => {
-            const y = rows[o.rank - 1];
-            if (y === undefined) return null;
-            return (
-              <Arrive key={o.key} delay={finishAt + i * 90} style={[styles.finish, { top: y - 23 }]}>
-                <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={[styles.finishName, { color: SPECTRUM[o.hue].ink }]}>
-                  {o.label.text}
-                </Text>
-                <Text allowFontScaling={false} numberOfLines={1} style={type.meta}>
-                  {hoursWords(o.seconds)}
-                </Text>
-              </Arrive>
-            );
-          })}
+          {landed
+            ? summary.order.map((o, i) => {
+                const y = rows[o.rank - 1];
+                if (y === undefined) return null;
+                return (
+                  <Animated.View key={o.key} entering={FadeIn.duration(260).delay(i * 90)} style={[styles.finish, { top: y - 23 }]}>
+                    <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={[styles.finishName, { color: SPECTRUM[o.hue].ink }]}>
+                      {o.label.text}
+                    </Text>
+                    <Text allowFontScaling={false} numberOfLines={1} style={type.meta}>
+                      {hoursWords(o.seconds)}
+                    </Text>
+                  </Animated.View>
+                );
+              })
+            : null}
         </View>
       </View>
       <View style={{ height: 20, marginLeft: NUMERALS, width: chart }}>

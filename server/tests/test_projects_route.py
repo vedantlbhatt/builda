@@ -328,3 +328,44 @@ def test_a_stranger_never_reads_the_key_of_a_shared_session(client, created_user
         assert item.status_code == 200, item.text
         assert "repo_key" not in item.json()["session"]
     assert rhash not in str(client.get("/v1/feed", headers=h_b).json())
+
+
+def test_a_projects_sessions_page_back_to_its_first(client, paired):
+    """The swarm reaches back to the project's first session a page at a time: every page
+    newest first, no session twice, `next_before` until the last page, and the count of all
+    of them on every page, so a phone that stops at its cap can say how many it drew of how
+    many there are."""
+    _, headers = paired
+    rhash = uuid.uuid4().hex * 2
+    start = datetime(2026, 8, 1, 15, 0, tzinfo=UTC)
+    _upload(
+        client,
+        headers,
+        *[
+            _payload(
+                repo_hash=rhash,
+                started_at=start + timedelta(days=i),
+                ended_at=start + timedelta(days=i, hours=1),
+            )
+            for i in range(5)
+        ],
+    )
+    seen: list[str] = []
+    before = None
+    pages = 0
+    while True:
+        # An ISO instant carries a `+`: it goes through `params`, encoded, as the phone's does.
+        params = {"limit": 2, **({"before": before} if before else {})}
+        got = client.get(f"/v1/projects/{rhash}", params=params, headers=headers)
+        assert got.status_code == 200, got.text
+        body = got.json()
+        assert body["sessions_total"] == 5
+        starts = [s["started_at"] for s in body["sessions"]]
+        assert starts == sorted(starts, reverse=True)
+        seen += [s["id"] for s in body["sessions"]]
+        pages += 1
+        before = body["next_before"]
+        if not before:
+            break
+    assert pages == 3 and len(seen) == 5 and len(set(seen)) == 5
+    assert client.get(f"/v1/projects/{rhash}?limit=500", headers=headers).status_code == 422

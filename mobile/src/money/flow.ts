@@ -55,7 +55,7 @@ import type { ReportBurn, ReportMoney, ReportProject } from '../generated/report
 import { numSpec, type NumSpec } from '../insights/format';
 import { NO_REPORT, type Refused } from '../insights/model';
 import { GROUND, type Hue } from '../insights/palette';
-import { projectLabel } from '../projects/model';
+import { projectLabels, type ProjectRegistry } from '../projects/model';
 import { listOf } from '../stack/model';
 import { everyPricedSessionCounted } from './counted';
 import { apportion, dollarsOf, dollarUnit, roundFlow, shownUnits, type FlowEdge } from './round';
@@ -72,7 +72,7 @@ export interface FlowNode {
   id: string;
   kind: NodeKind;
   column: Column;
-  /** "cache reads", "Opus 5", "Private project b093f9", "with a commit". */
+  /** "cache reads", "Opus 5", "Private project 2", "with a commit". */
   label: string;
   /** Tokens for a bucket, dollars at list prices for everything else. */
   value: number;
@@ -263,6 +263,7 @@ export function moneyFlow(
   page: FlowPageIn,
   paint: FlowPaint,
   nicknames?: Readonly<Record<string, string>> | null,
+  registry?: ProjectRegistry | null,
 ): MoneyFlow | Refused | null {
   const report = b.report ?? null;
   if (!report) return b.corpus ? { refusal: NO_REPORT } : null;
@@ -277,8 +278,11 @@ export function moneyFlow(
   const modelHue = new Map(models.map((x, i) => [x.key, modelHues[i]!]));
   const modelName = new Map(models.map((x) => [x.key, x.name]));
 
+  // Every project's name as the Projects tab says it: its public name, the owner's own, or
+  // "Private project" and the number this phone gave it, never a character of its key.
+  const labels = projectLabels(block, b.project_names, nicknames, registry);
   const priced = block.projects
-    .map((p) => projectIn(p, projectLabel(p.key, b.project_names, nicknames).text, paint.project(p.key)))
+    .map((p) => projectIn(p, labels[p.key]!.text, paint.project(p.key)))
     .filter((p): p is ProjectIn => p !== null)
     .sort((x, y) => y.usd - x.usd);
   if (!priced.length) return { refusal: 'No project had a priced session in the window, so there is no project to follow the dollars into.' };

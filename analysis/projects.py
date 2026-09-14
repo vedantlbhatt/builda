@@ -817,6 +817,10 @@ def build(everything: cp.Corpus, window_days: int) -> dict:
         },
         "comparisons": comparisons,
         "weeks": _weeks(everything.facts, axis, today),
+        # Every counted sitting in the window, listed projects, projects past the cap and the
+        # unresolved alike: what each `share_of_attended` is out of, so a screen that says "94%
+        # of it" can say how much "it" is without summing a capped list.
+        "window_attended_seconds": round(total_attended),
     }
     local = [
         _Local(key=b[0], name=names.get(b[0]), checkouts=b[4], cards=b[2], values=b[3]) for b in built

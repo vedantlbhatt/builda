@@ -195,7 +195,7 @@ and `sync`), the cards, stack items and commit days cut for length:
 {"window_days": 30, "history_sessions": 160, "history_first_at": "2026-08-12T00:44:30Z", "projects_total": 2,
  "unresolved": {"sessions": 0, "active_seconds": 0, "attended_seconds": 0, "history_sessions": 0},
  "projects": [
-  {"key": "b093f92080ab6e13cc2d5fd8187c4da6f1c946f7c9f38d5182dd5ce6c6c46275", "rank": 1,
+  {"key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "rank": 1,
    "history": {"sessions": 155, "first_at": "2026-08-12T00:44:30Z", "last_at": "2026-09-13T16:36:43Z", "active_days": 28, "spans_days": 34,
      "active_seconds": 292290, "attended_seconds": 255143, "autonomous_seconds": 37147, "longest_streak_days": 11, "current_streak_days": 3,
      "days_since_last": 0, "age_days": 33, "days_built_recent": 8, "days_built_before": 14, "stage": "active", "stage_rule": "steady",
@@ -220,7 +220,7 @@ and `sync`), the cards, stack items and commit days cut for length:
      "stack": {"items": ["python, javascript, html, shell, expo, react, react_native, nextjs, fastapi, tailwind, ... 41 items"], "...": "..."},
      "agents": {"agents": 36, "produced": 35, "max_concurrent": 9, "parallelism": 2.1, "...": "..."},
      "harnesses": [{"harness": "claude_code", "sessions": 137, "active_seconds": 252282}]}},
-  {"key": "03624fb1c6e2...", "rank": 2,
+  {"key": "bbbbbbbbbbbb...", "rank": 2,
    "history": {"sessions": 5, "days_since_last": 13, "stage": "winding_down", "stage_rule": "quiet_a_week",
      "momentum": {"sessions": 0, "sessions_before": 1, "direction": null, "reason": "below_session_floor", "needed": 4, "...": "..."}, "...": "..."},
    "window": {"sessions": 5, "attended_seconds": 13611, "share_of_attended": 0.059, "clock": {"peak_hour": 10},
@@ -228,16 +228,16 @@ and `sync`), the cards, stack items and commit days cut for length:
      "money": {"usd": 161.53, "usd_per_active_hour": 38.26, "usd_without_a_commit": null}, "usd_per_commit": {"usd": 10.77, "commits": 15},
      "burn": {"share": 0.002}, "agents": {"agents": 3, "max_concurrent": 3}, "...": "..."}}],
  "comparisons": [
-  {"metric": "steer_rate", "high": "b093...", "low": "0362...", "high_value": 0.422, "low_value": 0.385, "ratio": 1.1, "reason": "within_noise"},
+  {"metric": "steer_rate", "high": "aaaa...", "low": "bbbb...", "high_value": 0.422, "low_value": 0.385, "ratio": 1.1, "reason": "within_noise"},
   {"metric": "autonomy_score", "high_value": 0.135, "low_value": 0.104, "gap": 0.031, "reason": "within_noise"},
-  {"metric": "test_runs_per_hour", "high": "0362...", "high_value": 10.42, "low_value": 4.87, "ratio": null, "gap": null, "reason": "floors_only"},
-  {"metric": "tool_calls_per_prompt", "high": "0362...", "low": "b093...", "high_value": 46.2, "low_value": 11.2, "ratio": 4.13, "high_sessions": 5, "low_sessions": 137, "reason": null},
-  {"metric": "prompts_per_session", "high": "b093...", "low": "0362...", "high_value": 6.9, "low_value": 2.6, "ratio": 2.65, "reason": null},
+  {"metric": "test_runs_per_hour", "high": "bbbb...", "high_value": 10.42, "low_value": 4.87, "ratio": null, "gap": null, "reason": "floors_only"},
+  {"metric": "tool_calls_per_prompt", "high": "bbbb...", "low": "aaaa...", "high_value": 46.2, "low_value": 11.2, "ratio": 4.13, "high_sessions": 5, "low_sessions": 137, "reason": null},
+  {"metric": "prompts_per_session", "high": "aaaa...", "low": "bbbb...", "high_value": 6.9, "low_value": 2.6, "ratio": 2.65, "reason": null},
   {"metric": "code_velocity", "high_value": 4261.8, "low_value": 424.9, "reason": "floors_only"},
   {"metric": "usd_per_active_hour", "high_value": 38.26, "low_value": 34.13, "ratio": 1.12, "reason": "within_noise"},
   {"metric": "first_try_rate", "high_value": 0.909, "low_value": 0.799, "gap": 0.11, "reason": "within_noise"},
   {"metric": "ships_rate", "projects": 1, "needed": 5, "reason": "fewer_than_two_projects"},
-  {"metric": "night_share", "high": "0362...", "low": "b093...", "high_value": 0.469, "low_value": 0.217, "gap": 0.252, "reason": null}]}
+  {"metric": "night_share", "high": "bbbb...", "low": "aaaa...", "high_value": 0.469, "low_value": 0.217, "gap": 0.252, "reason": null}]}
 ```
 
 `project_names` beside it is `{}`: capture uploads anonymously, so neither repository has a public name, exactly as their sessions show none.
@@ -256,8 +256,9 @@ and `sync`), the cards, stack items and commit days cut for length:
   same filter again and `project_names`: `repos.public_name` for keys the viewer has a session in, never for a private repository.
   `POST /v1/repos/visibility` with `excluded` rewrites the stored report too (`forget_project`): "an excluded repository has NOTHING on the server".
   `GET /v1/projects/{key}` (12 to 64 hex; a prefix naming two is a 409, an unknown or excluded key a 404) returns `{key, name, window_days,
-  generated_at, project, comparisons, project_names, sessions}`, the sessions being the viewer's final visible ones in that repository, newest first,
-  at most 50: one request for a project page.
+  generated_at, project, comparisons, project_names, sessions, sessions_total, next_before}`, the sessions being the viewer's final visible ones in
+  that repository, newest first, a page at a time (50 by default, `limit` up to 200, keyset on `before` like `/v1/sessions`), each carrying the
+  viewer's own `repo_key`.
 
 ## 5. Privacy
 
@@ -281,7 +282,17 @@ key to the `repo_hash` capture's own session payloads carry for the same transcr
   `copy/money.ts`, burn through `copy/burn.ts`, stack names, harnesses, agents, the comparisons naming it). Every window section is null when the
   window is.
 - Labels: public name, else the owner's own label for it (`nicknames`, which the phone stores locally and never uploads), else `Private project` and
-  six characters of the key. Offer "name this project" on `label.source === 'private'`.
+  a NUMBER the phone gave it (`registerProjects`: first sight, in the order of the projects' first sessions, never given twice, kept in the cache kv
+  beside the names with each project's hue, and forgotten at sign out). NEVER A CHARACTER OF THE KEY: the key is an HMAC under a pepper that ships
+  in the open (`capture/tuning.py`), so one guess at a repository's name reproduces any prefix of it, and a screenshot showing six characters
+  confirmed a private repository's name (found in review, 2026-09-13). The number is held to its words by a no-break space, so the money flow's
+  narrow label column wraps "Private" over "project 2" and never leaves the number alone on a line. Offer "name this project" on
+  `label.source === 'private'`.
+- The window's total, `window_attended_seconds` (nullable, appended): every counted sitting in the window, the projects past the cap included, the
+  denominator of every `share_of_attended`. A screen that says "94% of it" says how much "it" is from this, never by summing a capped list.
+- The week sentences, the rivers, the race and a project page's ledger are the Mac's REPORT and say so ("your Mac read"): a second machine's hook
+  uploads are on the server, and on the page's session swarm, and not in that report. The swarm pages `GET /v1/projects/{key}` (`before`,
+  `limit` up to 200, `next_before`, `sessions_total`) back to the project's first session or 400 dots, and says how many of how many it drew.
 - Copy: `generated/copy.ts` `PROJECT_*` tables, generated from `analysis/projects.py`; `spec/fixtures/projects/sentences.json` pins every sentence
   and `block.json` is a whole block for screen tests.
 - Say the scope: "the last 30 days" only over window numbers (and only when the report's coverage holds, the existing rule); the stage and the

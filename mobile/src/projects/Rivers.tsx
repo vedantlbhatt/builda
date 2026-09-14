@@ -15,17 +15,17 @@
  * "a tiny horizontal bar inline with the time, scaling proportionally"), and a row is also a way
  * to hold its river, for a finger or for VoiceOver.
  */
-import { Canvas, ClipOp, createPicture, PaintStyle, Picture, Skia, type SkPath } from '@shopify/react-native-skia';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Canvas, Group, Line, Path, Skia, vec, type SkPath } from '@shopify/react-native-skia';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
-import Animated, { FadeIn, useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, useDerivedValue, type SharedValue } from 'react-native-reanimated';
 
 import { GrowBar } from '../insights/Bars';
 import { GUTTER, type, Words } from '../insights/kit';
 import { ease, phase } from '../insights/motion';
 import { GROUND, SPECTRUM } from '../insights/palette';
-import { useClock } from '../insights/reveal';
 import { select } from '../ui';
+import { useDrawClock } from './drawClock';
 import { streamAt, streamLayout, type StreamLayout } from './geometry';
 import { hoursWords, riverLine, riversLine, type WeeklyView } from './model';
 
@@ -33,8 +33,6 @@ import { hoursWords, riverLine, riversLine, type WeeklyView } from './model';
 export const FLOW_MS = 1500;
 const STEP_MS = 140;
 const HEIGHT = 208;
-/** Read once, so the UI thread gets a number. */
-const INTERSECT = ClipOp.Intersect;
 
 // Worklet helpers come first: a worklet can only call a helper that is a worklet itself and was
 // defined before it (FOUND TWICE ON 2026-09-13, two crashes).
@@ -67,70 +65,44 @@ function drawable(layout: StreamLayout, width: number): StreamLayout {
   };
 }
 
+/**
+ * One river: its path, built once, drawn in its ink (its partner while another is held) with a
+ * seam of ground along its edges. While the rivers flow in, a clip reveals it from the left; once
+ * they have landed, no clip at all, so a river at rest is two paths and nothing a frame.
+ */
+function River({ path, color, clock, start, width, landed }: { path: SkPath; color: string; clock: SharedValue<number>; start: number; width: number; landed: boolean }) {
+  const clip = useDerivedValue(() => Skia.XYWHRect(0, 0, width * ease(phase(clock.value, start, FLOW_MS)), HEIGHT), [width, start]);
+  const body = (
+    <>
+      <Path path={path} color={color} />
+      <Path path={path} color={GROUND.bg} style="stroke" strokeWidth={1.5} />
+    </>
+  );
+  return landed ? body : <Group clip={clip}>{body}</Group>;
+}
+
 export function Rivers({ view, width, delay = 80 }: { view: WeeklyView; width: number; delay?: number }) {
-  const clock = useClock();
   const layout = useMemo(() => streamLayout(view.series.map((s) => ({ key: s.key, values: s.attended })), width, HEIGHT, 0), [view, width]);
   const shape = useMemo(() => drawable(layout, width), [layout, width]);
   const byKey = useMemo(() => new Map(view.series.map((s, i) => [s.key, { s, i }])), [view]);
 
-  // Plain arrays for the UI thread: the order drawn, each river's colours and when it starts.
+  // Each river's path, built once on this thread; its colours and when it starts flowing.
   const rivers = useMemo(
     () =>
       shape.streams.map((st) => {
         const hit = byKey.get(st.key)!;
         const hue = SPECTRUM[hit.s.hue];
-        return { top: st.top, bottom: st.bottom, ink: hue.ink, partner: hue.partner, start: delay + hit.i * STEP_MS };
+        const path = Skia.Path.Make();
+        addRiver(path, shape.xs, st.top, st.bottom);
+        return { key: st.key, path, ink: hue.ink, partner: hue.partner, start: delay + hit.i * STEP_MS };
       }),
     [shape, byKey, delay],
   );
-  const xs = shape.xs;
+  const total = delay + Math.max(0, view.series.length - 1) * STEP_MS + FLOW_MS;
+  const { clock, box, landed } = useDrawClock(total);
 
   const [held, setHeld] = useState<{ key: string | null; week: number }>({ key: null, week: -1 });
-  const heldIndex = useSharedValue(-1);
-  const heldX = useSharedValue(-1);
-  useEffect(() => {
-    heldIndex.value = held.key ? shape.streams.findIndex((s) => s.key === held.key) : -1;
-    heldX.value = held.key && held.week >= 0 ? (layout.xs.length === 1 ? width / 2 : (layout.xs[held.week] ?? -1)) : -1;
-  }, [held, shape, layout, width, heldIndex, heldX]);
-
-  const picture = useDerivedValue(() => {
-    const t = clock.value;
-    const hi = heldIndex.value;
-    const hx = heldX.value;
-    return createPicture(
-      (canvas) => {
-        const fill = Skia.Paint();
-        fill.setAntiAlias(true);
-        const seam = Skia.Paint();
-        seam.setAntiAlias(true);
-        seam.setStyle(PaintStyle.Stroke);
-        seam.setStrokeWidth(1.5);
-        seam.setColor(Skia.Color(GROUND.bg));
-        for (let i = 0; i < rivers.length; i++) {
-          const r = rivers[i]!;
-          const flow = ease(phase(t, r.start, FLOW_MS));
-          if (flow <= 0) continue;
-          const p = Skia.Path.Make();
-          addRiver(p, xs, r.top, r.bottom);
-          canvas.save();
-          canvas.clipRect(Skia.XYWHRect(0, 0, width * flow, HEIGHT), INTERSECT, true);
-          fill.setColor(Skia.Color(hi >= 0 && hi !== i ? r.partner : r.ink));
-          canvas.drawPath(p, fill);
-          canvas.drawPath(p, seam);
-          canvas.restore();
-        }
-        if (hi >= 0 && hx >= 0) {
-          const line = Skia.Paint();
-          line.setAntiAlias(true);
-          line.setStyle(PaintStyle.Stroke);
-          line.setStrokeWidth(1);
-          line.setColor(Skia.Color(GROUND.text));
-          canvas.drawLine(hx, 0, hx, HEIGHT, line);
-        }
-      },
-      { width, height: HEIGHT },
-    );
-  }, [rivers, xs, width]);
+  const heldX = held.key && held.week >= 0 ? (layout.xs.length === 1 ? width / 2 : (layout.xs[held.week] ?? -1)) : -1;
 
   const onPress = useCallback(
     (e: GestureResponderEvent) => {
@@ -163,9 +135,14 @@ export function Rivers({ view, width, delay = 80 }: { view: WeeklyView; width: n
         accessibilityLabel={riversLine(view) ?? 'Your projects, week by week'}
         style={{ width, height: HEIGHT, marginLeft: -GUTTER }}
       >
-        <Canvas style={{ width, height: HEIGHT }}>
-          <Picture picture={picture} />
-        </Canvas>
+        <Animated.View ref={box} collapsable={false} style={{ width, height: HEIGHT }}>
+          <Canvas style={{ width, height: HEIGHT }}>
+            {rivers.map((r) => (
+              <River key={r.key} path={r.path} color={held.key && held.key !== r.key ? r.partner : r.ink} clock={clock} start={r.start} width={width} landed={landed} />
+            ))}
+            {held.key && heldX >= 0 ? <Line p1={vec(heldX, 0)} p2={vec(heldX, HEIGHT)} color={GROUND.text} strokeWidth={1} /> : null}
+          </Canvas>
+        </Animated.View>
       </Pressable>
       <View style={[styles.axis, { width, marginLeft: -GUTTER }]}>
         {ticks.map((i) => {

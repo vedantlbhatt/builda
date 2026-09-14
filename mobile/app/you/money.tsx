@@ -13,7 +13,7 @@ import { BUCKET_COLOR, BurnBody, modelColors } from '../../src/insights/sections
 import { FLOW_TITLE, FlowChapter, flowHue, flowPaint } from '../../src/money/FlowChapter';
 import { moneyFlow, projectHuesApart, withFlowFigures } from '../../src/money/flow';
 import { preferredHue, PROJECT_HUES, projectHues } from '../../src/projects/model';
-import { useNicknames } from '../../src/projects/nicknames';
+import { useNicknames, useProjectRegistry } from '../../src/projects/nicknames';
 import { typeRoles } from '../../src/theme';
 import { useAccent } from '../../src/theme/accent';
 import { ChapterPage } from '../../src/you/ChapterPage';
@@ -63,6 +63,8 @@ export default function MoneyScreen() {
   const costName = doorHues(accent.name).money;
   const cost = SPECTRUM[costName];
   const data = load.kind === 'ready' ? load.data : null;
+  // The number and hue this phone gave each project, the same as on the Projects tab.
+  const { registry, ready: registered } = useProjectRegistry(data?.report?.projects?.projects);
   const page = useMemo(() => (data ? moneyPage(data) : null), [data]);
 
   // The flow wears every project's own hue from the Projects tab, stepped past any hue a model in
@@ -71,11 +73,11 @@ export default function MoneyScreen() {
     const models = modelColors((page?.models ?? []).map((m) => m.family))
       .map((ink) => HUE_NAMES.find((h) => SPECTRUM[h].ink === ink || SPECTRUM[h].partner === ink))
       .filter((h): h is HueName => !!h);
-    const hues = data?.report?.projects ? projectHuesApart(projectHues(data.report.projects.projects), PROJECT_HUES, models) : {};
+    const hues = data?.report?.projects ? projectHuesApart(projectHues(data.report.projects.projects, registry), PROJECT_HUES, models) : {};
     return (key: string): HueName => hues[key] ?? preferredHue(key);
-  }, [data, page]);
+  }, [data, page, registry]);
   const paint = useMemo(() => flowPaint(cost, projectHue), [cost, projectHue]);
-  const flow = useMemo(() => (data && page ? moneyFlow(data, page, paint, nicknames) : null), [data, page, paint, nicknames]);
+  const flow = useMemo(() => (data && page && registered ? moneyFlow(data, page, paint, nicknames, registry) : null), [data, page, paint, nicknames, registry, registered]);
   // The ring in chapter 01 reads each model exactly as the flow does (`withFlowFigures`).
   const ringModels = useMemo(() => (page ? withFlowFigures(page.models, flow) : []), [page, flow]);
   const flowHueName = useMemo(() => {

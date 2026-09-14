@@ -188,6 +188,24 @@ class EverySittingOnce(unittest.TestCase):
         self.assertEqual(b["unresolved"]["history_sessions"], 1)
         self.assertEqual(b["projects_total"], 2)
 
+    def test_the_windows_total_is_what_every_share_is_out_of(self):
+        """The block says the total its shares divide by, so the phone never sums a capped list
+        to say how much "all of it" is."""
+        b = self.block
+        in_window = [f for f in self.c.facts if f.started_at >= NOW - 30 * DAY]
+        self.assertEqual(b["window_attended_seconds"], round(sum(f.attended_seconds for f in in_window)))
+        for p in b["projects"]:
+            self.assertAlmostEqual(p["window"]["share_of_attended"], p["window"]["attended_seconds"] / b["window_attended_seconds"], delta=0.001)
+
+    def test_the_windows_total_counts_the_projects_past_the_cap(self):
+        sittings = [(ride(f"s{i}", T0 + i * 3600), f"p{i}") for i in range(pj.MAX_PROJECTS + 3)]
+        where = {f"p{i}": f"/w/p{i}" for i in range(pj.MAX_PROJECTS + 3)}
+        c = hand_cut(sittings, now=NOW, checkout=where)
+        block = pj.block(c, 30)
+        listed = sum(p["window"]["attended_seconds"] for p in block["projects"]) + block["unresolved"]["attended_seconds"]
+        self.assertEqual(block["window_attended_seconds"], round(sum(f.attended_seconds for f in c.facts)))
+        self.assertGreater(block["window_attended_seconds"], listed)
+
     def test_the_shares_of_attended_time_add_up_with_the_unresolved(self):
         b = self.block
         total = sum(p["window"]["attended_seconds"] for p in b["projects"]) + b["unresolved"]["attended_seconds"]

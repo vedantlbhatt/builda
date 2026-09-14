@@ -63,6 +63,7 @@ import {
 } from '../src/social/account';
 import { colors, space, TAP_TARGET } from '../src/theme';
 import { refreshAccent, useAccent, type AccentState } from '../src/theme/accent';
+import { forgetProjectsOnThisPhone } from '../src/projects/nicknames';
 import { Button, Hairline, SHAPE, T, TextField, useReduceMotion } from '../src/ui';
 
 /**
@@ -214,6 +215,8 @@ export default function SettingsScreen() {
   const afterLeaving = useCallback(() => {
     readLocalName();
     void refreshAccent();
+    // The names and numbers this phone gave the last account's projects (src/projects/nicknames.ts).
+    void forgetProjectsOnThisPhone();
   }, [readLocalName]);
 
   const signOut = useCallback(async () => {

@@ -805,6 +805,8 @@ export interface ReportProjects {
   comparisons: ReportProjectComparison[];
   /** the week axis every project's weeks read on: the last twelve ISO weeks through the current one (analysis/projects.py WEEKS), oldest first, never a week before the machine's first sitting. Empty with no sitting. Null from a machine that does not compute it. (max 12 items) */
   weeks?: ReportProjectsWeek[] | null;
+  /** seconds with you there in every counted sitting in the window: every listed project, any past the list's cap, and the sittings in no repository. What each project's share_of_attended is out of. Null from a machine that does not compute it. */
+  window_attended_seconds?: number | null;
 }
 
 export interface BuilderReport {

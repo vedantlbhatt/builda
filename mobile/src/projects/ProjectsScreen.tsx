@@ -16,7 +16,8 @@
  * Every number is the report's (`src/projects/model.ts`, pinned to the engine's words), every
  * refusal is a sentence, and a project with nothing in the window says so instead of showing 0.
  * A project's hue is its own on every screen (`projectHues`); its name is its public one, or the
- * one you gave it on this phone, or "Private project" and six characters of its key.
+ * one you gave it on this phone, or "Private project" and the number this phone gave it, never a
+ * character of its key (`model.projectLabel`).
  */
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -47,7 +48,7 @@ import {
   weeklyView,
   type ProjectsHero,
 } from './model';
-import { useNicknames } from './nicknames';
+import { useNicknames, useProjectRegistry } from './nicknames';
 import { RankRace } from './RankRace';
 import { Rivers } from './Rivers';
 
@@ -65,12 +66,13 @@ export function ProjectsScreen() {
   const block = report?.projects ?? null;
   const names = data?.project_names ?? null;
 
-  const view = useMemo(() => projectsView(block, names, nicknames), [block, names, nicknames]);
-  const weekly = useMemo(() => weeklyView(block, names, nicknames), [block, names, nicknames]);
+  const { registry, ready: registered } = useProjectRegistry(block?.projects);
+  const view = useMemo(() => projectsView(block, names, nicknames, registry), [block, names, nicknames, registry]);
+  const weekly = useMemo(() => weeklyView(block, names, nicknames, registry), [block, names, nicknames, registry]);
   const race = useMemo(() => (weekly ? raceSummary(weekly) : null), [weekly]);
   const hero = useMemo(() => (view && block ? projectsHero(view, block, report) : null), [view, block, report]);
-  const doors = useMemo(() => (view && block ? projectDoors(view, block, report) : []), [view, block, report]);
-  const hues = useMemo(() => (block ? projectHues(block.projects) : {}), [block]);
+  const doors = useMemo(() => (view && block ? projectDoors(view, block, report, Date.now(), registry) : []), [view, block, report, registry]);
+  const hues = useMemo(() => (block ? projectHues(block.projects, registry) : {}), [block, registry]);
   const [riversHue, raceHue, compareHue] = useMemo(
     () => chapterHues(['cobalt', 'heather', 'brass'], [accent.name, ...doors.map((d) => d.hue)], accent.name, doors[0]?.hue ?? null),
     [accent.name, doors],
@@ -82,7 +84,7 @@ export function ProjectsScreen() {
   const answered = view?.comparisons.filter((c) => c.answered).length ?? 0;
 
   return (
-    <ChapterPage chapters={3 + doors.length + 1} ready={accent.ready && view !== null} refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : () => void refresh()}>
+    <ChapterPage chapters={3 + doors.length + 1} ready={accent.ready && registered && view !== null} refreshing={refreshing} onRefresh={load.kind === 'signedOut' ? null : () => void refresh()}>
       {(stage) => (
         <>
           {load.kind === 'signedOut' || load.kind === 'error' || (load.kind === 'ready' && load.stale) ? (
@@ -116,7 +118,7 @@ export function ProjectsScreen() {
                         <BandFigure spec={hoursFigure(weekly.totalSeconds)} width={inner} max={96} delay={200} label={`${hoursFigure(weekly.totalSeconds).final} hours with you there`} />
                         <BandWords delay={360}>
                           <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                            {`hours with you there, ${weekly.weeks.length === 1 ? 'in one week' : `over ${weekly.weeks.length} weeks`}, river by river`}
+                            {`hours with you there on your Mac, ${weekly.weeks.length === 1 ? 'in one week' : `over ${weekly.weeks.length} weeks`}`}
                           </Text>
                         </BandWords>
                       </>
@@ -142,7 +144,7 @@ export function ProjectsScreen() {
                             {`${race.leader.weeksLed === 1 ? 'week' : 'weeks'} at the top for ${race.leader.label.text}`}
                           </Text>
                           <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                            {`of the ${race.weeksRanked} with time with you there`}
+                            {`of the ${race.weeksRead} ${race.weeksRead === 1 ? 'week' : 'weeks'} your Mac read`}
                           </Text>
                         </BandWords>
                       </View>
@@ -173,7 +175,7 @@ export function ProjectsScreen() {
                             {`of ${view.comparisons.length} ${answered === 1 ? 'shows' : 'show'} a real difference`}
                           </Text>
                           <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                            the rest are close, too thin, or floors
+                            the rest are too close to call, rest on too few sessions, or are both lower bounds
                           </Text>
                         </BandWords>
                       </View>
@@ -201,7 +203,7 @@ export function ProjectsScreen() {
                     ))}
                     {view.rows.some((r) => r.label.source === 'private') ? (
                       <Words style={type.meta}>
-                        A private project arrives as six characters of its key, because its name never leaves your Mac. Open one to give it a name only this phone knows.
+                        A private project goes by a number this phone gave it, because its name never leaves your Mac. Open one to give it a name only this phone knows.
                       </Words>
                     ) : null}
                   </Block>
@@ -251,7 +253,7 @@ function HeroChapter({ hero, hue, width, animal, empty }: { hero: ProjectsHero; 
         ) : null}
         {empty ? (
           <BandWords delay={520}>
-            <Refusal onHue>Every session so far ran outside a repository, so there is no project to show yet.</Refusal>
+            <Refusal onHue>No project to show. A session in a folder with no git belongs to none, and a repository you left out in Settings never appears here.</Refusal>
           </BandWords>
         ) : null}
       </Band>

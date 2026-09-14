@@ -24,10 +24,16 @@ import { hasDash } from '../src/copy/plain';
 import { commas, n, shareWords } from '../src/copy/numbers';
 import type { ReportProject, ReportProjects } from '../src/generated/report';
 import { fixedFormatOf } from '../src/insights/format';
-import { beeswarm, dotAt, insideOut, raceLayout, streamAt, streamLayout, swarmRadius } from '../src/projects/geometry';
+import { beeswarm, dotAt, insideOut, raceLayout, streamAt, streamLayout, SWARM_MAX, swarmRadius } from '../src/projects/geometry';
 import {
   chapterHues,
+  EMPTY_REGISTRY,
   hoursFigure,
+  localDay,
+  parseRegistry,
+  projectLabel,
+  projectLabels,
+  registerProjects,
   hueDistance,
   NEIGHBOUR_DEGREES,
   hoursWords,
@@ -101,7 +107,7 @@ function weeks(projects: { key: string; first: string; attended: number[] }[], o
 // ------------------------------------------------------------------ 1. hues
 describe('a project wears one hue', () => {
   test('the key names it, and the same key always names the same one', () => {
-    const k = 'b093f92080ab6e13cc2d5fd8187c4da6f1c946f7c9f38d5182dd5ce6c6c46275';
+    const k = '5eed' + 'a'.repeat(60);
     expect(preferredHue(k)).toBe(preferredHue(k));
     expect(PROJECT_HUES).toContain(preferredHue(k));
   });
@@ -149,6 +155,87 @@ describe('a project wears one hue', () => {
       const bands = [hero, ...got, 'tide' as const];
       for (let i = 1; i < bands.length; i++) expect({ hero, pair: [bands[i - 1], bands[i]], apart: hueDistance(bands[i - 1]!, bands[i]!) >= NEIGHBOUR_DEGREES }).toMatchObject({ apart: true });
     }
+  });
+});
+
+// ------------------------------------------------------------------ 1b. the phone's own numbers
+describe('a private project is called by a number this phone gave it, never by its key', () => {
+  const at = (d: number) => `2026-08-${String(d).padStart(2, '0')}T12:00:00Z`;
+  const p = (key: string, day: number) => ({ key, history: { first_at: at(day) } });
+  const A = 'a'.repeat(64);
+  const B = 'b'.repeat(64);
+  const C = 'c'.repeat(64);
+
+  test('numbered in the order of their first sessions, from 1', () => {
+    const { registry, changed } = registerProjects(EMPTY_REGISTRY, [p(B, 16), p(A, 12)]);
+    expect(changed).toBe(true);
+    expect([registry.projects[A]!.n, registry.projects[B]!.n, registry.next]).toEqual([1, 2, 3]);
+  });
+
+  test('a number is never given twice, and a project keeps its number when it leaves and comes back', () => {
+    const first = registerProjects(EMPTY_REGISTRY, [p(A, 12), p(B, 16)]).registry;
+    // A newer report without A, with C, whose first session is OLDER than B's: C still takes 3.
+    const second = registerProjects(first, [p(B, 16), p(C, 1)]).registry;
+    expect(second.projects[C]!.n).toBe(3);
+    const third = registerProjects(second, [p(A, 12)]);
+    expect(third.changed).toBe(false);
+    expect(third.registry.projects[A]!.n).toBe(1);
+  });
+
+  test('saved and read back, it is the same register; a broken or forged one is repaired to never repeat a number', () => {
+    const reg = registerProjects(EMPTY_REGISTRY, [p(A, 12), p(B, 16)]).registry;
+    expect(parseRegistry(JSON.stringify(reg))).toEqual(reg);
+    expect(parseRegistry('{nope')).toEqual(EMPTY_REGISTRY);
+    const forged = parseRegistry(JSON.stringify({ next: 1, projects: { [A]: { n: 7, hue: 'tide' }, zebra: { n: 2, hue: 'tide' }, [B]: { n: 2, hue: 'plaid' } } }));
+    expect(Object.keys(forged.projects)).toEqual([A]);
+    expect(forged.next).toBe(8);
+  });
+
+  test('no label ever carries a character run of the key (review, 2026-09-13: the key is an HMAC under a public pepper)', () => {
+    const keys = Array.from({ length: 30 }, (_, i) => (i * 2654435761 >>> 0).toString(16).padStart(8, '0').repeat(8));
+    const labels = projectLabels({ projects: keys.map((k, i) => p(k, i + 1)) });
+    for (const k of keys) {
+      const text = labels[k]!.text;
+      expect(text).toMatch(/^Private project\u00a0\d+$/);
+      for (let i = 0; i + 4 <= k.length; i++) expect(text.includes(k.slice(i, i + 4))).toBe(false);
+    }
+    expect(projectLabel(A, null, null)).toEqual({ text: 'Private project', source: 'private' });
+    expect(projectLabel(A, null, null, 3)).toEqual({ text: 'Private project\u00a03', source: 'private' });
+  });
+
+  test('a hue once given is kept: a real clash, and the older project leaving the list', () => {
+    // Every one of these keys asks for the same hue (its first eight hex digits, round the ring).
+    const older = '00000000' + '1'.repeat(56);
+    const younger = '00000008' + '2'.repeat(56);
+    expect(preferredHue(older)).toBe(preferredHue(younger));
+    const reg = registerProjects(EMPTY_REGISTRY, [p(older, 1), p(younger, 9)]).registry;
+    expect(reg.projects[older]!.hue).toBe(preferredHue(older));
+    expect(reg.projects[younger]!.hue).not.toBe(preferredHue(younger));
+    // The older one drops out of the report's top 20: the younger keeps its stepped hue.
+    expect(projectHues([p(younger, 9)], reg)[younger]).toBe(reg.projects[younger]!.hue);
+    // Recomputed from nothing (no register) it would have moved: the bug the register fixes.
+    expect(projectHues([p(younger, 9)])[younger]).toBe(preferredHue(younger));
+  });
+});
+
+// ------------------------------------------------------------------ 1c. days
+describe('an instant is said on the local day it fell on', () => {
+  test('the review\'s instant: a first session at 00:44 UTC on Aug 12 was Aug 11 in New York', () => {
+    expect(localDay('2026-08-12T00:44:30Z', -240)).toBe('2026-08-11');
+    expect(weekLabel(localDay('2026-08-12T00:44:30Z', -240))).toBe('Aug 11');
+    // In Tokyo it was 09:44 on Aug 12.
+    expect(localDay('2026-08-12T00:44:30Z', 540)).toBe('2026-08-12');
+    // The day turns at 04:00, the app's one day rule: 03:30 local is still the day before.
+    expect(localDay('2026-08-12T07:30:00Z', -240)).toBe('2026-08-11');
+    expect(localDay('2026-08-12T08:30:00Z', -240)).toBe('2026-08-12');
+  });
+
+  test('the page says since with it', () => {
+    const b = block();
+    const key = b.projects[0]!.key;
+    b.projects[0]!.history.first_at = '2026-08-12T00:44:30Z';
+    const since = projectPage(b, key)!.hero.since;
+    expect(since).toBe(weekLabel(localDay('2026-08-12T00:44:30Z')));
   });
 });
 
@@ -258,12 +345,15 @@ describe('the weeks are the report\'s, and nothing else', () => {
     );
     const v = weeklyView(b)!;
     const a = v.series[0]!;
-    expect(riverLine(v, a.key, 0)).toBe(`${a.label.text}: 10 hours with you there in the week of Aug 10, 50% of every hour with you there that week.`);
-    expect(riverLine(v, a.key, 2)).toBe(`No time with you there in ${a.label.text} in the week of Aug 24.`);
-    expect(riverLine(v, a.key, 3)).toBe(`${a.label.text}: 30 minutes with you there in the week of Aug 31, 100% of every hour with you there that week.`);
-    expect(riverLine(v, a.key, 4)).toContain('The report read 3 days of it.');
+    // Every week sentence is the Mac's report, and says so (review, 2026-09-13): another
+    // machine's uploads are on the phone and not in the report.
+    expect(riverLine(v, a.key, 0)).toBe(`${a.label.text}: 10 hours of the 20 hours with you there that your Mac read in the week of Aug 10.`);
+    expect(riverLine(v, a.key, 2)).toBe(`Your Mac read no time with you there in ${a.label.text} in the week of Aug 24.`);
+    expect(riverLine(v, a.key, 3)).toBe(`${a.label.text}: all 30 minutes with you there that your Mac read in the week of Aug 31.`);
+    expect(riverLine(v, a.key, 4)).toContain("Your Mac's report covers 3 days of it.");
     expect(riverLine(v, 'nope', 0)).toBeNull();
-    expect(riversLine(v)).toContain('Tap a river to name it.');
+    expect(riversLine(v)).toContain('Tap a river to see its week.');
+    expect(riversLine(v)).toContain('your Mac read');
     houseRules([riverLine(v, a.key, 0), riverLine(v, a.key, 4), riversLine(v)]);
   });
 
@@ -277,6 +367,7 @@ describe('the weeks are the report\'s, and nothing else', () => {
     expect(race.leader!.key).toBe(KEY('b'));
     expect(race.leader!.weeksLed).toBe(3);
     expect(race.weeksRanked).toBe(5);
+    expect(race.weeksRead).toBe(5);
     expect(race.changes).toBe(1);
     expect(race.latest).toBe(4);
     expect(race.order.map((o) => [o.rank, o.key])).toEqual([
@@ -284,15 +375,17 @@ describe('the weeks are the report\'s, and nothing else', () => {
       [2, KEY('c')],
     ]);
     expect(race.resting.map((l) => l.text)).toEqual([weeklyView(b)!.series[0]!.label.text]);
-    expect(race.lines[0]).toBe(`${race.leader!.label.text} led 3 of the 5 weeks with time with you there.`);
+    expect(race.lines[0]).toBe(`${race.leader!.label.text} led 3 of the 5 weeks your Mac read.`);
     expect(race.lines).toContain('The top place changed hands once.');
+    expect(race.lines).toContain(`In the week of Sep 7, your Mac read no time with you there in ${race.resting[0]!.text}.`);
     houseRules(race.lines);
   });
 
   test('one project alone runs a race of one, and says so', () => {
     const b = weeks([{ key: KEY('a'), first: '2026-08-10T00:00:00Z', attended: [100, 0, 100, 100, 100] }]);
     const race = raceSummary(weeklyView(b)!)!;
-    expect(race.lines[0]).toMatch(/^Only .+ had time with you there in these weeks, so it led all 4\.$/);
+    expect(race.lines[0]).toMatch(/^Only .+ had time with you there on your Mac in these weeks, so it led 4 of the 5 weeks your Mac read\.$/);
+    expect(race.lines).toContain('Your Mac read no time with you there in any project in the week of Aug 17.');
     expect(race.lines.some((l) => /changed hands/.test(l))).toBe(false);
   });
 });
@@ -388,6 +481,20 @@ describe('the swarm', () => {
     expect(dotAt(dots, axis, d.x, axis + extent + 60)).toBeNull();
   });
 
+  test('never more than the cap: the newest, and the axis reaching back to the project\'s first session', () => {
+    const many = Array.from({ length: SWARM_MAX + 50 }, (_, i) => ({ id: `m${i}`, started_at: new Date(Date.UTC(2026, 7, 1) + i * 3_600_000).toISOString(), active_seconds: 600, attended_seconds: 300 }));
+    const got = swarmSessions(many, [], KEY('a'));
+    expect(got.length).toBe(SWARM_MAX);
+    expect(got[0]!.id).toBe('m50');
+    const lay = beeswarm(many.map((m) => ({ id: m.id, at: Date.parse(m.started_at), size: 600 })), 340, o);
+    expect(lay.dots.length).toBe(SWARM_MAX);
+    const early = Date.UTC(2026, 6, 1);
+    const reach = beeswarm(items, 340, o, early);
+    expect(reach.from).toBe(early);
+    // A dot is never cut off by an end it was given.
+    expect(beeswarm(items, 340, o, undefined, items[0]!.at).to).toBe(Math.max(...items.map((x) => x.at)));
+  });
+
   test('its sessions: the project\'s own rows and the saved rows under its key, each once, finished only', () => {
     const key = KEY('a');
     const row = (id: string, extra: Record<string, unknown> = {}) => ({ id, started_at: '2026-09-01T10:00:00Z', active_seconds: 3600, attended_seconds: 1800, ...extra });
@@ -396,11 +503,16 @@ describe('the swarm', () => {
     expect(got[0]!.attendedShare).toBe(0.5);
   });
 
-  test('what it says under it', () => {
-    expect(swarmLine(50, 155)).toContain('50 dots, one a session, of the 155 sessions your Mac counts here.');
-    expect(swarmLine(3, 3)).not.toContain('your Mac counts');
+  test('what it says under it: how many of how many, and why the Mac counts another number', () => {
+    // Capped: the newest the swarm holds, of every session uploaded.
+    expect(swarmLine(400, 155, 612)).toContain('The newest 400 of the 612 sessions uploaded here, a dot each.');
+    // The review's page (2026-09-13): 19 uploaded, 5 in the Mac's report. Both say where they come from.
+    const two = swarmLine(19, 5, 19);
+    expect(two).toContain('All 19 sessions uploaded here, a dot each.');
+    expect(two).toContain("Your Mac's report counts 5 sessions here, only the ones it read itself");
+    expect(swarmLine(3, 3, 3)).not.toContain("Your Mac's report");
     expect(swarmLine(0, 12)).toMatch(/^No session of this project is on this phone yet/);
-    houseRules([swarmLine(50, 155), swarmLine(1, 1), swarmLine(0, 1)]);
+    houseRules([swarmLine(400, 155, 612), swarmLine(19, 5, 19), swarmLine(1, 1), swarmLine(0, 1)]);
   });
 });
 
@@ -411,9 +523,14 @@ describe('the tab\'s hero and doors', () => {
     const v = projectsView(b)!;
     const hero = projectsHero(v, b, null, Date.parse('2026-09-21T00:00:00Z'));
     expect(hero.count.final).toBe(n(b.projects_total));
-    const all = b.projects.reduce((a, p) => a + p.window!.attended_seconds, 0) + b.unresolved.attended_seconds;
-    expect(hero.hours!.final).toBe(n(all / 3600));
-    expect(hero.hoursCaption).toBe('hours with you there, the last 30 days');
+    // The block's own total, every sitting in the window: what each share is out of.
+    expect(hero.hours!.final).toBe(n(b.window_attended_seconds! / 3600));
+    expect(hero.hoursCaption).toBe('hours with you there on your Mac, the last 30 days');
+    // An older Mac sends no total: the listed projects and the unresolved, added up.
+    const old = block();
+    delete (old as { window_attended_seconds?: unknown }).window_attended_seconds;
+    const listed = old.projects.reduce((a, p) => a + p.window!.attended_seconds, 0) + old.unresolved.attended_seconds;
+    expect(projectsHero(projectsView(old)!, old, null).hours!.final).toBe(n(listed / 3600));
     expect(hero.small.some((s) => s.includes('ran in no repository'))).toBe(true);
     houseRules(hero);
   });
@@ -437,7 +554,7 @@ describe('the tab\'s hero and doors', () => {
     b.projects[1]!.window = null;
     const d = projectDoors(projectsView(b)!, b, null)[1]!;
     expect([d.hours, d.share]).toEqual([null, null]);
-    expect(d.quiet).toBe('Nothing here in the last 30 days.');
+    expect(d.quiet).toBe('Your Mac read nothing here in the last 30 days.');
   });
 });
 
@@ -514,19 +631,31 @@ describe('the wiring', () => {
   });
 
   test('every helper a drawing\'s worklet calls is a worklet, defined before the first worklet', () => {
-    for (const f of ['Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx']) {
+    for (const f of ['Rivers.tsx', 'RankRace.tsx', 'Swarm.tsx', 'CommitDays.tsx', 'drawClock.ts']) {
       const src = code(readFileSync(join(MOBILE, 'src/projects', f), 'utf8'));
-      const firstWorklet = src.indexOf('useDerivedValue(');
+      const firstWorklet = src.search(/use(?:DerivedValue|FrameCallback)\(/);
       expect(firstWorklet).toBeGreaterThan(0);
       const helpers = [...src.matchAll(/function (\w+)\([^)]*\)[^{]*\{\s*'worklet';/g)].map((m) => ({ name: m[1]!, at: m.index! }));
       for (const h of helpers) expect({ file: f, helper: h.name, before: h.at < firstWorklet }).toEqual({ file: f, helper: h.name, before: true });
-      // A module function called inside the picture that is not a worklet would crash the UI thread.
-      const body = src.slice(firstWorklet);
+      // A module function called inside any worklet (a derived value, a frame callback) that is not
+      // itself a worklet would crash the UI thread: read every such call's whole argument list.
       const local = [...src.matchAll(/^function (\w+)\(/gm)].map((m) => m[1]!);
       const worklets = new Set(helpers.map((h) => h.name));
-      const picture = body.slice(0, body.indexOf('}, ['));
-      for (const name of local) {
-        if (new RegExp(`\\b${name}\\(`).test(picture)) expect({ file: f, name, worklet: worklets.has(name) }).toEqual({ file: f, name, worklet: true });
+      const bodies: string[] = [];
+      for (const m of src.matchAll(/use(?:DerivedValue|FrameCallback|AnimatedStyle)\(/g)) {
+        let depth = 0;
+        let i = m.index! + m[0].length - 1;
+        for (; i < src.length; i++) {
+          if (src[i] === '(') depth++;
+          else if (src[i] === ')' && --depth === 0) break;
+        }
+        bodies.push(src.slice(m.index!, i));
+      }
+      expect(bodies.length).toBeGreaterThan(0);
+      for (const body of bodies) {
+        for (const name of local) {
+          if (new RegExp(`\\b${name}\\(`).test(body)) expect({ file: f, name, worklet: worklets.has(name) }).toEqual({ file: f, name, worklet: true });
+        }
       }
     }
   });

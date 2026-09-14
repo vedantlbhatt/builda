@@ -1130,5 +1130,6 @@
    "sessions": 0,
    "attended_seconds": 0
   }
- ]
+ ],
+ "window_attended_seconds": 21600
 }

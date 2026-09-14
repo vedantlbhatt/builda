@@ -209,6 +209,14 @@ export function raceLayout(runs: readonly RaceIn[], width: number, rowGap: numbe
 
 // ------------------------------------------------------------------ the session swarm
 
+/**
+ * The most dots one swarm draws. Placing a dot checks it against every dot already down, so the
+ * layout grows with the square of the dots, on the JavaScript thread: 400 lays out in well under
+ * a frame's budget on a phone, and the page says how many of how many it drew. UNMEASURED
+ * JUDGEMENT CALL beside that: the corpus's busiest project has 155 sessions.
+ */
+export const SWARM_MAX = 400;
+
 export interface SwarmIn {
   id: string;
   /** Epoch ms the session started. */
@@ -244,10 +252,13 @@ export function swarmRadius(size: number, max: number, o: Pick<SwarmOptions, 'rM
  * `from` and `to` are the axis's ends in epoch ms (the first and last start when left out).
  * Deterministic: the same sessions always make the same swarm.
  */
-export function beeswarm(items: readonly SwarmIn[], width: number, o: SwarmOptions, from?: number, to?: number): { dots: SwarmDot[]; extent: number; from: number; to: number } {
+export function beeswarm(all: readonly SwarmIn[], width: number, o: SwarmOptions, from?: number, to?: number): { dots: SwarmDot[]; extent: number; from: number; to: number } {
+  // Never more than the cap, the newest kept: the caller says how many of how many it drew.
+  const items = all.length > SWARM_MAX ? [...all].sort((a, b) => a.at - b.at).slice(-SWARM_MAX) : all;
   if (!items.length) return { dots: [], extent: 0, from: from ?? 0, to: to ?? 0 };
-  const lo = from ?? Math.min(...items.map((s) => s.at));
-  const hi = to ?? Math.max(...items.map((s) => s.at));
+  // The axis reaches the ends it is given (a project's first session), and never cuts a dot off.
+  const lo = Math.min(from ?? Number.POSITIVE_INFINITY, ...items.map((s) => s.at));
+  const hi = Math.max(to ?? Number.NEGATIVE_INFINITY, ...items.map((s) => s.at));
   const max = Math.max(...items.map((s) => s.size));
   const span = hi - lo;
   const xOf = (at: number) => (span > 0 ? o.pad + ((at - lo) / span) * (width - o.pad * 2) : width / 2);

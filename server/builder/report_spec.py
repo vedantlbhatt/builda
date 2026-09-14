@@ -876,6 +876,7 @@ class ReportProjects(BaseModel):
     unresolved: ReportProjectsUnresolved
     comparisons: list[ReportProjectComparison] = Field(max_length=10)
     weeks: list[ReportProjectsWeek] | None = Field(default=None, max_length=12)
+    window_attended_seconds: int | None = None
 
 
 class BuilderReport(BaseModel):

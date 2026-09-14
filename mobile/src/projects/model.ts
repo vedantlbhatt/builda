@@ -7,8 +7,8 @@
  * the server sends `project_names`, the PUBLIC name of each key that has one; a private
  * repository has none, and never will from the server. So a project is labelled, in order,
  * by its public name, by the owner's own label for it (kept on the phone, never uploaded:
- * `nicknames`), or as a private project with the first six characters of its key, which is
- * stable and says nothing about it (`projectLabel`).
+ * `nicknames`), or as "Private project" and the number this phone gave it on first sight,
+ * which is stable and says nothing about it (`projectLabel`, `registerProjects`).
  *
  * TWO SCOPES. Every project has `history`, every sitting the machine holds in it however old,
  * and `window`, the report's window only, null when nothing in it. A screen says which: the
@@ -61,10 +61,14 @@ import { burnOf, NOT_WHAT_YOU_PAY, readSpan, type MoneyModel } from '../insights
 import { CREATURE_HUE, SPECTRUM, type HueName } from '../insights/palette';
 import { resolveAnimal, type Animal } from '../pixel/animals';
 import { archetypeDisplay, metricLabel, metricValue } from '../you/archetype';
+import { SWARM_MAX } from './geometry';
 
 // ------------------------------------------------------------------ labels
 
 export type LabelSource = 'public' | 'nickname' | 'private';
+
+/** A no-break space: a private project's number never wraps away from its words. */
+const NBSP = '\u00a0';
 
 export interface ProjectLabel {
   text: string;
@@ -79,19 +83,138 @@ export function shortKey(key: string): string {
 
 /**
  * What a project is called on this phone: its public name from the server, else the owner's
- * own label for it (stored on the phone, never sent), else "Private project" and six
- * characters of its key. Never a name the server did not send and the owner did not type.
+ * own label for it (stored on the phone, never sent), else "Private project" and the number this
+ * phone gave it (`registerProjects`). Never a name the server did not send and the owner did not
+ * type, and NEVER A CHARACTER OF THE KEY.
+ *
+ * FOUND IN REVIEW (2026-09-13): the first version said "Private project" and six characters of
+ * the key. The key is an HMAC under a pepper that ships in the open (`capture/tuning.py`), so
+ * one guess at a repository's name (`builder-repo-v1|github.com/<you>/<repo>`) reproduces the
+ * prefix, and any screenshot confirmed a private repository's name. A number the phone gives out
+ * says nothing about the repository at all.
+ *
+ * The number is held to its words by a no-break space, so a narrow column (the money flow's
+ * project labels) wraps "Private" over "project 2" and never leaves a number alone on a line.
  */
 export function projectLabel(
   key: string,
   names?: Readonly<Record<string, string>> | null,
   nicknames?: Readonly<Record<string, string>> | null,
+  number?: number | null,
 ): ProjectLabel {
   const pub = names?.[key]?.trim();
   if (pub) return { text: pub, source: 'public' };
   const own = nicknames?.[key]?.trim();
   if (own) return { text: own, source: 'nickname' };
-  return { text: `Private project ${key.slice(0, 6)}`, source: 'private' };
+  return { text: number != null && number > 0 ? `Private project${NBSP}${number}` : 'Private project', source: 'private' };
+}
+
+// ------------------------------------------------------------------ the phone's own register
+
+/**
+ * What this phone remembers about each project it has shown, by its full key, and never sends
+ * anywhere: the number a private project is called by and the hue it wears. Both are given once,
+ * the first time the phone sees the project, new projects in the order of their first sessions,
+ * and a number is never given to another project, so "Private project 2" is the same project on
+ * every launch and a project keeps its colour when an older one leaves the report's top 20. Kept
+ * in the cache kv beside the owner's names (`nicknames.ts`), and cleared with them at sign out.
+ */
+export interface ProjectRegistry {
+  /** The number the next project this phone has not seen gets. */
+  next: number;
+  projects: Readonly<Record<string, { n: number; hue: HueName }>>;
+}
+
+export const EMPTY_REGISTRY: ProjectRegistry = { next: 1, projects: {} };
+export const REGISTRY_KEY = 'projects.registry.v1';
+
+const HUE_SET: ReadonlySet<string> = new Set(['amber', 'brass', 'tide', 'cobalt', 'iris', 'heather', 'orchid', 'coral', 'ember']);
+
+/** The saved register. Anything that is not a whole number and a hue for a real key is dropped, not repaired. */
+export function parseRegistry(raw: string | null | undefined): ProjectRegistry {
+  if (!raw) return EMPTY_REGISTRY;
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return EMPTY_REGISTRY;
+  }
+  const o = v as { next?: unknown; projects?: unknown } | null;
+  if (!o || typeof o !== 'object' || !o.projects || typeof o.projects !== 'object') return EMPTY_REGISTRY;
+  const projects: Record<string, { n: number; hue: HueName }> = {};
+  let top = 0;
+  for (const [k, x] of Object.entries(o.projects as Record<string, unknown>)) {
+    const e = x as { n?: unknown; hue?: unknown } | null;
+    if (!/^[0-9a-f]{64}$/.test(k) || !e || !Number.isInteger(e.n) || (e.n as number) < 1 || typeof e.hue !== 'string' || !HUE_SET.has(e.hue)) continue;
+    projects[k] = { n: e.n as number, hue: e.hue as HueName };
+    top = Math.max(top, e.n as number);
+  }
+  // Never below a number already given: a hand edited `next` cannot make one given twice.
+  const next = Number.isInteger(o.next) && (o.next as number) > top ? (o.next as number) : top + 1;
+  return { next, projects };
+}
+
+/**
+ * The register with every project in `projects` in it. A project already there keeps its number
+ * and hue. The rest, oldest first by their first session (the key breaks a tie), each take the
+ * next number, and the hue their key asks for (`preferredHue`) unless a project on this list
+ * already wears it, in which case the next free one round the ring; when every hue is worn, the
+ * one it asks for. `changed` says whether anything was given out, so a caller saves only then.
+ */
+export function registerProjects(
+  registry: ProjectRegistry,
+  projects: readonly { key: string; history: { first_at: string } }[],
+): { registry: ProjectRegistry; changed: boolean } {
+  const known = new Map(Object.entries(registry.projects));
+  const fresh = projects
+    .filter((p, i) => !known.has(p.key) && projects.findIndex((q) => q.key === p.key) === i)
+    .sort((a, b) => (Date.parse(a.history.first_at) || 0) - (Date.parse(b.history.first_at) || 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  if (!fresh.length) return { registry, changed: false };
+  const taken = new Set<HueName>(projects.flatMap((p) => (known.has(p.key) ? [known.get(p.key)!.hue] : [])));
+  let next = registry.next;
+  for (const p of fresh) {
+    const want = preferredHue(p.key);
+    let hue = want;
+    if (taken.size < PROJECT_HUES.length) {
+      const at = PROJECT_HUES.indexOf(want);
+      for (let k = 0; k < PROJECT_HUES.length; k++) {
+        const h = PROJECT_HUES[(at + k) % PROJECT_HUES.length]!;
+        if (!taken.has(h)) {
+          hue = h;
+          break;
+        }
+      }
+    }
+    taken.add(hue);
+    known.set(p.key, { n: next, hue });
+    next += 1;
+  }
+  return { registry: { next, projects: Object.fromEntries(known) }, changed: true };
+}
+
+/**
+ * Every listed project's label, the comparisons' too: `projectLabel` with each private project's
+ * number from the register (given here, the same way the phone will save it, when the register
+ * has not seen it yet). The one place a screen gets a project's name from.
+ */
+export function projectLabels(
+  block: {
+    projects: readonly { key: string; history: { first_at: string } }[];
+    comparisons?: readonly { high?: string | null; low?: string | null }[];
+  },
+  names?: Readonly<Record<string, string>> | null,
+  nicknames?: Readonly<Record<string, string>> | null,
+  registry?: ProjectRegistry | null,
+): Record<string, ProjectLabel> {
+  const reg = registerProjects(registry ?? EMPTY_REGISTRY, block.projects).registry;
+  const out: Record<string, ProjectLabel> = {};
+  const keys = new Set<string>(block.projects.map((p) => p.key));
+  for (const c of block.comparisons ?? []) {
+    if (c.high) keys.add(c.high);
+    if (c.low) keys.add(c.low);
+  }
+  for (const k of keys) out[k] = projectLabel(k, names, nicknames, reg.projects[k]?.n ?? null);
+  return out;
 }
 
 // ------------------------------------------------------------------ the sentences (ports)
@@ -316,6 +439,27 @@ function day(iso: string): string {
   return iso.slice(0, 10);
 }
 
+/** The hour the day turns over, the app's one day rule (`theme.DAY_BOUNDARY_HOUR`, CLAUDE.md). */
+const DAY_TURNS_AT_HOUR = 4;
+
+/**
+ * The local day an INSTANT falls on, "YYYY-MM-DD": the day turning at 04:00, in the zone
+ * `offsetMinutes` east of UTC. The report carries instants (a first session's start, a last
+ * session's end) and no zone, so the default is this phone's own offset at that instant.
+ *
+ * FOUND IN REVIEW (2026-09-13): the first version sliced the date off the instant, so a first
+ * session at 2026-08-12T00:44:30Z, which was 20:44 on Aug 11 in New York, read "since Aug 12".
+ * `day` above stays for the fields that are ALREADY local days written at midnight UTC (a week,
+ * a commit day), which must never be moved to a zone.
+ */
+export function localDay(iso: string, offsetMinutes?: number): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso.slice(0, 10);
+  const off = offsetMinutes ?? -new Date(t).getTimezoneOffset();
+  const d = new Date(t + off * 60_000 - DAY_TURNS_AT_HOUR * 3_600_000);
+  return [String(d.getUTCFullYear()), String(d.getUTCMonth() + 1).padStart(2, '0'), String(d.getUTCDate()).padStart(2, '0')].join('-');
+}
+
 /**
  * The languages with every `other` row made one, last. FOUND ON THE SIMULATOR (2026-09-13, the
  * real corpus): `languages.split` can send `other` twice for one project, once for an extension
@@ -331,15 +475,13 @@ export function oneOther<T extends { language: string; lines: number; files: num
   return [...named, merged];
 }
 
-function labelsFor(block: ReportProjects, names?: Readonly<Record<string, string>> | null, nicknames?: Readonly<Record<string, string>> | null) {
-  const out: Record<string, ProjectLabel> = {};
-  const keys = new Set<string>(block.projects.map((p) => p.key));
-  for (const c of block.comparisons) {
-    if (c.high) keys.add(c.high);
-    if (c.low) keys.add(c.low);
-  }
-  for (const k of keys) out[k] = projectLabel(k, names, nicknames);
-  return out;
+function labelsFor(
+  block: ReportProjects,
+  names?: Readonly<Record<string, string>> | null,
+  nicknames?: Readonly<Record<string, string>> | null,
+  registry?: ProjectRegistry | null,
+): Record<string, ProjectLabel> {
+  return projectLabels(block, names, nicknames, registry);
 }
 
 function row(p: ReportProject, labels: Record<string, ProjectLabel>): ProjectRow {
@@ -360,8 +502,8 @@ function row(p: ReportProject, labels: Record<string, ProjectLabel>): ProjectRow
       sessions: h.sessions,
       attendedSeconds: h.attended_seconds,
       activeSeconds: h.active_seconds,
-      firstDay: day(h.first_at),
-      lastDay: day(h.last_at),
+      firstDay: localDay(h.first_at),
+      lastDay: localDay(h.last_at),
       longestStreak: h.longest_streak_days ?? null,
       currentStreak: h.current_streak_days ?? null,
     },
@@ -407,9 +549,10 @@ export function projectsView(
   block: ReportProjects | null | undefined,
   names?: Readonly<Record<string, string>> | null,
   nicknames?: Readonly<Record<string, string>> | null,
+  registry?: ProjectRegistry | null,
 ): ProjectsView | null {
   if (!block) return null;
-  const labels = labelsFor(block, names, nicknames);
+  const labels = labelsFor(block, names, nicknames, registry);
   return {
     windowDays: block.window_days,
     rows: block.projects.map((p) => row(p, labels)),
@@ -433,11 +576,12 @@ export function projectDetail(
   names?: Readonly<Record<string, string>> | null,
   nicknames?: Readonly<Record<string, string>> | null,
   nowMs: number = Date.now(),
+  registry?: ProjectRegistry | null,
 ): ProjectDetail | null {
   if (!block) return null;
   const p = block.projects.find((x) => x.key === key || (key.length >= 12 && x.key.startsWith(key)));
   if (!p) return null;
-  const labels = labelsFor(block, names, nicknames);
+  const labels = labelsFor(block, names, nicknames, registry);
   const base = row(p, labels);
   const w = p.window ?? null;
   const comparisons = block.comparisons
@@ -531,34 +675,16 @@ export function preferredHue(key: string): HueName {
 }
 
 /**
- * Every project's hue, the same on every screen and every launch. Each project asks for the hue
- * its key names (`preferredHue`); the OLDEST project, by its first session, gets what it asks for,
- * and a younger one whose hue is taken steps round the ring to the next free one. So a project
- * never changes colour when a newer one arrives, and no two projects share a hue until there are
- * more projects than hues.
+ * Every project's hue, the same on every screen and every launch: the one the register gave it
+ * (`registerProjects`). A project the register has not seen yet asks for the hue its key names
+ * (`preferredHue`); the oldest by its first session gets what it asks for, and a younger one whose
+ * hue a listed project wears steps round the ring to the next free one. A hue once given is kept,
+ * so a project never changes colour when a newer one arrives or an older one leaves the list.
  */
-export function projectHues(projects: readonly { key: string; history: { first_at: string } }[]): Record<string, HueName> {
-  const order = [...projects].sort(
-    (a, b) => (Date.parse(a.history.first_at) || 0) - (Date.parse(b.history.first_at) || 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
-  );
-  const taken = new Set<HueName>();
+export function projectHues(projects: readonly { key: string; history: { first_at: string } }[], registry?: ProjectRegistry | null): Record<string, HueName> {
+  const reg = registerProjects(registry ?? EMPTY_REGISTRY, projects).registry;
   const out: Record<string, HueName> = {};
-  for (const p of order) {
-    const want = preferredHue(p.key);
-    let hue = want;
-    if (taken.size < PROJECT_HUES.length) {
-      const at = PROJECT_HUES.indexOf(want);
-      for (let k = 0; k < PROJECT_HUES.length; k++) {
-        const h = PROJECT_HUES[(at + k) % PROJECT_HUES.length]!;
-        if (!taken.has(h)) {
-          hue = h;
-          break;
-        }
-      }
-    }
-    taken.add(hue);
-    out[p.key] = hue;
-  }
+  for (const p of projects) out[p.key] = reg.projects[p.key]?.hue ?? preferredHue(p.key);
   return out;
 }
 
@@ -734,7 +860,7 @@ export function weekLabel(ymd: string): string {
 
 export const WEEKS_NOT_SENT = 'Your Mac sent this report before it counted weeks. A newer Mac sends them, and this fills in.';
 export const WEEKS_EMPTY = 'No weeks to draw yet: your Mac has not counted a session.';
-export const WEEKS_QUIET = 'No time with you there in any of these weeks, so there is nothing to draw.';
+export const WEEKS_QUIET = 'Your Mac read no time with you there in any of these weeks, so there is nothing to draw.';
 
 /**
  * THE ORDER OF A WEEK, the one rule the rank race draws: most time with you there first, a tie to
@@ -765,14 +891,15 @@ export function weeklyView(
   block: ReportProjects | null | undefined,
   names?: Readonly<Record<string, string>> | null,
   nicknames?: Readonly<Record<string, string>> | null,
+  registry?: ProjectRegistry | null,
 ): WeeklyView | null {
   if (!block) return null;
   const axis: readonly ReportProjectsWeek[] | null = block.weeks ?? null;
   const empty = (refusal: string): WeeklyView => ({ weeks: [], series: [], totalSeconds: 0, refusal });
   if (axis === null) return empty(WEEKS_NOT_SENT);
   if (!axis.length) return empty(WEEKS_EMPTY);
-  const labels = labelsFor(block, names, nicknames);
-  const hues = projectHues(block.projects);
+  const labels = labelsFor(block, names, nicknames, registry);
+  const hues = projectHues(block.projects, registry);
   const weeks: WeekColumn[] = axis.map((w) => ({ day: day(w.week), label: weekLabel(day(w.week)), days: w.days, attendedSeconds: w.attended_seconds, sessions: w.sessions }));
   const at = new Map(weeks.map((w, i) => [w.day, i]));
   const series: WeeklySeries[] = block.projects.flatMap((p) => {
@@ -797,7 +924,7 @@ export function weeklyView(
 
 /** "the week of Aug 11", and how much of it was read when that is not all of it. */
 function weekPhrase(w: WeekColumn): { when: string; partial: string } {
-  return { when: `the week of ${w.label}`, partial: w.days < 7 ? ` The report read ${count(w.days, 'day')} of it.` : '' };
+  return { when: `the week of ${w.label}`, partial: w.days < 7 ? ` Your Mac's report covers ${count(w.days, 'day')} of it.` : '' };
 }
 
 /**
@@ -810,9 +937,11 @@ export function riverLine(view: WeeklyView, key: string, week: number): string |
   if (!s || !w) return null;
   const secs = s.attended[week] ?? 0;
   const { when, partial } = weekPhrase(w);
-  if (secs <= 0) return `No time with you there in ${s.label.text} in ${when}.${partial}`;
-  const share = w.attendedSeconds > 0 ? `, ${shareWords(secs / w.attendedSeconds)} of every hour with you there that week` : '';
-  return `${s.label.text}: ${hoursWords(secs)} with you there in ${when}${share}.${partial}`;
+  // Every number here is the Mac's report, and says so: the phone's own session list can hold
+  // sessions another machine uploaded (the hook channel), which this report never read.
+  if (secs <= 0) return `Your Mac read no time with you there in ${s.label.text} in ${when}.${partial}`;
+  if (w.attendedSeconds <= secs) return `${s.label.text}: all ${hoursWords(secs)} with you there that your Mac read in ${when}.${partial}`;
+  return `${s.label.text}: ${hoursWords(secs)} of the ${hoursWords(w.attendedSeconds)} with you there that your Mac read in ${when}.${partial}`;
 }
 
 /** What the rivers say before a tap: the widest stream, over how many weeks, and how to ask. */
@@ -820,12 +949,12 @@ export function riversLine(view: WeeklyView): string | null {
   if (view.refusal || !view.series.length) return null;
   const widest = [...view.series].sort((a, b) => b.totalSeconds - a.totalSeconds)[0]!;
   const weeks = view.weeks.length;
-  const over = weeks === 1 ? 'in the one week read' : `over ${n(weeks)} weeks`;
+  const over = weeks === 1 ? 'in the one week' : `over ${n(weeks)} weeks`;
   const lead =
     view.series.length === 1
-      ? `Every hour here is ${widest.label.text}: ${hoursWords(widest.totalSeconds)} with you there ${over}.`
-      : `The widest river is ${widest.label.text}: ${hoursWords(widest.totalSeconds)} with you there ${over}, ${shareWords(widest.totalSeconds / view.totalSeconds)} of the projects' time.`;
-  return `${lead} Tap a river to name it.`;
+      ? `Every hour here is ${widest.label.text}: ${hoursWords(widest.totalSeconds)} with you there ${over}, as your Mac read them.`
+      : `${widest.label.text} is the widest river: ${hoursWords(widest.totalSeconds)} with you there ${over}, ${shareWords(widest.totalSeconds / view.totalSeconds)} of the projects' time your Mac read.`;
+  return `${lead} Tap a river to see its week.`;
 }
 
 // ------------------------------------------------------------------ the rank race
@@ -839,6 +968,8 @@ export interface RaceSummary {
   leader: { key: string; label: ProjectLabel; hue: HueName; weeksLed: number } | null;
   /** Weeks in which any project had time with you there. */
   weeksRanked: number;
+  /** Every week on the axis: the weeks the Mac's report read. */
+  weeksRead: number;
   /** How many times the top place changed hands between one ranked week and the next. */
   changes: number;
   /** The race in sentences, each with its numbers. */
@@ -882,18 +1013,25 @@ export function raceSummary(view: WeeklyView): RaceSummary | null {
   const resting = everRanked.filter((s) => (s.ranks[latest] ?? null) === null).map((s) => s.label);
   const leader = leaderIdx >= 0 ? { key: view.series[leaderIdx]!.key, label: view.series[leaderIdx]!.label, hue: view.series[leaderIdx]!.hue, weeksLed: led[leaderIdx]! } : null;
 
+  // The race is the Mac's report, week by week, and every sentence says so: another machine's
+  // uploads are on the phone's session list and not in this report.
   const lines: string[] = [];
   const k = rankedWeeks.length;
+  const all = weeks === 1 ? 'the one week your Mac read' : `all ${n(weeks)} weeks your Mac read`;
   if (leader) {
-    if (everRanked.length === 1) lines.push(`Only ${leader.label.text} had time with you there in these weeks, so it led ${k === 1 ? 'the one week' : `all ${n(k)}`}.`);
-    else if (leader.weeksLed === k) lines.push(`${leader.label.text} led every one of the ${n(k)} weeks with time with you there.`);
-    else lines.push(`${leader.label.text} led ${n(leader.weeksLed)} of the ${n(k)} weeks with time with you there.`);
+    if (everRanked.length === 1) lines.push(`Only ${leader.label.text} had time with you there on your Mac in these weeks, so it led ${leader.weeksLed === weeks ? all : `${n(leader.weeksLed)} of the ${n(weeks)} weeks your Mac read`}.`);
+    else if (leader.weeksLed === weeks) lines.push(`${leader.label.text} led ${all}.`);
+    else lines.push(`${leader.label.text} led ${n(leader.weeksLed)} of the ${n(weeks)} weeks your Mac read.`);
   }
   if (everRanked.length > 1) lines.push(changes === 0 ? 'The top place never changed hands.' : `The top place changed hands ${changes === 1 ? 'once' : `${n(changes)} times`}.`);
+  const quiet = weeks - k;
+  if (quiet > 0) {
+    const q = view.weeks.find((_, i) => top[i] === null)!;
+    lines.push(quiet === 1 ? `Your Mac read no time with you there in any project in ${weekPhrase(q).when}.` : `Your Mac read no time with you there in any project in ${n(quiet)} of those weeks.`);
+  }
   const w = view.weeks[latest];
-  if (w && latest !== weeks - 1) lines.push(`The latest week with time with you there is ${weekPhrase(w).when}.`);
-  if (w && resting.length) lines.push(`No time with you there in ${weekPhrase(w).when}: ${listed(resting.map((l) => l.text))}.`);
-  return { latest, order, resting, leader, weeksRanked: k, changes, lines };
+  if (w && resting.length) lines.push(`In ${weekPhrase(w).when}, your Mac read no time with you there in ${listed(resting.map((l) => l.text))}.`);
+  return { latest, order, resting, leader, weeksRanked: k, weeksRead: weeks, changes, lines };
 }
 
 // ------------------------------------------------------------------ the tab's hero
@@ -919,22 +1057,25 @@ export function windowPhrase(report: BuilderReport | null | undefined, block: Re
 
 export function projectsHero(view: ProjectsView, block: ReportProjects, report: BuilderReport | null | undefined, nowMs: number = Date.now()): ProjectsHero {
   const scope = windowPhrase(report, block, nowMs);
-  const projects = view.rows.reduce((a, r) => a + (r.window?.attendedSeconds ?? 0), 0);
-  const all = projects + view.unresolved.attendedSeconds;
+  // The block's own total when it sends one: every sitting in the window, the projects past the
+  // list's cap included, which is what each share of it is out of. An older Mac's report has only
+  // the listed projects and the unresolved to add up.
+  const listed = view.rows.reduce((a, r) => a + (r.window?.attendedSeconds ?? 0), 0) + view.unresolved.attendedSeconds;
+  const all = block.window_attended_seconds ?? listed;
   const lead = view.rows.find((r) => r.window && r.window.share !== null && r.window.attendedSeconds > 0) ?? null;
   const small: string[] = [];
   if (view.hidden > 0) small.push(`${count(view.hidden, 'more project', 'more projects')} on your Mac ${view.hidden === 1 ? 'is' : 'are'} left off this list, which keeps the ${n(view.rows.length)} with the most time.`);
   if (view.unresolved.sessions > 0) {
-    small.push(`${count(view.unresolved.sessions, 'session')} in ${scope} ran in no repository, a home folder or a folder with no git, so ${view.unresolved.sessions === 1 ? 'it belongs' : 'they belong'} to no project: ${hoursWords(view.unresolved.attendedSeconds)} with you there.`);
+    small.push(`${count(view.unresolved.sessions, 'session')} your Mac read in ${scope} ran in no repository, a home folder or a folder with no git, so ${view.unresolved.sessions === 1 ? 'it belongs' : 'they belong'} to no project: ${hoursWords(view.unresolved.attendedSeconds)} with you there.`);
   }
   return {
     count: numSpec(block.projects_total, n(block.projects_total)),
     countCaption: block.projects_total === 1 ? 'project on your Mac' : 'projects on your Mac',
     hours: all > 0 ? hoursFigure(all) : null,
-    hoursCaption: `hours with you there, ${scope}`,
+    hoursCaption: `hours with you there on your Mac, ${scope}`,
     note:
       all <= 0
-        ? `No time with you there in ${scope}.`
+        ? `Your Mac read no time with you there in ${scope}.`
         : lead && lead.window && lead.window.shareWords
           ? `${capitalFirst(lead.window.shareWords)} of it in ${lead.label.text}.`
           : null,
@@ -971,14 +1112,20 @@ export interface ProjectDoor {
 }
 
 /** Each project as a band door, in the list's order. */
-export function projectDoors(view: ProjectsView, block: ReportProjects, report: BuilderReport | null | undefined, nowMs: number = Date.now()): ProjectDoor[] {
-  const hues = projectHues(block.projects);
+export function projectDoors(
+  view: ProjectsView,
+  block: ReportProjects,
+  report: BuilderReport | null | undefined,
+  nowMs: number = Date.now(),
+  registry?: ProjectRegistry | null,
+): ProjectDoor[] {
+  const hues = projectHues(block.projects, registry);
   const scope = windowPhrase(report, block, nowMs);
   return view.rows.map((r) => {
     const w = r.window;
     const hours = w && w.attendedSeconds > 0 ? hoursFigure(w.attendedSeconds) : null;
     const share = w && w.share !== null && w.attendedSeconds > 0 ? shareFigure(w.share) : null;
-    const quiet = !w ? `Nothing here in ${scope}.` : w.attendedSeconds <= 0 ? `No time with you there in ${scope}: the agent ran alone.` : null;
+    const quiet = !w ? `Your Mac read nothing here in ${scope}.` : w.attendedSeconds <= 0 ? `Your Mac read no time with you there in ${scope}: the agent ran alone.` : null;
     const said = [r.label.text, r.stageLabel, hours ? `${hours.final} hours with you there` : quiet, share ? `${share.final} of your time` : null, r.momentum].filter(Boolean).join('. ');
     return {
       key: r.key,
@@ -990,7 +1137,7 @@ export function projectDoors(view: ProjectsView, block: ReportProjects, report: 
       lastSession: r.lastSession,
       hours,
       share,
-      hoursCaption: 'hours with you there',
+      hoursCaption: 'hours with you there on your Mac',
       shareCaption: share ? `of your time, ${scope}` : null,
       quiet,
       momentum: r.momentum,
@@ -1139,11 +1286,12 @@ export function projectPage(
   nicknames?: Readonly<Record<string, string>> | null,
   report?: BuilderReport | null,
   nowMs: number = Date.now(),
+  registry?: ProjectRegistry | null,
 ): ProjectPage | null {
-  const detail = projectDetail(block, key, names, nicknames, nowMs);
+  const detail = projectDetail(block, key, names, nicknames, nowMs, registry);
   if (!block || !detail) return null;
   const p = block.projects.find((x) => x.key === detail.key)!;
-  const hue = projectHues(block.projects)[p.key] ?? preferredHue(p.key);
+  const hue = projectHues(block.projects, registry)[p.key] ?? preferredHue(p.key);
   const scope = windowPhrase(report, block, nowMs);
   const h = p.history;
   const w = p.window ?? null;
@@ -1157,7 +1305,7 @@ export function projectPage(
     historyHours: hoursFigure(h.attended_seconds),
     longestStreak: num(h.longest_streak_days) && h.longest_streak_days > 0 ? numSpec(h.longest_streak_days, n(h.longest_streak_days)) : null,
     currentStreak: num(h.current_streak_days) && h.current_streak_days > 0 ? numSpec(h.current_streak_days, n(h.current_streak_days)) : null,
-    since: weekLabel(day(h.first_at)),
+    since: weekLabel(localDay(h.first_at)),
   };
   if (!w) return { detail, hue, scope, hero, time: null, build: null, shipping: null, money: null };
 
@@ -1287,13 +1435,30 @@ export function swarmSessions(fromProject: readonly SessionRowIn[], fromCache: r
   };
   fromProject.forEach(take);
   fromCache.filter((r) => r.repo_key === key).forEach(take);
-  return [...seen.values()].sort((a, b) => a.at - b.at);
+  // The newest `SWARM_MAX`, in the order they happened (`geometry.SWARM_MAX` says why a cap).
+  return [...seen.values()].sort((a, b) => a.at - b.at).slice(-SWARM_MAX);
 }
 
-/** What the swarm says under it: how many dots, against how many sessions the Mac counts here. */
-export function swarmLine(shown: number, history: number): string {
-  if (shown <= 0) return 'No session of this project is on this phone yet. They arrive as your Mac uploads them.';
-  const dots = shown === 1 ? 'One dot is one session' : `${n(shown)} dots, one a session`;
-  const all = history > shown ? `, of the ${count(history, 'session')} your Mac counts here` : '';
-  return `${dots}${all}. A dot's area is its active time, and the arc round it in your colour goes as far round as the share you were there for. Tap one to open it.`;
+/**
+ * What the swarm says under it: how many dots, of how many sessions were uploaded in this project
+ * (`uploaded`, from the server; the newest are drawn when there are more than the swarm holds),
+ * and, when the Mac's report counts a different number, why. The dots are every session uploaded
+ * from any machine; the report counts only the sittings the Mac read itself (a second machine's
+ * hook uploads are on the server and not in that report), and the page says so rather than show
+ * two numbers that disagree with no reason given.
+ */
+export function swarmLine(shown: number, macCount: number, uploaded?: number | null): string {
+  if (shown <= 0) return 'No session of this project is on this phone yet. They arrive as your machines upload them.';
+  const total = uploaded != null && uploaded > shown ? uploaded : shown;
+  const dots =
+    total > shown
+      ? `The newest ${n(shown)} of the ${count(total, 'session')} uploaded here, a dot each`
+      : shown === 1
+        ? 'The one session uploaded here, a dot'
+        : `All ${n(shown)} sessions uploaded here, a dot each`;
+  const mac =
+    macCount !== total
+      ? ` Your Mac's report counts ${count(macCount, 'session')} here, only the ones it read itself; the dots are every one uploaded, from any of your machines.`
+      : '';
+  return `${dots}.${mac} A dot's area is its active time, and the arc round it in your colour goes as far round as the share you were there for. Tap one to open it.`;
 }

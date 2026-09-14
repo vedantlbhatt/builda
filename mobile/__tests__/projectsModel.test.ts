@@ -189,12 +189,13 @@ describe('the list and the page over a real block', () => {
 
 // ------------------------------------------------------------------ 3. labels
 describe('a private repository is never named by anyone but its owner', () => {
-  const key = 'b093f92080ab' + '0'.repeat(52);
+  const key = 'a'.repeat(64);
 
-  test('public name, then the owner label, then a private label from the key', () => {
+  test('public name, then the owner label, then the number this phone gave it, never a character of the key', () => {
     expect(projectLabel(key, { [key]: 'gt-transit' }, { [key]: 'RideGT' })).toEqual({ text: 'gt-transit', source: 'public' });
     expect(projectLabel(key, {}, { [key]: 'RideGT' })).toEqual({ text: 'RideGT', source: 'nickname' });
-    expect(projectLabel(key, null, null)).toEqual({ text: 'Private project b093f9', source: 'private' });
+    expect(projectLabel(key, null, null, 2)).toEqual({ text: 'Private project\u00a02', source: 'private' });
+    expect(projectLabel(key, null, null)).toEqual({ text: 'Private project', source: 'private' });
   });
 
   test('another key\'s name is never borrowed, and a blank one is no name', () => {
@@ -207,6 +208,9 @@ describe('a private repository is never named by anyone but its owner', () => {
     const b = block();
     const v = projectsView(b)!;
     for (const r of v.rows) expect(r.label.source).toBe('private');
+    // Numbered in the order of their first sessions, never by a piece of the key.
+    expect(v.rows.map((r) => r.label.text).sort()).toEqual(['Private project\u00a01', 'Private project\u00a02']);
+    for (const r of v.rows) expect(r.label.text.includes(r.key.slice(0, 4))).toBe(false);
     for (const s of strings(b)) expect(s).not.toMatch(/zebra|github/);
   });
 });
@@ -233,8 +237,11 @@ describe('Api.project', () => {
         set: async () => {},
         remove: async () => {},
       });
-      const got = await api.project('b093f92080ab');
-      expect(seen).toEqual(['http://127.0.0.1:1/v1/projects/b093f92080ab']);
+      const got = await api.project('c0ffee00c0ff');
+      expect(seen).toEqual(['http://127.0.0.1:1/v1/projects/c0ffee00c0ff']);
+      // A later page: the keyset instant, encoded, and the page size.
+      await api.project('c0ffee00c0ff', { before: '2026-09-01T10:00:00+00:00', limit: 200 });
+      expect(seen[1]).toBe('http://127.0.0.1:1/v1/projects/c0ffee00c0ff?before=2026-09-01T10%3A00%3A00%2B00%3A00&limit=200');
       expect(got.name).toBeNull();
     } finally {
       globalThis.fetch = real;

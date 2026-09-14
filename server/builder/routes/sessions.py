@@ -486,15 +486,27 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
 #: A project key in a path: the repository hash the report and the sessions carry, whole
 #: (64 hex) or as the 12 character prefix `GET /v1/profile` lists projects by.
 PROJECT_KEY = r"^[0-9a-f]{12,64}$"
-#: Sessions a project page lists, newest first. The phone's session list pages by 50.
+#: Sessions a project page lists by default, newest first. The phone's session list pages by 50.
 PROJECT_SESSIONS = 50
+#: The most one page of a project's sessions may ask for.
+PROJECT_SESSIONS_MAX = 200
 
 
 @router.get("/projects/{key}")
-def project(key: str, device: CurrentDevice = Depends(current_device)):
+def project(
+    key: str,
+    device: CurrentDevice = Depends(current_device),
+    before: str | None = None,
+    limit: int = Query(PROJECT_SESSIONS, ge=1, le=PROJECT_SESSIONS_MAX),
+):
     """One project's slice: its block from the stored report, its public name if it has
     one, the comparisons that name it, and its own sessions from the server's rows (which
     the report does not carry), so the phone's project page is one request.
+
+    The sessions page like `/sessions` does, keyset on `started_at` (`before`, and
+    `next_before` back while there may be more), and `sessions_total` says how many there are
+    in all, so the page's session swarm can reach back to the project's first session, or say
+    how many of how many it drew.
 
     `key` is the repository's hash or the 12 character prefix `GET /v1/profile` lists. It
     resolves among the repositories this viewer has a session in and the keys in their own
@@ -527,19 +539,33 @@ def project(key: str, device: CurrentDevice = Depends(current_device)):
                 409, "that prefix names more than one project; send more of the key"
             )
         (full,) = found
+        page = ["s.user_id = :u", "r.repo_hash = :h", "s.state = 'final'", "s.visible"]
+        params: dict = {"u": uid, "h": full, "limit": limit}
+        if before:
+            page.append("s.started_at < :before")
+            params["before"] = before
         sessions = db.execute(
             text(
-                """
+                f"""
                 SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
                 FROM sessions s
                 JOIN repos r ON r.id = s.repo_id
                 LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
-                WHERE s.user_id = :u AND r.repo_hash = :h AND s.state = 'final' AND s.visible
+                WHERE {" AND ".join(page)}
                 ORDER BY s.started_at DESC LIMIT :limit
                 """
             ),
-            {"u": uid, "h": full, "limit": PROJECT_SESSIONS},
+            params,
         ).all()
+        total = db.execute(
+            text(
+                """
+                SELECT count(*) FROM sessions s JOIN repos r ON r.id = s.repo_id
+                WHERE s.user_id = :u AND r.repo_hash = :h AND s.state = 'final' AND s.visible
+                """
+            ),
+            {"u": uid, "h": full},
+        ).scalar()
         comparisons = [
             c for c in block.get("comparisons") or [] if full in (c.get("high"), c.get("low"))
         ]
@@ -555,6 +581,8 @@ def project(key: str, device: CurrentDevice = Depends(current_device)):
         "comparisons": comparisons,
         "project_names": names,
         "sessions": [_row_to_session(r, own=True) for r in sessions],
+        "sessions_total": int(total or 0),
+        "next_before": sessions[-1].started_at.isoformat() if len(sessions) == limit else None,
     }
 
 

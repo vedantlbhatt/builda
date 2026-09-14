@@ -43,8 +43,8 @@ import { moneyPage } from '../src/you/chapters';
 const NOW = Date.parse('2026-09-13T20:00:00Z');
 const BASE = fixture.builder as unknown as BuilderProfileResponse;
 
-const KEY_A = `b093f9${'a'.repeat(58)}`;
-const KEY_B = `03624f${'b'.repeat(58)}`;
+const KEY_A = 'a'.repeat(64);
+const KEY_B = 'b'.repeat(64);
 
 const MONEY: ReportMoney = {
   usd: 2549.26,
@@ -223,7 +223,7 @@ describe('every stream is a number the report carries', () => {
     expect(f.nodes.find((x) => x.id === 'outcome:unsplit')?.hollow).toBe(true);
     // The corpus figure is never subtracted to name what the report withheld for that project.
     expect(strings(f).some((s) => s.includes('$18'))).toBe(false);
-    expect(f.notes.join(' ')).toContain('Private project 03624f has 5 priced sessions, too few for the report to say how many ended with a commit.');
+    expect(f.notes.join(' ')).toContain('Private project\u00a02 has 5 priced sessions, too few for the report to say how many ended with a commit.');
     // Its scope is said without the corpus figure beside it: no $167 to subtract $149 from.
     expect(f.notes.join(' ')).toContain('This chart splits only the projects with enough sessions to split; Where it went, further down, counts every priced session together.');
     expect(f.notes.join(' ')).not.toContain('$167');
@@ -242,7 +242,7 @@ describe('every stream is a number the report carries', () => {
   test('the band: where most of the dollars went, as the report counts it', () => {
     expect(f.band.figureText).toBe('94%');
     expect(f.band.figure?.final).toBe('94%');
-    expect(f.band.caption).toBe('of what it would cost at API list prices went into Private project b093f9');
+    expect(f.band.caption).toBe('of what it would cost at API list prices went into Private project\u00a01');
     expect(f.band.note).toBe('From 3,739.4M tokens, through 3 models, into 2 projects.');
   });
 
@@ -256,11 +256,11 @@ describe('every stream is a number the report carries', () => {
 });
 
 describe('what a project is called', () => {
-  test('a public name wins, then the owner\'s own name on this phone, then the key\'s six characters', () => {
+  test('a public name wins, then the owner\'s own name on this phone, then the number this phone gave it', () => {
     const labels = (b: BuilderProfileResponse, nick: Record<string, string>) => flowOf(b, nick).nodes.filter((x) => x.kind === 'project').map((x) => x.label);
-    expect(labels(builder(), {})).toEqual(['Private project b093f9', 'Private project 03624f']);
-    expect(labels(builder(), { [KEY_A]: 'Builda' })).toEqual(['Builda', 'Private project 03624f']);
-    expect(labels(builder({ names: { [KEY_A]: 'RideGT' } }), { [KEY_A]: 'Builda' })).toEqual(['RideGT', 'Private project 03624f']);
+    expect(labels(builder(), {})).toEqual(['Private project\u00a01', 'Private project\u00a02']);
+    expect(labels(builder(), { [KEY_A]: 'Builda' })).toEqual(['Builda', 'Private project\u00a02']);
+    expect(labels(builder({ names: { [KEY_A]: 'RideGT' } }), { [KEY_A]: 'Builda' })).toEqual(['RideGT', 'Private project\u00a02']);
   });
 });
 
@@ -448,7 +448,7 @@ describe('the curve a tap is tested against is the curve that is drawn', () => {
     expect(sentenceOf(f, 'fan:model:claude-fable-5')).toBe(f.nodes.find((x) => x.id === 'model:claude-fable-5')!.sentence);
     // $2,136 for 2,135.35: rounded with the rest of the flow, so this stream and the project's other
     // two add up to the project, and Opus 5's two add up to Opus 5 (`round.roundFlow`).
-    expect(sentenceOf(f, `model:claude-opus-5>project:${KEY_A}`)).toBe("Opus 5 into Private project b093f9: $2,136 at list prices, 93% of Opus 5's dollars and 89% of the project's.");
+    expect(sentenceOf(f, `model:claude-opus-5>project:${KEY_A}`)).toBe("Opus 5 into Private project\u00a01: $2,136 at list prices, 93% of Opus 5's dollars and 89% of the project's.");
   });
 });
 
@@ -524,7 +524,7 @@ describe('the parts a person reads add up to the whole they read (review, 2026-0
 
   test('every sentence\'s parts add up to the figure it opens with', () => {
     const opus = f.nodes.find((x) => x.id === 'model:claude-opus-5')!;
-    expect(opus.sentence).toBe('Opus 5: $2,263 at list prices, 90% of every dollar. $2,101 into Private project b093f9 and $162 into Private project 03624f.');
+    expect(opus.sentence).toBe('Opus 5: $2,263 at list prices, 90% of every dollar. $2,101 into Private project\u00a01 and $162 into Private project\u00a02.');
     for (const x of [...column('model'), ...column('project').filter((p) => p.id === `project:${KEY_A}`)]) {
       const [whole, ...parts] = amounts(x.sentence);
       expect({ id: x.id, sum: parts.reduce((s, v) => s + v, 0) }).toEqual({ id: x.id, sum: whole! });
@@ -535,7 +535,7 @@ describe('the parts a person reads add up to the whole they read (review, 2026-0
     const intoB = f.links.find((l) => l.id === `model:claude-opus-5>project:${KEY_B}`)!;
     const b03 = f.nodes.find((x) => x.id === `project:${KEY_B}`)!;
     expect(amounts(intoB.sentence)[0]).toBe(shown(b03));
-    expect(f.nodes.find((x) => x.id === 'model:claude-opus-5')!.sentence).toContain(`$${shown(b03)} into Private project 03624f`);
+    expect(f.nodes.find((x) => x.id === 'model:claude-opus-5')!.sentence).toContain(`$${shown(b03)} into Private project\u00a02`);
   });
 
   test('every shown figure is the floor or the ceiling of its true value', () => {

@@ -1,6 +1,6 @@
 /**
  * Naming a project, inline, under its hero band. A private repository arrives as "Private project"
- * and six characters of its key, because its name never leaves the Mac; here the builder can call
+ * and the number this phone gave it, because its name never leaves the Mac; here the builder can call
  * it what they call it. The name is kept on this phone only (`nicknames.ts`), and the field says so
  * in the one line under it. A public repository has its real name and no field.
  *

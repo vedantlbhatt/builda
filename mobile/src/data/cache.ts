@@ -138,6 +138,20 @@ export async function listSessions(limit: number): Promise<SessionDetail[]> {
   });
 }
 
+/**
+ * Finished sessions in one project, newest first: the rows whose `repo_key` is `key`, picked by
+ * SQLite from the saved JSON, so a project page reads its own rows and never parses the rest.
+ */
+export const SESSIONS_FOR_REPO_SQL =
+  "SELECT json FROM sessions WHERE live = 0 AND json_extract(json, '$.repo_key') = ? ORDER BY started_at DESC LIMIT ?";
+
+export async function listSessionsForRepo(key: string, limit: number): Promise<SessionDetail[]> {
+  return guarded('listSessionsForRepo', [], async (d) => {
+    const rows = await d.getAllAsync<Row>(SESSIONS_FOR_REPO_SQL, key, limit);
+    return rows.map((r) => parse(r.json)).filter((s): s is SessionDetail => s !== null);
+  });
+}
+
 /** Sessions the Mac is still uploading, most recently updated first. */
 export async function listLive(): Promise<SessionDetail[]> {
   return guarded('listLive', [], async (d) => {

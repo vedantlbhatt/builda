@@ -120,7 +120,7 @@ section.
   the run with its log) and a storyboard scroll aimed at the chart's own words. A first try
   at build 5 and the re-shoot in parallel ran the Mac out of memory: heavy jobs run one at a
   time now, and idle simulators are shut down.
-- SECURITY, demos review (06:00), being fixed: `--repo` runs a stranger's code as the person with
+- SECURITY, demos review (06:00), FIXED by 08:00 (e07f008, 65f1de8, b77715f): `--repo` runs a stranger's code as the person with
   no yes, only the dev server ever sandboxed, HOME and the network open (it could read ~/.ssh and
   credentials); a repo's app.json scheme could pull any shell variable into a link its app sees;
   production would serve demos from the public posts bucket; symlinks reach outside the clone; the
@@ -129,7 +129,11 @@ section.
   owner's own code, their files carry no metadata, and nothing left this Mac. Fixed so far: the
   storage (e07f008: a private MEDIA_STORE bucket, boot refusing a shared or public one, R2 safe
   signed deletes, short upload links, sweeps) and the phone (65f1de8: each project's own
-  pictures, marked sources, true counts, a delete). Still running: the generator's sandboxing.
+  pictures, marked sources, true counts, a delete) and the generator (b77715f): a typed yes before
+  anything runs; an untrusted repository runs every step under sandbox-runtime with HOME and
+  caches in the work dir, installs without scripts, and ~/.ssh, credentials and ~/.builder
+  unreadable (proved: its reads of ~/.ssh came back 'Operation not permitted'); an untrusted iOS
+  repository is refused; Vision fails closed; metadata stripped. `--repo` is now safe to use.
 - Numbers review of the defect fixes (06:20), fixed in d8ee71b: the "nothing written" note could not fire
   (shell commands are cut at 160 characters and a cut command counted as a possible write: 10,313
   of 14,100 calls, so 0 of 368 sittings instead of the true handful); an old rule note survives
@@ -139,7 +143,7 @@ section.
   all 160 sittings, the stale note on 8a4fc6ea is gone, and the corrected "nothing written" rule
   fires on none of this corpus (other notes: one file over and over 23, failed in a row 1),
   with a test proving it fires on a real read only stretch of 184 character commands. Both demos
-  still serve through MEDIA_STORE_ENDPOINT. Still running: the generator's sandboxing.
+  still serve through MEDIA_STORE_ENDPOINT; the Builda demo republished from the stricter check.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

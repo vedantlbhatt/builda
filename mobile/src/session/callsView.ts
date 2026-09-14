@@ -459,7 +459,9 @@ export function callsView(s: Pick<SessionDetail, 'call_tokens' | 'harness'> & Pa
       index: Math.floor((r.call - 1) / per),
       call: r.call,
       written: r.written,
-      label: r.away_seconds != null ? `${mins(r.away_seconds)} away` : 'cache expired',
+      // The conversation's gap, not the person's: "1h 22m away" read as the person gone while the
+      // strip showed them working all through it, in another conversation (FOUND IN THE now3 PASS).
+      label: r.away_seconds != null ? `${mins(r.away_seconds)} gap` : 'cache expired',
     }))
     .filter((m) => m.index >= 0 && m.index < bars.length);
 

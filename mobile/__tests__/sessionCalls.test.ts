@@ -181,17 +181,17 @@ describe('the chart', () => {
   });
 
   test('the call back to an expired cache is marked over its own bar, in a bin too', () => {
-    expect(ready(RIDEGT).marks).toEqual([{ index: 0, call: 1, written: 140_553, label: '1h 08m away' }]);
+    expect(ready(RIDEGT).marks).toEqual([{ index: 0, call: 1, written: 140_553, label: '1h 08m gap' }]);
     const binned = ready({ ...growing(30, 4), rewrites: [{ call: 10, away_seconds: 5400, written: 90_000 }], rewrite_calls: 1 });
-    expect(binned.marks).toEqual([{ index: 2, call: 10, written: 90_000, label: '1h 30m away' }]);
+    expect(binned.marks).toEqual([{ index: 2, call: 10, written: 90_000, label: '1h 30m gap' }]);
   });
 
   test('two rewrite labels never sit on each other: the larger keeps its words', () => {
     // FOUND IN REVIEW (2026-09-13): `ee94fd02`'s "11h 03m away" and "46h 34m away" at one x.
     const marks = [
-      { index: 100, call: 101, written: 40_000, label: '11h 03m away' },
-      { index: 104, call: 105, written: 90_000, label: '46h 34m away' },
-      { index: 10, call: 11, written: 20_000, label: '2h 00m away' },
+      { index: 100, call: 101, written: 40_000, label: '11h 03m gap' },
+      { index: 104, call: 105, written: 90_000, label: '46h 34m gap' },
+      { index: 10, call: 11, written: 20_000, label: '2h 00m gap' },
     ];
     const x = (i: number) => 38 + i * 1.5;
     const placed = placeMarkLabels(marks, x, 38, 384, 88);

@@ -1527,3 +1527,5 @@ Yeah. It's pretty important that you don't just use regular guy generate slot fo
 32. ok dont worry abotu screenrercodings or any video demos just screenshots for now. the proejcts page should show a lsit of prooejcts.
 
 33. where the fuck do is ee the screenshots on my perosnal iphone? ido tnsee them bruh / dude it says builda is not reachable nr / im on data on iphone
+
+34. give  alogm detialed smmary fo th eproejct and then reflect. what else can we work on or add? i also feel that we show the same naalyssi every singlet ime. every session, the prifiel, for ecah proejct, for evry god damn thigns. id otng ive a g fuck. keep it short ocncie and prune the extra csutff. telle mw athexcalty wat u change visually and ismpely <500 words ina claude artifact

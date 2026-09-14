@@ -159,6 +159,14 @@ section.
   the recording sat in a quarter of a grey frame, and first run storyboards skipped the label check
   (a route named ridegt-fonts would have put another repository's name in a label). A web still can
   take its own page size: the site's Projects page is a two column list at 820 points.
+- Owner, 12:40: "we show the same analysis every single time: every session, the profile, each project";
+  wants it pruned. PLAN, NOT BUILT, waiting for the owner's go (artifact "Builda, pruned",
+  https://claude.ai/code/artifact/3a60d1dc-691d-4028-9516-ca5bdfe70fa4): one home per question. Projects
+  tab: the list first (DONE, ff9178e, build 8), then rivers; cut the rank race and the ten comparisons.
+  Project page: screenshots, hours, shipped, tests, languages, sessions; cut how you build it, money,
+  time of day, against your other projects. Session: hero, strip, what landed, what happened, token
+  chart; cut the burn and the model's second summary, the card becomes a button. You: builder type,
+  month against month, money, Wrapped; the analysis page folds in, stack and glossary go.
 - 12:10 OUTAGE, fixed: the laptop slept, both Cloudflare quick tunnels lost their addresses for good,
   and build 6 had the dead one baked in ("Builda is not reachable"; no screenshots, nothing new). Build 7
   (12:17) bakes the owner's ngrok account address instead, which a free account keeps for good:

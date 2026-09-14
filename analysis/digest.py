@@ -86,6 +86,17 @@ EDIT_TOOLS = frozenset(
 # regex over shell text cannot see it, and auto-commits are the point of that harness.
 COMMIT_TOOLS = frozenset({"commit"})
 
+# A shell line that commits: `git commit`, and `git` with its OWN options before the
+# subcommand (`git -c user.name=x commit`, `git -C repo commit`, `git --no-pager commit`).
+# THE one definition: `stats` below, `patterns._committed` (burn, feedback, live, vocab,
+# shipped) and `BuilderAnalysis.Digest.gitCommit` in Swift all read this pattern.
+# FOUND IN THE DEFECTS PASS (2026-09-14): `\bgit commit\b` missed every `git -c ... commit`,
+# 23 of the 172 commit calls in the overnight corpus's 160 counted sittings and 4 of 7 in
+# one RideGT sitting (60256e3a), whose card then said three stretches had "nothing written,
+# tested or committed" across a stretch that held three of those commits.
+# `commit` must end the word: `git -c commit.gpgsign=false log` is not a commit.
+COMMIT_CMD = re.compile(r"\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}[A-Za-z][\w-]*(?:=\S+)?))*\s+commit(?![\w.=-])")
+
 # Tools that mean "read a file". FOUND BY A TEST: `files_read` keyed on Claude Code's `Read`
 # alone, so every Gemini, Cline and opencode session reported zero files read — the same
 # silent zero the shell/edit sets exist to prevent. Codex has no read tool (it reads through
@@ -100,6 +111,20 @@ _SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*['\"]?[^\s'\"]{6,}"),
     re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),  # JWT
+    # FOUND IN REVIEW (2026-09-13): shapes the list above let through unchanged, each
+    # checked on a sample string. A private key whose END line is gone (a cut paste, and
+    # any PEM longer than the text kept around it) keeps its body: the rest is the key.
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*"),
+    re.compile(r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{10,}"),  # Stripe
+    re.compile(r"\bAIza[0-9A-Za-z_\-]{30,}"),  # Google API key
+    re.compile(r"\bglpat-[A-Za-z0-9_\-]{16,}"),  # GitLab
+    re.compile(r"\bhf_[A-Za-z0-9]{20,}"),  # Hugging Face
+    re.compile(r"\bnpm_[A-Za-z0-9]{30,}"),  # npm
+    re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}"),  # SendGrid
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/\-]{10,}=*"),
+    re.compile(r"(?i)\b(password|passwd|passcode)\s+is\s+['\"]?[^\s'\"]{4,}"),
+    # Credentials in a URL (`postgres://user:pass@host`): the userinfo, scheme and host kept.
+    re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+@"),
 ]
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
@@ -108,6 +133,16 @@ def mask(text: str) -> str:
     for pat in _SECRET_PATTERNS:
         text = pat.sub("[redacted]", text)
     return _EMAIL.sub("[email]", text)
+
+
+def clip(text: str, n: int) -> str:
+    """`mask` THEN `_trunc`: every text a loader keeps goes through this.
+
+    The other order is how a key leaked: a pasted PEM longer than `PROMPT_MAX` lost its END
+    line to the cut, the private key rule never matched, and 1,335 characters of the key
+    body stayed in the prompt the analysis model reads and in burn's segment prompts
+    (FOUND IN REVIEW, 2026-09-13). Masking the whole text first sees every secret whole."""
+    return _trunc(mask(text), n)
 
 
 def _trunc(s: str, n: int) -> str:
@@ -158,7 +193,320 @@ def _looks_like_error(s: str) -> bool:
 _HEREDOC = re.compile(
     r"(?:cat|tee)\s*(?:>>?|-a\s+)?\s*(?P<path>[\w./~\-]+)\s*<<\s*-?['\"]?(?P<delim>\w+)['\"]?"
 )
+#: ANY heredoc opener, not only the ones that write a file. Used to SKIP bodies: see
+#: `_bash_file_effect`. `<<<` is a here-STRING and takes no body, so it is excluded.
+_ANY_HEREDOC = re.compile(r"(?<!<)<<(?!<)\s*-?\s*['\"]?(?P<delim>\w+)['\"]?")
 _SED_I = re.compile(r"\bsed\s+-i\S*\s+.*?\s(?P<path>[\w./~\-]+\.\w+)(?:\s|$)")
+
+
+def _command_lines(command: str):
+    """Every line of `command` that is a COMMAND, with the heredoc bodies skipped.
+
+    Yields `(index, line)`. A heredoc body is data: it can contain anything, including
+    text that looks exactly like another shell command, and scanning it is how this parser
+    read a piece of DOCUMENTATION as a file write.
+
+    FOUND BY RUNNING IT on this repository's own corpus. CLAUDE.md contains the sentence
+    "`analysis/digest.py` has read `cat > path <<'EOF'` writes since it was written", and
+    that file is edited through `python3 - <<'PY' … PY`. The outer opener is not a `cat`
+    or `tee` so the old scan skipped past it, found the `cat > path <<'EOF'` INSIDE the
+    prose, and attributed 134 lines to a file literally named `path` — a file that has
+    never existed, on a corpus of 10,487 attributable lines.
+    """
+    lines = command.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        yield i, line
+        opener = _ANY_HEREDOC.search(line)
+        if opener is None:
+            i += 1
+            continue
+        # Skip the body: everything up to and including the terminator, or the rest of
+        # the command when there is none (a truncated call).
+        delim = opener.group("delim")
+        j = i + 1
+        while j < len(lines) and lines[j].strip() != delim:
+            j += 1
+        i = j + 1
+
+
+#: `_tool_line` writes a multi line shell command on one line with this between the lines.
+LINE_MARK = " ⏎ "
+
+#: The tail `_trunc` leaves on a text it cut (`…[+N]`, N the characters dropped).
+_CUT_TAIL = re.compile("…" + r"\[\+\d+\]$")
+
+
+def is_cut(text: str | None) -> bool:
+    """Did `_trunc` cut this text? Then its tail is gone, and no rule may read the tail's
+    absence as a fact (`burn._shell_reads_only`, `live`, `vocab`'s coverage). The one
+    definition of the marker, beside the function that writes it."""
+    return bool(text) and _CUT_TAIL.search(text) is not None
+
+
+def shell_text(text: str | None) -> str:
+    """A digest shell event's text with its lines put back (`LINE_MARK` to newlines)."""
+    return (text or "").replace(LINE_MARK, "\n")
+
+
+def shell_lines(text: str | None) -> list[str]:
+    """The command lines of a digest shell event, heredoc bodies skipped
+    (`_command_lines`: a body is data)."""
+    return [line for _, line in _command_lines(shell_text(text))]
+
+
+def split_simple(line: str) -> list[str]:
+    """One command line split at unquoted `;`, `&&`, `||`, `|` and `&`.
+
+    Quote aware, because a separator inside quotes is data (`grep -E "a|b"`,
+    `git commit -m "fix; rm x next time"`), and `&` next to a redirection (`2>&1`, `&>`)
+    is not a separator. A leading `(` or `{` is dropped so an anchored rule sees the
+    program first. The one splitter `vocab` (its detectors) and `live` (its decisions and
+    its command word) read; `burn._split_commands` answers a different question (does the
+    line write a file through a redirection) and keeps its own walk.
+
+    FOUND IN REVIEW (2026-09-13): `live` split on a quote blind regex, so
+    `git commit -m "docs: never git push --force to main"` was a force push and
+    `echo "next: npm install redis"` added a dependency. MEASURED prevalence on the corpus:
+    0 of 9,139 shell calls; the rule is here so the first one is not a decision card.
+    """
+    out: list[str] = []
+    buf: list[str] = []
+    quote = None
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if quote:
+            buf.append(c)
+            if c == "\\" and quote == '"' and i + 1 < n:
+                buf.append(line[i + 1])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            buf.append(line[i : i + 2])
+            i += 2
+            continue
+        if c in "'\"":
+            quote = c
+            buf.append(c)
+            i += 1
+            continue
+        redirect = c == "&" and ((buf and buf[-1] in "<>") or (i + 1 < n and line[i + 1] == ">"))
+        if c in ";|" or (c == "&" and not redirect):
+            out.append("".join(buf))
+            buf = []
+            i += 2 if (i + 1 < n and line[i + 1] == c and c in "|&") else 1
+            continue
+        buf.append(c)
+        i += 1
+    out.append("".join(buf))
+    segs = (s.strip().lstrip("({").strip() for s in out)
+    return [s for s in segs if s]
+
+
+# ------------------------------------------------------------------- read only commands
+#
+# Whether a shell command can have changed a file, decided ONCE, here, on the FULL command, by
+# the loader that has it (`Ev.reads_only`). The digest keeps `COMMAND_MAX` characters of a
+# command, and a rule that read the kept text had to refuse every cut one: FOUND IN REVIEW
+# (2026-09-14), 10,313 of the 14,100 shell calls under ~/.claude/projects are longer than 160
+# characters, so a read only `cd … && grep -rn … | head -40 && git log …` with an absolute path
+# (184 characters) counted as a possible write, and "stretches with nothing written, tested or
+# committed" fired on 0 of 368 sittings. `burn` (unreadable stretches) and `patterns` (the
+# note) both read the flag. The Swift twin is `BuilderParse.ShellFileEffect.readsOnly`, held to
+# this one by `spec/fixtures/digest/reads_only.json`.
+
+#: Programs that cannot change a file when nothing is redirected into one. An ALLOWLIST,
+#: for the reason CLAUDE.md gives for sidecar discovery: a denylist of writers waves
+#: through the next one (`make`, a formatter, a build, a script nobody listed). A program
+#: missing from here only makes a segment unreadable, never barren, which is the safe way
+#: to be wrong. UNMEASURED JUDGEMENT CALL on the membership; the effect is measured in
+#: `burn.py`, above its import of these names.
+_READ_ONLY_PROGRAMS = frozenset(
+    {
+        "[", "[[", "ack", "ag", "awk", "base64", "basename", "cat", "cd", "cmp", "column",
+        "comm", "cut", "date", "df", "diff", "dig", "dirname", "du", "echo", "egrep", "exit",
+        "export", "false", "fd", "fgrep", "file", "find", "fold", "git", "grep", "head",
+        "hexdump", "host", "hostname", "id", "ifconfig", "jq", "kill", "less", "ls", "lsof",
+        "md5", "md5sum", "more", "netstat", "nl", "nslookup", "od", "pgrep", "ping", "pkill",
+        "printenv", "printf", "ps", "pwd", "read", "readlink", "realpath", "rev", "rg", "sed",
+        "seq", "sha256sum", "shasum", "sleep", "sort", "stat", "strings", "sw_vers", "tail",
+        "test", "tr", "tree", "true", "type", "uname", "uniq", "unset", "uptime", "vm_stat",
+        "wait", "wc", "which", "whereis", "whoami", "xxd", "curl",
+    }
+)
+
+#: git subcommands that only read, and the listing forms of the ones that can also write
+#: (`git branch` lists; `git branch -D x` does not). `git commit` is work the digest sees.
+_READ_ONLY_GIT = frozenset(
+    {
+        "blame", "cat-file", "check-ignore", "count-objects", "describe", "diff", "fetch",
+        "for-each-ref", "grep", "help", "log", "ls-files", "ls-remote", "ls-tree",
+        "merge-base", "name-rev", "rev-list", "rev-parse", "shortlog", "show", "status",
+        "version",
+    }
+)
+_GIT_LISTING = {
+    "branch": frozenset({"-a", "-r", "-v", "-vv", "--all", "--remotes", "--list", "--show-current"}),
+    "remote": frozenset({"-v", "show", "get-url"}),
+    "stash": frozenset({"list", "show"}),
+    "tag": frozenset({"-l", "--list"}),
+    "worktree": frozenset({"list"}),
+    "config": frozenset({"--get", "--get-all", "--get-regexp", "--list", "-l"}),
+}
+#: The ones that only list when run bare. A bare `git stash` PUSHES: it rewrites the
+#: working tree.
+_GIT_LISTS_BARE = frozenset({"branch", "remote", "tag"})
+
+#: Flags that turn a reading program into a writing one.
+_WRITING_FLAGS = {
+    "sed": re.compile(r"^(-i|--in-place)"),
+    "find": re.compile(r"^-(exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$"),
+    "curl": re.compile(r"^(-\w*[oO]|--output|--remote-name\S*|-J)$"),
+    "sort": re.compile(r"^(-o|--output)"),
+}
+
+#: Writes a program can make from INSIDE its own script: awk's `print > "f"`, a pipe out
+#: or `system()`, and sed's `w file` command.
+_WRITES_INSIDE = {
+    "awk": re.compile(r">|system\s*\(|\|\s*[\"']"),
+    "sed": re.compile(r"(^|[\s;{}/'\"])[wW]\s+\S"),
+}
+
+#: Shell words that are not the program: a keyword before it, an assignment, a wrapper.
+_SHELL_KEYWORDS = frozenset({"do", "then", "else", "elif", "if", "while", "until", "!", "time", "{", "}"})
+_SHELL_NOOPS = frozenset({"done", "fi", "for"})
+_ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+
+#: Redirections that write no file: into /dev/null, one descriptor onto another, and the
+#: here string and heredoc openers (the body is skipped by `digest._command_lines`).
+_HARMLESS_REDIRECT = re.compile(r"[&\d]?>{1,2}\s*/dev/null\b|\d?>&\d|&>\s*/dev/null\b|<<<|<<-?\s*['\"]?\w+['\"]?")
+
+def _split_commands(line: str) -> list[str] | None:
+    """One command line cut into the simple commands it RUNS, or None when it writes a
+    file through a redirection.
+
+    Quote aware: a separator or a `>` inside quotes is data. A command substitution (`$(`,
+    a backtick) runs even inside double quotes, so it is cut out there too; what follows
+    its close is the outer command's argument (`cat $(ls)/x`, `"a $(b) c"`), which is data
+    and not a program, up to the next separator.
+    """
+    line = _HARMLESS_REDIRECT.sub(" ", line)
+    out: list[str] = []
+    buf: list[str] = []
+    data = False  # the buffer continues an argument after a substitution closed
+    quote: str | None = None
+    tick = False  # inside a backtick substitution
+    i, n = 0, len(line)
+
+    def cut(next_is_data: bool) -> None:
+        nonlocal buf, data
+        if not data:
+            out.append("".join(buf))
+        buf, data = [], next_is_data
+
+    while i < n:
+        c = line[i]
+        if quote == "'":
+            # Kept in the command, so a flag or a program text (`awk '{print > "f"}'`) can
+            # still be read; never a separator.
+            quote = None if c == "'" else quote
+            buf.append(c)
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            buf.append(line[i : i + 2])
+            i += 2
+            continue
+        if c == "$" and i + 1 < n and line[i + 1] == "(":
+            cut(False)
+            i += 2
+            continue
+        if c == "`":
+            tick = not tick
+            cut(not tick)
+            i += 1
+            continue
+        if c == ")":
+            cut(True)
+            i += 1
+            continue
+        if quote == '"':
+            quote = None if c == '"' else quote
+            buf.append(c)
+            i += 1
+            continue
+        if c in "'\"":
+            quote = c
+            buf.append(c)
+            i += 1
+            continue
+        if c == ">":
+            return None  # a file is written: the harmless forms were removed above
+        if c in ";|&(":
+            cut(False)
+            i += 2 if (i + 1 < n and line[i + 1] == c and c in "|&") else 1
+            continue
+        buf.append(c)
+        i += 1
+    cut(False)
+    return [s.strip() for s in out if s.strip()]
+
+
+def _simple_reads(command: str) -> bool:
+    """Whether one simple command can only read."""
+    words = command.split()
+    while words and (words[0] in _SHELL_KEYWORDS or _ASSIGNMENT.match(words[0])):
+        words = words[1:]
+    if words and words[0] == "env":
+        words = [w for w in words[1:] if not _ASSIGNMENT.match(w)]
+    if words and words[0] == "timeout":
+        words = words[2:]
+    if not words or words[0] in _SHELL_NOOPS or words[0].startswith("#"):
+        return True
+    prog = words[0].rsplit("/", 1)[-1]
+    if prog not in _READ_ONLY_PROGRAMS:
+        return False
+    flags = _WRITING_FLAGS.get(prog)
+    if flags is not None and any(flags.match(w.strip("'\"")) for w in words[1:]):
+        return False
+    inside = _WRITES_INSIDE.get(prog)
+    if inside is not None and inside.search(" ".join(words[1:])):
+        return False
+    if prog != "git":
+        return True
+    rest = words[1:]
+    while rest and rest[0].startswith("-"):
+        rest = rest[2:] if rest[0] in ("-C", "-c") else rest[1:]
+    if not rest:
+        return True
+    sub, args = rest[0], rest[1:]
+    if sub in _READ_ONLY_GIT:
+        return True
+    listing = _GIT_LISTING.get(sub)
+    if listing is None or (not args and sub not in _GIT_LISTS_BARE):
+        return False
+    return all(a in listing for a in args)
+
+
+
+def shell_reads_only(command: str | None) -> bool:
+    """Whether a shell command, WHOLE, can only read: every line that is a command
+    (heredoc bodies skipped, `_command_lines`: a body is data) splits into simple commands
+    that a read only program runs with no writing flag, and nothing is redirected into a
+    file. Empty is not read only: nothing ran that could be proven to."""
+    if not command or not command.strip():
+        return False
+    for _, line in _command_lines(command):
+        commands = _split_commands(line)
+        if commands is None or not all(_simple_reads(c) for c in commands):
+            return False
+    return True
 
 
 def _bash_file_effect(command: str) -> tuple[str | None, int | None]:
@@ -170,30 +518,38 @@ def _bash_file_effect(command: str) -> tuple[str | None, int | None]:
     reports "agent lines +0" on a session that added a thousand. The count is the
     heredoc body length — approximate, labelled so, and better than zero.
 
+    ONLY COMMAND LINES ARE READ, never heredoc bodies (`_command_lines`). A body is data,
+    and this parser once read a shell command quoted inside a documentation file as a
+    write to a file called `path`.
+
     The body is the lines strictly between the opener and the terminator. FOUND ON A REAL
     SESSION (Claude Code 2.1.261, `claude -p`, 2026-09-05): the Bash input
-    `mkdir -p tests && cat > tests/test_fail.py <<'EOF'\\ndef test_fail():\\n    assert 1 ==
-    2\\nEOF\\ngit add -A && git commit -m 'add failing test'` scored +3 under the older
+    `mkdir -p tests && cat > tests/test_fail.py <<'EOF'\ndef test_fail():\n    assert 1 ==
+    2\nEOF\ngit add -A && git commit -m 'add failing test'` scored +3 under the older
     `newlines - 1` rule while git's own result said `2 insertions(+)` — the terminator
     line and the commands after it were being counted as file content.
     """
-    m = _HEREDOC.search(command)
-    if m:
+    lines = command.split("\n")
+    for i, line in _command_lines(command):
+        m = _HEREDOC.search(line)
+        if m is None:
+            continue
         delim = m.group("delim")
-        lines = command[m.end() :].split("\n")[1:]  # drop the rest of the opener line
+        body = lines[i + 1 :]
         n = 0
-        for ln in lines:
+        for ln in body:
             if ln.strip() == delim:
                 break
             n += 1
         else:
             # No terminator (truncated command): don't count a trailing empty line.
-            if lines and lines[-1] == "":
+            if body and body[-1] == "":
                 n -= 1
         return m.group("path"), max(0, n)
-    m = _SED_I.search(command)
-    if m:
-        return m.group("path"), None
+    for _i, line in _command_lines(command):
+        m = _SED_I.search(line)
+        if m:
+            return m.group("path"), None
     return None, None
 
 
@@ -211,6 +567,20 @@ class Ev:
     tool_id: str | None = None
     model: str | None = None
     tok_out: int | None = None
+    #: On a tool Ev: when its `tool_result` arrived, ok or error. On assistant and tool Evs:
+    #: the record's `message.stop_reason` (MEASURED on the live transcript, 2026-09-13: all
+    #: 221 assistant records carry it, 202 `tool_use` and 19 `end_turn`). Set ONLY by
+    #: `load_claude_code_events`; every other loader leaves both None, meaning "cannot
+    #: tell", and `live.py` falls back to timing. Neither is read by `stats` or `render`,
+    #: so the digest text is byte identical with or without them (`test_plain`).
+    result_ts: float | None = None
+    stop_reason: str | None = None
+    #: On a shell tool Ev: whether the WHOLE command can only read (`shell_reads_only`),
+    #: decided by the loader from the full command, since `text` keeps `COMMAND_MAX`
+    #: characters of it. None where no loader decided (not a shell call, an Ev built by
+    #: hand): the rules then read the kept text and refuse a cut one. Not read by `stats`
+    #: or `render`, so the digest text is byte identical with or without it.
+    reads_only: bool | None = None
 
 
 def _tool_line(b: dict) -> tuple[str, str | None, str]:
@@ -223,19 +593,19 @@ def _tool_line(b: dict) -> tuple[str, str | None, str]:
     if name == "Bash":
         cmd = str(inp.get("command", ""))
         path, _ = _bash_file_effect(cmd)
-        return name, path, _trunc(cmd.replace("\n", " ⏎ "), COMMAND_MAX)
+        return name, path, clip(cmd.replace("\n", " ⏎ "), COMMAND_MAX)
     if name in ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit"):
         return name, path, str(path or "")
     if name in ("Glob", "Grep"):
-        return name, None, _trunc(str(inp.get("pattern", "")), 80)
+        return name, None, clip(str(inp.get("pattern", "")), 80)
     if name in ("Agent", "Task"):
-        return name, None, _trunc(str(inp.get("description") or inp.get("prompt", "")), 100)
+        return name, None, clip(str(inp.get("description") or inp.get("prompt", "")), 100)
     if name in ("WebSearch", "WebFetch"):
-        return name, None, _trunc(str(inp.get("query") or inp.get("url", "")), 100)
+        return name, None, clip(str(inp.get("query") or inp.get("url", "")), 100)
     if name == "TodoWrite" or name.startswith("Task"):
         return name, None, ""
     # MCP and everything else: name only. Inputs may be anything.
-    return name, None, _trunc(json.dumps(inp, separators=(",", ":"))[:200], 100) if inp else ""
+    return name, None, clip(json.dumps(inp, separators=(",", ":"))[:200], 100) if inp else ""
 
 
 def _is_gemini_record(r: dict) -> bool:
@@ -385,7 +755,12 @@ def load_claude_code_events(
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            ts = _ts(r.get("timestamp"))
+            # A valid JSON line that is not an object crashed every command that reads a
+            # transcript (FOUND IN REVIEW; 0 of 165,452 local lines, a crash and not a wrong
+            # number, and CLAUDE.md: type check at every nesting level).
+            if not isinstance(r, dict):
+                continue
+            ts = _ts(r.get("timestamp")) if isinstance(r.get("timestamp"), str) else None
             if ts is None:
                 continue
             if start is not None and ts < start:
@@ -396,16 +771,17 @@ def load_claude_code_events(
     raw.sort(key=lambda t: (t[0], t[1]))
 
     tool_names: dict[str, tuple[str, str | None]] = {}  # tool_use_id -> (name, path)
+    tool_evs: dict[str, Ev] = {}  # tool_use_id -> the tool Ev, for `result_ts`
     out: list[Ev] = []
     seen_msg: set[str] = set()
 
     for ts, _, r in raw:
         t = r.get("type")
         if t == "user":
-            msg = r.get("message") or {}
+            msg = r.get("message") if isinstance(r.get("message"), dict) else {}
             content = msg.get("content")
             ps = r.get("promptSource")
-            origin = (r.get("origin") or {}).get("kind")
+            origin = r.get("origin").get("kind") if isinstance(r.get("origin"), dict) else None
             is_meta = bool(r.get("isMeta"))
             text = _text_of(content)
             if (
@@ -413,7 +789,7 @@ def load_claude_code_events(
                 and (ps == "typed" or (ps == "sdk" and origin == "human"))
                 and text.strip()
             ):
-                out.append(Ev(0, ts, "prompt", mask(_trunc(text, PROMPT_MAX))))
+                out.append(Ev(0, ts, "prompt", clip(text, PROMPT_MAX)))
             elif text.startswith(INTERRUPT_PREFIX):
                 out.append(Ev(0, ts, "interrupt", ""))
             if isinstance(content, list):
@@ -423,6 +799,12 @@ def load_claude_code_events(
                         continue
                     tid = b.get("tool_use_id")
                     name, path = tool_names.get(tid, ("tool", None))
+                    # When the result arrived, ok or error, stamped on the call itself: a
+                    # successful result writes no event of its own, and without this a
+                    # finished five minute build reads as one still running.
+                    origin_ev = tool_evs.get(tid) if isinstance(tid, str) else None
+                    if origin_ev is not None and origin_ev.result_ts is None:
+                        origin_ev.result_ts = ts
                     body = (
                         _text_of(b.get("content"))
                         if not isinstance(b.get("content"), str)
@@ -433,18 +815,13 @@ def load_claude_code_events(
                     if isinstance(tur, dict):
                         patch = tur.get("structuredPatch")
                         if isinstance(patch, list) and patch:
-                            added = sum(
-                                1
+                            hunks = [
+                                h.get("lines") if isinstance(h.get("lines"), list) else []
                                 for h in patch
-                                for ln in h.get("lines", [])
-                                if str(ln).startswith("+")
-                            )
-                            removed = sum(
-                                1
-                                for h in patch
-                                for ln in h.get("lines", [])
-                                if str(ln).startswith("-")
-                            )
+                                if isinstance(h, dict)
+                            ]
+                            added = sum(1 for h in hunks for ln in h if str(ln).startswith("+"))
+                            removed = sum(1 for h in hunks for ln in h if str(ln).startswith("-"))
                         elif tur.get("type") == "create" and isinstance(tur.get("content"), str):
                             # Lines = newlines, plus one only for an unterminated last
                             # line. FOUND ON A REAL SESSION (Claude Code 2.1.261, `claude
@@ -467,7 +844,7 @@ def load_claude_code_events(
                                 0,
                                 ts,
                                 "result_error",
-                                mask(_trunc(body or "(error)", ERROR_MAX)),
+                                clip(body or "(error)", ERROR_MAX),
                                 tool=name,
                                 path=path,
                                 ok=False,
@@ -481,14 +858,16 @@ def load_claude_code_events(
                                 e.added, e.removed, e.path = added, removed, path or e.path
                                 break
         elif t == "assistant":
-            msg = r.get("message") or {}
+            msg = r.get("message") if isinstance(r.get("message"), dict) else {}
             mid = msg.get("id") or r.get("requestId")
             model = msg.get("model")
-            usage = msg.get("usage") or {}
+            usage = msg.get("usage") if isinstance(msg.get("usage"), dict) else {}
+            stop = msg.get("stop_reason") if isinstance(msg.get("stop_reason"), str) else None
             first = mid not in seen_msg
             if mid:
                 seen_msg.add(mid)
-            for b in msg.get("content") or []:
+            content = msg.get("content")
+            for b in content if isinstance(content, list) else []:
                 if not isinstance(b, dict):
                     continue
                 bt = b.get("type")
@@ -498,9 +877,10 @@ def load_claude_code_events(
                             0,
                             ts,
                             "assistant",
-                            mask(_trunc(b["text"], ASSISTANT_MAX)),
+                            clip(b["text"], ASSISTANT_MAX),
                             model=model,
                             tok_out=usage.get("output_tokens") if first else None,
+                            stop_reason=stop,
                         )
                     )
                     first = False
@@ -516,18 +896,23 @@ def load_claude_code_events(
                         path=path,
                         tool_id=b.get("id"),
                         model=model,
+                        stop_reason=stop,
                     )
+                    if isinstance(b.get("id"), str):
+                        tool_evs[b["id"]] = ev
                     if name == "Bash":
-                        _, approx = _bash_file_effect(
-                            str((b.get("input") or {}).get("command", ""))
-                        )
+                        full = str((b.get("input") or {}).get("command", ""))
+                        _, approx = _bash_file_effect(full)
                         if approx is not None:
                             ev.added, ev.removed = approx, 0
+                        ev.reads_only = shell_reads_only(full)
                     out.append(ev)
-        elif t == "attachment" and (r.get("attachment") or {}).get("type") == "edited_text_file":
-            out.append(
-                Ev(0, ts, "human_edit", "", path=(r.get("attachment") or {}).get("filename"))
-            )
+        elif (
+            t == "attachment"
+            and isinstance(r.get("attachment"), dict)
+            and r["attachment"].get("type") == "edited_text_file"
+        ):
+            out.append(Ev(0, ts, "human_edit", "", path=r["attachment"].get("filename")))
         elif t == "system" and r.get("subtype") == "compact_boundary":
             out.append(Ev(0, ts, "compaction", ""))
 
@@ -561,7 +946,7 @@ def stats(events: list[Ev]) -> dict:
         1
         for e in tools
         if e.tool in COMMIT_TOOLS
-        or (e.tool in SHELL_TOOLS and re.search(r"\bgit commit\b", e.text))
+        or (e.tool in SHELL_TOOLS and COMMIT_CMD.search(e.text))
     )
     tests = sum(
         1

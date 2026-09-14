@@ -94,7 +94,7 @@ describe('statTiles', () => {
     });
     expect(statTiles(run).map((t) => t.key)).not.toContain('prompts');
     expect(byKey(run).attended!.value).toBe('0s');
-    expect(recapHeadline(run)).toBe('Agent run · 3h 5m');
+    expect(recapHeadline(run)).toBe('Agent run · 3h 05m');
   });
 
   test('tokens the editor never reports are "not recorded", dim, never 0', () => {

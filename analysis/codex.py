@@ -649,13 +649,14 @@ def _tool_event(ts: float, name: str, call_id, desc_src: str, model: str | None)
             ev.path = path
             if approx is not None:
                 ev.added, ev.removed = approx, 0
-        ev.text = dg.mask(dg._trunc(desc_src.replace("\n", " ⏎ "), dg.COMMAND_MAX))
+        ev.text = dg.clip(desc_src.replace("\n", " ⏎ "), dg.COMMAND_MAX)
+        ev.reads_only = dg.shell_reads_only(desc_src)
     elif name == APPLY_PATCH:
         path, added, removed = _patch_effect(desc_src)
         ev.path, ev.added, ev.removed = path, added, removed
         ev.text = dg.mask(path or "")
     else:
-        ev.text = dg.mask(dg._trunc(desc_src.replace("\n", " "), 100)) if desc_src else ""
+        ev.text = dg.clip(desc_src.replace("\n", " "), 100) if desc_src else ""
     return ev
 
 
@@ -721,7 +722,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
             return
         emitted_prompts.setdefault(text, []).append(ts)
         counters[f"prompt_from_{source}"] += 1
-        out.append(dg.Ev(0, ts, "prompt", dg.mask(dg._trunc(text, dg.PROMPT_MAX))))
+        out.append(dg.Ev(0, ts, "prompt", dg.clip(text, dg.PROMPT_MAX)))
 
     def _remember(cid: str, name: str, src: str, ev: dg.Ev) -> None:
         tool_names[cid] = (name, ev.path)
@@ -739,7 +740,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
         emitted_assistant.setdefault(text, []).append(ts)
         counters[f"assistant_from_{source}"] += 1
         out.append(
-            dg.Ev(0, ts, "assistant", dg.mask(dg._trunc(text, dg.ASSISTANT_MAX)), model=model)
+            dg.Ev(0, ts, "assistant", dg.clip(text, dg.ASSISTANT_MAX), model=model)
         )
 
     for ts, _, r in recs:
@@ -845,7 +846,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                             0,
                             ts,
                             "result_error",
-                            dg.mask(dg._trunc(text or "(error)", dg.ERROR_MAX)),
+                            dg.clip(text or "(error)", dg.ERROR_MAX),
                             tool=name,
                             path=path,
                             ok=False,

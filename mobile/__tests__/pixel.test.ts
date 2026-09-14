@@ -10,18 +10,24 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   BODY_GLYPHS,
+  EYES,
   GLYPHS,
   GRID,
   ascii,
   countGlyphs,
+  eyesOpen,
+  holes,
   isValidFrame,
   mirror,
   runsFor,
   validateFrame,
   type Frame,
 } from '../src/pixel/frames';
-import { BODY_DARK_FACTOR, scale, spritePalette } from '../src/pixel/palette';
+import { closeEyes } from '../src/pixel/motion';
+import { glyphInk, spritePalette } from '../src/pixel/palette';
 import { SPRITES, SPRITE_STATES, framesFor } from '../src/pixel/sprites';
+import { tokens } from '../src/generated/tokens';
+import { colors } from '../src/theme';
 
 const BODY_TOLERANCE = 4;
 
@@ -55,8 +61,10 @@ describe('sprite states', () => {
         });
       });
 
-      test(`body pixel count is consistent within ±${BODY_TOLERANCE}`, () => {
-        const counts = frames.map((f) => countGlyphs(f, BODY_GLYPHS));
+      test(`body pixel count is consistent within ±${BODY_TOLERANCE}, eyes counted shut`, () => {
+        // A frame with a dropped character is what this catches. A blink is not one: it fills
+        // the two 2x2 eye holes, eight cells by design, so every frame is measured blinked.
+        const counts = frames.map((f) => countGlyphs(closeEyes(f), BODY_GLYPHS));
         const min = Math.min(...counts);
         const max = Math.max(...counts);
         expect(max - min, `${state} body counts ${counts.join(', ')}`).toBeLessThanOrEqual(
@@ -73,25 +81,33 @@ describe('sprite states', () => {
     });
   }
 
-  test('the character is one character: every state keeps the same eye glyph count', () => {
-    // Open eyes are 8 pixels (w+e), closed are 4. Nothing else is allowed.
+  test('the character is one character: the family eyes, open, blinking or asleep', () => {
+    // Open is the family's two 2x2 holes (`EYES`). The blink frame fills them. Asleep, they
+    // are two 2x1 slits on row 7, the lower half of each eye. Nothing else is allowed: no
+    // glint, no eye colour.
+    const slits = ['5,7', '6,7', '9,7', '10,7'];
     for (const state of SPRITE_STATES) {
       for (const f of framesFor(state)) {
-        const eyePixels = countGlyphs(f, ['e']) + countGlyphs(f, ['w']) - sparks(f);
-        expect([4, 8], `${state}\n${ascii(f)}`).toContain(eyePixels);
+        const shown = `${state}\n${ascii(f)}`;
+        const eyeHoles = holes(f)
+          .map(([x, y]) => `${x},${y}`)
+          .filter((k) => [...slits, ...EYES.map(([x, y]) => `${x},${y}`)].includes(k));
+        if (state === 'sleeping') expect(eyeHoles.sort(), shown).toEqual([...slits].sort());
+        else if (f === framesFor('blink')[2]) expect(EYES.every(([x, y]) => f[y]![x] === 'b'), shown).toBe(true);
+        else expect(eyesOpen(f), shown).toBe(true);
       }
     }
   });
 
-  test('building frames read as hammering: the tool head is in every frame and moves', () => {
+  test('building frames read as hammering: the hammer is in every frame and comes down', () => {
     const frames = framesFor('building');
-    // Antenna bulb is 4 h pixels; the hammer head is 3 to 6 more (3x2 face-on, 1x3 edge-on).
-    for (const f of frames) expect(countGlyphs(f, ['h'])).toBeGreaterThanOrEqual(7);
+    // The hammer is `h`, a 3x2 head on a handle: 5 to 8 cells, never gone.
+    for (const f of frames) expect(countGlyphs(f, ['h'])).toBeGreaterThanOrEqual(5);
     const headRows = frames.map((f) => {
       let sum = 0;
       let n = 0;
       f.forEach((row, y) => {
-        for (let x = 11; x < row.length; x++) if (row[x] === 'h') { sum += y; n += 1; }
+        for (let x = 0; x < row.length; x++) if (row[x] === 'h') { sum += y; n += 1; }
       });
       return sum / n;
     });
@@ -114,19 +130,9 @@ describe('sprite states', () => {
   });
 });
 
-/** `w` pixels that are not eye highlights, i.e. sparks and confetti. */
+/** Sparks: every `w` is one, now that Bit has no eye highlight. */
 function sparks(frame: Frame): number {
-  let n = 0;
-  frame.forEach((row) => {
-    for (let x = 0; x < row.length; x++) {
-      if (row[x] !== 'w') continue;
-      const l = row[x - 1];
-      const r = row[x + 1];
-      // A highlight is always horizontally adjacent to the eye colour.
-      if (l !== 'e' && r !== 'e') n += 1;
-    }
-  });
-  return n;
+  return countGlyphs(frame, ['w']);
 }
 
 describe('runsFor', () => {
@@ -193,37 +199,44 @@ describe('mirror', () => {
     expect(mirror(['b...', '.dw.'])).toEqual(['...b', '.wd.']);
   });
 
-  test('the idle pose is symmetric apart from the eye highlights', () => {
+  test('the idle pose faces forward: it is its own mirror image', () => {
+    // It used to be symmetric only "apart from the eye highlights". There are none now.
     const idle = framesFor('idle')[0]!;
-    const noHighlight = idle.map((row) => row.replace(/w/g, 'e'));
-    expect(mirror(noHighlight)).toEqual(noHighlight);
+    expect(mirror(idle)).toEqual(idle);
   });
 });
 
 describe('palette', () => {
-  test('dark scheme yields six distinct hex colours, one per glyph', () => {
-    const p = spritePalette('dark');
-    expect(Object.keys(p).sort()).toEqual([...GLYPHS].sort());
-    const values = Object.values(p);
-    for (const v of values) expect(v).toMatch(/^#[0-9A-F]{6}$/i);
-    expect(new Set(values).size).toBe(6);
+  test('every role is one ink: the roles say which pixels move, not which colour they are', () => {
+    for (const scheme of ['dark', 'light'] as const) {
+      const p = spritePalette(scheme);
+      expect(Object.keys(p).sort()).toEqual([...GLYPHS].sort());
+      for (const v of Object.values(p)) expect(v).toMatch(/^#[0-9A-F]{6}$/i);
+      expect(new Set(Object.values(p)).size, scheme).toBe(1);
+    }
   });
 
-  test('light scheme is also six distinct colours and differs from dark where it should', () => {
-    const light = spritePalette('light');
-    const dark = spritePalette('dark');
-    expect(new Set(Object.values(light)).size).toBe(6);
-    expect(light.b).toBe(dark.b); // the amber is the amber in both schemes
-    expect(light.e).not.toBe(dark.e);
-    expect(light.w).not.toBe(dark.w);
+  test('amber on dark, amber mark tone on light: Bit is never the 1.7:1 amber on the light background', () => {
+    // OWNER OVERRIDE, 2026-09-13 (brief.md): the one accent rule is lifted for identity, and Bit
+    // is the amber creature of the spectrum. On dark that is the accent itself; on #FBF9F5 the
+    // accent is 1.7:1 (DESIGN-DIRECTION 3.1), so light draws Bit in amber's 3:1 mark tone
+    // (`tokens.spectrum.hues.amber.light`) where it used to draw him in `text`.
+    expect(spritePalette('dark').b).toBe(colors('dark').accent);
+    expect(spritePalette('light').b).toBe(tokens.spectrum.hues.amber.light);
+    expect(spritePalette('light').b).not.toBe(colors('light').accent);
+    expect(spritePalette('dark', 'selected').b).toBe(String(colors('dark').onAccent));
+    expect(spritePalette('dark', 'faint').b).toBe(colors('dark').textFaint);
+    expect(spritePalette('dark').b).toBe(glyphInk('dark'));
   });
 
-  test('body dark is the accent multiplied, and is still amber', () => {
-    const p = spritePalette('dark');
-    expect(p.d).toBe(scale(p.b, BODY_DARK_FACTOR));
-    expect(scale('#FFB300', 0.62)).toBe('#9E6F00');
-    expect(scale('#ffffff', 2)).toBe('#FFFFFF');
-    expect(scale('#000000', 0.5)).toBe('#000000');
-    expect(scale('not-a-colour', 0.5)).toBe('not-a-colour');
+  test('there is no dark body role and no eye colour left to creep back in', () => {
+    // The old `d` (accent x0.62) and `e` (the background, drawn as eyes) are gone from the
+    // vocabulary, so a frame that uses either fails `validateFrame`.
+    expect(GLYPHS).toEqual(['b', 'w', 'h', 'z']);
+    expect(BODY_GLYPHS).toEqual(['b']);
+    const f = Array.from({ length: GRID }, () => '.'.repeat(GRID));
+    f[0] = 'd'.padEnd(GRID, '.');
+    f[1] = 'e'.padEnd(GRID, '.');
+    expect(validateFrame(f)).toEqual(["row 0 col 0: unknown glyph 'd'", "row 1 col 0: unknown glyph 'e'"]);
   });
 });

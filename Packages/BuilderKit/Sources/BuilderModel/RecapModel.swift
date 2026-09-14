@@ -193,8 +193,12 @@ public enum Superlative: Sendable, Equatable {
         if let h = m.analysisHeadline, !h.isEmpty { return .analysis(h) }
         // The agent share is the one number nobody else displays, and everyone is
         // privately curious about theirs. It outranks raw output when it is known.
-        if m.attribConfidence != .none, m.agentLineBucket != .unknown, m.agentLinesAdded >= 200,
-           let model = m.primaryModelName {
+        // Never `mostlyYou`: under half of git's count says nothing about who wrote the rest
+        // (parallel sessions, generated files and lockfiles are in it too), so "most of these
+        // lines are yours" was a claim the measurement cannot make. FOUND 2026-09-14: beside
+        // +507 lines the page counted as the agent's, with the person's edits at 0%.
+        if m.attribConfidence != .none, m.agentLineBucket != .unknown, m.agentLineBucket != .mostlyYou,
+           m.agentLinesAdded >= 200, let model = m.primaryModelName {
             return .agentShare(bucket: m.agentLineBucket, model: model)
         }
         if m.commits >= 5 { return .commits(m.commits) }

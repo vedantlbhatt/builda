@@ -16,7 +16,13 @@ export const api = new Api(API_BASE_URL);
  * a Mac agent paired. The strip is `spec/fixtures/strip_realistic.json` — the same 1024
  * columns the Swift and TypeScript conformance suites decode — with its marks scaled from
  * the fixture's 71-minute span to this session's 6h48m so they land in the same places.
+ *
+ * The repository is invented and says it is a sample in its own name, so every place that prints
+ * it (the hero, a Sessions row, the card, the codebase map and the time lapse) says so too. FOUND
+ * IN THE CAPTURE PASS (2026-09-14): it was "gt-transit", the owner's real repository, with no word
+ * anywhere on the session page that it was not theirs.
  */
+export const SAMPLE_REPO_NAME = 'tramline (sample)';
 const SAMPLE_STARTED_MS = Date.parse('2026-08-29T13:12:00Z');
 const SAMPLE_SPAN_MS = 24_480_000; // 6h48m
 const SAMPLE_ENDED_MS = SAMPLE_STARTED_MS + SAMPLE_SPAN_MS;
@@ -25,7 +31,7 @@ export const SAMPLE_SESSION: SessionDetail = {
   id: 'sample',
   client_session_id: 'sample',
   harness: 'claude_code',
-  repo_name: 'gt-transit',
+  repo_name: SAMPLE_REPO_NAME,
   started_at: new Date(SAMPLE_STARTED_MS).toISOString(),
   ended_at: new Date(SAMPLE_ENDED_MS).toISOString(),
   active_seconds: 19020,

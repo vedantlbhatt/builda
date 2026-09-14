@@ -180,6 +180,7 @@ export function AudioChip({
           flexDirection: 'row',
           alignItems: 'center',
           borderRadius: 999,
+          borderCurve: 'continuous',
           borderWidth: 1,
           borderColor: playing ? c.accent : c.border,
           backgroundColor: playing ? c.accent : 'transparent',

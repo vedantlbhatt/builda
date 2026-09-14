@@ -15,6 +15,19 @@ public struct SRGBPair: Sendable, Equatable {
     public func resolve(dark isDark: Bool) -> SRGB { isDark ? dark : light }
 }
 
+/// One of the nine type roles. System font; `monospaced` means SF Mono. `maxScale` is the
+/// Dynamic Type ceiling, 1 meaning fixed size.
+public struct TypeRoleSpec: Sendable, Equatable {
+    public let size: Double, weight: Int, tracking: Double, line: Double, maxScale: Double
+    public let monospaced: Bool
+    public init(size: Double, weight: Int, tracking: Double, line: Double, maxScale: Double, monospaced: Bool) {
+        self.size = size; self.weight = weight; self.tracking = tracking; self.line = line
+        self.maxScale = maxScale; self.monospaced = monospaced
+    }
+    /// Line height in points.
+    public var lineHeight: Double { (size * line).rounded() }
+}
+
 public enum DesignTokens {
 
     // MARK: strip
@@ -58,6 +71,10 @@ public enum DesignTokens {
         light: SRGB(r: 1.0, g: 1.0, b: 1.0),  // #FFFFFF
         dark:  SRGB(r: 0.117647, g: 0.105882, b: 0.094118)   // #1E1B18
     )
+    public static let raised = SRGBPair(
+        light: SRGB(r: 0.952941, g: 0.937255, b: 0.905882),  // #F3EFE7
+        dark:  SRGB(r: 0.156863, g: 0.141176, b: 0.12549)   // #282420
+    )
     public static let border = SRGBPair(
         light: SRGB(r: 0.905882, g: 0.890196, b: 0.862745),  // #E7E3DC
         dark:  SRGB(r: 0.184314, g: 0.168627, b: 0.152941)   // #2F2B27
@@ -70,9 +87,27 @@ public enum DesignTokens {
         light: SRGB(r: 0.419608, g: 0.396078, b: 0.364706),  // #6B655D
         dark:  SRGB(r: 0.658824, g: 0.635294, b: 0.603922)   // #A8A29A
     )
+    public static let textFaint = SRGBPair(
+        light: SRGB(r: 0.658824, g: 0.635294, b: 0.603922),  // #A8A29A
+        dark:  SRGB(r: 0.419608, g: 0.396078, b: 0.364706)   // #6B655D
+    )
     public static let accent = SRGBPair(
         light: SRGB(r: 1.0, g: 0.701961, b: 0.0),  // #FFB300
         dark:  SRGB(r: 1.0, g: 0.701961, b: 0.0)   // #FFB300
+    )
+    public static let accentPressed = SRGBPair(
+        light: SRGB(r: 0.878431, g: 0.639216, b: 0.0),  // #E0A300
+        dark:  SRGB(r: 0.878431, g: 0.639216, b: 0.0)   // #E0A300
+    )
+
+    // MARK: data hues. Never chrome, never a fill behind text. The third, human, is human_edit.
+    public static let add = SRGBPair(
+        light: SRGB(r: 0.168627, g: 0.498039, b: 0.227451),  // #2B7F3A
+        dark:  SRGB(r: 0.482353, g: 0.788235, b: 0.435294)   // #7BC96F
+    )
+    public static let del = SRGBPair(
+        light: SRGB(r: 0.776471, g: 0.164706, b: 0.184314),  // #C62A2F
+        dark:  SRGB(r: 0.898039, g: 0.282353, b: 0.301961)   // #E5484D
     )
 
     // MARK: graph — coloured by ACTIVE HOURS, absolute buckets (see Tuning.graphHourBuckets)
@@ -81,19 +116,72 @@ public enum DesignTokens {
 
     // MARK: layout
     public enum Space {
-    public static let xs = 4.0
-    public static let sm = 8.0
-    public static let md = 16.0
-    public static let lg = 24.0
-    public static let xl = 40.0
-    public static let xxl = 64.0
+        public static let xs = 4.0
+        public static let sm = 8.0
+        public static let tile = 12.0
+        public static let md = 16.0
+        public static let lg = 24.0
+        public static let section = 32.0
+        public static let xl = 40.0
+        public static let xxl = 64.0
+    }
+    public enum Layout {
+        public static let gutter = 16.0
+        public static let tileGap = 12.0
+        public static let sectionGap = 32.0
+        public static let tilePad = 14.0
+        public static let widgetPad = 16.0
+        public static let liveActivityPad = 14.0
     }
     public enum Radius {
-    public static let sm = 4.0
-    public static let md = 10.0
-    public static let lg = 18.0
-    public static let card = 24.0
+        public static let xs = 6.0
+        public static let sm = 12.0
+        public static let md = 18.0
+        public static let lg = 28.0
+        public static let pill = 999.0
+        public static let card = 24.0
     }
+
+    // MARK: type
+    public enum TypeRole {
+        public static let hero = TypeRoleSpec(size: 56.0, weight: 800, tracking: -1.5, line: 1.0, maxScale: 1.0, monospaced: false)
+        public static let display = TypeRoleSpec(size: 40.0, weight: 800, tracking: -0.8, line: 1.05, maxScale: 1.0, monospaced: false)
+        public static let title = TypeRoleSpec(size: 22.0, weight: 700, tracking: -0.3, line: 1.2, maxScale: 1.5, monospaced: false)
+        public static let headline = TypeRoleSpec(size: 17.0, weight: 600, tracking: -0.2, line: 1.25, maxScale: 1.5, monospaced: false)
+        public static let body = TypeRoleSpec(size: 17.0, weight: 400, tracking: -0.2, line: 1.35, maxScale: 2.0, monospaced: false)
+        public static let row = TypeRoleSpec(size: 15.0, weight: 600, tracking: 0.0, line: 1.3, maxScale: 1.5, monospaced: false)
+        public static let meta = TypeRoleSpec(size: 13.0, weight: 400, tracking: 0.0, line: 1.3, maxScale: 2.0, monospaced: false)
+        public static let label = TypeRoleSpec(size: 12.0, weight: 600, tracking: 0.2, line: 1.2, maxScale: 1.0, monospaced: false)
+        public static let mono = TypeRoleSpec(size: 13.0, weight: 500, tracking: 0.0, line: 1.3, maxScale: 1.5, monospaced: true)
+    }
+
+    // MARK: elevation. Exactly one shadow, for things that float over content.
+    public enum Shadow {
+        public static let x = 0.0
+        public static let y = 12.0
+        /// CSS blur radius. SwiftUI's `.shadow(radius:)` is roughly half of it.
+        public static let blur = 32.0
+        public static let color = SRGB(r: 0.0, g: 0.0, b: 0.0)  // #000000
+        public static let opacity = 0.5
+    }
+
+    // MARK: dither. A cell is ink when its value (0..1) is > bayer8[y * 8 + x] / 64.
+    public enum Dither {
+        public static let cell = 3.0
+        public static let halftoneAngle = 45.0
+        public static let halftoneRadius = 0.72
+        public static let bayer8: [UInt8] = [
+             0, 32,  8, 40,  2, 34, 10, 42,
+            48, 16, 56, 24, 50, 18, 58, 26,
+            12, 44,  4, 36, 14, 46,  6, 38,
+            60, 28, 52, 20, 62, 30, 54, 22,
+             3, 35, 11, 43,  1, 33,  9, 41,
+            51, 19, 59, 27, 49, 17, 57, 25,
+            15, 47,  7, 39, 13, 45,  5, 37,
+            63, 31, 55, 23, 61, 29, 53, 21
+        ]
+    }
+
     public enum Card {
         public static let landscape = (w: 1600.0, h: 900.0)
         public static let portrait  = (w: 1080.0,  h: 1350.0)

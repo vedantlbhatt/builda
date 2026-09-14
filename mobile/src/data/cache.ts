@@ -60,6 +60,12 @@ function db(): Promise<Db | null> {
         } catch {
           // column exists
         }
+        try {
+          await migrateKv(handle);
+        } catch (e) {
+          // Sessions still cache without it; only the kv stays as broken as it was.
+          warnOnce('migrateKv', e);
+        }
         return handle;
       } catch (e) {
         warnOnce('open', e);
@@ -68,6 +74,35 @@ function db(): Promise<Db | null> {
     })();
   }
   return dbPromise;
+}
+
+/**
+ * Give an old `kv` table the columns this file reads.
+ *
+ * The August build, whose data layer was never committed (1832f86 reconstructed it), created
+ * `kv (key, value)`. `CREATE TABLE IF NOT EXISTS kv (k, v)` then skips over it, and every
+ * `getKv`/`setKv` on that install fails with "no such column" into `guarded`, which returns
+ * the fallback: the chosen creature, the cached profile and the onboarding flag were all
+ * silently never stored. FOUND on the iOS simulator this build runs on. The old rows are
+ * carried over when the old columns are recognisable and dropped otherwise.
+ */
+export async function migrateKv(d: Db): Promise<void> {
+  const cols = (await d.getAllAsync<{ name: string }>('PRAGMA table_info(kv)')).map((c) => c.name);
+  if (cols.includes('k') && cols.includes('v')) return;
+  const carry = cols.includes('key') && cols.includes('value');
+  try {
+    await d.execAsync(`
+      BEGIN;
+      ALTER TABLE kv RENAME TO kv_legacy;
+      CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT);
+      ${carry ? 'INSERT OR IGNORE INTO kv (k, v) SELECT key, value FROM kv_legacy;' : ''}
+      DROP TABLE kv_legacy;
+      COMMIT;
+    `);
+  } catch (e) {
+    await d.execAsync('ROLLBACK;').catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Run one guarded access; any failure logs once and yields the fallback. */
@@ -99,6 +134,127 @@ export async function listSessions(limit: number): Promise<SessionDetail[]> {
       'SELECT json FROM sessions WHERE live = 0 ORDER BY started_at DESC LIMIT ?',
       limit
     );
+    return rows.map((r) => parse(r.json)).filter((s): s is SessionDetail => s !== null);
+  });
+}
+
+/**
+ * The Sessions list's rows (`session/listReach.ts`): finished, of one kind, newest first, and at or
+ * after `from` when there is one. `julianday` compares the instants, not the strings: a stored
+ * `-04:00` and a `-05:00` either side of a clock change sort as the times they are.
+ */
+export const FINISHED_SQL = {
+  notable:
+    "SELECT json FROM sessions WHERE live = 0 AND json_extract(json, '$.notable') = 1 AND (?1 IS NULL OR julianday(started_at) >= julianday(?1)) ORDER BY julianday(started_at) DESC LIMIT ?2",
+  every:
+    'SELECT json FROM sessions WHERE live = 0 AND (?1 IS NULL OR julianday(started_at) >= julianday(?1)) ORDER BY julianday(started_at) DESC LIMIT ?2',
+} as const;
+
+export async function listFinished(mode: 'notable' | 'every', from: string | null, limit: number): Promise<SessionDetail[]> {
+  return guarded('listFinished', [], async (d) => {
+    const rows = await d.getAllAsync<Row>(FINISHED_SQL[mode], from, limit);
+    return rows.map((r) => parse(r.json)).filter((s): s is SessionDetail => s !== null);
+  });
+}
+
+/**
+ * One page of finished sessions from the server, saved: `before` is the cursor (the oldest row the
+ * list has), null for the top. The rows are list rows, without a strip; `fillDetails` reads those.
+ */
+export async function readPage(
+  api: Api,
+  opts: { before: string | null; notableOnly: boolean; limit: number }
+): Promise<{ rows: SessionDetail[]; next_before: string | null }> {
+  const page = await api.sessions({ limit: opts.limit, before: opts.before, notable_only: opts.notableOnly });
+  for (const s of page.sessions) await upsert(s, false);
+  const next = page.next_before ?? null;
+  await pruneCovered({ notableOnly: opts.notableOnly, before: opts.before, rows: page.sessions, last: next === null });
+  return { rows: page.sessions, next_before: next };
+}
+
+/**
+ * The saved rows a page of the list route has just answered for, that it did not return.
+ *
+ * The phone never dropped a finished session it had saved, while the server deletes one when its
+ * repository is excluded (`routes/privacy.py`) and a sitting's `notable` can change when it is
+ * re-cut; so "That is every session on your account: N", counted off the saved rows, could say
+ * more than the account holds (FOUND IN REVIEW, 2026-09-14). A page covers the stretch of time
+ * from just after its oldest row up to `before` (to the end, on the last page; from the newest,
+ * on the first), and within it the server's answer is the whole answer: a row of every kind it
+ * did not return is gone and is deleted; a row it did not return as one you were there for is
+ * not one now, and keeps its place in every session. The page's oldest instant itself is left
+ * alone, since `before` is exclusive and a second row at that instant is the next page's.
+ */
+export async function pruneCovered(opts: { notableOnly: boolean; before: string | null; rows: readonly { id: string; started_at: string }[]; last: boolean }): Promise<number> {
+  const { notableOnly, before, rows, last } = opts;
+  const oldest = rows.length ? rows[rows.length - 1]!.started_at : null;
+  if (!last && oldest === null) return 0; // a page with more to come always has rows; nothing to answer for
+  return guarded('pruneCovered', 0, async (d) => {
+    const where = ['live = 0'];
+    const params: (string | number | null)[] = [];
+    if (notableOnly) where.push("json_extract(json, '$.notable') = 1");
+    if (before) {
+      where.push('julianday(started_at) < julianday(?)');
+      params.push(before);
+    }
+    if (!last && oldest !== null) {
+      where.push('julianday(started_at) > julianday(?)');
+      params.push(oldest);
+    }
+    if (rows.length) {
+      where.push(`id NOT IN (${rows.map(() => '?').join(', ')})`);
+      params.push(...rows.map((r) => r.id));
+    }
+    const stale = await d.getAllAsync<{ id: string }>(`SELECT id FROM sessions WHERE ${where.join(' AND ')}`, ...params);
+    for (const { id } of stale) {
+      if (notableOnly) await d.runAsync("UPDATE sessions SET json = json_set(json, '$.notable', json('false')) WHERE id = ?", id);
+      else await d.runAsync('DELETE FROM sessions WHERE id = ?', id);
+    }
+    return stale.length;
+  });
+}
+
+/**
+ * The details (strip and stats) of the given sessions this phone has not read yet, six at a time.
+ * A failure leaves that row's strip waiting; the rest still land.
+ */
+export async function fillDetails(api: Api, ids: readonly string[]): Promise<void> {
+  const missing = await guarded('fillDetails', [] as string[], async (d) => {
+    const out: string[] = [];
+    for (const id of ids) {
+      const row = await d.getFirstAsync<Row>('SELECT json FROM sessions WHERE id = ?', id);
+      const s = row ? parse(row.json) : null;
+      if (s && !('strip' in s)) out.push(id);
+    }
+    return out;
+  });
+  for (let i = 0; i < missing.length; i += DETAIL_BATCH) {
+    const results = await Promise.allSettled(missing.slice(i, i + DETAIL_BATCH).map((id) => api.session(id)));
+    for (const r of results) if (r.status === 'fulfilled') await upsert(r.value, true);
+  }
+}
+
+/**
+ * What the sync's first page of the list said (`listReach.reachOfPage`): the newest
+ * `SYNC_LIST_LIMIT` sessions you were there for at least 20 minutes, and whether older ones exist.
+ * Null until a sync has read it in this process.
+ */
+let firstPage: { startedAt: string[]; nextBefore: string | null } | null = null;
+
+export function syncedFirstPage(): { startedAt: string[]; nextBefore: string | null } | null {
+  return firstPage;
+}
+
+/**
+ * Finished sessions in one project, newest first: the rows whose `repo_key` is `key`, picked by
+ * SQLite from the saved JSON, so a project page reads its own rows and never parses the rest.
+ */
+export const SESSIONS_FOR_REPO_SQL =
+  "SELECT json FROM sessions WHERE live = 0 AND json_extract(json, '$.repo_key') = ? ORDER BY started_at DESC LIMIT ?";
+
+export async function listSessionsForRepo(key: string, limit: number): Promise<SessionDetail[]> {
+  return guarded('listSessionsForRepo', [], async (d) => {
+    const rows = await d.getAllAsync<Row>(SESSIONS_FOR_REPO_SQL, key, limit);
     return rows.map((r) => parse(r.json)).filter((s): s is SessionDetail => s !== null);
   });
 }
@@ -146,6 +302,36 @@ export async function putDetail(s: SessionDetail): Promise<void> {
   await upsert(s, true);
 }
 
+/**
+ * The fields the DETAIL endpoint is the authority for (contract v4). A detail that omits
+ * one, or sends null, means the server has none for this session now, so a value cached
+ * from an earlier read must not outlive it: a burn block from a re-cut that no longer
+ * produces one, file names the person has since turned off.
+ */
+const DETAIL_AUTHORITATIVE = ['burn', 'title_ids', 'call_tokens', 'live_state', 'live_names'] as const;
+
+/**
+ * Which of two live states to keep. The live list serves a SLIM body (no time lapse, the map
+ * cut to the rows the sentence needs) and the detail the full one, so a sync that stores the
+ * list row after the session screen fetched the detail would throw the map away and keep
+ * nothing newer. The one that was computed later wins; at the same instant, the fuller one.
+ * `computed_at` is ISO 8601 UTC from one server clock, so the strings compare as instants
+ * only after parsing: a stored `+00:00` and a `Z` are the same moment.
+ */
+export function newerLiveState(
+  old: SessionDetail['live_state'],
+  next: SessionDetail['live_state']
+): SessionDetail['live_state'] {
+  if (next === undefined) return old;
+  if (!old || !next) return next;
+  const a = Date.parse(old.computed_at);
+  const b = Date.parse(next.computed_at);
+  if (Number.isNaN(a) || Number.isNaN(b) || a !== b) return Number.isNaN(b) || a > b ? old : next;
+  const fuller = (s: NonNullable<SessionDetail['live_state']>) =>
+    (s.timelapse ? 1 : 0) * 1e6 + (s.map?.files.length ?? 0);
+  return fuller(next) >= fuller(old) ? next : old;
+}
+
 async function upsert(s: SessionDetail, isDetail: boolean): Promise<void> {
   await guarded('putDetail', undefined, async (d) => {
     const existing = await d.getFirstAsync<Row>('SELECT json FROM sessions WHERE id = ?', s.id);
@@ -163,6 +349,25 @@ async function upsert(s: SessionDetail, isDetail: boolean): Promise<void> {
       // a checkpoint; once the final detail arrives without one, the checkpoint must not
       // outlive the session it was a snapshot of.
       merged.analysis = s.analysis ?? null;
+      for (const k of DETAIL_AUTHORITATIVE) {
+        if (s[k] === undefined) delete merged[k];
+      }
+      // Present on both sides: still the later computation, so a detail the session
+      // screen fetched a minute ago cannot roll back a newer state the list brought.
+      if (s.live_state && old?.live_state) merged.live_state = newerLiveState(old.live_state, s.live_state);
+    } else {
+      // A list row: its slim live state replaces a cached one only when it is newer.
+      const kept = newerLiveState(old?.live_state, s.live_state);
+      if (kept === undefined) delete merged.live_state;
+      else merged.live_state = kept;
+    }
+    // A session that is not live has no live state: the server deletes the row when the
+    // session finalises (docs/overnight-integration.md 3.3). A final LIST row does not
+    // carry the key, so without this the last "Waiting on you" would ride on a finished
+    // session forever, and so would its file names.
+    if (merged.state !== 'live') {
+      if (merged.live_state !== undefined) merged.live_state = null;
+      if (merged.live_names !== undefined) merged.live_names = null;
     }
     // The server keeps one row per session and flips `state` when it finalizes, so the id
     // is stable: the same upsert that stored the live snapshot clears the flag.
@@ -195,7 +400,21 @@ const DETAIL_CAP_PER_SYNC = 30;
  * row that was live last time and is missing from the live list now is re-read by id, so
  * its cached copy flips to final (or is dropped on a 404) instead of pulsing forever.
  */
-export async function sync(api: Api): Promise<void> {
+export function sync(api: Api): Promise<void> {
+  // One pass at a time: the root's live surface poll and a focused tab's poll can fire in the
+  // same second (FOUND IN INTEGRATION, 2026-09-13: the simulator's first launch fetched every
+  // live detail twice). A caller that arrives mid-pass waits for that pass and reads its rows.
+  if (!syncing) {
+    syncing = runSync(api).finally(() => {
+      syncing = null;
+    });
+  }
+  return syncing;
+}
+
+let syncing: Promise<void> | null = null;
+
+async function runSync(api: Api): Promise<void> {
   let failure: unknown = null;
 
   // Which rows were live BEFORE this pass touches anything: a live session that arrives
@@ -211,6 +430,10 @@ export async function sync(api: Api): Promise<void> {
     await upsert(s, false);
     if (wasLiveSet.has(s.id) && (s.state ?? 'final') === 'final') staleLive.push(s.id);
   }
+  // The Sessions list's top, and whether it goes further back (`session/listReach.ts`); and the
+  // saved rows in the stretch it covers that it no longer lists as ones you were there for.
+  firstPage = { startedAt: page.sessions.map((s) => s.started_at), nextBefore: page.next_before ?? null };
+  await pruneCovered({ notableOnly: true, before: null, rows: page.sessions, last: (page.next_before ?? null) === null });
   let liveNow: SessionDetail[] | null = null;
   try {
     liveNow = (await api.liveSessions()).sessions;
@@ -324,9 +547,83 @@ export async function lastSyncAt(): Promise<string | null> {
   });
 }
 
+/**
+ * Keys under this prefix describe the install, not the person signed in to it (the onboarding
+ * flag, `src/nav/rules.ts`), and survive `clear()`. Nothing about a person may use it.
+ */
+export const DEVICE_KEY_PREFIX = 'device.';
+
+// ------------------------------------------------------------------ privacy on the phone
+
+/**
+ * Settings > Show details on Lock Screen (DESIGN-DIRECTION 7.2). The Lock Screen and the
+ * Dynamic Island are public: anyone near the phone reads them. On, they carry the repository
+ * (public repositories only; otherwise "private repo") and the one sentence; off, only
+ * "Builda" and how many sessions are running. A property of THIS phone's screen, not of the
+ * account, so it is a device key and survives sign out.
+ */
+export const LOCK_SCREEN_DETAILS_KEY = `${DEVICE_KEY_PREFIX}lock_screen_details`;
+
+/**
+ * On unless turned off. UNMEASURED JUDGEMENT CALL, with the reason: every field the Lock
+ * Screen can show is safe by construction (docs/overnight-integration.md 2.5: role nouns,
+ * counts and minutes, a repository name only when the repository is public), so the switch
+ * hides what a person may not want seen, not what may not leave.
+ */
+export const LOCK_SCREEN_DETAILS_DEFAULT = true;
+
+/** Whether the Lock Screen shows the repository and the sentence. */
+export async function getLockScreenDetails(): Promise<boolean> {
+  const v = await getKv(LOCK_SCREEN_DETAILS_KEY);
+  return v === null ? LOCK_SCREEN_DETAILS_DEFAULT : v === '1';
+}
+
+export async function setLockScreenDetails(on: boolean): Promise<void> {
+  await setKv(LOCK_SCREEN_DETAILS_KEY, on ? '1' : '0');
+}
+
+/**
+ * Settings > Live Activities, this phone's too (a device key, so it outlives a sign out). On
+ * unless turned off: the only other way to stop the cards was iOS Settings, and a card left up
+ * after the app is swiped away stays there until the system retires it hours later.
+ */
+export const LIVE_ACTIVITIES_KEY = `${DEVICE_KEY_PREFIX}live_activities`;
+export const LIVE_ACTIVITIES_DEFAULT = true;
+
+export async function getLiveActivities(): Promise<boolean> {
+  const v = await getKv(LIVE_ACTIVITIES_KEY);
+  return v === null ? LIVE_ACTIVITIES_DEFAULT : v === '1';
+}
+
+export async function setLiveActivities(on: boolean): Promise<void> {
+  await setKv(LIVE_ACTIVITIES_KEY, on ? '1' : '0');
+}
+
+/**
+ * Settings > File names went off: the server clears every stored name in the same request,
+ * and this clears the phone's copy of them, so turning it off deletes them everywhere they
+ * were. Returns how many cached sessions carried names.
+ */
+export async function forgetLiveNames(): Promise<number> {
+  return guarded('forgetLiveNames', 0, async (d) => {
+    const rows = await d.getAllAsync<{ id: string; json: string }>('SELECT id, json FROM sessions');
+    let n = 0;
+    for (const r of rows) {
+      const s = parse(r.json);
+      if (!s || s.live_names === undefined || s.live_names === null) continue;
+      s.live_names = null;
+      await d.runAsync('UPDATE sessions SET json = ? WHERE id = ?', JSON.stringify(s), r.id);
+      n += 1;
+    }
+    return n;
+  });
+}
+
 /** Sign-out: the cached sessions are the user's data, not ours to keep. */
 export async function clear(): Promise<void> {
+  firstPage = null;
   await guarded('clear', undefined, async (d) => {
-    await d.execAsync('DELETE FROM sessions; DELETE FROM profile; DELETE FROM kv;');
+    await d.execAsync('DELETE FROM sessions; DELETE FROM profile;');
+    await d.runAsync("DELETE FROM kv WHERE substr(k, 1, ?) <> ?", DEVICE_KEY_PREFIX.length, DEVICE_KEY_PREFIX);
   });
 }

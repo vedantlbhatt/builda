@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
-from test_contract import SAMPLE_ANALYSIS
+from test_contract import SAMPLE_ANALYSIS, SAMPLE_BURN_FOR_CALLS, SAMPLE_CALL_TOKENS
 from test_sync import (  # noqa: F401 - fixtures are picked up by name
     TEST_DB,
     _live,
@@ -246,6 +246,71 @@ def test_session_detail_carries_only_the_viewers_own_post_id(client, created_use
     # Un-sharing takes it back to null, not to a dangling id.
     assert client.delete(f"/v1/posts/{post['id']}", headers=h_a).status_code == 204
     assert _detail_post_id(client, h_a, sid) is None
+
+
+def _stats_rows_as(viewer: str, session_id: str) -> list:
+    """`session_stats` for one session through a bare builder_app connection with `viewer`
+    as the viewer: what RLS itself lets through, whatever a route does with it."""
+    with app_engine().connect() as c:
+        c.execute(text("SELECT set_config('app.viewer_id', :v, false)"), {"v": viewer})
+        return c.execute(
+            text("SELECT burn, call_tokens FROM session_stats WHERE session_id = :s"),
+            {"s": session_id},
+        ).all()
+
+
+def test_call_tokens_reach_a_stranger_exactly_where_burn_does(client, created_users):
+    """0025 puts `call_tokens` on `session_stats` beside `burn`, under the same owner and
+    shared session policies (0003). So a stranger reads it on a shared session and on nothing
+    else: an unshared or privately posted session is not there for them at all, and the feed
+    and the post carry neither block. Checked through the route AND through a bare connection
+    with the stranger as the viewer, so a 404 cannot be the route's doing alone (CLAUDE.md, a
+    negative test must reach the code).
+
+    What the stranger reads is the owner's document less one number: a rewrite's
+    `away_seconds` measures back to the conversation's previous call, which usually sits in an
+    earlier session, so it would say when another, perhaps unshared, session happened. FOUND
+    IN REVIEW (2026-09-13). It is null for anyone but the owner."""
+    uid_a, h_a = _person(client, created_users, "alice")
+    uid_b, h_b = _person(client, created_users, "bob")
+    sid = _session(client, h_a, uid_a, burn=SAMPLE_BURN_FOR_CALLS, call_tokens=SAMPLE_CALL_TOKENS)
+
+    owner = client.get(f"/v1/sessions/{sid}", headers=h_a).json()
+    assert (owner["burn"], owner["call_tokens"]) == (SAMPLE_BURN_FOR_CALLS, SAMPLE_CALL_TOKENS)
+    assert owner["call_tokens"]["rewrites"][0]["away_seconds"] == 4095
+    assert len(_stats_rows_as(uid_a, sid)) == 1, "the owner reads their own row"
+
+    # Unshared: the session does not exist for the stranger, and neither does its row.
+    assert client.get(f"/v1/sessions/{sid}", headers=h_b).status_code == 404
+    assert _stats_rows_as(uid_b, sid) == []
+
+    # Shared through a public post: burn whole, and the chart without how long a call was away.
+    post = _post(client, h_a, sid, "public")
+    seen = client.get(f"/v1/sessions/{sid}", headers=h_b).json()
+    assert seen["burn"] == owner["burn"]
+    stranger = {
+        **SAMPLE_CALL_TOKENS,
+        "rewrites": [{**r, "away_seconds": None} for r in SAMPLE_CALL_TOKENS["rewrites"]],
+    }
+    assert seen["call_tokens"] == stranger
+    [(burn, calls)] = _stats_rows_as(uid_b, sid)
+    assert (burn, calls) == (SAMPLE_BURN_FOR_CALLS, SAMPLE_CALL_TOKENS)
+    # The post and the feed item are not the session detail: neither block is on them.
+    item = client.get(f"/v1/posts/{post['id']}", headers=h_b).json()
+    assert "burn" not in item and "call_tokens" not in item
+    assert all("call_tokens" not in i for i in client.get("/v1/feed", headers=h_a).json()["items"])
+    # The owner still reads every number.
+    assert client.get(f"/v1/sessions/{sid}", headers=h_a).json()["call_tokens"] == (
+        SAMPLE_CALL_TOKENS
+    )
+
+    # A private post takes the session back from everyone but its owner.
+    r = client.patch(f"/v1/posts/{post['id']}", json={"visibility": "private"}, headers=h_a)
+    assert r.status_code == 200, r.text
+    assert client.get(f"/v1/sessions/{sid}", headers=h_b).status_code == 404
+    assert _stats_rows_as(uid_b, sid) == []
+    mine = client.get(f"/v1/sessions/{sid}", headers=h_a).json()
+    assert mine["call_tokens"] == SAMPLE_CALL_TOKENS
 
 
 def test_a_live_session_cannot_be_shared(client, created_users):
@@ -608,6 +673,10 @@ def test_excluding_the_repo_hides_a_public_post(client, created_users):
     uid_b, h_b = _person(client, created_users, "bob")
     bob = _handle_of(uid_b)
     sid = _session(client, h_b, uid_b)
+    # A second session from the same repository, uploaded while it could be: once the
+    # repository is excluded an upload from it is refused outright (routes/sync.py
+    # REPO_EXCLUDED), so the post route's own refusal is checked with one stored before.
+    other = _session(client, h_b, uid_b)
     post = _post(client, h_b, sid, "public")
     assert client.get(f"/v1/posts/{post['id']}", headers=h_a).status_code == 200
 
@@ -632,12 +701,16 @@ def test_excluding_the_repo_hides_a_public_post(client, created_users):
         with app_engine().connect() as c:
             c.execute(text("SELECT set_config('app.viewer_id', :v, false)"), {"v": uid_a})
             assert c.execute(text("SELECT can_view_post(:p)"), {"p": post["id"]}).scalar() is False
-        # The owner can still take it down, and cannot post another from that repository.
-        other = _session(client, h_b, uid_b)
+        # The owner can still take it down, and cannot post another from that repository,
+        # nor upload a new session into it.
         r = client.post(
             "/v1/posts", json={"session_id": other, "visibility": "public"}, headers=h_b
         )
         assert r.status_code == 403
+        refused = _upload(client, h_b, _payload())
+        assert refused["accepted"] == 0 and refused["rejected"][0]["reason"].startswith(
+            "this repository is excluded"
+        )
         assert client.delete(f"/v1/posts/{post['id']}", headers=h_b).status_code == 204
     finally:
         with owner_engine().begin() as c:

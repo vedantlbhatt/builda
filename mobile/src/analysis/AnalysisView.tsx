@@ -1,32 +1,54 @@
-import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import type { SessionAnalysis } from '../generated/analysis';
-import { PixelSprite } from '../pixel/PixelSprite';
-import { colors, space } from '../theme';
-import { analysisFooter, celebrationFor, labelize, pct, SENSITIVE_WARNING } from './format';
+import { Band, BandWords } from '../insights/Band';
+import { GrowBar } from '../insights/Bars';
+import { numSpec } from '../insights/format';
+import { figure, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
+import { Num } from '../insights/Num';
+import { DIMENSION_HUE, GROUND, ON_HUE, SPECTRUM, type Hue } from '../insights/palette';
+import { Block, Section } from '../insights/reveal';
+import { READING_HEADLINE } from '../session/type';
+import { analysisFooter, labelize, pct, SENSITIVE_WARNING } from './format';
 
 /**
- * The model-written reading of a session, below the card and the numbers.
+ * The model-written reading of a session, as a chapter of the session page in the house style
+ * (design-refs/HOUSE-STYLE.md): its own band in its own hue with the model's headline set large
+ * in dark ink and the outcome and the type beside it, then the reading on the warm ground, one
+ * idea to a line, and the five dimensions as bars in their five hues that grow to their scores
+ * while the scores count up.
  *
- * SHORT ON PURPOSE (spec/analysis.v1.json, docs/analysis.md). The reading is a headline,
- * at most two sentences and up to three highlights; the long blocks this screen used to
- * render (features, work mix, pivots, friction) were removed from the schema because
- * nobody read them. The corpus numbers people actually want — planning ratio, steer rate,
- * velocity, archetype — are COMPUTED and live on the profile, not here.
- *
- * Every section is still skipped when the model left it empty: the spec's honesty rule
- * says a field the model could not ground is null/empty, never guessed, and an empty card
- * would turn that silence into a claim. Nothing here is computed; this view only lays out
- * what the analysis already says.
+ * SHORT ON PURPOSE (spec/analysis.v1.json, docs/analysis.md). The reading is a headline, at
+ * most two sentences and up to three highlights; the corpus numbers people actually want
+ * (planning ratio, steer rate, velocity, archetype) are COMPUTED and live on the profile, not
+ * here. Every part is skipped when the model left it empty: the spec's honesty rule says a
+ * field the model could not ground is empty, never guessed, and an empty part would turn that
+ * silence into a claim. Nothing here is computed; this only lays out what the analysis says.
  */
 
-const c = colors('dark');
-
-/** How long Bit cheers beside a shipped headline before settling into a still idle pose. */
+/**
+ * How long a cheer lasts beside a shipped headline. The reading on this page no longer cheers
+ * (the session's creature is printed on the hero band, and a page prints one creature); the
+ * recap sheet still does, on the same beat.
+ */
 export const CELEBRATION_MS = 3000;
 
-export function AnalysisView({ analysis: a }: { analysis: SessionAnalysis }) {
+export function AnalysisView({
+  analysis: a,
+  hue,
+  width,
+  still = false,
+}: {
+  analysis: SessionAnalysis;
+  hue: Hue;
+  width: number;
+  /**
+   * A running session's checkpoint reading: said as one, since the session it reads is not done.
+   */
+  still?: boolean;
+}) {
+  const inner = width - GUTTER * 2;
   const highlights = a.highlights ?? [];
   const dimensions = a.dimensions ?? [];
   const moves = a.decision_patterns ?? [];
@@ -34,233 +56,196 @@ export function AnalysisView({ analysis: a }: { analysis: SessionAnalysis }) {
   const tags = a.tags ?? [];
   const style = a.build_style;
   const prompting = a.prompting;
-  // At most one Bit per card. A shipped session gets the cheer beside its headline; any
-  // other outcome gets the quiet idle pose beside the archetype chip. Two mascots in one
-  // section would make him the subject of the analysis rather than a companion to it.
-  const celebration = celebrationFor(a);
+  const styleRows = style
+    ? ([
+        ['planning', style.planning],
+        ['iteration', style.iteration],
+        ['steering', style.steering],
+        ['verification', style.verification],
+        ['scope', style.scope_control],
+      ] as const)
+    : [];
 
   return (
-    <>
-      <Section title="Analysis">
+    <Section style={styles.section}>
+      <Band hue={hue} title={still ? 'The reading so far' : 'The reading'}>
         {a.headline ? (
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
-            <Text style={{ color: c.text, fontSize: 22, fontWeight: '700', lineHeight: 28, flex: 1 }}>
-              {a.headline}
-            </Text>
-            {celebration ? <CelebrationSprite /> : null}
-          </View>
+          <BandWords delay={260}>
+            <Words style={[READING_HEADLINE, styles.onHue]}>{a.headline}</Words>
+          </BandWords>
         ) : null}
-        {a.summary ? (
-          <Text style={{ color: c.text, fontSize: 14, lineHeight: 20, marginTop: space.sm }}>
-            {a.summary}
-          </Text>
-        ) : null}
-        {highlights.length > 0 && (
-          <View style={{ marginTop: space.md, gap: 4 }}>
-            {highlights.map((h, i) => (
-              <View key={i} style={{ flexDirection: 'row', gap: space.sm }}>
-                <Text style={{ color: c.accent, fontSize: 14 }}>•</Text>
-                <Text style={{ color: c.text, fontSize: 14, lineHeight: 20, flex: 1 }}>{h}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-        {(a.outcome || a.archetype) && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm, marginTop: space.md }}>
-            {a.outcome ? <Chip label={labelize(a.outcome)} tone="accent" /> : null}
-            {a.archetype ? <Chip label={labelize(a.archetype)} /> : null}
-            {a.archetype && !celebration ? <PixelSprite state="idle" size={32} fps={2} /> : null}
-          </View>
-        )}
-      </Section>
-
-      {style && (
-        <Section title="How you built it">
-          <Row label="Planning" value={labelize(style.planning)} />
-          <Row label="Iteration" value={labelize(style.iteration)} />
-          <Row label="Steering" value={labelize(style.steering)} />
-          <Row label="Verification" value={labelize(style.verification)} />
-          <Row label="Scope" value={labelize(style.scope_control)} />
-          {style.architecture_note ? (
-            <Text style={[dim, { marginTop: space.sm }]}>{style.architecture_note}</Text>
-          ) : null}
-        </Section>
-      )}
-
-      {dimensions.length > 0 && (
-        <Section title="Dimensions">
-          {dimensions.map((d) => (
-            <View key={d.dimension} style={{ paddingVertical: 6 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ color: c.text, fontSize: 14 }}>{labelize(d.dimension)}</Text>
-                <Text style={{ color: c.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
-                  {Math.round(d.score)}
-                </Text>
-              </View>
-              <Bar value={d.score} />
-              {d.rationale ? <Text style={[dim, { marginTop: 4 }]}>{d.rationale}</Text> : null}
-            </View>
-          ))}
-        </Section>
-      )}
-
-      {moves.length > 0 && (
-        <Section title="Your moves">
-          {moves.map((m, i) => (
-            <View key={`${m.pattern}-${i}`} style={{ paddingVertical: 6 }}>
-              <Text style={{ color: c.text, fontSize: 14, fontWeight: '700' }}>{m.pattern}</Text>
-              {m.prompt_excerpt ? (
-                <View
-                  style={{
-                    borderLeftWidth: 2,
-                    borderLeftColor: c.accent,
-                    paddingLeft: space.sm,
-                    marginTop: 4,
-                  }}
-                >
-                  <Text style={{ color: c.text, fontSize: 13, fontStyle: 'italic', lineHeight: 18 }}>
-                    “{m.prompt_excerpt}”
-                  </Text>
+        {a.outcome || a.archetype ? (
+          <BandWords delay={360}>
+            <View style={styles.pairs}>
+              {a.outcome ? (
+                <View>
+                  <Words style={type.bandCaption}>{labelize(a.outcome)}</Words>
+                  <Words style={type.bandNote}>outcome</Words>
                 </View>
               ) : null}
-              {m.effect ? <Text style={[dim, { marginTop: 4 }]}>{m.effect}</Text> : null}
+              {a.archetype ? (
+                <View>
+                  <Words style={type.bandCaption}>{labelize(a.archetype)}</Words>
+                  <Words style={type.bandNote}>how it read you</Words>
+                </View>
+              ) : null}
             </View>
-          ))}
-        </Section>
-      )}
+          </BandWords>
+        ) : null}
+        {!a.headline && !a.outcome && !a.archetype ? (
+          <BandWords delay={300}>
+            <Refusal onHue>The model wrote no headline for this session.</Refusal>
+          </BandWords>
+        ) : null}
+      </Band>
 
-      {prompting && (
-        <Section title="Prompting">
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-            <Chip label={labelize(prompting.tone)} />
-          </View>
-          <View style={{ marginTop: space.md }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ color: c.textDim, fontSize: 14 }}>Specificity</Text>
-              <Text style={{ color: c.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
-                {Math.round(prompting.specificity)}
-              </Text>
+      {a.summary || highlights.length ? (
+        <Block style={styles.block}>
+          {a.summary ? <Words style={type.body}>{a.summary}</Words> : null}
+          {highlights.length ? (
+            <View style={styles.list}>
+              {highlights.map((h, i) => (
+                <View key={i} style={[styles.item, i > 0 ? styles.hairTop : null]}>
+                  <Words style={[type.mono, styles.index]}>{String(i + 1).padStart(2, '0')}</Words>
+                  <Words style={[type.body, styles.fill]}>{h}</Words>
+                </View>
+              ))}
             </View>
-            <Bar value={prompting.specificity} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: space.lg, marginTop: space.md }}>
-            <Stat label="Corrections" value={pct(prompting.correction_share)} />
-            <Stat label="Questions" value={pct(prompting.question_share)} />
-          </View>
-          {prompting.note ? <Text style={[dim, { marginTop: space.sm }]}>{prompting.note}</Text> : null}
-        </Section>
-      )}
-
-      {growth.length > 0 && (
-        <Section title="Growth edge">
-          {growth.map((g, i) => (
-            <View key={i} style={{ flexDirection: 'row', paddingVertical: 4, gap: space.sm }}>
-              <Text style={{ color: c.accent, fontSize: 14 }}>•</Text>
-              <Text style={{ color: c.text, fontSize: 14, lineHeight: 20, flex: 1 }}>{g}</Text>
-            </View>
-          ))}
-        </Section>
-      )}
-
-      {tags.length > 0 && (
-        <Section title="Tags">
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-            {tags.map((t) => (
-              <Chip key={t} label={t} />
-            ))}
-          </View>
-        </Section>
-      )}
-
-      <Text style={[dim, { marginTop: space.md, fontSize: 11 }]}>{analysisFooter(a)}</Text>
-      {a.contains_sensitive ? (
-        <Text style={{ color: c.accent, fontSize: 12, marginTop: space.xs }}>{SENSITIVE_WARNING}</Text>
+          ) : null}
+        </Block>
       ) : null}
-    </>
+
+      {dimensions.length ? (
+        <Block style={styles.block}>
+          <Kicker>the five dimensions, this session</Kicker>
+          <View style={styles.dims}>
+            {dimensions.map((d, i) => {
+              const ink = SPECTRUM[DIMENSION_HUE[d.dimension]].ink;
+              const score = Math.round(Math.min(100, Math.max(0, d.score)));
+              return (
+                <View key={d.dimension} style={styles.dim}>
+                  <View style={styles.dimHead}>
+                    <Words style={[type.lead, styles.fill]}>{labelize(d.dimension)}</Words>
+                    <Num spec={numSpec(score, String(score))} textStyle={figure(28, ink)} delay={80 + i * 140} />
+                  </View>
+                  <GrowBar frac={score / 100} color={ink} height={8} delay={80 + i * 140} />
+                  {d.rationale ? <Words style={type.meta}>{d.rationale}</Words> : null}
+                </View>
+              );
+            })}
+          </View>
+        </Block>
+      ) : null}
+
+      {styleRows.length ? (
+        <Block style={styles.block}>
+          <Kicker>how it was built</Kicker>
+          {styleRows.map(([k, v], i) => (
+            <View key={k} style={[styles.pair, i > 0 ? styles.hairTop : null]}>
+              <Words style={[type.dim, styles.pairKey]}>{k}</Words>
+              <Words style={[type.lead, styles.fill]}>{labelize(v)}</Words>
+            </View>
+          ))}
+          {style?.architecture_note ? <Words style={[type.meta, styles.after]}>{style.architecture_note}</Words> : null}
+        </Block>
+      ) : null}
+
+      {prompting ? (
+        <Block style={styles.block}>
+          <Kicker>prompting</Kicker>
+          <View style={styles.dimHead}>
+            <Words style={[type.lead, styles.fill]}>specificity</Words>
+            <Num spec={numSpec(Math.round(prompting.specificity), String(Math.round(prompting.specificity)))} textStyle={figure(28, hue.ink)} delay={80} />
+          </View>
+          <GrowBar frac={Math.min(1, Math.max(0, prompting.specificity / 100))} color={hue.ink} height={8} delay={80} />
+          <View style={styles.list}>
+            <Line value={pct(prompting.correction_share)} label="of your prompts corrected course" ink={hue.ink} delay={220} />
+            <Line value={pct(prompting.question_share)} label="asked rather than directed" ink={hue.ink} delay={340} />
+          </View>
+          <Words style={[type.dim, styles.after]}>{`The tone read as ${labelize(prompting.tone)}.`}</Words>
+          {prompting.note ? <Words style={[type.meta, styles.after]}>{prompting.note}</Words> : null}
+        </Block>
+      ) : null}
+
+      {moves.length ? (
+        <Block style={styles.block}>
+          <Kicker>your moves</Kicker>
+          {moves.map((m, i) => (
+            <View key={`${m.pattern}${i}`} style={[styles.move, i > 0 ? styles.hairTop : null]}>
+              <Words style={type.lead}>{m.pattern}</Words>
+              {m.prompt_excerpt ? <Quote text={m.prompt_excerpt} /> : null}
+              {m.effect ? <Words style={type.meta}>{m.effect}</Words> : null}
+            </View>
+          ))}
+        </Block>
+      ) : null}
+
+      {growth.length ? (
+        <Block style={styles.block}>
+          <Kicker>try next</Kicker>
+          {growth.map((g, i) => (
+            <View key={i} style={[styles.item, i > 0 ? styles.hairTop : null]}>
+              <Words style={[type.mono, styles.index]}>{String(i + 1).padStart(2, '0')}</Words>
+              <Words style={[type.body, styles.fill]}>{g}</Words>
+            </View>
+          ))}
+        </Block>
+      ) : null}
+
+      <Block style={styles.block}>
+        {tags.length ? <Words style={[type.dim, styles.tags]}>{tags.join('  ·  ')}</Words> : null}
+        <Words style={type.meta}>{analysisFooter(a)}</Words>
+        {a.contains_sensitive ? (
+          <View style={styles.after}>
+            <Refusal>{SENSITIVE_WARNING}</Refusal>
+          </View>
+        ) : null}
+      </Block>
+    </Section>
   );
 }
 
-const dim = { color: c.textDim, fontSize: 13, lineHeight: 18 } as const;
+/** A share from the reading as a line of print: the figure in the chapter's ink, what it counts. */
+function Line({ value, label, ink, delay }: { value: string; label: string; ink: string; delay: number }) {
+  return (
+    <View style={styles.lineRow}>
+      <Num spec={numSpec(0, value)} textStyle={figure(28, ink)} delay={delay} />
+      <Words style={[type.lead, styles.fill]}>{label}</Words>
+    </View>
+  );
+}
 
 /**
- * One cheer, then stillness. Mounts celebrating, and after CELEBRATION_MS switches to a
- * paused idle frame — the headline is the thing to read, and a mascot that keeps
- * bouncing beside it for the whole scroll is a distraction, not a reward.
+ * A prompt, verbatim: a 2 pt rule in the hairline colour and the words in quotes. The rule is
+ * neutral on purpose; a hue would spend identity on punctuation.
  */
-function CelebrationSprite() {
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setDone(true), CELEBRATION_MS);
-    return () => clearTimeout(t);
-  }, []);
-  return <PixelSprite state={done ? 'idle' : 'celebrating'} size={48} fps={4} paused={done} />;
-}
-
-// Same styles as the Numbers section on the session screen, so the analysis reads as a
-// continuation of it rather than a second design.
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Quote({ text, lines }: { text: string; lines?: number }) {
   return (
-    <View style={{ marginTop: space.lg }}>
-      <Text
-        style={{
-          color: c.textDim,
-          fontSize: 11,
-          fontWeight: '700',
-          letterSpacing: 0.8,
-          marginBottom: space.sm,
-        }}
-      >
-        {title.toUpperCase()}
-      </Text>
-      <View style={{ backgroundColor: c.card, borderRadius: 12, padding: space.md }}>{children}</View>
+    <View style={styles.quote}>
+      <Words style={[type.meta, styles.italic]} lines={lines}>{`“${text}”`}</Words>
     </View>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
-      <Text style={{ color: c.textDim, fontSize: 14 }}>{label}</Text>
-      <Text style={{ color: c.text, fontSize: 14, fontWeight: '600' }}>{value}</Text>
-    </View>
-  );
-}
-
-export function Chip({ label, tone, color }: { label: string; tone?: 'accent'; color?: string }) {
-  const fg = color ?? (tone === 'accent' ? c.accent : c.text);
-  return (
-    <View
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: tone === 'accent' ? c.accent : c.border,
-        backgroundColor: c.bg,
-        paddingHorizontal: 10,
-        paddingVertical: 3,
-      }}
-    >
-      <Text style={{ color: fg, fontSize: 12, fontWeight: '600' }}>{label}</Text>
-    </View>
-  );
-}
-
-/** 0-100 as a horizontal bar. Plain Views: no SVG is needed for one rectangle. */
-export function Bar({ value }: { value: number }) {
-  const w = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
-  return (
-    <View style={{ height: 6, borderRadius: 3, backgroundColor: c.border, overflow: 'hidden' }}>
-      <View style={{ width: `${w}%`, height: '100%', backgroundColor: c.accent }} />
-    </View>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View>
-      <Text style={{ color: c.text, fontSize: 18, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
-        {value}
-      </Text>
-      <Text style={{ color: c.textDim, fontSize: 11 }}>{label}</Text>
-    </View>
-  );
-}
+const styles = StyleSheet.create({
+  section: { marginTop: 56 },
+  onHue: { color: ON_HUE },
+  pairs: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 28, rowGap: 8, marginTop: 14 },
+  block: { paddingHorizontal: GUTTER, marginTop: 28 },
+  list: { marginTop: 12 },
+  item: { flexDirection: 'row', gap: 14, paddingVertical: 10, alignItems: 'baseline' },
+  index: { width: 22, color: GROUND.faint },
+  fill: { flex: 1 },
+  hairTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: GROUND.border },
+  dims: { gap: 18 },
+  dim: { gap: 6 },
+  dimHead: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
+  pair: { flexDirection: 'row', gap: 12, paddingVertical: 10, alignItems: 'baseline' },
+  pairKey: { width: 104 },
+  after: { marginTop: 10 },
+  lineRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingVertical: 6 },
+  move: { paddingVertical: 12, gap: 6 },
+  tags: { marginBottom: 10 },
+  quote: { borderLeftWidth: 2, borderLeftColor: GROUND.border, paddingLeft: 8 },
+  italic: { fontStyle: 'italic' },
+});

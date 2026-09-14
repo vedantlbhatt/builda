@@ -117,12 +117,15 @@ public struct GitEnricher: Sendable {
     /// Vendored and generated files are excluded via `Tuning.gitExcludePathspecs`: a
     /// `package-lock.json` refresh adds thousands of lines that nobody wrote, and it
     /// inflates both sides of any human-versus-agent comparison.
+    ///
+    /// Every local branch (`Tuning.gitLogRefs`), not HEAD: `cwd` is the common root, the
+    /// main checkout, and a session in a worktree commits to a branch its HEAD never
+    /// reaches. Without it every worktree session counted zero commits.
     public func stats(cwd: String, from: Double, to: Double) -> WindowStats {
         let since = String(format: "%.0f", from)
         let until = String(format: "%.0f", to)
 
-        var args = [
-            "log",
+        var args = ["log"] + Tuning.gitLogRefs + [
             "--since=@\(since)",
             "--until=@\(until)",
             "--pretty=format:%H",

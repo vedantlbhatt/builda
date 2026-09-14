@@ -101,6 +101,26 @@ struct DigestTests {
         #expect(SessionDigest.mask("plain text, no secrets") == "plain text, no secrets")
     }
 
+    /// The same shapes `analysis/digest.py` masks since the review (2026-09-13), and the
+    /// same order: mask THEN cut, so a key longer than the cap is masked whole.
+    @Test func maskCatchesTheShapesItLetThroughAndMasksBeforeTheCut() {
+        #expect(SessionDigest.mask("use sk_live_a1B2c3D4e5F6g7H8 here") == "use [redacted] here")
+        #expect(SessionDigest.mask("use AIza" + String(repeating: "B", count: 35) + " here") == "use [redacted] here")
+        #expect(SessionDigest.mask("use glpat-a1B2c3D4e5F6g7H8i9 here") == "use [redacted] here")
+        #expect(SessionDigest.mask("use Bearer eyJ0b2tlbiI6InNlY3JldCJ9 here") == "use [redacted] here")
+        #expect(SessionDigest.mask("the admin password is hunterpass") == "the admin [redacted]")
+        #expect(
+            SessionDigest.mask("connect to postgres://admin:hunterpass@localhost/app")
+                == "connect to postgres://[redacted]localhost/app")
+        #expect(SessionDigest.mask("the token count is wrong") == "the token count is wrong")
+        let body = (0..<30).map { _ in "MIIEowIBAAKCAQEA" + String(repeating: "x", count: 48) }.joined(separator: "\n")
+        let pem = "-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n-----END RSA PRIVATE KEY-----"
+        let kept = SessionDigest.clip("here is the deploy key, use it:\n" + pem, SessionDigest.promptMax)
+        #expect(kept.contains("[redacted]"))
+        #expect(!kept.contains("MIIEowIBAAKCAQEA"))
+        #expect(SessionDigest.mask("key: " + String(pem.prefix(400))) == "key: [redacted]")
+    }
+
     @Test func maskedPromptSurvivesIntoTheDigest() throws {
         let events = [
             SessionDigest.Event(

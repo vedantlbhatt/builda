@@ -120,7 +120,7 @@ describe('live lines', () => {
     expect(livePresenceLine(base)).toBe("You're at the keyboard");
     expect(livePresenceLine({ ...base, autonomous_seconds: 1800 })).toBe("You're at the keyboard");
     expect(livePresenceLine({ ...base, autonomous_seconds: 11_100 })).toBe(
-      'Running unattended for 3h 5m'
+      'Running unattended for 3h 05m'
     );
   });
 });

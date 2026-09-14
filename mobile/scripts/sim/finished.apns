@@ -1,0 +1,19 @@
+{
+  "Simulator Target Bundle": "com.vedantlbhatt.Builder",
+  "aps": {
+    "alert": {
+      "title": "Session finished: 1h 42m in builder",
+      "body": "+420 lines \u00b7 9 prompts"
+    },
+    "sound": "default",
+    "thread-id": "session",
+    "interruption-level": "active"
+  },
+  "session": "debug-builder",
+  "unattended": false,
+  "data": {
+    "kind": "session_finished",
+    "session_id": "debug-builder",
+    "url": "builder://session/debug-builder?recap=1"
+  }
+}

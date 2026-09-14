@@ -1,0 +1,2333 @@
+[
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "builder_type",
+   "value": null,
+   "value_id": "director",
+   "unit": "archetype",
+   "basis": "archetype_rules",
+   "n": 4,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "confidence": 0.29,
+    "metric": "autonomy_score",
+    "metric_value": 0.596,
+    "metric_lower_bound": false,
+    "closest": null,
+    "runners_up": [
+     {
+      "name": "skeptic",
+      "metric": "steer_rate",
+      "value": 0.222,
+      "threshold": 0.4,
+      "score": 0.277
+     },
+     {
+      "name": "quality_guardian",
+      "metric": "test_runs_per_hour",
+      "value": 0.63,
+      "threshold": 3.0,
+      "score": 0.105
+     }
+    ]
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Which kind of builder are you?",
+  "display": "Director",
+  "sentence": "60% of your build time runs without you.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "shipped",
+   "value": 285,
+   "value_id": null,
+   "unit": "lines",
+   "basis": "project_edit_tools_and_credited_shell_writes",
+   "n": 4,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "commits": 6,
+    "assisted": 3,
+    "alone": 3,
+    "commits_basis": "git_log_distinct_commits"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much did you ship?",
+  "display": "285 lines written, 6 commits",
+  "sentence": "3 of those commits landed during a session or in the 30 minutes before one.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": "hand_off",
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "autonomy": 0.596,
+    "median_prompts": 2.0,
+    "steer_rate": 0.222
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": "You hand it off.",
+  "sentence": "60% of your build time runs without you.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "longest_session",
+   "value": 3900,
+   "value_id": null,
+   "unit": "seconds",
+   "basis": "attended_seconds_rank",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "active_seconds": 4500,
+    "started_at": "2026-09-01T15:00:00Z"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your longest single session?",
+  "display": "1h 05m",
+  "sentence": "The longest of 3 sessions with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "agents_at_once",
+   "value": 1,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "sweep_over_first_to_last_event",
+   "n": 4,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "subagents_peak": 3,
+    "subagents": 9
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How many agents do you run?",
+  "display": "1 session at once",
+  "sentence": "Up to 3 helper agents ran at the same moment.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "go_to_prompt",
+   "value": 3,
+   "value_id": null,
+   "unit": "sends",
+   "basis": "normalized_prompt_text_across_sessions",
+   "n": 8,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "sessions": 3,
+    "words": 3
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your go-to prompt?",
+  "display": "Sent 3 times across 3 sessions",
+  "sentence": "3 words you keep coming back to.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "streak",
+   "value": 2,
+   "value_id": null,
+   "unit": "days",
+   "basis": "days_with_a_commit_and_an_attended_session",
+   "n": 2,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "commit_days": 3,
+    "attended_days": 3,
+    "both_days": 2
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your longest streak?",
+  "display": "2 days straight",
+  "sentence": "2 days in all had a commit and a session with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "change_course",
+   "value": 0.222,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 9,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "interrupts": 1,
+    "corrective_prompts": 1
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": "22% of the time",
+  "sentence": "1 interrupt and 1 correction across 9 prompts.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "crash_out",
+   "value": null,
+   "value_id": null,
+   "unit": "score",
+   "basis": "profanity_caps_punctuation_markers",
+   "n": 8,
+   "needed": null,
+   "reason": null,
+   "extras": {}
+  },
+  "quote": {
+   "card": "crash_out",
+   "text": "WHAT THE FUCK zebracorn is still broken???",
+   "client_session_id": "a",
+   "sent_at": "2026-09-01T15:01:00Z",
+   "seconds_in": 60,
+   "tool_calls_after": null,
+   "corrected": null
+  },
+  "tz_offset_minutes": 0,
+  "question": "Your biggest crash out?",
+  "display": "A Tuesday, at 3:01pm",
+  "sentence": "Sent 1 minute into that session. We have all been there.",
+  "refusal": null,
+  "local": true
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "prompt_length",
+   "value": 4.9,
+   "value_id": null,
+   "unit": "words",
+   "basis": "words_per_prompt",
+   "n": 8,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 3.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How long are your prompts?",
+  "display": "4.9 words on average",
+  "sentence": "Mostly terse. Half of them run 3 words or fewer.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "deep_sessions",
+   "value": 1,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "attended_sessions_over_an_hour",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "avg_minutes": 65,
+    "longest_minutes": 65
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work?",
+  "display": "1 deep session",
+  "sentence": "It ran 65 minutes with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "time_put_in",
+   "value": 4.75,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 4,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "attended_hours": 1.9,
+    "attended_overlap_hours": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": "4.8 hours across 4 sessions",
+  "sentence": "1.9 of those hours with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "cryptic_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "vowelless_runs",
+   "n": 8,
+   "needed": null,
+   "reason": null,
+   "extras": {}
+  },
+  "quote": {
+   "card": "cryptic_prompt",
+   "text": "zebracorn qwrtzsdfgh",
+   "client_session_id": "a",
+   "sent_at": "2026-09-01T15:03:20Z",
+   "seconds_in": 200,
+   "tool_calls_after": 3,
+   "corrected": false
+  },
+  "tz_offset_minutes": 0,
+  "question": "Your most cryptic prompt?",
+  "display": "A prompt of 20 characters",
+  "sentence": "Somehow the agent knew. 3 tool calls followed.",
+  "refusal": null,
+  "local": true
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "prompts_per_session",
+   "value": 3.0,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 2.0,
+    "tool_calls_per_prompt": 1.6
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": "3 prompts a session",
+  "sentence": "1.6 tool calls for every prompt you send.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "rich: every card answered, quotes on",
+  "card": {
+   "id": "kind_of_work",
+   "value": null,
+   "value_id": "fix",
+   "unit": "kind",
+   "basis": "commit_subject_labels",
+   "n": 21,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "kinds": [
+     {
+      "kind": "feature",
+      "commits": 9
+     },
+     {
+      "kind": "fix",
+      "commits": 12
+     }
+    ],
+    "classified": 21,
+    "commits": 35,
+    "coverage": 0.6,
+    "role_lines": [
+     {
+      "role": "test",
+      "lines": 40
+     },
+     {
+      "role": "source",
+      "lines": 225
+     },
+     {
+      "role": "docs",
+      "lines": 20
+     }
+    ],
+    "commit_refusal": null,
+    "lines": 285,
+    "lines_needed": 200
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What kind of work is it?",
+  "display": "Mostly fixes.",
+  "sentence": "12 fixes and 9 features in 35 commits.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "builder_type",
+   "value": null,
+   "value_id": null,
+   "unit": "archetype",
+   "basis": "archetype_rules",
+   "n": 0,
+   "needed": 3,
+   "reason": "below_session_floor",
+   "extras": {
+    "confidence": null,
+    "metric": null,
+    "metric_value": null,
+    "metric_lower_bound": null,
+    "closest": null,
+    "runners_up": []
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Which kind of builder are you?",
+  "display": null,
+  "sentence": null,
+  "refusal": "fewer than 3 sessions",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "shipped",
+   "value": null,
+   "value_id": null,
+   "unit": "lines",
+   "basis": "absent",
+   "n": 0,
+   "needed": null,
+   "reason": "no_sessions",
+   "extras": {
+    "commits": null,
+    "assisted": null,
+    "alone": null,
+    "commits_basis": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much did you ship?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no sessions",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": null,
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 0,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "autonomy": null,
+    "median_prompts": null,
+    "steer_rate": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": null,
+  "sentence": null,
+  "refusal": "0 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "longest_session",
+   "value": null,
+   "value_id": null,
+   "unit": "seconds",
+   "basis": "attended_seconds_rank",
+   "n": 0,
+   "needed": null,
+   "reason": "no_presence",
+   "extras": {
+    "active_seconds": null,
+    "started_at": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your longest single session?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no session had you present, and an unattended run cannot hold a record",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "agents_at_once",
+   "value": null,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "sweep_over_first_to_last_event",
+   "n": 0,
+   "needed": null,
+   "reason": "no_sessions",
+   "extras": {
+    "subagents_peak": null,
+    "subagents": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How many agents do you run?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no sessions",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "go_to_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "sends",
+   "basis": "normalized_prompt_text_across_sessions",
+   "n": 0,
+   "needed": null,
+   "reason": "no_repeated_prompt",
+   "extras": {
+    "sessions": null,
+    "words": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your go-to prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt was sent in more than one session",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "streak",
+   "value": null,
+   "value_id": null,
+   "unit": "days",
+   "basis": "days_with_a_commit_and_an_attended_session",
+   "n": 0,
+   "needed": null,
+   "reason": "no_commit_history",
+   "extras": {
+    "commit_days": null,
+    "attended_days": null,
+    "both_days": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your longest streak?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no commit history could be read for the repositories these sessions ran in",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "change_course",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 0,
+   "needed": 5,
+   "reason": "below_prompt_floor",
+   "extras": {
+    "interrupts": null,
+    "corrective_prompts": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": null,
+  "sentence": null,
+  "refusal": "0 prompts with text, 5 needed",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "crash_out",
+   "value": null,
+   "value_id": null,
+   "unit": "score",
+   "basis": "profanity_caps_punctuation_markers",
+   "n": 0,
+   "needed": null,
+   "reason": "no_crash_out",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your biggest crash out?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt read as a crash out",
+  "local": true
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "prompt_length",
+   "value": null,
+   "value_id": null,
+   "unit": "words",
+   "basis": "words_per_prompt",
+   "n": 0,
+   "needed": 5,
+   "reason": "below_own_words_floor",
+   "extras": {
+    "median": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How long are your prompts?",
+  "display": null,
+  "sentence": null,
+  "refusal": "0 prompts typed in your own words, 5 needed",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "deep_sessions",
+   "value": null,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "attended_sessions_over_an_hour",
+   "n": 0,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "avg_minutes": null,
+    "longest_minutes": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work?",
+  "display": null,
+  "sentence": null,
+  "refusal": "0 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "time_put_in",
+   "value": null,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 0,
+   "needed": null,
+   "reason": "no_sessions",
+   "extras": {
+    "attended_hours": null,
+    "attended_overlap_hours": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no sessions",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "cryptic_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "vowelless_runs",
+   "n": 0,
+   "needed": null,
+   "reason": "no_cryptic_prompt",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your most cryptic prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no short prompt with 2 or more words of 4 or more characters to read (4 to 80 characters, no path, link or hash)",
+  "local": true
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "prompts_per_session",
+   "value": null,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 0,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "median": null,
+    "tool_calls_per_prompt": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": null,
+  "sentence": null,
+  "refusal": "0 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "nothing at all",
+  "card": {
+   "id": "kind_of_work",
+   "value": null,
+   "value_id": null,
+   "unit": "kind",
+   "basis": "commit_subject_labels_then_lines_by_file_role",
+   "n": 0,
+   "needed": null,
+   "reason": "neither_kind_basis",
+   "extras": {
+    "kinds": [],
+    "classified": 0,
+    "commits": 0,
+    "coverage": null,
+    "role_lines": [],
+    "commit_refusal": "no_subjects",
+    "lines": 0,
+    "lines_needed": 200
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What kind of work is it?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no commit subjects were read; 0 attributable lines, 200 needed",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "builder_type",
+   "value": null,
+   "value_id": null,
+   "unit": "archetype",
+   "basis": "archetype_rules",
+   "n": 2,
+   "needed": 3,
+   "reason": "below_session_floor",
+   "extras": {
+    "confidence": null,
+    "metric": null,
+    "metric_value": null,
+    "metric_lower_bound": null,
+    "closest": null,
+    "runners_up": []
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Which kind of builder are you?",
+  "display": null,
+  "sentence": null,
+  "refusal": "fewer than 3 sessions",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "shipped",
+   "value": null,
+   "value_id": null,
+   "unit": "lines",
+   "basis": "project_edit_tools_and_credited_shell_writes",
+   "n": 2,
+   "needed": null,
+   "reason": "no_lines_attributed",
+   "extras": {
+    "commits": null,
+    "assisted": null,
+    "alone": null,
+    "commits_basis": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much did you ship?",
+  "display": null,
+  "sentence": null,
+  "refusal": "none of the 2 sessions has a line the agent wrote into a project file that can be counted, and 0 would read as nothing written",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": null,
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 2,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "autonomy": 0.0,
+    "median_prompts": 2.0,
+    "steer_rate": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": null,
+  "sentence": null,
+  "refusal": "2 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "longest_session",
+   "value": 1800,
+   "value_id": null,
+   "unit": "seconds",
+   "basis": "attended_seconds_rank",
+   "n": 2,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "active_seconds": 1800,
+    "started_at": "2026-09-01T15:00:00Z"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your longest single session?",
+  "display": "30 minutes",
+  "sentence": "The longest of 2 sessions with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "agents_at_once",
+   "value": 1,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "sweep_over_first_to_last_event",
+   "n": 2,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "subagents_peak": null,
+    "subagents": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How many agents do you run?",
+  "display": "1 session at once",
+  "sentence": "Counted from first action to last across 2 sessions.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "go_to_prompt",
+   "value": 2,
+   "value_id": null,
+   "unit": "sends",
+   "basis": "normalized_prompt_text_across_sessions",
+   "n": 4,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "sessions": 2,
+    "words": 6
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your go-to prompt?",
+  "display": "Sent 2 times across 2 sessions",
+  "sentence": "6 words you keep coming back to.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "change_course",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 4,
+   "needed": 5,
+   "reason": "below_prompt_floor",
+   "extras": {
+    "interrupts": null,
+    "corrective_prompts": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": null,
+  "sentence": null,
+  "refusal": "4 prompts with text, 5 needed",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "crash_out",
+   "value": null,
+   "value_id": null,
+   "unit": "score",
+   "basis": "profanity_caps_punctuation_markers",
+   "n": 4,
+   "needed": null,
+   "reason": "no_crash_out",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your biggest crash out?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt read as a crash out",
+  "local": true
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "prompt_length",
+   "value": null,
+   "value_id": null,
+   "unit": "words",
+   "basis": "words_per_prompt",
+   "n": 4,
+   "needed": 5,
+   "reason": "below_own_words_floor",
+   "extras": {
+    "median": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How long are your prompts?",
+  "display": null,
+  "sentence": null,
+  "refusal": "4 prompts typed in your own words, 5 needed",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "deep_sessions",
+   "value": null,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "attended_sessions_over_an_hour",
+   "n": 2,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "avg_minutes": null,
+    "longest_minutes": 30
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work?",
+  "display": null,
+  "sentence": null,
+  "refusal": "2 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "time_put_in",
+   "value": 1.0,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 2,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "attended_hours": 1.0,
+    "attended_overlap_hours": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": "1 hour across 2 sessions",
+  "sentence": "1 of those hours with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "cryptic_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "vowelless_runs",
+   "n": 4,
+   "needed": null,
+   "reason": "no_cryptic_prompt",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your most cryptic prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "none of the 4 short prompts was mostly keyboard mash (five letters in a row with no vowel)",
+  "local": true
+ },
+ {
+  "scenario": "two sittings",
+  "card": {
+   "id": "prompts_per_session",
+   "value": null,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 2,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "median": 2.0,
+    "tool_calls_per_prompt": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": null,
+  "sentence": null,
+  "refusal": "2 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "builder_type",
+   "value": null,
+   "value_id": null,
+   "unit": "archetype",
+   "basis": "archetype_rules",
+   "n": 3,
+   "needed": null,
+   "reason": "no_archetype_metric",
+   "extras": {
+    "confidence": null,
+    "metric": null,
+    "metric_value": null,
+    "metric_lower_bound": null,
+    "closest": null,
+    "runners_up": []
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Which kind of builder are you?",
+  "display": null,
+  "sentence": null,
+  "refusal": "none of the six archetype metrics could be computed",
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "shipped",
+   "value": null,
+   "value_id": null,
+   "unit": "lines",
+   "basis": "project_edit_tools_and_credited_shell_writes",
+   "n": 3,
+   "needed": null,
+   "reason": "no_lines_attributed",
+   "extras": {
+    "commits": null,
+    "assisted": null,
+    "alone": null,
+    "commits_basis": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much did you ship?",
+  "display": null,
+  "sentence": null,
+  "refusal": "none of the 3 sessions has a line the agent wrote into a project file that can be counted, and 0 would read as nothing written",
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": "one_shot",
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "autonomy": null,
+    "median_prompts": 0.0,
+    "steer_rate": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": "Short and direct.",
+  "sentence": "0 prompts a session, then it runs.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "longest_session",
+   "value": 60,
+   "value_id": null,
+   "unit": "seconds",
+   "basis": "attended_seconds_rank",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "active_seconds": 60,
+    "started_at": "2026-09-01T15:00:00Z"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your longest single session?",
+  "display": "1 minute",
+  "sentence": "The longest of 3 sessions with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "agents_at_once",
+   "value": null,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "sweep_over_first_to_last_event",
+   "n": 0,
+   "needed": null,
+   "reason": "no_events",
+   "extras": {
+    "subagents_peak": null,
+    "subagents": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How many agents do you run?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no session recorded an event",
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "deep_sessions",
+   "value": 0,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "attended_sessions_over_an_hour",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "avg_minutes": null,
+    "longest_minutes": 1
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work?",
+  "display": "No session past an hour yet",
+  "sentence": "Your longest ran 1 minute.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "time_put_in",
+   "value": 0.05,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "attended_hours": 0.1,
+    "attended_overlap_hours": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": "0.1 hours across 3 sessions",
+  "sentence": "0.1 of those hours with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three sittings too short for any archetype metric",
+  "card": {
+   "id": "prompts_per_session",
+   "value": 0.0,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 0.0,
+    "tool_calls_per_prompt": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": "0 prompts a session",
+  "sentence": "Half your sessions have 0 or fewer.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "builder_type",
+   "value": null,
+   "value_id": "generalist",
+   "unit": "archetype",
+   "basis": "archetype_rules",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "confidence": null,
+    "metric": null,
+    "metric_value": null,
+    "metric_lower_bound": false,
+    "closest": {
+     "name": "director",
+     "metric": "autonomy_score",
+     "value": 0.0,
+     "threshold": 0.5,
+     "score": 0.0
+    },
+    "runners_up": []
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Which kind of builder are you?",
+  "display": "Generalist",
+  "sentence": "No single pattern dominates. Closest is Director, 0% of the way there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": "one_shot",
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "autonomy": 0.0,
+    "median_prompts": 2.0,
+    "steer_rate": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": "Short and direct.",
+  "sentence": "2 prompts a session, then it runs.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "longest_session",
+   "value": 1800,
+   "value_id": null,
+   "unit": "seconds",
+   "basis": "attended_seconds_rank",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "active_seconds": 1800,
+    "started_at": "2026-09-01T15:00:00Z"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your longest single session?",
+  "display": "30 minutes",
+  "sentence": "The longest of 3 sessions with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "agents_at_once",
+   "value": 1,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "sweep_over_first_to_last_event",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "subagents_peak": null,
+    "subagents": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How many agents do you run?",
+  "display": "1 session at once",
+  "sentence": "Counted from first action to last across 3 sessions.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "go_to_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "sends",
+   "basis": "normalized_prompt_text_across_sessions",
+   "n": 6,
+   "needed": null,
+   "reason": "no_repeated_prompt",
+   "extras": {
+    "sessions": null,
+    "words": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your go-to prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt was sent in more than one session",
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "change_course",
+   "value": 0.0,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 6,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "interrupts": 0,
+    "corrective_prompts": 0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": "0% of the time",
+  "sentence": "0 interrupts and 0 corrections across 6 prompts.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "crash_out",
+   "value": null,
+   "value_id": null,
+   "unit": "score",
+   "basis": "profanity_caps_punctuation_markers",
+   "n": 6,
+   "needed": null,
+   "reason": "no_crash_out",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your biggest crash out?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt read as a crash out",
+  "local": true
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "prompt_length",
+   "value": 20.0,
+   "value_id": null,
+   "unit": "words",
+   "basis": "words_per_prompt",
+   "n": 6,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 20.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How long are your prompts?",
+  "display": "20 words on average",
+  "sentence": "Mostly conversational. Half of them run 20 words or fewer.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "deep_sessions",
+   "value": 0,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "attended_sessions_over_an_hour",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "avg_minutes": null,
+    "longest_minutes": 30
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work?",
+  "display": "No session past an hour yet",
+  "sentence": "Your longest ran 30 minutes.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "time_put_in",
+   "value": 1.5,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "attended_hours": 1.5,
+    "attended_overlap_hours": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": "1.5 hours across 3 sessions",
+  "sentence": "1.5 of those hours with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "three plain sittings",
+  "card": {
+   "id": "prompts_per_session",
+   "value": 2.0,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 2.0,
+    "tool_calls_per_prompt": 1.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": "2 prompts a session",
+  "sentence": "1 tool call for every prompt you send.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "a server shaped corpus with no line counts",
+  "card": {
+   "id": "shipped",
+   "value": null,
+   "value_id": null,
+   "unit": "lines",
+   "basis": "absent",
+   "n": 0,
+   "needed": null,
+   "reason": "no_line_counts",
+   "extras": {
+    "commits": null,
+    "assisted": null,
+    "alone": null,
+    "commits_basis": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much did you ship?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no session carries a line count",
+  "local": false
+ },
+ {
+  "scenario": "only unattended runs, one with no events",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": null,
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 0,
+   "needed": 3,
+   "reason": "below_attended_floor",
+   "extras": {
+    "autonomy": 1.0,
+    "median_prompts": null,
+    "steer_rate": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": null,
+  "sentence": null,
+  "refusal": "0 sessions with you there, 3 needed",
+  "local": false
+ },
+ {
+  "scenario": "only unattended runs, one with no events",
+  "card": {
+   "id": "agents_at_once",
+   "value": 1,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "sweep_over_first_to_last_event",
+   "n": 1,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "subagents_peak": null,
+    "subagents": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How many agents do you run?",
+  "display": "1 session at once",
+  "sentence": "Counted from first action to last across 1 session.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "only unattended runs, one with no events",
+  "card": {
+   "id": "time_put_in",
+   "value": 1.0,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 2,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "attended_hours": 0.0,
+    "attended_overlap_hours": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": "1 hour across 2 sessions",
+  "sentence": "0 of those hours with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "sittings that recorded no event",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": "one_shot",
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "autonomy": 0.0,
+    "median_prompts": 0.0,
+    "steer_rate": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": "Short and direct.",
+  "sentence": "0 prompts a session, then it runs.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "prompts that carry no text",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": "one_shot",
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "autonomy": 0.0,
+    "median_prompts": 2.0,
+    "steer_rate": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": "Short and direct.",
+  "sentence": "2 prompts a session, then it runs.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "prompts that carry no text",
+  "card": {
+   "id": "change_course",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 6,
+   "needed": null,
+   "reason": "no_prompt_text",
+   "extras": {
+    "interrupts": null,
+    "corrective_prompts": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt carried text or an interrupt count to read",
+  "local": false
+ },
+ {
+  "scenario": "one short prompt",
+  "card": {
+   "id": "go_to_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "sends",
+   "basis": "normalized_prompt_text_across_sessions",
+   "n": 7,
+   "needed": null,
+   "reason": "no_repeated_prompt",
+   "extras": {
+    "sessions": null,
+    "words": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your go-to prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt was sent in more than one session",
+  "local": false
+ },
+ {
+  "scenario": "one short prompt",
+  "card": {
+   "id": "change_course",
+   "value": 0.0,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 7,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "interrupts": 0,
+    "corrective_prompts": 0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": "0% of the time",
+  "sentence": "0 interrupts and 0 corrections across 7 prompts.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "one short prompt",
+  "card": {
+   "id": "crash_out",
+   "value": null,
+   "value_id": null,
+   "unit": "score",
+   "basis": "profanity_caps_punctuation_markers",
+   "n": 7,
+   "needed": null,
+   "reason": "no_crash_out",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your biggest crash out?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt read as a crash out",
+  "local": true
+ },
+ {
+  "scenario": "one short prompt",
+  "card": {
+   "id": "prompt_length",
+   "value": 17.6,
+   "value_id": null,
+   "unit": "words",
+   "basis": "words_per_prompt",
+   "n": 7,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 20.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How long are your prompts?",
+  "display": "17.6 words on average",
+  "sentence": "Mostly conversational. Half of them run 20 words or fewer.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "one short prompt",
+  "card": {
+   "id": "cryptic_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "vowelless_runs",
+   "n": 1,
+   "needed": null,
+   "reason": "no_cryptic_prompt",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your most cryptic prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "the 1 short prompt was not mostly keyboard mash (five letters in a row with no vowel)",
+  "local": true
+ },
+ {
+  "scenario": "one short prompt",
+  "card": {
+   "id": "prompts_per_session",
+   "value": 2.3,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 2.0,
+    "tool_calls_per_prompt": 0.9
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": "2.3 prompts a session",
+  "sentence": "0.9 tool calls for every prompt you send.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "work_style",
+   "value": null,
+   "value_id": "one_shot",
+   "unit": "style",
+   "basis": "autonomy_then_prompts_then_steer",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "autonomy": 0.0,
+    "median_prompts": 3.0,
+    "steer_rate": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work with your agent?",
+  "display": "Short and direct.",
+  "sentence": "3 prompts a session, then it runs.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "go_to_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "sends",
+   "basis": "normalized_prompt_text_across_sessions",
+   "n": 8,
+   "needed": null,
+   "reason": "no_repeated_prompt",
+   "extras": {
+    "sessions": null,
+    "words": null
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your go-to prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt was sent in more than one session",
+  "local": false
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "change_course",
+   "value": 0.0,
+   "value_id": null,
+   "unit": "share",
+   "basis": "interrupts_and_correction_markers",
+   "n": 8,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "interrupts": 0,
+    "corrective_prompts": 0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How often do you change course?",
+  "display": "0% of the time",
+  "sentence": "0 interrupts and 0 corrections across 8 prompts.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "crash_out",
+   "value": null,
+   "value_id": null,
+   "unit": "score",
+   "basis": "profanity_caps_punctuation_markers",
+   "n": 8,
+   "needed": null,
+   "reason": "no_crash_out",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your biggest crash out?",
+  "display": null,
+  "sentence": null,
+  "refusal": "no prompt read as a crash out",
+  "local": true
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "prompt_length",
+   "value": 15.8,
+   "value_id": null,
+   "unit": "words",
+   "basis": "words_per_prompt",
+   "n": 8,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 20.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How long are your prompts?",
+  "display": "15.8 words on average",
+  "sentence": "Mostly conversational. Half of them run 20 words or fewer.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "cryptic_prompt",
+   "value": null,
+   "value_id": null,
+   "unit": "share",
+   "basis": "vowelless_runs",
+   "n": 2,
+   "needed": null,
+   "reason": "no_cryptic_prompt",
+   "extras": {}
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your most cryptic prompt?",
+  "display": null,
+  "sentence": null,
+  "refusal": "none of the 2 short prompts was mostly keyboard mash (five letters in a row with no vowel)",
+  "local": true
+ },
+ {
+  "scenario": "two short prompts",
+  "card": {
+   "id": "prompts_per_session",
+   "value": 2.7,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 3.0,
+    "tool_calls_per_prompt": 0.8
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": "2.7 prompts a session",
+  "sentence": "0.8 tool calls for every prompt you send.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "commit subjects too few to label",
+  "card": {
+   "id": "kind_of_work",
+   "value": null,
+   "value_id": null,
+   "unit": "kind",
+   "basis": "commit_subject_labels_then_lines_by_file_role",
+   "n": 10,
+   "needed": 20,
+   "reason": "neither_kind_basis",
+   "extras": {
+    "kinds": [
+     {
+      "kind": "fix",
+      "commits": 5
+     }
+    ],
+    "classified": 5,
+    "commits": 10,
+    "coverage": 0.5,
+    "role_lines": [],
+    "commit_refusal": "too_few_labelled",
+    "lines": 0,
+    "lines_needed": 200
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What kind of work is it?",
+  "display": null,
+  "sentence": null,
+  "refusal": "5 of 10 commit subjects say what kind of change they are, 20 needed; 0 attributable lines, 200 needed",
+  "local": false
+ },
+ {
+  "scenario": "commit subjects mostly unlabelled",
+  "card": {
+   "id": "kind_of_work",
+   "value": null,
+   "value_id": null,
+   "unit": "kind",
+   "basis": "commit_subject_labels_then_lines_by_file_role",
+   "n": 50,
+   "needed": 60,
+   "reason": "neither_kind_basis",
+   "extras": {
+    "kinds": [
+     {
+      "kind": "fix",
+      "commits": 20
+     }
+    ],
+    "classified": 20,
+    "commits": 50,
+    "coverage": 0.4,
+    "role_lines": [],
+    "commit_refusal": "low_label_coverage",
+    "lines": 0,
+    "lines_needed": 200
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What kind of work is it?",
+  "display": null,
+  "sentence": null,
+  "refusal": "20 of 50 commit subjects say what kind of change they are, 60% needed; 0 attributable lines, 200 needed",
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "builder_type",
+   "value": null,
+   "value_id": "generalist",
+   "unit": "archetype",
+   "basis": "archetype_rules",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "confidence": null,
+    "metric": null,
+    "metric_value": null,
+    "metric_lower_bound": false,
+    "closest": {
+     "name": "velocity_machine",
+     "metric": "code_velocity",
+     "value": 99.5,
+     "threshold": 487.0,
+     "score": 0.102
+    },
+    "runners_up": []
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Which kind of builder are you?",
+  "display": "Generalist",
+  "sentence": "No single pattern dominates. Closest is Velocity machine, 20% of the way there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "shipped",
+   "value": 210,
+   "value_id": null,
+   "unit": "lines",
+   "basis": "project_edit_tools_and_credited_shell_writes",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "commits": 3,
+    "assisted": 0,
+    "alone": 3,
+    "commits_basis": "git_log_distinct_commits"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much did you ship?",
+  "display": "210 lines written, 3 commits",
+  "sentence": "0 of those commits landed during a session or in the 30 minutes before one.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "longest_session",
+   "value": 4000,
+   "value_id": null,
+   "unit": "seconds",
+   "basis": "attended_seconds_rank",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "active_seconds": 4000,
+    "started_at": "2026-09-02T15:00:00Z"
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "Your longest single session?",
+  "display": "1h 06m",
+  "sentence": "The longest of 3 sessions with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "streak",
+   "value": 0,
+   "value_id": null,
+   "unit": "days",
+   "basis": "days_with_a_commit_and_an_attended_session",
+   "n": 0,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "commit_days": 2,
+    "attended_days": 3,
+    "both_days": 0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What's your longest streak?",
+  "display": "No streak yet",
+  "sentence": "2 days had a commit, none alongside a session with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "deep_sessions",
+   "value": 1,
+   "value_id": null,
+   "unit": "sessions",
+   "basis": "attended_sessions_over_an_hour",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "avg_minutes": 67,
+    "longest_minutes": 66
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How do you work?",
+  "display": "1 deep session",
+  "sentence": "It ran 67 minutes with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "time_put_in",
+   "value": 2.11,
+   "value_id": null,
+   "unit": "hours",
+   "basis": "active_seconds",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "attended_hours": 2.1,
+    "attended_overlap_hours": 0.0
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much time did you put in?",
+  "display": "2.1 hours across 3 sessions",
+  "sentence": "2.1 of those hours with you there.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "prompts_per_session",
+   "value": 2.0,
+   "value_id": null,
+   "unit": "prompts_per_session",
+   "basis": "prompts_over_attended_sessions",
+   "n": 3,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "median": 2.0,
+    "tool_calls_per_prompt": 1.3
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "How much do you talk to your agent?",
+  "display": "2 prompts a session",
+  "sentence": "1.3 tool calls for every prompt you send.",
+  "refusal": null,
+  "local": false
+ },
+ {
+  "scenario": "lines by file role, prose commit subjects, no streak yet",
+  "card": {
+   "id": "kind_of_work",
+   "value": null,
+   "value_id": "source",
+   "unit": "kind",
+   "basis": "lines_by_file_role",
+   "n": 210,
+   "needed": null,
+   "reason": null,
+   "extras": {
+    "kinds": [],
+    "classified": 0,
+    "commits": 12,
+    "coverage": 0.0,
+    "role_lines": [
+     {
+      "role": "test",
+      "lines": 60
+     },
+     {
+      "role": "source",
+      "lines": 150
+     }
+    ],
+    "commit_refusal": "too_few_labelled",
+    "lines": 210,
+    "lines_needed": 200
+   }
+  },
+  "quote": null,
+  "tz_offset_minutes": null,
+  "question": "What kind of work is it?",
+  "display": "Mostly source code.",
+  "sentence": "71% of agent lines went to source files, 29% to test files.",
+  "refusal": null,
+  "local": false
+ }
+]

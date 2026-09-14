@@ -208,7 +208,7 @@ public enum AgentLineBucket: String, Sendable, Codable, CaseIterable {
         case .nineInTen: return "9 of every 10 lines came from \(modelName) — at least"
         case .threeInFour: return "3 of every 4 lines came from \(modelName) — at least"
         case .aboutHalf: return "About half the lines came from \(modelName)"
-        case .mostlyYou: return "Most of these lines are yours"
+        case .mostlyYou: return ""  // never a headline (Superlative.choose says why)
         case .unknown: return ""
         }
     }

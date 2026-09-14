@@ -1,16 +1,17 @@
 /**
- * The animal pack: eight two-colour creatures, their loops, and their colours.
+ * The pixel family: Bit and the eight creatures, one ink per frame (each creature its own, from
+ * the spectrum, since the owner's 2026-09-13 override), one grid, one weight.
  *
- * The failure mode of a sprite pack is not a crash either. It is an animal that still
- * renders, still animates, and no longer reads — a stripe that cuts the body in half, a
- * third colour that crept into one frame, a "subtle" loop that repaints half the grid
- * every beat. Every rule the pack claims for itself is asserted here, with the number
- * that was measured off the actual frames beside it.
+ * The failure mode of a sprite pack is not a crash either. It is a creature that still
+ * renders, still animates, and no longer belongs: a second tone creeping back into one frame,
+ * a crab that is a third heavier than the bee, an owl standing a row lower than the fox, a
+ * "subtle" loop that repaints half the grid. Every rule the family claims for itself
+ * (`animals.ts`, rules 1 to 7) is asserted here, with the number measured off the actual
+ * frames beside it, and Bit's idle is held to the same rules as the pack.
  */
 import { describe, expect, test } from 'bun:test';
 
 import { ANALYSIS_ENUMS, type Archetype } from '../src/generated/analysis';
-import { StripClass } from '../src/generated/strip';
 import {
   ANIMALS,
   ANIMAL_FRAMES,
@@ -19,49 +20,166 @@ import {
   ARCHETYPE_ANIMALS,
   CORPUS_ARCHETYPE_ANIMALS,
   DEFAULT_ANIMAL,
+  PACK_EXCEPTIONS,
   animalChoices,
   animalForArchetype,
   framesForAnimal,
   isAnimal,
   resolveAnimal,
   type Animal,
+  type PackException,
 } from '../src/pixel/animals';
-import { EMPTY, GRID, ascii, isValidFrame, validateFrame, type Frame } from '../src/pixel/frames';
-import { ANIMAL_MOTION, animalBreathMs, animalTimeline, clampTempo } from '../src/pixel/motion';
-import { animalPalette, mix } from '../src/pixel/palette';
-import { colors, type Scheme } from '../src/theme';
+import { EMPTY, EYES, GRID, ascii, eyesOpen, holes, isValidFrame, validateFrame, type Frame } from '../src/pixel/frames';
+import { ANIMAL_MOTION, MOTION, animalTimeline, clampTempo, closeEyes, timelineFor } from '../src/pixel/motion';
+import { glyphColor } from '../src/pixel/harness';
+import { GLYPH_INK, HUE_SNAP_MS, animalPalette, creatureInk, creatureTileInks, glyphInk, spritePalette } from '../src/pixel/palette';
+import { SPRITES } from '../src/pixel/sprites';
+import { tokens } from '../src/generated/tokens';
+import { colors, creatureHue, type Scheme } from '../src/theme';
 
-/**
- * The subtlety budget: how many of the 256 cells may change between one frame of a loop
- * and the next, the wrap back to frame 0 included.
- *
- * MEASURED over the shipping frames — crab 6, octopus 8, dog 4, cat 3, owl 8, fox 8,
- * whale 6, bee 6 — so the worst change in the pack is 8 cells and the ceiling is 10.
- * The number is the whole point of the rule: whole-body movement belongs in
- * `ANIMAL_MOTION.drift`, and a loop that starts repainting the animal has stopped being
- * an idle. If this ever fails, look at the contact sheet before raising it.
- */
-const SUBTLE_PIXELS = 10;
-const MEASURED_WORST = 8;
+// ─── measuring a frame ───────────────────────────────────────────────────────────────
+
+type Cell = [number, number];
+const key = ([x, y]: Cell) => `${x},${y}`;
+
+function drawn(frame: Frame): Cell[] {
+  const out: Cell[] = [];
+  frame.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) if (row[x] !== EMPTY) out.push([x, y]);
+  });
+  return out;
+}
+
+function filled(frame: Frame): number {
+  return drawn(frame).length;
+}
 
 /** Cells that differ between two frames. */
-function diff(a: Frame, b: Frame): number {
-  let n = 0;
+function diff(a: Frame, b: Frame): Cell[] {
+  const out: Cell[] = [];
   for (let y = 0; y < GRID; y++) {
-    for (let x = 0; x < GRID; x++) if (a[y]?.[x] !== b[y]?.[x]) n += 1;
+    for (let x = 0; x < GRID; x++) if (a[y]?.[x] !== b[y]?.[x]) out.push([x, y]);
   }
-  return n;
+  return out;
 }
 
 /** Every frame change the loop actually plays, the wrap included. */
 function loopSteps(frames: Frame[]): number[] {
-  return frames.map((f, i) => diff(f, frames[(i + 1) % frames.length]!));
+  return frames.map((f, i) => diff(f, frames[(i + 1) % frames.length]!).length);
 }
 
 function glyphsUsed(frame: Frame): Set<string> {
   const set = new Set<string>();
   for (const row of frame) for (const ch of row) if (ch !== EMPTY) set.add(ch);
   return set;
+}
+
+/** Cells that differ between a frame and its own mirror image, over one half. */
+function asymmetry(frame: Frame): number {
+  let n = 0;
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID / 2; x++) if (frame[y]?.[x] !== frame[y]?.[GRID - 1 - x]) n += 1;
+  }
+  return n;
+}
+
+function bbox(frame: Frame): { x0: number; y0: number; x1: number; y1: number } {
+  const cells = drawn(frame);
+  const xs = cells.map(([x]) => x);
+  const ys = cells.map(([, y]) => y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+/** 4-connected groups of `cells`. */
+function groups(cells: Cell[]): Cell[][] {
+  const pending = new Map(cells.map((c) => [key(c), c]));
+  const out: Cell[][] = [];
+  for (const start of cells) {
+    if (!pending.has(key(start))) continue;
+    const group: Cell[] = [];
+    const stack = [start];
+    pending.delete(key(start));
+    while (stack.length) {
+      const [x, y] = stack.pop()!;
+      group.push([x, y]);
+      for (const n of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ] as Cell[]) {
+        if (pending.has(key(n))) {
+          pending.delete(key(n));
+          stack.push(n);
+        }
+      }
+    }
+    out.push(group);
+  }
+  return out;
+}
+
+/**
+ * Drawn cells in the middle of a one-cell-wide line: two or more drawn neighbours, and both
+ * horizontal or both vertical neighbours empty. A cell with one neighbour is a TIP (an ear
+ * point, a whisker, a claw) and is allowed; a line of them is not.
+ */
+function thin(frame: Frame): Cell[] {
+  const on = new Set(drawn(frame).map(key));
+  return drawn(frame).filter(([x, y]) => {
+    const l = on.has(key([x - 1, y]));
+    const r = on.has(key([x + 1, y]));
+    const u = on.has(key([x, y - 1]));
+    const d = on.has(key([x, y + 1]));
+    return Number(l) + Number(r) + Number(u) + Number(d) >= 2 && ((!l && !r) || (!u && !d));
+  });
+}
+
+/** The holes that are not the family eyes: noses, beaks, slits, a smile, stripes. */
+function featureHoles(frame: Frame): Cell[] {
+  const eyeKeys = new Set(EYES.map(([x, y]) => key([x, y])));
+  return holes(frame).filter((c) => !eyeKeys.has(key(c)));
+}
+
+/**
+ * Thin cells a creature is not allowed. A striped creature (`PACK_EXCEPTIONS`) may have a
+ * one-cell wall or band where it borders a stripe hole, and nowhere else.
+ */
+function thinBreaks(frame: Frame, exception: PackException | undefined): Cell[] {
+  const cells = thin(frame);
+  if (!exception?.stripes) return cells;
+  const stripe = new Set(featureHoles(frame).map(key));
+  const touches = ([x, y]: Cell) =>
+    stripe.has(key([x - 1, y])) || stripe.has(key([x + 1, y])) || stripe.has(key([x, y - 1])) || stripe.has(key([x, y + 1]));
+  return cells.filter((c) => !touches(c));
+}
+
+/** Neighbouring pairs that differ, the frame border counted as empty. */
+function edges(frame: Frame): number {
+  const on = new Set(drawn(frame).map(key));
+  let n = 0;
+  for (let y = -1; y < GRID; y++) {
+    for (let x = -1; x < GRID; x++) {
+      const here = on.has(key([x, y]));
+      if (y >= 0 && here !== on.has(key([x + 1, y]))) n += 1;
+      if (x >= 0 && here !== on.has(key([x, y + 1]))) n += 1;
+    }
+  }
+  return n;
+}
+
+/** A frame's outline: its drawn cells plus the holes it encloses. */
+function outline(frame: Frame): Set<string> {
+  return new Set([...drawn(frame).map(key), ...holes(frame).map(key)]);
+}
+
+function outlineDistance(a: Frame, b: Frame): number {
+  const oa = outline(a);
+  const ob = outline(b);
+  let n = 0;
+  for (const k of oa) if (!ob.has(k)) n += 1;
+  for (const k of ob) if (!oa.has(k)) n += 1;
+  return n;
 }
 
 /** WCAG relative luminance, and the contrast ratio between two `#rrggbb` colours. */
@@ -79,9 +197,52 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// ─── the family ──────────────────────────────────────────────────────────────────────
+
+/** A member of the family: its loop as played, the beat, and the holds. Bit's is its idle. */
+interface Member {
+  name: string;
+  frames: Frame[];
+  beatMs: number;
+  holds: readonly number[];
+}
+
+const FAMILY: Member[] = [
+  { name: 'bit', frames: SPRITES.idle, beatMs: MOTION.idle.beatMs, holds: MOTION.idle.holds },
+  ...ANIMALS.map((a) => ({
+    name: a,
+    frames: framesForAnimal(a),
+    beatMs: ANIMAL_MOTION[a].beatMs,
+    holds: ANIMAL_MOTION[a].holds,
+  })),
+];
+
+const rest = (m: Member) => m.frames[0]!;
+
+/** Bit has no entry: he is held to every rule exactly. */
+const exceptionOf = (m: Member): PackException | undefined =>
+  isAnimal(m.name) ? PACK_EXCEPTIONS[m.name] : undefined;
+
+/**
+ * The family's mean filled-cell count at rest. MEASURED: bit 84, cat 92, dog 88, fox 86,
+ * owl 96, bee 100, whale 91, octopus 98, crab 94, mean 92.1. Every member is within 15% of it
+ * (Bit is the lightest at -8.8%, the bee the heaviest at +8.6%), so the heaviest is 1.19 times
+ * the lightest; the pack before round 5 ran 70 to 126 cells, 1.8 times.
+ */
+const MEAN = FAMILY.reduce((n, m) => n + filled(rest(m)), 0) / FAMILY.length;
+
+/** The live area: cells 2 to 13 on both axes. A gesture may reach one further, never 0 or 15. */
+const LIVE = { lo: 2, hi: 13 };
+const BASELINE = 13;
+/**
+ * Edges per filled cell. MEASURED: 0.81 (Bit, fox) to 1.13 (the crab, whose claws are on arms
+ * with a slit each side); the bee's stripes put it at 1.10. The pack before round 5 reached 1.49.
+ */
+const EDGES_PER_CELL = 1.15;
+
 describe('the pack', () => {
   test('eight animals, unique, and the tables agree', () => {
-    expect(ANIMALS).toEqual(['crab', 'octopus', 'dog', 'cat', 'owl', 'fox', 'whale', 'bee']);
+    expect(ANIMALS).toEqual(['cat', 'dog', 'fox', 'owl', 'bee', 'whale', 'octopus', 'crab']);
     expect(new Set(ANIMALS).size).toBe(8);
     expect(Object.keys(ANIMAL_FRAMES).sort()).toEqual([...ANIMALS].sort());
     expect(Object.keys(ANIMAL_LABELS).sort()).toEqual([...ANIMALS].sort());
@@ -93,147 +254,378 @@ describe('the pack', () => {
     for (const junk of ['crustacean', 'Crab', '', null, undefined, 7]) expect(isAnimal(junk)).toBe(false);
   });
 
-  for (const animal of ANIMALS) {
-    describe(animal, () => {
-      const frames = framesForAnimal(animal);
+  test('the default is the first in the pack, and it is not the crab', () => {
+    // An amber crab as the first creature a person sees is Clawd, Claude Code's own mascot,
+    // and the owner read the old default as "the Claude icon". `app/icon.tsx` opens on
+    // ANIMALS[0] and the profile falls back to DEFAULT_ANIMAL: they must be the same one.
+    expect(DEFAULT_ANIMAL).toBe(ANIMALS[0]);
+    expect(DEFAULT_ANIMAL).not.toBe('crab');
+  });
 
-      test('the loop is 2 to 4 frames', () => {
-        expect(frames.length).toBeGreaterThanOrEqual(2);
-        expect(frames.length).toBeLessThanOrEqual(4);
-      });
+  test('exactly two creatures depart from the rules, and only in the ways the table says', () => {
+    // A whale is known by its flukes and a bee by its stripes; nobody else gets an exception.
+    expect(Object.keys(PACK_EXCEPTIONS).sort()).toEqual(['bee', 'whale']);
+    expect(PACK_EXCEPTIONS.whale).toEqual({ mirror: false, baseline: 12 });
+    expect(PACK_EXCEPTIONS.bee).toEqual({ stripes: true });
+  });
+});
+
+describe('one family: Bit and the eight, held to the same rules', () => {
+  for (const m of FAMILY) {
+    describe(m.name, () => {
+      const r = rest(m);
 
       test(`every frame is ${GRID}x${GRID} and uses only known glyphs`, () => {
-        frames.forEach((frame, i) => {
-          expect(validateFrame(frame), `${animal}[${i}]\n${ascii(frame)}`).toEqual([]);
+        m.frames.forEach((frame, i) => {
+          expect(validateFrame(frame), `${m.name}[${i}]\n${ascii(frame)}`).toEqual([]);
           expect(isValidFrame(frame)).toBe(true);
         });
       });
 
-      test('exactly two colour roles, and both of them are used', () => {
-        for (const [i, frame] of frames.entries()) {
-          const used = glyphsUsed(frame);
-          // Not "at most two": an animal drawn in one colour has lost its eyes, and the
-          // pack's whole claim is that two colours are enough.
-          expect([...used].sort(), `${animal}[${i}]\n${ascii(frame)}`).toEqual([...ANIMAL_GLYPHS]);
+      test('rule 1: one ink, so every frame draws the one role and nothing else', () => {
+        for (const [i, frame] of m.frames.entries()) {
+          expect([...glyphsUsed(frame)], `${m.name}[${i}]\n${ascii(frame)}`).toEqual([...ANIMAL_GLYPHS]);
         }
       });
 
-      test('no frame repeats the one before it', () => {
-        for (let i = 0; i < frames.length; i++) {
-          const next = frames[(i + 1) % frames.length]!;
-          expect(frames[i]!.join('\n')).not.toBe(next.join('\n'));
+      test('rule 2: the eyes are the family eyes, and the other features are small holes', () => {
+        // Two 2x2 holes at columns 5-6 and 9-10 on rows 6 and 7, the same cells for all nine.
+        expect(eyesOpen(r), `${m.name}\n${ascii(r)}`).toBe(true);
+        const eyeKeys = new Set(EYES.map(([x, y]) => key([x, y])));
+        // At most three more: a nose, a beak, two arm slits, a smile and its corners, two
+        // stripes. MEASURED: none (Bit, cat, fox, octopus) to three (the whale's smile).
+        const features = groups(featureHoles(r));
+        expect(features.length, `${m.name} has ${features.length} other holes`).toBeLessThanOrEqual(3);
+        for (const g of features) expect(g.length).toBeLessThanOrEqual(8);
+        // Each eye is its own 2x2 hole, not merged into a nose or a beak.
+        const eyes = groups(holes(r)).filter((g) => g.some((c) => eyeKeys.has(key(c))));
+        expect(eyes.map((g) => g.length)).toEqual([4, 4]);
+      });
+
+      test('rule 3: at rest it fills the live area and stands on row 13 (the whale floats on 12)', () => {
+        const b = bbox(r);
+        expect(b.x0, m.name).toBeGreaterThanOrEqual(LIVE.lo);
+        expect(b.x1, m.name).toBeLessThanOrEqual(LIVE.hi);
+        expect(b.y0, m.name).toBeGreaterThanOrEqual(LIVE.lo);
+        expect(b.y1, `${m.name} baseline`).toBe(exceptionOf(m)?.baseline ?? BASELINE);
+      });
+
+      test('rule 3: a gesture reaches at most one cell past the live area, never the edge', () => {
+        for (const [i, frame] of m.frames.entries()) {
+          const b = bbox(frame);
+          expect(Math.min(b.x0, b.y0), `${m.name}[${i}]`).toBeGreaterThanOrEqual(LIVE.lo - 1);
+          expect(Math.max(b.x1, b.y1), `${m.name}[${i}]`).toBeLessThanOrEqual(LIVE.hi + 1);
         }
       });
 
-      test(`consecutive frames differ by at most ${SUBTLE_PIXELS} cells, wrap included`, () => {
-        const steps = loopSteps(frames);
+      test('rule 4: 10 to 12 cells wide, and within 15% of the family mean', () => {
+        const b = bbox(r);
+        expect(b.x1 - b.x0 + 1, m.name).toBeGreaterThanOrEqual(10);
+        expect(b.x1 - b.x0 + 1, m.name).toBeLessThanOrEqual(12);
+        const n = filled(r);
+        expect(Math.abs(n - MEAN) / MEAN, `${m.name} ${n} cells against a mean of ${MEAN.toFixed(1)}`).toBeLessThanOrEqual(0.15);
+        // The band itself, so a family that drifts heavier or lighter together still fails.
+        expect(n).toBeGreaterThanOrEqual(78);
+        expect(n).toBeLessThanOrEqual(106);
+      });
+
+      test('rule 5: one shape, no one-cell-thin parts, and a quiet outline', () => {
+        expect(groups(drawn(r)).length, `${m.name}\n${ascii(r)}`).toBe(1);
+        for (const [i, frame] of m.frames.entries()) {
+          expect(thinBreaks(frame, exceptionOf(m)), `${m.name}[${i}]\n${ascii(frame)}`).toEqual([]);
+        }
+        expect(edges(r) / filled(r), m.name).toBeLessThanOrEqual(EDGES_PER_CELL);
+      });
+
+      test('rule 6: it faces forward (the whale excepted), and a gesture adds four asymmetric cells at most', () => {
+        const own = asymmetry(r);
+        if (exceptionOf(m)?.mirror === false) {
+          // MEASURED: the whale's flukes and its smile's one-sided rise, 9 cells.
+          expect(own, `${m.name}\n${ascii(r)}`).toBeGreaterThan(0);
+          expect(own).toBeLessThanOrEqual(12);
+        } else {
+          expect(own, `${m.name}\n${ascii(r)}`).toBe(0);
+        }
+        for (const [i, frame] of m.frames.entries()) {
+          expect(asymmetry(frame), `${m.name}[${i}]\n${ascii(frame)}`).toBeLessThanOrEqual(own + 4);
+        }
+      });
+
+      test('rule 7: rest, a breath, rest, one gesture', () => {
+        // Three or four drawings (rest, breath, a gesture of one or two frames), played as
+        // four or five entries with the rest pose twice.
+        const drawings = new Set(m.frames.map((f) => f.join('\n')));
+        expect(m.frames.length).toBeGreaterThanOrEqual(3);
+        expect(m.frames.length).toBeLessThanOrEqual(5);
+        expect(drawings.size).toBeGreaterThanOrEqual(3);
+        expect(drawings.size).toBeLessThanOrEqual(4);
+        expect(m.frames[2], 'the rest pose returns as the SAME frame object').toBe(r);
+        // The breath is drawn in four cells or fewer.
+        expect(diff(r, m.frames[1]!).length).toBeGreaterThan(0);
+        expect(diff(r, m.frames[1]!).length).toBeLessThanOrEqual(4);
+      });
+
+      test('rule 7: at most four cells change per frame, and twelve across the loop', () => {
+        const steps = loopSteps(m.frames);
         for (const [i, n] of steps.entries()) {
-          expect(n, `${animal} ${i}→${(i + 1) % frames.length} changed ${n} cells`).toBeLessThanOrEqual(
-            SUBTLE_PIXELS
-          );
+          expect(n, `${m.name} ${i}→${(i + 1) % m.frames.length} changed ${n} cells`).toBeLessThanOrEqual(4);
           expect(n).toBeGreaterThan(0);
         }
+        const footprint = new Set<string>();
+        m.frames.forEach((f, i) => {
+          for (const c of diff(f, m.frames[(i + 1) % m.frames.length]!)) footprint.add(key(c));
+        });
+        expect(footprint.size, m.name).toBeLessThanOrEqual(12);
       });
 
-      test('the animal fills the grid without touching every edge', () => {
-        // A silhouette that runs off all four sides is not a 16x16 creature, it is a
-        // texture. Between 30 and 150 of the 256 cells is the pack's actual range.
-        for (const frame of frames) {
-          const drawn = [...frame.join('')].filter((c) => c !== EMPTY).length;
-          expect(drawn, `${animal}\n${ascii(frame)}`).toBeGreaterThan(30);
-          expect(drawn).toBeLessThan(150);
-        }
+      test('rule 7: the loop moves two parts, the breath and one gesture, and nothing else', () => {
+        // An animal whose only motion is one gesture on repeat reads as a twitch; one that
+        // moves a third part has stopped idling. So the breath and the gesture are
+        // different cells, and between them they are every cell the loop ever changes.
+        const breath = new Set(diff(r, m.frames[1]!).map(key));
+        const gesture = new Set(m.frames.slice(3).flatMap((f) => diff(r, f).map(key)));
+        expect(breath.size, `${m.name} breath`).toBeGreaterThan(0);
+        expect(gesture.size, `${m.name} gesture`).toBeGreaterThan(0);
+        expect([...breath].filter((k) => gesture.has(k)), m.name).toEqual([]);
+        m.frames.forEach((f, i) => {
+          for (const c of diff(f, m.frames[(i + 1) % m.frames.length]!)) {
+            expect(breath.has(key(c)) || gesture.has(key(c)), `${m.name} moves ${key(c)}`).toBe(true);
+          }
+        });
+      });
+
+      test('rule 7: the rest pose is on screen for at least half the loop, on a 400–600 ms beat', () => {
+        expect(m.beatMs, m.name).toBeGreaterThanOrEqual(400);
+        expect(m.beatMs, m.name).toBeLessThanOrEqual(600);
+        expect(m.holds.length).toBe(m.frames.length);
+        const total = m.holds.reduce((n, h) => n + h, 0);
+        const atRest = m.frames.reduce((n, f, i) => n + (f === r ? m.holds[i]! : 0), 0);
+        expect(atRest / total, m.name).toBeGreaterThanOrEqual(0.5);
+      });
+
+      test('rule 7: the blink fills exactly the two eye holes, and nothing else', () => {
+        const shut = closeEyes(r);
+        expect(diff(r, shut).map(key).sort()).toEqual(EYES.map(([x, y]) => key([x, y])).sort());
+        expect(eyesOpen(shut)).toBe(false);
+        expect(closeEyes(shut)).toBe(shut);
+        // It works on every frame of the loop: the eyes never move.
+        for (const f of m.frames) expect(eyesOpen(f), `${m.name}\n${ascii(f)}`).toBe(true);
       });
     });
   }
 
-  test('the worst change anywhere in the pack is the measured one', () => {
-    // Documented so a redraw that doubles the movement shows up as a number, not a vibe.
-    const worst = Math.max(...ANIMALS.map((a) => Math.max(...loopSteps(framesForAnimal(a)))));
-    expect(worst).toBe(MEASURED_WORST);
+  test('any two outlines are at least 24 cells apart', () => {
+    // Shape tells them apart now that colour does not. MEASURED closest pair: owl and whale,
+    // 25 (both wide bodies; the owl's tufts and spread feet against the whale's flukes and
+    // floating belly), then cat and owl, 26. Round 5's closest was cat and owl at 24.
+    const pairs: string[] = [];
+    let closest = Infinity;
+    for (let i = 0; i < FAMILY.length; i++) {
+      for (let j = i + 1; j < FAMILY.length; j++) {
+        const d = outlineDistance(rest(FAMILY[i]!), rest(FAMILY[j]!));
+        closest = Math.min(closest, d);
+        if (d < 24) pairs.push(`${FAMILY[i]!.name}/${FAMILY[j]!.name} ${d}`);
+      }
+    }
+    expect(pairs).toEqual([]);
+    expect(closest).toBe(25);
   });
 
-  test('no animal borrows a mascot-only glyph', () => {
-    // `e`, `w`, `h` and `z` are Bit's eye, highlight, tool and zzz roles. An animal
-    // palette has no entry for them, so one would render as a hole rather than an error.
+  test('the dog and the fox are told apart by their ears: one pair hangs, the other stands', () => {
+    // Two pointy-faced animals of a similar size, head on. The fox's ears reach the top of
+    // the live area at its outer corners; the dog's hang past the jaw with a gap between ear
+    // and face that opens downward, where the fox's cheeks are solid.
+    const fox = framesForAnimal('fox')[0]!;
+    const dog = framesForAnimal('dog')[0]!;
+    expect(fox[2]![2], 'the fox has an ear tip in row 2').toBe('b');
+    expect(dog[2], 'the dog has nothing in row 2').toBe('.'.repeat(GRID));
+    for (const y of [8, 9, 10]) {
+      expect(dog[y]!.slice(2, 5), `the dog's left ear hangs free at row ${y}`).toBe('bb.');
+      expect(fox[y]!.replace(/^\.+|\.+$/g, ''), `the fox's face is one solid run at row ${y}`).not.toContain('.');
+    }
+  });
+
+  test('the fox is a head, the triangle every fox icon is', () => {
+    // Round 5's fox pinched to a four-cell neck over a wide seated base and read as an X or a
+    // bow-tie. Now each row from the cheeks down is no wider than the one above it, to a
+    // two-cell chin on the baseline.
+    const fox = framesForAnimal('fox')[0]!;
+    const widths = fox.slice(8, 14).map((row) => row.replace(/\./g, '').length);
+    for (let i = 1; i < widths.length; i++) expect(widths[i]!).toBeLessThan(widths[i - 1]!);
+    expect(fox[13]).toBe('.......bb.......');
+  });
+
+  test('the owl has a brow, not a cleft, and a beak framed by the one hole under its eyes', () => {
+    // Round 5's V ran four rows deep between the tufts and split the head into an M. The dip
+    // is row 3 only now, and the hole under the bridge between the eyes makes that bridge a
+    // beak. It is also what keeps the owl from being the cat.
+    const owl = framesForAnimal('owl')[0]!;
+    expect(owl[4]).toBe('...bbbbbbbbbb...');
+    expect(featureHoles(owl).map(key).sort()).toEqual(['7,8', '8,8']);
+  });
+
+  test('the bee has two stripes that reach its outline, and no waist', () => {
+    const bee = framesForAnimal('bee')[0]!;
+    const stripes = groups(featureHoles(bee));
+    expect(stripes.map((g) => g.length)).toEqual([8, 8]);
+    for (const g of stripes) {
+      const y = g[0]![1];
+      expect(g.every(([, yy]) => yy === y), 'a stripe is one row').toBe(true);
+      // A cell of wall, then the outline steps in: the stripe reads as a band round the body.
+      expect(bee[y]!.replace(/^\.+|\.+$/g, '')).toMatch(/^b\.+b$/);
+    }
+    // Round 5's two-cell waist over an eight-cell base was a trophy. From under the eyes to
+    // the lowest band the body is at least ten cells across.
+    for (const row of bee.slice(8, 13)) expect(row.replace(/^\.+|\.+$/g, '').length).toBeGreaterThanOrEqual(10);
+  });
+
+  test("the whale's flukes rise on its right, and its spout is a gesture, not a stalk", () => {
+    // A spout on top of a round amber body with a grin is a jack-o'-lantern, so the rest pose
+    // has none: above the body there is ink on the right (the flukes) and nothing on the left.
+    // The spout rises there in frame 3 and sprays in frame 4.
+    const [restPose, , , spout, spray] = framesForAnimal('whale') as Frame[];
+    for (const row of restPose!.slice(2, 4)) {
+      expect(row.slice(0, 8)).toBe('........');
+      expect(row.slice(8)).toContain('b');
+    }
+    expect(spout![2]!.slice(0, 8)).toContain('b');
+    expect(spray![2]!.slice(0, 8)).toContain('b');
+  });
+
+  test("the crab's claws are on arms, a slit between each arm and the shell", () => {
+    // Claws straight on the shell's top corners are the Space Invaders crab (round 5).
+    const crab = framesForAnimal('crab')[0]!;
+    expect(featureHoles(crab).map(key).sort()).toEqual(['11,4', '11,5', '4,4', '4,5']);
+  });
+
+  test('no animal draws a mascot-only role', () => {
+    // `w`, `h` and `z` are Bit's sparks, hammer and trail. They resolve to the same ink, but
+    // `motion.ts` lifts them out of a frame, and an animal frame is never decomposed.
     for (const animal of ANIMALS) {
       for (const frame of framesForAnimal(animal)) {
-        for (const ch of ['e', 'w', 'h', 'z']) {
-          expect(glyphsUsed(frame).has(ch), `${animal} uses '${ch}'`).toBe(false);
-        }
+        for (const ch of ['w', 'h', 'z']) expect(glyphsUsed(frame).has(ch), `${animal} uses '${ch}'`).toBe(false);
       }
     }
   });
 });
 
-describe('animal colours', () => {
+// OWNER OVERRIDE, 2026-09-13 09:22 (brief.md): "why are all of them the same color? Looks
+// horrible." This block used to assert ONE ink for the whole family (amber on dark, text on
+// light). The one accent rule is lifted for identity, so it now asserts one ink PER creature,
+// each from `tokens.spectrum`, all nine distinct (DESIGN-V2-COLOUR-MOTION.md 1.5 and 2.1). What
+// still holds, and is still asserted: one ink per frame, and every tone readable where it is drawn.
+describe('one ink per creature', () => {
   const schemes: Scheme[] = ['dark', 'light'];
+  const tones = ['rest', 'idle', 'selected', 'faint'] as const;
 
-  test('two distinct colours per animal, in both schemes', () => {
+  test('each creature draws in exactly one ink per scheme and tone', () => {
     for (const scheme of schemes) {
-      for (const animal of ANIMALS) {
-        const p = animalPalette(animal, scheme);
-        expect(Object.keys(p).sort()).toEqual([...ANIMAL_GLYPHS]);
-        expect(p.b).toMatch(/^#[0-9A-F]{6}$/);
-        expect(p.d).toMatch(/^#[0-9A-F]{6}$/);
-        expect(p.b, `${animal} in ${scheme}`).not.toBe(p.d);
+      for (const tone of tones) {
+        for (const animal of ANIMALS) {
+          const p = animalPalette(animal, scheme, tone);
+          expect(Object.keys(p)).toEqual(['b']);
+          expect(p.b).toMatch(/^#[0-9A-F]{6}$/i);
+        }
+        const bit = spritePalette(scheme, tone);
+        expect(new Set(Object.values(bit)).size).toBe(1);
+        expect(bit.b).toBe(glyphInk(scheme, tone));
       }
     }
   });
 
-  test('all eight pairs are distinct, so no two animals wear the same outfit', () => {
+  test('at rest every creature wears its spectrum hue, and the nine are nine different inks', () => {
     for (const scheme of schemes) {
-      const pairs = ANIMALS.map((a) => {
-        const p = animalPalette(a, scheme);
-        return `${p.b}/${p.d}`;
-      });
-      expect(new Set(pairs).size, `${scheme}: ${pairs.join(' ')}`).toBe(ANIMALS.length);
-    }
-  });
-
-  test('every colour is a token, not a literal', () => {
-    // Spot-checks that tie the recipes to `design/tokens.json`: change the amber there
-    // and the crab, the cat's eyes and the bee change with it.
-    const c = colors('dark');
-    expect(animalPalette('crab', 'dark').b).toBe(c.accent);
-    expect(animalPalette('bee', 'dark').b).toBe(c.accent);
-    expect(animalPalette('cat', 'dark').d).toBe(c.accent);
-    expect(animalPalette('cat', 'dark').b).toBe(c.textDim);
-    expect(animalPalette('owl', 'dark').b).toBe(c.text);
-    expect(animalPalette('octopus', 'dark').b).toBe(c.strip[StripClass.human_edit]);
-    // The bone accents follow the scheme's text colour, which is why the owl inverts.
-    expect(animalPalette('owl', 'light').b).toBe(colors('light').text);
-  });
-
-  test('every body reads on the dark background it was drawn for', () => {
-    // MEASURED body-to-background contrast in the dark scheme: fox 6.4 is the lowest,
-    // owl 16.6 the highest. 6 is the floor with the fox just inside it.
-    const bg = colors('dark').bg;
-    for (const animal of ANIMALS) {
-      const p = animalPalette(animal, 'dark');
-      expect(contrast(p.b, bg), `${animal} body on bg`).toBeGreaterThan(6);
-    }
-  });
-
-  test('every accent reads on its own body', () => {
-    // MEASURED: 1.41 for the cat's amber eyes on grey and the bee's grey wings on amber,
-    // 4.2 for the owl's brown on bone. The two low ones are small features on a large
-    // body, which is where a low ratio is legible and a high one would be a costume.
-    for (const scheme of schemes) {
+      const inks = [glyphInk(scheme), ...ANIMALS.map((a) => animalPalette(a, scheme).b)];
+      expect(new Set(inks).size).toBe(9);
+      expect(glyphInk(scheme)).toBe(creatureHue('bit', scheme).ink);
       for (const animal of ANIMALS) {
-        const p = animalPalette(animal, scheme);
-        expect(contrast(p.d, p.b), `${animal} accent on body in ${scheme}`).toBeGreaterThan(1.4);
+        expect(animalPalette(animal, scheme).b).toBe(tokens.spectrum.hues[tokens.spectrum.creature[animal]][scheme === 'dark' ? 'dark' : 'light']);
       }
     }
+    // Bit is the brand, so Bit is the accent amber on dark; no animal is.
+    expect(glyphInk('dark')).toBe(colors('dark').accent);
+    for (const animal of ANIMALS) expect(animalPalette(animal, 'dark').b).not.toBe(colors('dark').accent);
   });
 
-  test('mix blends and clamps', () => {
-    expect(mix('#000000', '#FFFFFF', 0.5)).toBe('#808080');
-    expect(mix('#000000', '#FFFFFF', 0)).toBe('#000000');
-    expect(mix('#000000', '#FFFFFF', 1)).toBe('#FFFFFF');
-    expect(mix('#000000', '#FFFFFF', -3)).toBe('#000000');
-    expect(mix('#000000', '#FFFFFF', 9)).toBe('#FFFFFF');
-    expect(mix('not-a-colour', '#FFFFFF', 0.5)).toBe('not-a-colour');
+  test('the neutral tones are tokens: onAccent on a filled tile, textFaint when not there', () => {
+    for (const scheme of schemes) {
+      const c = colors(scheme);
+      for (const animal of ANIMALS) {
+        expect(animalPalette(animal, scheme, 'selected').b).toBe(String(c.onAccent));
+        expect(animalPalette(animal, scheme, 'faint').b).toBe(c.textFaint);
+      }
+      expect(glyphInk(scheme, 'selected')).toBe(String(c.onAccent));
+      expect(glyphInk(scheme, 'faint')).toBe(c.textFaint);
+    }
+    expect(GLYPH_INK.dark.rest).toBe('hue');
+    expect(GLYPH_INK.light.idle).toBe('hueText');
+    expect(GLYPH_INK.light.selected).toBe('onAccent');
+  });
+
+  test('on an unselected picker tile a creature keeps its own hue; selected and missing match the harness picker', () => {
+    // DESIGN-V2 2.1: "idle tile (its ink on raised)"; selected fills the tile with the hue and
+    // draws the creature in onAccent, as the harness picker does (`tileInks`, one rule for both).
+    // On dark the idle ink IS the rest ink. On light it is the same hue's text tone: MEASURED,
+    // the 3:1 mark tone is 2.86 to 2.94:1 on the light `raised` (#F3EFE7), under the floor a
+    // mark needs, and the text tone is 4.18 to 4.30:1 there.
+    for (const scheme of schemes) {
+      const c = colors(scheme);
+      for (const creature of ['bit', ...ANIMALS] as const) {
+        const h = creatureHue(creature, scheme);
+        expect(creatureInk(creature, scheme, 'idle')).toBe(h.text);
+        expect(creatureTileInks(creature, 'idle', scheme).mark).toBe(creatureInk(creature, scheme, 'idle'));
+        expect(creatureTileInks(creature, 'selected', scheme)).toEqual({ fill: h.fill, mark: h.onFill, name: h.onFill, status: h.onFill });
+        expect(creatureTileInks(creature, 'selected', scheme).mark).toBe(creatureInk(creature, scheme, 'selected'));
+        expect(creatureTileInks(creature, 'missing', scheme).mark).toBe(creatureInk(creature, scheme, 'faint'));
+        expect(contrast(creatureInk(creature, scheme, 'idle'), c.raised), `${creature} idle on ${scheme} raised`).toBeGreaterThanOrEqual(3);
+      }
+      for (const animal of ANIMALS) {
+        if (scheme === 'dark') expect(animalPalette(animal, scheme, 'idle')).toEqual(animalPalette(animal, scheme, 'rest'));
+        else expect(animalPalette(animal, scheme, 'idle')).not.toEqual(animalPalette(animal, scheme, 'rest'));
+      }
+      expect(glyphInk(scheme, 'selected')).toBe(glyphColor('selected', c));
+      expect(glyphInk(scheme, 'faint')).toBe(glyphColor('missing', c));
+    }
+  });
+
+  test('a selected tile is a solid fill of the creature\'s own hue with dark ink, never amber for an animal', () => {
+    // The v1 picker filled every selected tile with amber. Under the override the fill is the
+    // item's hue; amber is Bit's and the action's alone.
+    for (const scheme of schemes) {
+      for (const animal of ANIMALS) {
+        const t = creatureTileInks(animal, 'selected', scheme);
+        expect(t.fill).toBe(creatureHue(animal).fill);
+        expect(t.fill).not.toBe(colors('dark').accent);
+        expect(contrast(t.name, t.fill), `${animal} name on its fill`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(creatureTileInks('bit', 'selected', scheme).fill).toBe(colors('dark').accent);
+    }
+  });
+
+  test("a creature's colour snaps in: its opacity arrives in under 120 ms while the scale settles", () => {
+    // DESIGN-V2 1.3: a hue at partial opacity over the warm ground is brown for as long as it is
+    // partial, so colour enters by position and scale with its opacity snapping in.
+    expect(HUE_SNAP_MS).toBeLessThan(120);
+    expect(HUE_SNAP_MS).toBeLessThan(MOTION.settle.ms);
+  });
+
+  test('every tone reads on the surface it is drawn on', () => {
+    // MEASURED: the lowest dark ink is iris, 5.5:1 on bg and 4.6:1 on the raised picker tile;
+    // the lowest light mark tone is 3.1:1 on the light bg; onAccent on the lowest fill (iris)
+    // is 5.2:1; textFaint on the dark bg 3.2:1, which is decoration only.
+    const dark = colors('dark');
+    const light = colors('light');
+    for (const creature of ['bit', ...ANIMALS] as const) {
+      const d = creatureHue(creature, 'dark');
+      expect(contrast(d.ink, dark.bg)).toBeGreaterThan(5);
+      expect(contrast(d.ink, dark.raised)).toBeGreaterThan(4.5);
+      expect(contrast(creatureHue(creature, 'light').ink, light.bg)).toBeGreaterThanOrEqual(3);
+      expect(contrast(String(dark.onAccent), d.fill)).toBeGreaterThan(5);
+    }
+    expect(contrast(glyphInk('dark', 'faint'), dark.bg)).toBeGreaterThan(3);
+    // Amber on the light background is 1.7:1, which is why light draws Bit in amber's mark tone.
+    expect(contrast(light.accent, light.bg)).toBeLessThan(2);
+    expect(glyphInk('light')).not.toBe(light.accent);
   });
 });
 
@@ -310,30 +702,13 @@ describe('the picker', () => {
 });
 
 describe('animal motion', () => {
-  test('every beat is between 300 and 600 ms', () => {
+  test('nothing drifts, scales or tilts: the table has no field for it', () => {
+    // The pack used to drift four of eight creatures continuously (the bee two cells each
+    // way every 900 ms) and breathe every one on a 1.03 scale, which keeps a pixel icon off
+    // whole device pixels. The breath is drawn now, and the only transform is the entrance.
     for (const animal of ANIMALS) {
-      const { beatMs } = ANIMAL_MOTION[animal];
-      expect(beatMs, animal).toBeGreaterThanOrEqual(300);
-      expect(beatMs, animal).toBeLessThanOrEqual(600);
+      expect(Object.keys(ANIMAL_MOTION[animal]).sort(), animal).toEqual(['beatMs', 'holds', 'note']);
     }
-  });
-
-  test('a drift is one or two pixels and slower than the frame loop', () => {
-    for (const animal of ANIMALS) {
-      const { drift, beatMs } = ANIMAL_MOTION[animal];
-      if (!drift) continue;
-      expect([1, 2], animal).toContain(drift.cells);
-      expect(drift.axis === 'x' || drift.axis === 'y').toBe(true);
-      // A drift shorter than a beat would read as a jitter riding on the loop.
-      expect(drift.periodMs, animal).toBeGreaterThan(beatMs * 2);
-    }
-  });
-
-  test('four of the eight drift; the rest move only what they draw', () => {
-    const drifting = ANIMALS.filter((a) => ANIMAL_MOTION[a].drift);
-    expect(drifting).toEqual(['crab', 'octopus', 'whale', 'bee']);
-    expect(ANIMAL_MOTION.crab.drift?.axis).toBe('x');
-    expect(ANIMAL_MOTION.bee.drift?.cells).toBe(2);
   });
 
   test('the timeline holds every frame once per loop, in order', () => {
@@ -344,37 +719,36 @@ describe('animal motion', () => {
     }
   });
 
-  test("the owl's blink is a blink, not a nap", () => {
-    // Frame 1 is the shut-eyed frame; 0.28 x 520 ms = 146 ms, near the mascot's 120.
-    const [open, shut, turn] = animalTimeline('owl');
-    expect(shut!.ms).toBeLessThan(200);
-    expect(shut!.ms).toBeLessThan(open!.ms / 2);
-    expect(turn!.ms).toBe(open!.ms);
-    // Nobody else holds a frame short.
+  test('a loop is calm: something changes at most once a second, and the gesture is brief', () => {
+    // MEASURED: loops run 4.4 s (bee) to 6.6 s (owl); the gesture shows for 0.8 to 1.2 s.
     for (const animal of ANIMALS) {
-      if (animal === 'owl') continue;
-      const ms = animalTimeline(animal).map((b) => b.ms);
-      expect(new Set(ms).size, animal).toBe(1);
+      const timeline = animalTimeline(animal);
+      const total = timeline.reduce((n, b) => n + b.ms, 0);
+      expect(total, animal).toBeGreaterThanOrEqual(4000);
+      expect(total / timeline.length, animal).toBeGreaterThanOrEqual(800);
+      const gesture = timeline.slice(3).reduce((n, b) => n + b.ms, 0);
+      expect(gesture, animal).toBeLessThanOrEqual(1200);
     }
   });
 
-  test('tempo shortens beats and breaths, and is clamped exactly as the mascot clamps it', () => {
+  test('Bit idles on the same shape of loop as the pack', () => {
+    const idle = timelineFor('idle');
+    expect(idle.map((b) => b.frame)).toEqual([0, 1, 2, 3]);
+    expect(idle.map((b) => b.ms)).toEqual(MOTION.idle.holds.map((h) => h * MOTION.idle.beatMs));
+    expect(SPRITES.idle[0]).toBe(SPRITES.idle[2]);
+  });
+
+  test('tempo shortens beats, and is clamped exactly as the mascot clamps it', () => {
     const at1 = animalTimeline('cat');
     const at2 = animalTimeline('cat', 2);
     expect(at2[0]!.ms).toBe(Math.round(at1[0]!.ms / 2));
     expect(animalTimeline('cat', 99)).toEqual(at2);
     expect(animalTimeline('cat', 0)).toEqual(at1);
     expect(animalTimeline('cat', Number.NaN)).toEqual(at1);
-
-    expect(animalBreathMs('cat')).toBe(ANIMAL_MOTION.cat.breathMs);
-    expect(animalBreathMs('cat', 2)).toBe(Math.round(ANIMAL_MOTION.cat.breathMs / 2));
-    expect(animalBreathMs('cat', 0.1)).toBe(Math.round(ANIMAL_MOTION.cat.breathMs / clampTempo(0.1)));
+    expect(animalTimeline('cat', 0.1)).toEqual(animalTimeline('cat', clampTempo(0.1)));
   });
 
   test('every animal says what its loop is', () => {
-    for (const animal of ANIMALS) {
-      expect(ANIMAL_MOTION[animal].note.length, animal).toBeGreaterThan(8);
-      expect(ANIMAL_MOTION[animal].breathMs, animal).toBeGreaterThan(2000);
-    }
+    for (const animal of ANIMALS) expect(ANIMAL_MOTION[animal].note.length, animal).toBeGreaterThan(8);
   });
 });

@@ -81,6 +81,11 @@ public enum SessionDigest {
         public var ok: Bool = true
         public var toolID: String? = nil
         public var model: String? = nil
+        /// On a shell tool event: whether the WHOLE command can only read
+        /// (`ShellFileEffect.readsOnly`), decided here from the full command because `text`
+        /// keeps `commandMax` characters of it. `digest.Ev.reads_only`; not rendered, so the
+        /// digest text is byte identical with or without it.
+        public var readsOnly: Bool? = nil
 
         public init(
             n: Int = 0, ts: Double, kind: Kind, text: String = "", tool: String? = nil,
@@ -213,6 +218,19 @@ public enum SessionDigest {
         regex(#"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"#),
         regex(#"(?i)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*['"]?[^\s'"]{6,}"#),
         regex(#"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"#),  // JWT
+        // `digest._SECRET_PATTERNS`, FOUND IN REVIEW (2026-09-13): shapes the list above let
+        // through. A private key whose END line is gone keeps its body: the rest is the key.
+        regex(#"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*"#),
+        regex(#"\b[sr]k_(?:live|test)_[A-Za-z0-9]{10,}"#),  // Stripe
+        regex(#"\bAIza[0-9A-Za-z_\-]{30,}"#),  // Google API key
+        regex(#"\bglpat-[A-Za-z0-9_\-]{16,}"#),  // GitLab
+        regex(#"\bhf_[A-Za-z0-9]{20,}"#),  // Hugging Face
+        regex(#"\bnpm_[A-Za-z0-9]{30,}"#),  // npm
+        regex(#"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}"#),  // SendGrid
+        regex(#"(?i)\bbearer\s+[A-Za-z0-9._~+/\-]{10,}=*"#),
+        regex(#"(?i)\b(password|passwd|passcode)\s+is\s+['"]?[^\s'"]{4,}"#),
+        // Credentials in a URL (`postgres://user:pass@host`): scheme and host kept.
+        regex(#"(?<=://)[^/\s:@]+:[^/\s@]+@"#),
     ]
     private static let emailPattern = regex(#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
 
@@ -221,6 +239,13 @@ public enum SessionDigest {
         var t = text
         for p in secretPatterns { t = replaceAll(p, in: t, with: "[redacted]") }
         return replaceAll(emailPattern, in: t, with: "[email]")
+    }
+
+    /// `digest.clip`: mask THEN cut. The other order let a pasted private key longer than
+    /// the prompt cap lose its END line to the cut, so the key rule never matched and its
+    /// body stayed in the digest (FOUND IN REVIEW, 2026-09-13).
+    public static func clip(_ text: String, _ n: Int) -> String {
+        trunc(mask(text), n)
     }
 
     // MARK: - Error detection
@@ -272,19 +297,19 @@ public enum SessionDigest {
         if name == "Bash" {
             let cmd = node.command.string ?? ""
             let effect = bashFileEffect(cmd)
-            return (name, effect.path, trunc(cmd.replacingOccurrences(of: "\n", with: " ⏎ "), commandMax))
+            return (name, effect.path, clip(cmd.replacingOccurrences(of: "\n", with: " ⏎ "), commandMax))
         }
         if ["Read", "Write", "Edit", "MultiEdit", "NotebookEdit"].contains(name) {
             return (name, path, path ?? "")
         }
         if name == "Glob" || name == "Grep" {
-            return (name, nil, trunc(node.pattern.string ?? "", 80))
+            return (name, nil, clip(node.pattern.string ?? "", 80))
         }
         if name == "Agent" || name == "Task" {
-            return (name, nil, trunc(truthyString(node.description) ?? node.prompt.string ?? "", 100))
+            return (name, nil, clip(truthyString(node.description) ?? node.prompt.string ?? "", 100))
         }
         if name == "WebSearch" || name == "WebFetch" {
-            return (name, nil, trunc(truthyString(node.query) ?? node.url.string ?? "", 100))
+            return (name, nil, clip(truthyString(node.query) ?? node.url.string ?? "", 100))
         }
         if name == "TodoWrite" || name.hasPrefix("Task") {
             return (name, nil, "")
@@ -293,7 +318,7 @@ public enum SessionDigest {
         // here where Python keeps file order — the one known divergence, see the type doc.
         if inp.isEmpty { return (name, nil, "") }
         let dump = compactJSON(inp)
-        return (name, nil, trunc(prefix(dump, 200), 100))
+        return (name, nil, clip(prefix(dump, 200), 100))
     }
 
     // MARK: - Loading
@@ -350,7 +375,7 @@ public enum SessionDigest {
                 let isMeta = isTruthy(r.isMeta.raw)
                 let text = textOf(content)
                 if !isMeta && (ps == "typed" || (ps == "sdk" && origin == "human")) && !strip(text).isEmpty {
-                    out.append(Event(ts: ts, kind: .prompt, text: mask(trunc(text, promptMax))))
+                    out.append(Event(ts: ts, kind: .prompt, text: clip(text, promptMax)))
                 } else if text.hasPrefix(interruptPrefix) {
                     out.append(Event(ts: ts, kind: .interrupt))
                 }
@@ -399,7 +424,7 @@ public enum SessionDigest {
                             out.append(
                                 Event(
                                     ts: ts, kind: .resultError,
-                                    text: mask(trunc(body.isEmpty ? "(error)" : body, errorMax)),
+                                    text: clip(body.isEmpty ? "(error)" : body, errorMax),
                                     tool: name, path: path, ok: false, toolID: tid))
                         } else if let added {
                             // Attach the line delta to the originating tool event.
@@ -419,7 +444,7 @@ public enum SessionDigest {
                     let bt = b.type.string
                     if bt == "text", let text = b.text.string, !strip(text).isEmpty {
                         out.append(
-                            Event(ts: ts, kind: .assistant, text: mask(trunc(text, assistantMax)), model: model))
+                            Event(ts: ts, kind: .assistant, text: clip(text, assistantMax), model: model))
                     } else if bt == "tool_use" {
                         let (name, path, desc) = toolLine(b)
                         if let id = b.id.string { toolNames[id] = (name, path) }
@@ -427,11 +452,13 @@ public enum SessionDigest {
                             ts: ts, kind: .tool, text: mask(desc), tool: name, path: path,
                             toolID: b.id.string, model: model)
                         if name == "Bash" {
-                            let approx = bashFileEffect(b.input.command.string ?? "").approx
+                            let full = b.input.command.string ?? ""
+                            let approx = bashFileEffect(full).approx
                             if let approx {
                                 ev.added = approx
                                 ev.removed = 0
                             }
+                            ev.readsOnly = ShellFileEffect.readsOnly(full)
                         }
                         out.append(ev)
                     }
@@ -449,7 +476,10 @@ public enum SessionDigest {
 
     // MARK: - Stats
 
-    private static let gitCommit = regex(#"\bgit commit\b"#)
+    /// `analysis/digest.py` `COMMIT_CMD`, character for character: `git` with its own options
+    /// before the subcommand (`git -c user.name=x commit`) commits too. `\bgit commit\b` missed
+    /// 23 of 172 commit calls in the overnight corpus (2026-09-14).
+    private static let gitCommit = regex(#"\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}[A-Za-z][\w-]*(?:=\S+)?))*\s+commit(?![\w.=-])"#)
     private static let testRun = regex(#"\b(pytest|bun test|npm test|swift test|jest|cargo test|go test|make test)\b"#)
 
     public static func stats(_ events: [Event]) -> Stats {

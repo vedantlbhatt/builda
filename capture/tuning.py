@@ -67,5 +67,18 @@ GIT_EXCLUDE_PATHSPECS = [
     ":(exclude)*.xcworkspacedata",
 ]
 
+#: Tuning.gitLogRefs — WHICH commits every `git log` here walks: every LOCAL BRANCH, never
+#: just HEAD. Git runs in the repository's common root (`--git-common-dir`), which is the
+#: main checkout, and a sitting in a worktree commits to the worktree's own branch, which
+#: the main checkout's HEAD never reaches. MEASURED on this machine, 2026-09-13, the
+#: builder repository with one worktree beside it: from the common root, `git log
+#: --since='2 days ago'` counted 0 commits and with `--branches` 32; over 60 days 14
+#: against 153. Not `--all`: over the same 60 days it added one commit, on a remote only
+#: branch a cloud session pushed, which no sitting on this machine made; and it walks
+#: `refs/stash`, whose "index on" commit has one parent, so `--no-merges` keeps it and a
+#: `git stash` would count as a commit. RECORDED, NOT MEASURED: a commit on a detached HEAD
+#: in a worktree is on no branch and is still not seen.
+GIT_LOG_REFS = ["--branches"]
+
 #: The server's device-grant lifetime (`expires_in: 900`) and its poll interval.
 PAIR_TIMEOUT_SEC = 900

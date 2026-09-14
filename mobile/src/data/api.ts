@@ -1,7 +1,13 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
+import type { BuilderNarrative } from '../generated/narrative';
+import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
+import type { ShippedPost } from '../generated/shipped';
+import type { FeedbackNoteWire, SessionBurn, SessionCallRewrite, SessionCallTokens, SessionTitleIds } from '../generated/contract';
 import type { Archetype, Dimension, SessionAnalysis } from '../generated/analysis';
+import type { Creature, LiveNames, LiveState } from '../generated/live';
+import type { QuotesUpload } from '../generated/quotes';
 
 /**
  * The phone's view of the server.
@@ -28,6 +34,13 @@ export interface SessionStats {
   prompt_count_basis: string;
   files_touched: number;
   lines_added_agent: number;
+  /**
+   * Lines the agent removed (docs/overnight-integration.md 5.4). Optional on READ, and read
+   * as absent, never as 0: a server older than 5.4 omits it, and so does every detail this
+   * phone cached before it (the cache never re-reads a final session it holds a strip for).
+   * The Live Activity's `linesRemoved` and the money view print nothing rather than "0".
+   */
+  lines_removed_agent?: number;
   commit_count: number;
   agent_line_bucket: string;
   attrib_confidence: string;
@@ -85,6 +98,14 @@ export interface SessionDetail {
    * must read "unknown" rather than "no post" from that absence.
    */
   post_id?: string | null;
+  /**
+   * The repository's KEY, the salted hash the upload carried (`repo_hash`), which is the
+   * report's `projects[].key`: how the phone puts each of its own sessions in its project
+   * (docs/projects.md). Never a name. Null when the sitting's repository did not resolve;
+   * undefined on a session that is not the viewer's own (a shared one, a feed item) and from
+   * a server older than the field, and both of those mean "not known", never "no project".
+   */
+  repo_key?: string | null;
   /** Only on the detail endpoint; absent from the list. Null when no strip was stored. */
   strip?: SessionStrip | null;
   stats?: SessionStats | null;
@@ -106,8 +127,79 @@ export interface SessionDetail {
    * a checkpoint analysis.
    */
   analysis?: SessionAnalysis | null;
+  /**
+   * What this sitting cost that you would not have chosen: at most three notes, each an
+   * id and two integers (contract v3). The SENTENCE is written here, on the client, from
+   * the id — see `src/session/feedback.ts` — so nothing about the wording is on the wire,
+   * and neither is the failing command or the file name the local note carries.
+   *
+   * Null means the sitting had nothing worth saying, or the client that uploaded it does
+   * not compute feedback; both render as no notes. Undefined means a server older than
+   * 0019 that does not know the key.
+   */
+  feedback?: FeedbackNoteWire[] | null;
   updated_at?: string;
+
+  // ---- Contract v4 (docs/overnight-integration.md sections 2 and 3, and its addendum).
+  // ---- Every one is optional on READ: undefined is a server older than the field; null is
+  // ---- a server that knows the field and has nothing for this session.
+
+  /**
+   * What a RUNNING session is doing now (`spec/live.v1.json`), computed by the engine on the
+   * machine or by the hook channel. Null on a final session: the row is deleted when the
+   * session finalises, and the cache drops it on that transition too.
+   *
+   * TWO BODIES, ONE TYPE. On `GET /v1/sessions/live` and `/v1/profile`'s `live` rows it is
+   * the SLIM body: `timelapse` null and `map.files` cut to the rows `activity.file_id` and
+   * `verdict.file_id` name (`map.files_total` still counts every file). On
+   * `GET /v1/sessions/{id}` it is the full body. Mission control, the widget and the Live
+   * Activity read only activity, verdict, eta, needs_you and decisions, which both carry.
+   *
+   * `computed_at` is when the state was true: `activity.since_s` and the ETA are aged from
+   * it, never from the moment the phone happened to fetch it.
+   */
+  live_state?: LiveState | null;
+  /**
+   * OPT IN, OFF BY DEFAULT: the basename of each file in `live_state.map`, keyed by its id.
+   * Only on the detail endpoint, only while Settings > File names is on, and only ever shown
+   * on the session screen: never on the Lock Screen, the widget, a push or a share. The
+   * live list never carries it, so nothing that feeds ActivityKit can see one.
+   */
+  live_names?: LiveNames | null;
+  /**
+   * Where this sitting's tokens went and whether anything came of it (`analysis/burn.py`
+   * over the session window): counts, unrounded shares, enums and at most three costly
+   * stretches. The sentences are written on the phone (`src/copy/burn.ts`). Null when the
+   * producer does not compute it; a refusal is `burn.reason`, never a zero.
+   */
+  burn?: SessionBurn | null;
+  /**
+   * The engineer voice title as ids (`analysis/vocab.py` session_title): a verb and an
+   * object from fixed tables and the numbers the title says. Rendered on the phone
+   * (`src/copy/title.ts`); no file or directory name travels. Null when no title rule
+   * fired, or the producer does not compute it.
+   */
+  title_ids?: SessionTitleIds | null;
+  /**
+   * What every call to the model sent and got back (`analysis/calls.py` over the session
+   * window): at most 240 points of five token counts, the calls that came back to an expired
+   * cache, and what each kind of token would cost at API list prices, priced on the machine.
+   * Only on the detail endpoint. Drawn and put into words on the phone
+   * (`src/session/callsView.ts`). Null when the producer does not compute it; a refusal is
+   * `call_tokens.reason`, never a zero. Undefined is a server older than the field (0025).
+   */
+  call_tokens?: CallTokensRead | null;
 }
+
+/**
+ * A rewrite as the detail endpoint serves it: the upload's `SessionCallRewrite`, with
+ * `away_seconds` null for anyone but the session's owner (`routes/sessions._call_tokens_for`),
+ * since how long the conversation was away dates an earlier, perhaps unshared, session.
+ */
+export type CallRewriteRead = Omit<SessionCallRewrite, 'away_seconds'> & { away_seconds: number | null };
+
+/** `SessionCallTokens` as read back: its rewrites are `CallRewriteRead`. */
+export type CallTokensRead = Omit<SessionCallTokens, 'rewrites'> & { rewrites?: CallRewriteRead[] | null };
 
 export interface Profile {
   graph: { date: string; active_seconds: number }[];
@@ -134,7 +226,10 @@ export interface Profile {
     attended_seconds?: number;
     autonomous_seconds?: number;
   };
-  /** Sessions the Mac is still uploading. Absent on a server older than the split. */
+  /**
+   * Sessions the Mac is still uploading. Absent on a server older than the split. Each row
+   * carries the SLIM `live_state` (see `SessionDetail.live_state`) and never `live_names`.
+   */
   live?: SessionDetail[];
   /**
    * The aggregate of the session analyses (server/builder/builder_profile.py). Undefined
@@ -301,13 +396,32 @@ export interface CorpusProfile {
     total_hours: number;
     total_prompts: number;
     total_lines_added: number;
-    total_commits: number;
+    /**
+     * Null when the corpus holds two sessions that overlapped in one repository. Each
+     * session's own count is right; the SUM is not, because both asked git what landed in
+     * their window and both got the same commits. `commit_basis` says
+     * `overlapping_session_windows` when that is why.
+     */
+    total_commits: number | null;
     commit_basis: string;
     total_tool_calls: number;
   };
   metrics: Record<string, CorpusMetric>;
   top_tools: { tool: string; calls: number; share: number }[];
   model_mix: { model: string; output_tokens: number; share: number }[];
+  /**
+   * The top five sessions by ATTENDED time, best first, and how many were eligible at
+   * all. Ranked on attended and never on active, and `unattended` runs are excluded
+   * outright: an eight-hour autonomous run is not a personal record.
+   */
+  session_rank: {
+    rank: number;
+    session_id: string;
+    attended_seconds: number;
+    active_seconds: number;
+    started_at: string;
+  }[];
+  ranked_sessions: number;
   archetype: CorpusArchetype;
   facts: CorpusFact[];
 }
@@ -324,7 +438,180 @@ export interface BuilderProfileResponse {
   min_sessions: number;
   window_days: number;
   corpus: CorpusProfile | null;
+  /**
+   * The "how you work" page: the only prose on this screen, and the only part of the
+   * profile a model wrote. Null means nobody has run `python -m capture narrative` for
+   * this account, which is the normal state until they do; the shape is generated from
+   * the same spec the server validates against (`generated/narrative.ts`).
+   *
+   * Optional on READ: a server older than 0016 omits the key entirely, and the screen
+   * then shows what it always showed rather than an empty section.
+   */
+  narrative?: BuilderNarrative | null;
+  /**
+   * The MEASURED half of the profile: trends against the window before, subagent
+   * fan-out, commits split by whether an agent was in the room, time to green, and how
+   * often a prompt lands clean. The server computes none of it — it rests on sidecar
+   * transcripts, shell command text, prompt text and commit times, none of which the
+   * upload contract puts on the wire — so it arrives from `python -m capture report`.
+   *
+   * Null until that has run; optional on READ because a server older than 0018 omits the
+   * key. Both are the same thing on screen: the sections are absent, not empty.
+   */
+  report?: BuilderReport | null;
+  /**
+   * THE SECOND OPT IN EXCEPTION (contract v4 `quotes`): up to three of the owner's prompts,
+   * verbatim, for the Wrapped cards that quote them (go to prompt, crash out, cryptic
+   * prompt). Owner only, and only while BOTH Settings > Quotes and `--quotes` on the
+   * machine said yes. Null when there are none; undefined from a server older than 0021.
+   * Never put one in a post, a share, a push or an activity.
+   */
+  quotes?: QuotesUpload | null;
+  /**
+   * Report v3 (docs/projects.md): `report.projects` names every project by its repository
+   * KEY alone, and this is the PUBLIC name of each key that has one, from the same `repos`
+   * row a session reads its `repo_name` from. A private repository is never in it; the phone
+   * labels those (`src/projects/model.ts projectLabel`), and an owner's own label for one
+   * stays on the phone. Undefined from a server older than the block.
+   */
+  project_names?: Record<string, string>;
 }
+
+/**
+ * `GET /v1/projects/{key}`: one project's page in one request. `key` is the repository hash
+ * or the 12 character prefix `Profile.projects[].key` carries.
+ */
+export interface ProjectSlice {
+  /** The full 64 hex key. */
+  key: string;
+  /** The public name, or null for a private repository (never sent for one). */
+  name: string | null;
+  /** The report's window, or null when the stored report has no projects block. */
+  window_days: number | null;
+  /** When the report holding `project` was measured; null when it holds none. */
+  generated_at: string | null;
+  /** This project's block from the stored report, or null when the report does not hold it. */
+  project: ReportProject | null;
+  /** The report's comparisons that name this project. */
+  comparisons: ReportProjectComparison[];
+  /** Public names for this key and every key those comparisons name. */
+  project_names: Record<string, string>;
+  /** Its final, visible sessions from the server's rows, newest first: one page (50 by default, `limit` up to 200). */
+  sessions: SessionDetail[];
+  /** How many final, visible sessions it has on the server in all. Undefined from an older server. */
+  sessions_total?: number;
+  /** Pass as `before` for the next page; null on the last. Undefined from an older server. */
+  next_before?: string | null;
+}
+
+// ------------------------------------------------------------------ project demos
+// `server/builder/routes/media.py` (docs/demos.md, "The API"). Owner only, bearer auth.
+
+/**
+ * One file of a project's demo as the list and the preview serve it: a still or the one video.
+ * `url` and `poster_url` are presigned GETs in production and RELATIVE in development
+ * (`/v1/media/{id}`), which the phone fetches from the API with its bearer
+ * (`resolveMediaUrl`). `poster_url` is null on a still.
+ */
+export interface ProjectMediaItem {
+  id: string;
+  kind: 'image' | 'video';
+  content_type: string;
+  width: number;
+  height: number;
+  /** The video's length; null on a still. */
+  duration_ms: number | null;
+  position: number;
+  /** The state it shows, in plain words. */
+  label: string;
+  /** Where it came from: `capture`, `checkout`, `transcript` or `previous`. */
+  source: string;
+  url: string;
+  poster_url: string | null;
+}
+
+/** Where a media file is fetched from, and the header it needs there (none off the API's own origin). */
+export interface MediaSourceRef {
+  uri: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * A media url the server returned, made fetchable. A relative one (the local stack's
+ * `/v1/media/{id}`) is resolved against the API and carries the bearer, as every API read does;
+ * an absolute one on the API's own origin carries it too. Any other absolute url is a presigned
+ * GET on the object store, which IS the grant: it gets no bearer, because the phone's token
+ * must never travel to another host (and S3 refuses a request that brings a second credential).
+ */
+export function resolveMediaUrl(url: string, baseUrl: string, bearer: string | null | undefined): MediaSourceRef {
+  const base = baseUrl.replace(/\/+$/, '');
+  const auth = bearer ? { headers: { Authorization: `Bearer ${bearer}` } } : {};
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return { uri: `${base}${url.startsWith('/') ? '' : '/'}${url}`, ...auth };
+  const origin = (u: string) => /^([a-z][a-z0-9+.-]*:\/\/[^/?#]+)/i.exec(u)?.[1]?.toLowerCase() ?? null;
+  return origin(url) !== null && origin(url) === origin(base) ? { uri: url, ...auth } : { uri: url };
+}
+
+// ------------------------------------------------------------------ privacy
+// `server/builder/routes/privacy.py` (docs/overnight-integration.md 2.3 and 2.4). Two
+// switches, both OFF by default, each one the only thing that lets its data reach the
+// server, and each one DELETES that data when it is turned off.
+
+/**
+ * `GET /v1/privacy/prefs`. The account's map salt lives beside these on the server and is
+ * never returned: a salt the phone held could be used to test a guessed path against a
+ * file id.
+ */
+export interface PrivacyPrefs {
+  /** Quote my prompts on my cards: the contract v4 `quotes` document. */
+  quotes: boolean;
+  /** File names: the contract v4 `live_names` basenames beside a running session's map. */
+  live_names: boolean;
+}
+
+/** The body of `PUT /v1/privacy/prefs`: either key, or both. */
+export type PrivacyPrefsUpdate = Partial<PrivacyPrefs>;
+
+/**
+ * The answer to `PUT /v1/privacy/prefs`: the prefs as they now stand, plus how many quotes
+ * the same transaction deleted when `quotes` went off. Absent when nothing was deleted.
+ */
+export interface PrivacyPrefsResult extends PrivacyPrefs {
+  quotes_deleted?: number;
+}
+
+// -------------------------------------------------------------- live activities
+// `POST /v1/push/live-activity` (docs/overnight-integration.md 3.6). The server pushes
+// `liveactivity` updates to these tokens on a phase or trajectory change only.
+
+/** The APNs host a token was issued for. Debug builds get sandbox tokens. */
+export type PushEnvironment = 'sandbox' | 'production';
+
+/**
+ * One ActivityKit token. `kind: 'activity'` is an update token for one running activity,
+ * which names its server session and ActivityKit's own id; `push_to_start` (iOS 17.2+)
+ * names neither. The migration's CHECK holds the two together, so the type does too.
+ *
+ * The creature rides on the token because the server stores no creature and the Live
+ * Activity's ContentState requires one.
+ */
+export type LiveActivityRegistration =
+  | {
+      kind: 'activity';
+      /** The server's session uuid (`SessionDetail.id`), not the client session id. */
+      session_id: string;
+      /** ActivityKit's `Activity.id`, the key `forgetLiveActivity` deletes by. */
+      activity_id: string;
+      /** The push token, hex. */
+      token: string;
+      environment: PushEnvironment;
+      creature: Creature;
+    }
+  | {
+      kind: 'push_to_start';
+      token: string;
+      environment: PushEnvironment;
+      creature: Creature;
+    };
 
 // ------------------------------------------------------------------ social
 // Read shapes mirror `server/builder/routes/social.py` field for field. A feed item is
@@ -373,7 +660,21 @@ export interface FeedItem {
   share_analysis: boolean;
   created_at: string;
   updated_at: string;
-  session: SessionDetail;
+  /**
+   * NULL ON A BUILD POST. A session post is about one sitting and has one; a build post
+   * (0017) is about a PROJECT across as many sittings as it took, so there is no single
+   * session to show. Every reader of this field has to branch, which is the point of
+   * making it nullable rather than inventing an empty session to keep the type simple.
+   */
+  session: SessionDetail | null;
+  /**
+   * The build post itself, or null on a session post. Written on the author's machine by
+   * `python -m analysis shipped` under spec/shipped.v1.json; the server validated it and
+   * stored it whole. Optional on READ because a server older than 0017 omits the key.
+   */
+  shipped?: ShippedPost | null;
+  /** The repository's public name, when it has one. Present on both kinds of post. */
+  project?: string | null;
   strip: SessionStrip | null;
   analysis: FeedAnalysis | null;
   photos: PostMedia[];
@@ -559,6 +860,11 @@ export interface TokenPair {
 
 export type RepoVisibility = 'public' | 'anonymous' | 'excluded';
 
+/** What a transport failure says on screen (ApiError status 0). */
+export const OFFLINE_MESSAGE = 'Builda is not reachable right now.';
+/** What a request that ran past the timeout says on screen. */
+export const TIMEOUT_MESSAGE = 'Builda took too long to answer.';
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -687,6 +993,7 @@ export class Api {
 
   // ------------------------------------------------------------------- data
 
+  /** `/v1/profile` reads `days`, the width of the activity graph. */
   profile(days = 119): Promise<Profile> {
     return this.request('GET', `/v1/profile?days=${encodeURIComponent(days)}`);
   }
@@ -694,12 +1001,52 @@ export class Api {
   /**
    * The builder profile on its own, so the screen can refresh the part that changes
    * without refetching the graph, the projects and every live session with it.
+   *
+   * `/v1/profile/builder` reads `window_days` (default 90, at most 365). This used to send
+   * `?days=119`, a name the route does not read, so every answer was the 90 day default
+   * and nothing said so (docs/overnight-integration.md 5.3). The answer's own
+   * `window_days` is the window it actually used; a screen says that one, never the one
+   * it asked for.
    */
-  builderProfile(days = 119): Promise<BuilderProfileResponse> {
-    return this.request('GET', `/v1/profile/builder?days=${encodeURIComponent(days)}`);
+  builderProfile(windowDays = 90): Promise<BuilderProfileResponse> {
+    return this.request('GET', `/v1/profile/builder?window_days=${encodeURIComponent(windowDays)}`);
   }
 
-  sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean } = {}): Promise<{
+  /**
+   * One project's page: its report block, its public name if it has one, the comparisons
+   * that name it and its own sessions (docs/projects.md). `key` is 12 to 64 lowercase hex; a
+   * prefix that names two projects is a 409, an unknown or excluded one a 404.
+   */
+  project(key: string, opts: { before?: string | null; limit?: number } = {}): Promise<ProjectSlice> {
+    const q = new URLSearchParams();
+    if (opts.before) q.set('before', opts.before);
+    if (opts.limit !== undefined) q.set('limit', String(opts.limit));
+    const qs = q.toString();
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}${qs ? `?${qs}` : ''}`);
+  }
+
+  /** A project's demo: the video first, then the stills by position (docs/demos.md). 404 for a key that is not yours. */
+  projectMedia(key: string): Promise<{ items: ProjectMediaItem[] }> {
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}/media`);
+  }
+
+  /** Up to three stills of each project, for the Projects tab: `[]` for a project with no demo. At most 50 keys. */
+  projectMediaPreview(keys: readonly string[]): Promise<{ projects: Record<string, ProjectMediaItem[]> }> {
+    return this.request('GET', `/v1/projects/media:preview?keys=${keys.map(encodeURIComponent).join(',')}`);
+  }
+
+  /** Delete a project's demo: every file and every row, in one request. */
+  deleteProjectMedia(key: string): Promise<{ deleted: number }> {
+    return this.request('DELETE', `/v1/projects/${encodeURIComponent(key)}/media`);
+  }
+
+  /** A media url from `projectMedia` or `projectMediaPreview`, made fetchable (`resolveMediaUrl`). */
+  async mediaSource(url: string): Promise<MediaSourceRef> {
+    await this.loadTokens();
+    return resolveMediaUrl(url, this.baseUrl, this.access);
+  }
+
+  sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean; include_live?: boolean } = {}): Promise<{
     sessions: SessionDetail[];
     next_before: string | null;
   }> {
@@ -707,6 +1054,8 @@ export class Api {
     if (opts.limit !== undefined) q.set('limit', String(opts.limit));
     if (opts.before) q.set('before', opts.before);
     if (opts.notable_only !== undefined) q.set('notable_only', String(opts.notable_only));
+    // Finished sessions only unless asked: a running one is a moving target to page over.
+    if (opts.include_live) q.set('include_live', 'true');
     const qs = q.toString();
     return this.request('GET', `/v1/sessions${qs ? `?${qs}` : ''}`);
   }
@@ -734,6 +1083,46 @@ export class Api {
     return this.request('POST', '/v1/repos/visibility', {
       body: { repo_hash: repoHash, visibility },
     });
+  }
+
+  // ---------------------------------------------------------------- privacy
+
+  /** The two opt in switches as the account holds them. Both are false until turned on. */
+  privacyPrefs(): Promise<PrivacyPrefs> {
+    return this.request('GET', '/v1/privacy/prefs');
+  }
+
+  /**
+   * Flip one switch or both. Only a phone can (the route takes a device token). Turning
+   * `quotes` off deletes every stored quote in the same transaction and the answer says how
+   * many (`quotes_deleted`); turning `live_names` off clears every stored name. Only the
+   * keys given are sent, so flipping one never rewrites the other.
+   */
+  setPrivacyPrefs(prefs: PrivacyPrefsUpdate): Promise<PrivacyPrefsResult> {
+    const body: PrivacyPrefsUpdate = {};
+    if (prefs.quotes !== undefined) body.quotes = prefs.quotes;
+    if (prefs.live_names !== undefined) body.live_names = prefs.live_names;
+    return this.request('PUT', '/v1/privacy/prefs', { body });
+  }
+
+  /** Delete every stored quote now, whatever the switch says. 204. */
+  async deleteQuotes(): Promise<void> {
+    await this.request<unknown>('DELETE', '/v1/profile/quotes');
+  }
+
+  // -------------------------------------------------------- live activities
+
+  /**
+   * Hand the server an ActivityKit token, from `onPushToken`. Upserted on (account, token),
+   * so posting the same token twice is harmless.
+   */
+  async registerLiveActivity(body: LiveActivityRegistration): Promise<void> {
+    await this.request<unknown>('POST', '/v1/push/live-activity', { body });
+  }
+
+  /** The activity ended on the phone: forget its token so nothing pushes to it again. 204. */
+  async forgetLiveActivity(activityId: string): Promise<void> {
+    await this.request<unknown>('DELETE', `/v1/push/live-activity/${encodeURIComponent(activityId)}`);
   }
 
   // ----------------------------------------------------------------- social
@@ -922,7 +1311,7 @@ export class Api {
   // -------------------------------------------------------------- transport
 
   private async request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
     opts: { body?: unknown; auth?: boolean } = {}
   ): Promise<T> {
@@ -962,10 +1351,12 @@ export class Api {
         signal: controller.signal,
       });
     } catch (e) {
+      // Status 0 is the phone's side of the wire. Screens print `message` as it is, so it is
+      // a sentence a person can act on, not fetch's "Network request failed".
       if ((e as { name?: string }).name === 'AbortError') {
-        throw new ApiError(0, 'request timed out');
+        throw new ApiError(0, TIMEOUT_MESSAGE);
       }
-      throw new ApiError(0, e instanceof Error ? e.message : 'network error');
+      throw new ApiError(0, OFFLINE_MESSAGE);
     } finally {
       clearTimeout(timer);
     }

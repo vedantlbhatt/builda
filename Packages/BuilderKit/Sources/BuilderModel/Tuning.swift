@@ -260,6 +260,21 @@ public enum Tuning {
         ":(exclude)*.xcworkspacedata",
     ]
 
+    /// WHICH commits `git log` walks: every LOCAL BRANCH, never just HEAD. Git runs in the
+    /// repository's common root (`--git-common-dir`), which is the main checkout, and a
+    /// session in a worktree commits to the worktree's own branch, which the main
+    /// checkout's HEAD never reaches. MEASURED 2026-09-13, the builder repository with one
+    /// worktree beside it: from the common root `git log --since='2 days ago'` counted 0
+    /// commits and with `--branches` 32; over 60 days 14 against 153. Not `--all`: over the
+    /// same 60 days it added one commit on a remote only branch a cloud session pushed,
+    /// which no session on this Mac made, and it walks `refs/stash`, whose "index on"
+    /// commit has one parent, so `--no-merges` keeps it. A commit on a detached HEAD in a
+    /// worktree is on no branch and is still not seen (RECORDED, not measured). RECORDED,
+    /// NOT FIXED: `git_cache` is Tier A, so a window cached before this keeps the count it
+    /// was given (recomputing it would write zero for a repository deleted since). Mirrored
+    /// by `capture/tuning.py` GIT_LOG_REFS.
+    public static let gitLogRefs = ["--branches"]
+
     /// MEASURED: appears literally, as this string, in `.message.model` on 15 records.
     /// These are locally-generated placeholder turns for errors and interrupts — not real
     /// API calls. Dropped from cost AND from token totals before any price lookup, and it

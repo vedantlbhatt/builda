@@ -42,6 +42,10 @@ export const tokens = {
       "light": "#FFFFFF",
       "dark": "#1E1B18"
     },
+    "raised": {
+      "light": "#F3EFE7",
+      "dark": "#282420"
+    },
     "border": {
       "light": "#E7E3DC",
       "dark": "#2F2B27"
@@ -54,9 +58,27 @@ export const tokens = {
       "light": "#6B655D",
       "dark": "#A8A29A"
     },
+    "textFaint": {
+      "light": "#A8A29A",
+      "dark": "#6B655D"
+    },
     "accent": {
       "light": "#FFB300",
       "dark": "#FFB300"
+    },
+    "accentPressed": {
+      "light": "#E0A300",
+      "dark": "#E0A300"
+    }
+  },
+  "data": {
+    "add": {
+      "light": "#2B7F3A",
+      "dark": "#7BC96F"
+    },
+    "del": {
+      "light": "#C62A2F",
+      "dark": "#E5484D"
     }
   },
   "graph": {
@@ -80,51 +102,352 @@ export const tokens = {
     }
   },
   "type": {
-    "cardHeadline": {
-      "size": 64,
-      "weight": "bold",
-      "tracking": -1.5
+    "hero": {
+      "size": 56,
+      "weight": 800,
+      "tracking": -1.5,
+      "line": 1.0,
+      "maxScale": 1
     },
-    "cardMeta": {
-      "size": 26,
-      "weight": "medium",
-      "tracking": 0
+    "display": {
+      "size": 40,
+      "weight": 800,
+      "tracking": -0.8,
+      "line": 1.05,
+      "maxScale": 1
     },
-    "cardFooter": {
-      "size": 20,
-      "weight": "regular",
-      "tracking": 0.5
+    "title": {
+      "size": 22,
+      "weight": 700,
+      "tracking": -0.3,
+      "line": 1.2,
+      "maxScale": 1.5
     },
-    "rowTitle": {
+    "headline": {
+      "size": 17,
+      "weight": 600,
+      "tracking": -0.2,
+      "line": 1.25,
+      "maxScale": 1.5
+    },
+    "body": {
+      "size": 17,
+      "weight": 400,
+      "tracking": -0.2,
+      "line": 1.35,
+      "maxScale": 2
+    },
+    "row": {
       "size": 15,
-      "weight": "semibold",
-      "tracking": 0
+      "weight": 600,
+      "tracking": 0,
+      "line": 1.3,
+      "maxScale": 1.5
     },
-    "rowMeta": {
+    "meta": {
       "size": 13,
-      "weight": "regular",
-      "tracking": 0
+      "weight": 400,
+      "tracking": 0,
+      "line": 1.3,
+      "maxScale": 2
+    },
+    "label": {
+      "size": 12,
+      "weight": 600,
+      "tracking": 0.2,
+      "line": 1.2,
+      "maxScale": 1
     },
     "mono": {
-      "size": 12,
-      "weight": "regular",
+      "size": 13,
+      "weight": 500,
       "tracking": 0,
+      "line": 1.3,
+      "maxScale": 1.5,
       "design": "monospaced"
+    }
+  },
+  "cardType": {
+    "headline": {
+      "size": 64,
+      "weight": 700,
+      "tracking": -1.5
+    },
+    "meta": {
+      "size": 26,
+      "weight": 500,
+      "tracking": 0
+    },
+    "footer": {
+      "size": 20,
+      "weight": 400,
+      "tracking": 0.5
     }
   },
   "space": {
     "xs": 4,
     "sm": 8,
+    "tile": 12,
     "md": 16,
     "lg": 24,
+    "section": 32,
     "xl": 40,
     "xxl": 64
   },
+  "layout": {
+    "gutter": 16,
+    "tileGap": 12,
+    "sectionGap": 32,
+    "tilePad": 14,
+    "widgetPad": 16,
+    "liveActivityPad": 14
+  },
   "radius": {
-    "sm": 4,
-    "md": 10,
-    "lg": 18,
+    "xs": 6,
+    "sm": 12,
+    "md": 18,
+    "lg": 28,
+    "pill": 999,
     "card": 24
+  },
+  "shadow": {
+    "float": {
+      "x": 0,
+      "y": 12,
+      "blur": 32,
+      "color": "#000000",
+      "opacity": 0.5
+    }
+  },
+  "dither": {
+    "cell": 3,
+    "halftoneAngle": 45,
+    "halftoneRadius": 0.72,
+    "bayer8": [
+      [
+        0,
+        32,
+        8,
+        40,
+        2,
+        34,
+        10,
+        42
+      ],
+      [
+        48,
+        16,
+        56,
+        24,
+        50,
+        18,
+        58,
+        26
+      ],
+      [
+        12,
+        44,
+        4,
+        36,
+        14,
+        46,
+        6,
+        38
+      ],
+      [
+        60,
+        28,
+        52,
+        20,
+        62,
+        30,
+        54,
+        22
+      ],
+      [
+        3,
+        35,
+        11,
+        43,
+        1,
+        33,
+        9,
+        41
+      ],
+      [
+        51,
+        19,
+        59,
+        27,
+        49,
+        17,
+        57,
+        25
+      ],
+      [
+        15,
+        47,
+        7,
+        39,
+        13,
+        45,
+        5,
+        37
+      ],
+      [
+        63,
+        31,
+        55,
+        23,
+        61,
+        29,
+        53,
+        21
+      ]
+    ]
+  },
+  "spectrum": {
+    "hues": {
+      "amber": {
+        "dark": "#FFB300",
+        "partner": "#D07506",
+        "light": "#BC8303",
+        "lightText": "#976902",
+        "lightPartner": "#E8B45E"
+      },
+      "brass": {
+        "dark": "#ECE659",
+        "partner": "#CA9E09",
+        "light": "#A68C03",
+        "lightText": "#857000",
+        "lightPartner": "#D3BE66"
+      },
+      "tide": {
+        "dark": "#6CD9F1",
+        "partner": "#0E86AD",
+        "light": "#049BB3",
+        "lightText": "#057C90",
+        "lightPartner": "#85CADB"
+      },
+      "cobalt": {
+        "dark": "#53A3F2",
+        "partner": "#417ACC",
+        "light": "#4192DF",
+        "lightText": "#1F74BF",
+        "lightPartner": "#8DC3FB"
+      },
+      "iris": {
+        "dark": "#A670F3",
+        "partner": "#7658CB",
+        "light": "#A670F3",
+        "lightText": "#8C55D6",
+        "lightPartner": "#C5A3FF"
+      },
+      "heather": {
+        "dark": "#EAB8FF",
+        "partner": "#9C68B0",
+        "light": "#B178C8",
+        "lightText": "#8D5FA0",
+        "lightPartner": "#D1AFE0"
+      },
+      "orchid": {
+        "dark": "#F54BB8",
+        "partner": "#BF3A90",
+        "light": "#F248B5",
+        "lightText": "#D12198",
+        "lightPartner": "#FF98D3"
+      },
+      "coral": {
+        "dark": "#FCA0A6",
+        "partner": "#D36D86",
+        "light": "#D66E77",
+        "lightText": "#AB575E",
+        "lightPartner": "#EBAAAD"
+      },
+      "ember": {
+        "dark": "#F9833E",
+        "partner": "#D85A05",
+        "light": "#E06C23",
+        "lightText": "#B95201",
+        "lightPartner": "#FBA77B"
+      }
+    },
+    "creature": {
+      "bit": "amber",
+      "cat": "orchid",
+      "dog": "cobalt",
+      "fox": "ember",
+      "owl": "heather",
+      "bee": "brass",
+      "whale": "tide",
+      "octopus": "iris",
+      "crab": "coral"
+    },
+    "crew": {
+      "ring": [
+        "fox",
+        "whale",
+        "bee",
+        "octopus",
+        "crab",
+        "dog",
+        "cat",
+        "owl"
+      ]
+    },
+    "harness": {
+      "claude_code": "heather",
+      "codex": "tide",
+      "cursor": "brass",
+      "gemini_cli": "coral",
+      "cline": "iris",
+      "opencode": "ember",
+      "aider": "cobalt"
+    },
+    "card": {
+      "builder_type": "archetype",
+      "shipped": "brass",
+      "work_style": "tide",
+      "longest_session": "iris",
+      "agents_at_once": "ember",
+      "go_to_prompt": "orchid",
+      "streak": "coral",
+      "change_course": "cobalt",
+      "crash_out": "ember",
+      "prompt_length": "heather",
+      "deep_sessions": "iris",
+      "time_put_in": "amber",
+      "cryptic_prompt": "tide",
+      "prompts_per_session": "orchid",
+      "kind_of_work": "brass"
+    },
+    "cardAlt": {
+      "shipped": "coral",
+      "work_style": "coral"
+    },
+    "archetype": {
+      "architect": "heather",
+      "velocity_machine": "brass",
+      "quality_guardian": "coral",
+      "night_owl": "orchid",
+      "explorer": "iris",
+      "firefighter": "ember",
+      "director": "cobalt",
+      "skeptic": "tide",
+      "generalist": "amber"
+    },
+    "dimension": {
+      "steering": "tide",
+      "execution": "brass",
+      "engineering": "coral",
+      "product_instinct": "cobalt",
+      "planning": "heather"
+    },
+    "verdict": {
+      "converging": "data.add",
+      "circling": "surface.textDim",
+      "lost": "data.del"
+    }
   },
   "card": {
     "landscape": {
@@ -145,3 +468,6 @@ export type Scheme = 'light' | 'dark';
 export function pick(pair: { light: string; dark: string }, scheme: Scheme): string {
   return pair[scheme];
 }
+
+/** The one shadow token as a React Native `boxShadow` string, derived from `shadow.float`. */
+export const FLOAT_SHADOW = '0 12px 32px rgba(0,0,0,0.5)';

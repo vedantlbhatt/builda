@@ -485,7 +485,8 @@ def _tool_event(ts: float, name: str, call_id, args, model: str | None) -> dg.Ev
         ev.path = path
         if approx is not None:
             ev.added, ev.removed = approx, 0
-        ev.text = dg.mask(dg._trunc(cmd.replace("\n", " ⏎ "), dg.COMMAND_MAX))
+        ev.text = dg.clip(cmd.replace("\n", " ⏎ "), dg.COMMAND_MAX)
+        ev.reads_only = dg.shell_reads_only(cmd)
     elif name in FILE_TOOLS:
         ev.path = _file_path(args)
         ev.text = dg.mask(ev.path or "")
@@ -502,12 +503,12 @@ def _tool_event(ts: float, name: str, call_id, args, model: str | None) -> dg.Ev
             if isinstance(old, str) and isinstance(new, str):
                 ev.added, ev.removed = _line_delta(old, new)
     elif name in ("glob", "grep_search"):
-        ev.text = dg.mask(dg._trunc(str(args.get("pattern", "")), 80))
+        ev.text = dg.clip(str(args.get("pattern", "")), 80)
     elif name in ("google_web_search", "web_fetch"):
-        ev.text = dg.mask(dg._trunc(str(args.get("query") or args.get("prompt") or ""), 100))
+        ev.text = dg.clip(str(args.get("query") or args.get("prompt") or ""), 100)
     else:
         ev.text = (
-            dg.mask(dg._trunc(json.dumps(args, separators=(",", ":"))[:200], 100)) if args else ""
+            dg.clip(json.dumps(args, separators=(",", ":"))[:200], 100) if args else ""
         )
     return ev
 
@@ -597,7 +598,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
             if _in_window(ts):
                 kind = "prompt_agent_authored" if agent_authored else "prompt"
                 counters[kind] += 1
-                _emit(dg.Ev(0, ts, kind, dg.mask(dg._trunc(text, dg.PROMPT_MAX))))
+                _emit(dg.Ev(0, ts, kind, dg.clip(text, dg.PROMPT_MAX)))
 
         elif t == "gemini":
             model = msg.get("model") if isinstance(msg.get("model"), str) else None
@@ -610,7 +611,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                         0,
                         ts,
                         "assistant",
-                        dg.mask(dg._trunc(text, dg.ASSISTANT_MAX)),
+                        dg.clip(text, dg.ASSISTANT_MAX),
                         model=model,
                         tok_out=tokens.get("output"),
                     )
@@ -653,7 +654,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
                             0,
                             cts,
                             "result_error",
-                            dg.mask(dg._trunc(rtext or "(error)", dg.ERROR_MAX)),
+                            dg.clip(rtext or "(error)", dg.ERROR_MAX),
                             tool=name,
                             path=asked_path,
                             ok=False,

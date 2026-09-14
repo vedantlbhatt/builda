@@ -1,63 +1,52 @@
 import React from 'react';
-import { ActivityIndicator, Image, Text, View } from 'react-native';
+import { ActivityIndicator, Image, View } from 'react-native';
 
-import { colors, space } from '../theme';
+import { space } from '../theme';
+import { Button, Hairline, SHAPE, Surface, SymbolIcon, T, useColors } from '../ui';
 import { uploadStatus, uploadWhat, type UploadRow } from './composeFlow';
 
-const c = colors('dark');
+const THUMB = 40;
 
-/** One upload's line: a thumbnail or the note's length, and where it is. */
+/** One upload's line: a thumbnail or the note's glyph, what it is, and where it is. */
 export function UploadLine({ row }: { row: UploadRow }) {
+  const c = useColors();
   const { job, state } = row;
   const failed = state.phase === 'failed';
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: space.sm,
-        backgroundColor: c.card,
-        borderRadius: 10,
-        padding: space.sm,
-        marginBottom: space.sm,
-      }}
-    >
-      {job.kind === 'photo' ? (
-        <Image
-          source={{ uri: job.uri }}
-          resizeMode="cover"
-          accessibilityIgnoresInvertColors
-          style={{ width: 40, height: 40, borderRadius: 6, backgroundColor: c.border }}
-        />
-      ) : (
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 6,
-            backgroundColor: c.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ color: c.text, fontSize: 16 }}>▶</Text>
-        </View>
-      )}
-      <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>{uploadWhat(job)}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.tile, padding: space.tile }}>
+      <View
+        style={{
+          width: THUMB,
+          height: THUMB,
+          borderRadius: SHAPE.mark,
+          borderCurve: 'continuous',
+          overflow: 'hidden',
+          backgroundColor: c.raised,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {job.kind === 'photo' ? (
+          <Image source={{ uri: job.uri }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ width: THUMB, height: THUMB }} />
+        ) : (
+          <SymbolIcon name="waveform" tone="text" />
+        )}
+      </View>
+      <T role="row" style={{ flex: 1 }}>
+        {uploadWhat(job)}
+      </T>
       {state.phase === 'uploading' ? (
         <ActivityIndicator color={c.accent} />
       ) : (
-        <Text
-          style={{
-            color: failed ? c.danger : state.phase === 'done' ? c.accent : c.textDim,
-            fontSize: 12,
-            fontWeight: '600',
-            maxWidth: 160,
-          }}
+        <T
+          role="meta"
+          weight={600}
+          tone={failed ? 'del' : state.phase === 'done' ? 'text' : 'dim'}
+          style={{ maxWidth: 160 }}
           numberOfLines={2}
         >
           {uploadStatus(state)}
-        </Text>
+        </T>
       )}
     </View>
   );
@@ -78,30 +67,21 @@ export function UploadList({
   intro?: string;
 }) {
   return (
-    <View>
-      <Text style={{ color: c.textDim, fontSize: 13, lineHeight: 18, marginBottom: space.md }}>{intro}</Text>
-      {rows.map((r, i) => (
-        <UploadLine key={i} row={r} />
-      ))}
-      {!busy && retryable && (
-        <Text
-          onPress={onRetry}
-          accessibilityRole="button"
-          style={{
-            backgroundColor: c.accent,
-            color: c.onAccent,
-            fontWeight: '700',
-            fontSize: 15,
-            borderRadius: 12,
-            paddingVertical: space.md,
-            textAlign: 'center',
-            marginTop: space.md,
-            overflow: 'hidden',
-          }}
-        >
-          Retry failed uploads
-        </Text>
+    <View style={{ gap: space.md }}>
+      <T role="meta" tone="dim">
+        {intro}
+      </T>
+      {rows.length > 0 && (
+        <Surface padding={0}>
+          {rows.map((r, i) => (
+            <View key={i}>
+              {i > 0 ? <Hairline inset={space.tile * 2 + THUMB} /> : null}
+              <UploadLine row={r} />
+            </View>
+          ))}
+        </Surface>
       )}
+      {!busy && retryable && <Button label="Retry failed uploads" onPress={onRetry} />}
     </View>
   );
 }

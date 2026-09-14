@@ -108,3 +108,35 @@ def test_detects_rls_switched_off(monkeypatch):
             c.execute(text("ALTER TABLE sessions FORCE ROW LEVEL SECURITY"))
         settings.cache_clear()
         db_module._engine = None
+
+
+@pytest.mark.parametrize(
+    "table", ["session_live", "privacy_prefs", "builder_quotes", "live_activity_tokens"]
+)
+def test_the_v4_tables_are_required_with_rls_on(monkeypatch, table):
+    """0020 to 0022. A live map, a salt, a quoted prompt and a Lock Screen's push token:
+    each table must refuse to boot with its row level security off, which is only true if
+    `assert_policies_present` lists it. Tested by switching each one off rather than by
+    reading the list, because the list is the claim and the refusal is the guarantee."""
+    from sqlalchemy import create_engine
+
+    import builder.boot as boot
+    import builder.db as db_module
+    from builder.settings import settings
+
+    owner = create_engine(TEST_DB, future=True)
+    with owner.begin() as c:
+        c.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+    try:
+        settings.cache_clear()
+        monkeypatch.setenv("APP_DATABASE_URL", app_url())
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        db_module._engine = None
+        with pytest.raises(SystemExit) as exc:
+            boot.assert_policies_present()
+        assert table in str(exc.value)
+    finally:
+        with owner.begin() as c:
+            c.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+        settings.cache_clear()
+        db_module._engine = None

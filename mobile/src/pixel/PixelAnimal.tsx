@@ -2,20 +2,22 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { Scheme } from '../theme';
+import { useScheme } from '../ui/scheme';
 import { ANIMAL_FRAMES, ANIMAL_LABELS, type Animal } from './animals';
 import { GRID, type Frame } from './frames';
 import {
-  ANIMAL_MOTION,
+  CUT,
   MOTION,
-  animalBreathMs,
   animalTimeline,
+  blinkGapMs,
   clampTempo,
+  closeEyes,
   initLayers,
   layerFrames,
   stepLayers,
   type Layers,
 } from './motion';
-import { animalPalette, type AnimalPalette } from './palette';
+import { HUE_SNAP_MS, animalPalette, type AnimalPalette, type InkTone } from './palette';
 import { FrameSvg, useReducedMotion } from './PixelSprite';
 
 export { ANIMALS, ANIMAL_LABELS, animalChoices, animalForArchetype, resolveAnimal, type Animal } from './animals';
@@ -25,46 +27,63 @@ interface AnimalProps {
   animal: Animal;
   /** Requested box size in points. Rendered at the largest whole-pixel scale that fits. */
   size?: number;
+  /** Default: the kit's `SchemeProvider`, which is dark unless a surface says otherwise. */
   scheme?: Scheme;
   paused?: boolean;
-  /** 0.5–2, as `PixelSprite`: shortens every beat and the breath. */
+  /** 0.5–2, as `PixelSprite`: shortens every beat. */
   tempo?: number;
+  /**
+   * Which ink (`palette.ts`), always this animal's own hue or a neutral: `rest` its ink, `idle`
+   * on an unselected picker tile, `selected` (`#1C1917`) on a tile filled with its hue
+   * (`creatureTileInks`), `faint` for a creature that is not there. A carousel neighbour keeps
+   * `rest`: size and a turn push it back, never a dimmer ink (DESIGN-V2 1.3).
+   */
+  tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }
 
 /**
- * One of the eight animals, alive.
+ * One of the eight animals, alive, in its own hue (`tokens.spectrum.creature`: cat orchid, dog
+ * cobalt, fox ember, owl heather, bee brass, whale tide, octopus iris, crab coral). The owner's
+ * 2026-09-13 override lifted the one ink the family shared; what did not change is that a
+ * creature is ONE ink per frame, one role, the family's shape and weight. Only the ink differs.
  *
  * The prop shape is `PixelSprite`'s on purpose — a screen swapping the mascot for an
  * animal should change the tag and the one prop that names the creature, nothing else.
- * The motion is smaller than the mascot's by design: a frame loop, a breath, and at most
- * one 1–2 pixel drift (`ANIMAL_MOTION`). No blinks-on-a-random-gap, no micro-gestures,
- * no overlays — an animal is a companion in the corner of a card, not the subject.
+ * The motion is the family's idle and nothing else: the drawn loop (rest, breath, rest,
+ * gesture, `ANIMAL_MOTION`) and Bit's blink, the eye holes filled for 120 ms on a random
+ * 3–6 s gap. No drift, no scale breath: whole pixels, always.
  *
  * `paused` is OR-ed with the OS reduce-motion setting exactly as the mascot does: a
  * caller can stop an animal, and can never start one against that setting.
  */
-export function PixelAnimal({ animal, size = 64, scheme = 'dark', paused = false, tempo, style }: AnimalProps) {
+export function PixelAnimal({ animal, size = 64, scheme: schemeProp, paused = false, tempo, tone = 'rest', style }: AnimalProps) {
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
   const reduced = useReducedMotion();
   if (paused || reduced) {
-    return <AnimalFrameView animal={animal} frame={ANIMAL_FRAMES[animal][0]!} size={size} scheme={scheme} style={style} />;
+    return <AnimalFrameView animal={animal} frame={ANIMAL_FRAMES[animal][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
   }
-  return <LiveAnimal animal={animal} size={size} scheme={scheme} tempo={tempo} style={style} />;
+  return <LiveAnimal animal={animal} size={size} scheme={scheme} tempo={tempo} tone={tone} style={style} />;
 }
 
 /** The first frame, static. For list rows, pickers, and anywhere motion would be noise. */
 export function PixelAnimalIcon({
   animal,
   size = 24,
-  scheme = 'dark',
+  scheme: schemeProp,
+  tone = 'rest',
   style,
 }: {
   animal: Animal;
   size?: number;
   scheme?: Scheme;
+  tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
-  return <AnimalFrameView animal={animal} frame={ANIMAL_FRAMES[animal][0]!} size={size} scheme={scheme} style={style} />;
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
+  return <AnimalFrameView animal={animal} frame={ANIMAL_FRAMES[animal][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
 }
 
 // ─── the runtime ─────────────────────────────────────────────────────────────────────
@@ -81,24 +100,24 @@ function LiveAnimal({
   size,
   scheme,
   tempo,
+  tone,
   style,
 }: {
   animal: Animal;
   size: number;
   scheme: Scheme;
   tempo: number | undefined;
+  tone: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
   const px = Math.max(1, Math.floor(size / GRID));
   const drawn = px * GRID;
-  const palette = useMemo(() => animalPalette(animal, scheme), [animal, scheme]);
+  const palette = useMemo(() => animalPalette(animal, scheme, tone), [animal, scheme, tone]);
   const rate = clampTempo(tempo);
   const frames = ANIMAL_FRAMES[animal];
 
-  const breath = useRef(new Animated.Value(1)).current;
   const settleScale = useRef(new Animated.Value(MOTION.settle.fromScale)).current;
   const settleOpacity = useRef(new Animated.Value(0)).current;
-  const drift = useRef(new Animated.Value(0)).current;
   const layerA = useRef(new Animated.Value(1)).current;
   const layerB = useRef(new Animated.Value(0)).current;
 
@@ -140,68 +159,71 @@ function LiveAnimal({
       timers.add(id);
     };
 
-    // 1. Entrance.
+    // 1. Entrance: the one transform an animal has, and it ends at exactly scale 1. The creature
+    //    arrives by scale; its opacity snaps in (`HUE_SNAP_MS`), because a hue at partial
+    //    opacity over the warm ground is brown for as long as the fade lasts (DESIGN-V2 1.3).
     setLayers(initLayers(frames[0]!, Date.now()));
     settleOpacity.setValue(0);
     settleScale.setValue(MOTION.settle.fromScale);
-    drift.setValue(0);
     run(
       Animated.parallel([
-        timing(settleOpacity, 1, MOTION.settle.ms, 'out'),
+        timing(settleOpacity, 1, Math.min(MOTION.settle.ms, HUE_SNAP_MS), 'out'),
         timing(settleScale, 1, MOTION.settle.ms, 'out'),
       ])
     );
 
-    // 2. Breath.
-    const period = animalBreathMs(animal, rate);
-    breath.setValue(1);
-    run(
-      Animated.loop(
-        Animated.sequence([
-          timing(breath, MOTION.breath.scale, period / 2, 'inOut'),
-          timing(breath, 1, period / 2, 'inOut'),
-        ])
-      )
-    );
+    // Blinks derive a frame per source frame, memoised, so the layer scheduler (which
+    // compares by identity) sees a blink as one change and its end as one change.
+    const closed = new Map<Frame, Frame>();
+    const shut = (f: Frame) => {
+      let d = closed.get(f);
+      if (!d) {
+        d = closeEyes(f);
+        closed.set(f, d);
+      }
+      return d;
+    };
+    let beatFrame = frames[0]!;
+    let eyesShut = false;
+    const show = (fade = MOTION.crossfade) => {
+      const f = eyesShut ? shut(beatFrame) : beatFrame;
+      setLayers((l) => stepLayers(l, f, fade, Date.now()));
+    };
 
-    // 3. The drift: −cells → +cells → −cells, ease-in-out, in sprite pixels. Started at
-    //    the negative end rather than at zero so the first half-period is a full sweep.
-    const d = ANIMAL_MOTION[animal].drift;
-    if (d) {
-      const amp = d.cells * px;
-      const half = Math.round(d.periodMs / rate / 2);
-      drift.setValue(-amp);
-      run(
-        Animated.loop(
-          Animated.sequence([timing(drift, amp, half, 'inOut'), timing(drift, -amp, half, 'inOut')])
-        )
-      );
-    }
-
-    // 4. The frame loop.
+    // 2. The frame loop: rest, breath, rest, gesture.
     const timeline = animalTimeline(animal, rate);
     if (timeline.length > 1) {
       let i = 0;
       const tick = () => {
         const beat = timeline[i]!;
-        setLayers((l) => stepLayers(l, frames[beat.frame]!, MOTION.crossfade, Date.now()));
+        beatFrame = frames[beat.frame]!;
+        show();
         i = (i + 1) % timeline.length;
         after(beat.ms, tick);
       };
       tick();
     }
 
+    // 3. Blinks: Bit's cadence exactly, a 120 ms cut on a random 3–6 s gap.
+    const blink = () =>
+      after(blinkGapMs(), () => {
+        eyesShut = true;
+        show(CUT);
+        after(MOTION.blink.closedMs, () => {
+          eyesShut = false;
+          show(CUT);
+          blink();
+        });
+      });
+    blink();
+
     return () => {
       for (const id of timers) clearTimeout(id);
       for (const a of anims) a.stop();
     };
-  }, [animal, rate, frames, px, breath, settleScale, settleOpacity, drift]);
+  }, [animal, rate, frames, settleScale, settleOpacity]);
 
-  const moving = ANIMAL_MOTION[animal].drift;
-  const transform = [
-    moving?.axis === 'x' ? { translateX: drift } : { translateY: moving ? drift : 0 },
-    { scale: Animated.multiply(breath, settleScale) },
-  ];
+  const transform = [{ scale: settleScale }];
 
   return (
     <View
@@ -237,16 +259,18 @@ function AnimalFrameView({
   frame,
   size,
   scheme,
+  tone,
   style,
 }: {
   animal: Animal;
   frame: Frame;
   size: number;
   scheme: Scheme;
+  tone: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
   const px = Math.max(1, Math.floor(size / GRID));
-  const palette: AnimalPalette = useMemo(() => animalPalette(animal, scheme), [animal, scheme]);
+  const palette: AnimalPalette = useMemo(() => animalPalette(animal, scheme, tone), [animal, scheme, tone]);
   return (
     <View
       style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}

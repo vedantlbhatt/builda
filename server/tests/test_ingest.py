@@ -12,6 +12,7 @@ import json
 import pathlib
 import sys
 import time
+import uuid
 
 from sqlalchemy import text
 from test_capture_keys import _key_headers, _mint
@@ -20,6 +21,7 @@ from test_sync import (  # noqa: F401 - fixtures are picked up by name
     app_env,
     client,
     created_users,
+    owner_engine,
     paired,
 )
 
@@ -123,7 +125,8 @@ def test_two_tails_become_the_capture_sessions_and_the_raw_bytes_are_retired(cli
     r1 = client.post("/v1/ingest/transcript", content=first, headers=_headers(key, sid, 0, "Stop"))
     assert r1.status_code == 200, r1.text
     assert r1.json()["next_offset"] == len(first)
-    assert r1.json()["live"] >= 1, r1.text
+    # One line per live session for the uploader's terminal (`capture live`).
+    assert len(r1.json()["live"]) >= 1, r1.text
     assert _chunks(user_id, sid) >= 1  # live: the bytes wait for the next tail
 
     r2 = client.post(
@@ -135,7 +138,7 @@ def test_two_tails_become_the_capture_sessions_and_the_raw_bytes_are_retired(cli
     body = r2.json()
     assert body["next_offset"] == len(first) + len(second)
     assert body["rejected"] == []
-    assert body["final"] >= 1 and body["live"] == 0
+    assert body["final"] >= 1 and body["live"] == []
 
     expected = _expected_payloads(raw, sid)
     rows = _rows(user_id)
@@ -238,3 +241,124 @@ def test_another_viewer_cannot_see_raw_chunks(client, paired, created_users):
     d = client.delete(f"/v1/ingest/transcript/{sid}", headers=_key_headers(key))
     assert d.status_code == 204
     assert _chunks(user_id, sid) == 0
+
+
+# ------------------------------------------------------------- offsets after retirement
+#
+# `capture live` sends an EMPTY body every heartbeat while nothing new is written, so the
+# retired conversation's offset marker has to survive one; and a conversation the person
+# comes back to after an idle gap continues from the FILE's offset, not from the length of
+# the bytes the server still holds.
+
+
+def _fresh_prompt(sid: str, text_: str, age: float = 30.0) -> bytes:
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - age))
+    rec = {
+        "type": "user",
+        "uuid": str(uuid.uuid4()),
+        "parentUuid": None,
+        "sessionId": sid,
+        "timestamp": stamp,
+        "cwd": "/Users/dev/proj",
+        "promptSource": "typed",
+        "message": {"role": "user", "content": text_},
+    }
+    return (json.dumps(rec) + "\n").encode()
+
+
+def test_a_heartbeat_after_retirement_keeps_the_offset(client, paired):
+    user_id, headers = paired
+    key = _mint(client, headers)["key"]
+    sid = "dddddddd-0000-4000-8000-00000000hook"
+    raw = _shifted()
+    done = client.post(
+        "/v1/ingest/transcript", content=raw, headers=_headers(key, sid, 0, "SessionEnd")
+    )
+    assert done.status_code == 200 and done.json()["next_offset"] == len(raw)
+    assert _chunks(user_id, sid) == 0  # retired: only the zero-length marker is left
+
+    beat = client.post(
+        "/v1/ingest/transcript", content=b"", headers=_headers(key, sid, len(raw), "Stop")
+    )
+    assert beat.status_code == 200, beat.text
+    # Dropping the marker here answered 0, and the watcher then resent the whole file on
+    # every tick for as long as it ran.
+    assert beat.json()["next_offset"] == len(raw)
+    off = client.get(f"/v1/ingest/transcript/{sid}/offset", headers=_key_headers(key))
+    assert off.json()["next_offset"] == len(raw)
+
+
+def test_a_tail_after_retirement_continues_from_the_files_offset(client, paired):
+    user_id, headers = paired
+    key = _mint(client, headers)["key"]
+    sid = "eeeeeeee-0000-4000-8000-00000000hook"
+    raw = _shifted()
+    client.post("/v1/ingest/transcript", content=raw, headers=_headers(key, sid, 0, "SessionEnd"))
+
+    back = _fresh_prompt(sid, "back again")
+    r = client.post(
+        "/v1/ingest/transcript", content=back, headers=_headers(key, sid, len(raw), "Stop")
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["next_offset"] == len(raw) + len(back), "not len(held bytes)"
+
+    more = _fresh_prompt(sid, "and done", age=10)
+    end = client.post(
+        "/v1/ingest/transcript",
+        content=more,
+        headers=_headers(key, sid, len(raw) + len(back), "SessionEnd"),
+    )
+    assert end.status_code == 200, end.text
+    total = len(raw) + len(back) + len(more)
+    assert end.json()["next_offset"] == total
+    # Retired again: the marker sits at the FILE's end, so the next tail is accepted where
+    # the script will send it rather than refused as a gap.
+    assert _chunks(user_id, sid) == 0
+    off = client.get(f"/v1/ingest/transcript/{sid}/offset", headers=_key_headers(key))
+    assert off.json()["next_offset"] == total
+
+
+def test_retired_markers_never_crowd_out_a_stale_session(client, paired):
+    """The stale re-cut takes five transcripts. Retired conversations keep a zero-length
+    marker for their offset and have nothing to cut; counted among the five, older markers
+    kept a session whose process died from ever finishing."""
+    user_id, headers = paired
+    key = _mint(client, headers)["key"]
+    with db_session(viewer_id=user_id) as db:
+        device_id = db.execute(
+            text("SELECT id FROM devices WHERE user_id = :u LIMIT 1"), {"u": user_id}
+        ).scalar()
+    # Six retired markers, all older than the one real stale transcript, and that
+    # transcript's last record old enough that the idle rule makes it final on a re-cut.
+    stale_sid = "ffffffff-0000-4000-8000-00000000hook"
+    stale_raw = _shifted(age_of_last_record_sec=7200)
+    with owner_engine().begin() as c:
+        for i in range(6):
+            c.execute(
+                text(
+                    "INSERT INTO transcript_chunks (user_id, device_id, native_session_id, "
+                    "project_dir, byte_offset, bytes, hook, received_at) VALUES "
+                    "(:u, :d, :s, :p, 1000, '', 'retired', now() - interval '3 hours')"
+                ),
+                {"u": user_id, "d": device_id, "s": f"retired-{i}", "p": PROJECT_DIR},
+            )
+        c.execute(
+            text(
+                "INSERT INTO transcript_chunks (user_id, device_id, native_session_id, "
+                "project_dir, byte_offset, bytes, hook, received_at) VALUES "
+                "(:u, :d, :s, :p, 0, :b, 'Stop', now() - interval '2 hours')"
+            ),
+            {"u": user_id, "d": device_id, "s": stale_sid, "p": PROJECT_DIR, "b": stale_raw},
+        )
+
+    other = "abababab-0000-4000-8000-00000000hook"
+    r = client.post(
+        "/v1/ingest/transcript",
+        content=_fresh_prompt(other, "hello"),
+        headers=_headers(key, other, 0, "Stop"),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["recut_stale"] == 1
+    # The dead session was cut, finished and retired.
+    assert _chunks(user_id, stale_sid) == 0
+    assert any(row.state == "final" for row in _rows(user_id))

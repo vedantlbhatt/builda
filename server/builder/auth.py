@@ -35,10 +35,26 @@ MAX_LIVE_CAPTURE_KEYS = 10
 CAPTURE_KEY_TOUCH_INTERVAL_SEC = 60
 
 
+#: How a device's tokens were granted (`devices.grant_flow`, 0024). `register_device` is the
+#: one writer and every grant names its own; the migration's CHECK list is pinned to this
+#: tuple by server/tests/test_contract.py.
+SIGN_IN = "sign_in"  # Sign in with Apple or Google: the phone
+DEVICE_FLOW = "device_flow"  # RFC 8628 pairing: the Mac app and `capture pair`
+CAPTURE_KEY = "capture_key"  # the device a capture key uploads as (0011)
+GRANT_FLOWS = (SIGN_IN, DEVICE_FLOW, CAPTURE_KEY)
+
+#: The 403 a paired machine gets from a switch only the phone flips. It says where the
+#: switch is, because the person reading it is at a terminal.
+PHONE_ONLY = "only the phone changes this: turn it on or off in the Builda app's Settings"
+
+
 @dataclass
 class CurrentDevice:
     user_id: uuid.UUID
     device_id: uuid.UUID
+    #: `devices.grant_flow` (0024), read with the revocation check. None only for a device
+    #: made without the route (a test's hand built one); `current_phone` refuses it too.
+    grant_flow: str | None = None
 
 
 @dataclass
@@ -112,6 +128,21 @@ def issue_refresh_token(db, device_id: str, prev_id: str | None = None) -> str:
     return raw
 
 
+#: A refresh whose ANSWER never reached the phone: the server spent the token and minted its
+#: successor, the phone never saw the successor, and presents the spent one again. MEASURED
+#: 2026-09-14 on the local stack: the simulator's app reloaded between the server's rotation
+#: (12:31:30) and saving the new pair, presented the spent token 3 seconds later, and every token
+#: for the device was revoked, signing the person out through their own app. A phone on cellular
+#: that loses one response is the same shape. Within this window, and ONLY while the successor has
+#: never been redeemed, the spent token is a retry: the unused successor is revoked and a new
+#: pair issued in its place. Once the successor has been redeemed, or after the window, it is
+#: reuse and the whole chain goes, as before. 60 s: the longest grace the common identity
+#: providers offer for rotation (Okta's), twenty times the 3 s measured. The cost is bounded: a
+#: thief replaying inside the window revokes the phone's successor, and the phone's next refresh
+#: presents that revoked token, which is reuse, and ends both chains.
+REFRESH_RETRY_GRACE_SECONDS = 60
+
+
 def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     """Exchange a refresh token for a new pair, detecting reuse.
 
@@ -131,6 +162,24 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     exception, so an UPDATE followed by `raise HTTPException` inside the same transaction
     was undone on the way out: reuse was detected, reported, and never actually revoked.
     """
+    found = db.execute(
+        text("SELECT device_id FROM device_tokens WHERE refresh_hash = :h"),
+        {"h": sha256(raw)},
+    ).first()
+    if found is None:
+        raise HTTPException(401, "unknown refresh token")
+
+    # One refresh at a time per device, until this transaction ends. FOUND BY AN ADVERSARIAL
+    # REVIEW (2026-09-14): under READ COMMITTED the revoke all below sees only rows committed
+    # when it starts, so a successor a concurrent refresh had inserted and not yet committed
+    # survived it: a thief refreshing at that moment kept a live chain and the phone was
+    # signed out. Queued behind this lock, the revoke all runs after that refresh commits and
+    # takes its successor too. An advisory lock, not a row lock: it needs no viewer, and
+    # `reuse()` can run before `set_viewer`. The row is read again under the lock.
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:d, 0))"),
+        {"d": str(found.device_id)},
+    )
     row = db.execute(
         text(
             """
@@ -140,17 +189,24 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
         ),
         {"h": sha256(raw)},
     ).first()
-
-    if row is None:
+    if row is None:  # deleted between the two reads, with its account
         raise HTTPException(401, "unknown refresh token")
 
-    if row.used_at is not None or row.revoked_at is not None:
+    def reuse() -> HTTPException:
         db.execute(
             text("UPDATE device_tokens SET revoked_at = now() WHERE device_id = :d"),
             {"d": str(row.device_id)},
         )
         db.commit()
-        raise HTTPException(401, "refresh token reuse detected; all tokens for this device revoked")
+        return HTTPException(
+            401, "refresh token reuse detected; all tokens for this device revoked"
+        )
+
+    # A revoked token is never a retry; a spent one may be (REFRESH_RETRY_GRACE_SECONDS).
+    retry = row.revoked_at is None and row.used_at is not None
+    spent_late = row.used_at is not None and not _within_retry_grace(db, row.id)
+    if row.revoked_at is not None or spent_late:
+        raise reuse()
 
     if row.expires_at < datetime.now(UTC):
         raise HTTPException(401, "refresh token expired")
@@ -166,35 +222,69 @@ def redeem_refresh_token(db, raw: str) -> tuple[str, str, str]:
     if revoked is None or revoked.revoked_at is not None:
         raise HTTPException(401, "device revoked")
 
-    # Compare-and-set, not check-then-act. Under READ COMMITTED two presentations of the
-    # same token both pass the Python-side check above; the second's unconditional UPDATE
-    # would wait on the row lock, re-match, and succeed, leaving two live chains and no
-    # reuse ever detected. Zero rows here means someone else spent it first — treat it as
-    # reuse, exactly like an already-used row.
-    spent = db.execute(
-        text(
-            "UPDATE device_tokens SET used_at = now() "
-            "WHERE id = :i AND used_at IS NULL AND revoked_at IS NULL RETURNING id"
-        ),
-        {"i": str(row.id)},
-    ).first()
-    if spent is None:
-        db.execute(
-            text("UPDATE device_tokens SET revoked_at = now() WHERE device_id = :d"),
-            {"d": str(row.device_id)},
-        )
-        db.commit()
-        raise HTTPException(401, "refresh token reuse detected; all tokens for this device revoked")
+    if retry:
+        # The retry of a lost answer: the successor nobody has redeemed is revoked and a new
+        # one takes its place. Under the device lock nothing else can redeem it meanwhile; the
+        # compare-and-set stays as the second guard. Zero rows means it was redeemed after
+        # all: reuse.
+        replaced = db.execute(
+            text(
+                "UPDATE device_tokens SET revoked_at = now() "
+                "WHERE prev_id = :i AND used_at IS NULL AND revoked_at IS NULL RETURNING id"
+            ),
+            {"i": str(row.id)},
+        ).all()
+        if len(replaced) != 1:
+            raise reuse()
+    else:
+        # Compare-and-set, not check-then-act. Under READ COMMITTED two presentations of the
+        # same token both pass the Python-side check above; the second's unconditional UPDATE
+        # would wait on the row lock, re-match, and succeed, leaving two live chains and no
+        # reuse ever detected. Zero rows here means someone else spent it first — treat it as
+        # reuse, exactly like an already-used row.
+        spent = db.execute(
+            text(
+                "UPDATE device_tokens SET used_at = now() "
+                "WHERE id = :i AND used_at IS NULL AND revoked_at IS NULL RETURNING id"
+            ),
+            {"i": str(row.id)},
+        ).first()
+        if spent is None:
+            raise reuse()
     new_refresh = issue_refresh_token(db, str(row.device_id), prev_id=str(row.id))
     access = issue_access_token(str(user_id), str(row.device_id))
     return access, new_refresh, str(user_id)
+
+
+def _within_retry_grace(db, token_id) -> bool:
+    """The spent token was spent inside `REFRESH_RETRY_GRACE_SECONDS` and its successor has
+    never been redeemed nor revoked: the shape of a retry after a lost answer. Measured at
+    this statement, not at the transaction's start (`now()` is the start)."""
+    return bool(
+        db.execute(
+            text(
+                "SELECT 1 FROM device_tokens t WHERE t.id = :i "
+                "AND t.used_at >= statement_timestamp() - make_interval(secs => :g) "
+                "AND EXISTS (SELECT 1 FROM device_tokens s WHERE s.prev_id = t.id "
+                "AND s.used_at IS NULL AND s.revoked_at IS NULL)"
+            ),
+            {"i": str(token_id), "g": REFRESH_RETRY_GRACE_SECONDS},
+        ).first()
+    )
 
 
 # --------------------------------------------------------------------------- devices
 
 
 def register_device(
-    db, user_id: str, machine_id: str, label: str, platform: str, agent_version: str
+    db,
+    user_id: str,
+    machine_id: str,
+    label: str,
+    platform: str,
+    agent_version: str,
+    *,
+    grant_flow: str,
 ) -> str:
     """Create or refresh the device row for (user, machine), un-revoking it if needed.
 
@@ -202,16 +292,23 @@ def register_device(
     that writes `devices`, and the viewer must already be set to `user_id` when it runs.
     `devices` is RLS-protected with an owner policy: with the viewer unset this INSERT is
     a WITH CHECK violation, which surfaced as a bare 500 from `/v1/auth/device/poll`.
+
+    `grant_flow` (0024) is how THIS grant was made, and a refreshed row takes the newest:
+    the tokens it is about to mint are that flow's. Keyword only and required, so a new
+    sign in path cannot land without saying which it is.
     """
+    if grant_flow not in GRANT_FLOWS:
+        raise ValueError(f"unknown grant flow {grant_flow!r}")
     set_viewer(db, user_id)
     row = db.execute(
         text(
             """
-            INSERT INTO devices (user_id, label, platform, agent_version, machine_id)
-            VALUES (:u, :label, :platform, :ver, :mid)
+            INSERT INTO devices (user_id, label, platform, agent_version, machine_id, grant_flow)
+            VALUES (:u, :label, :platform, :ver, :mid, :flow)
             ON CONFLICT (user_id, machine_id) DO UPDATE
               SET agent_version = EXCLUDED.agent_version,
                   label = EXCLUDED.label,
+                  grant_flow = EXCLUDED.grant_flow,
                   revoked_at = NULL
             RETURNING id
             """
@@ -222,6 +319,7 @@ def register_device(
             "platform": platform,
             "ver": agent_version,
             "mid": machine_id,
+            "flow": grant_flow,
         },
     ).one()
     return str(row.id)
@@ -270,6 +368,7 @@ def create_capture_key(db, user_id: str, name: str) -> dict:
         label=name,
         platform="capture",
         agent_version="capture-key",
+        grant_flow=CAPTURE_KEY,
     )
     row = db.execute(
         text(
@@ -332,19 +431,27 @@ def _device_from_capture_key(raw: str) -> CurrentDevice:
                 text("UPDATE capture_keys SET last_used_at = now() WHERE id = :i"),
                 {"i": str(row.id)},
             )
-    return CurrentDevice(user_id=row.user_id, device_id=row.device_id)
+    return CurrentDevice(user_id=row.user_id, device_id=row.device_id, grant_flow=CAPTURE_KEY)
 
 
 # --------------------------------------------------------------------------- deps
 
 
 def current_uploader(request: Request) -> CurrentDevice:
-    """The sync routes' dependency: a device token OR a capture key.
+    """The WRITE-ONLY routes' dependency: a device token OR a capture key.
 
     This is the ONLY place a capture key is accepted. Every other route depends on
-    `current_device`, which refuses the prefix outright, so a leaked key can upload
-    sessions under its owner's account and do nothing else — not read them back, not post,
-    not mint another key.
+    `current_device`, which refuses the prefix outright, so a leaked key can write what a
+    machine with the transcripts writes and nothing else — it cannot read any of it back,
+    post, or mint another key.
+
+    The narrative PUT (0016) is on this dependency for exactly the reason the session
+    upload is: the document is produced where the transcripts are, and a headless
+    container authenticates with a key because the device flow rotates its refresh token
+    and a fleet of containers would break each other (0011). It is the same trust class as
+    the `analysis` prose a key already uploads with every session. What a key still cannot
+    do is READ, and that is the property this split exists to keep: the GET side of the
+    profile stays on `current_device`.
     """
     token = _bearer(request)
     if token.startswith(CAPTURE_KEY_PREFIX):
@@ -366,6 +473,22 @@ def current_device(request: Request) -> CurrentDevice:
     return _device_from_bearer(header[7:])
 
 
+def current_phone(request: Request) -> CurrentDevice:
+    """The PHONE's dependency: a device token granted by Sign in with Apple or Google.
+
+    FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): the privacy switches were on
+    `current_device`, which accepts every device token, and `python -m capture pair` mints
+    one through the device flow, so a paired machine could opt its own account into sending
+    prompts and file names. The double opt in is the phone's switch AND the machine's flag;
+    a machine that can flip the switch has both halves. A device flow token (or a row whose
+    flow is not recorded) is a 403 that says where the switch is; a capture key never gets
+    this far (`_device_from_bearer` refuses it by prefix)."""
+    device = current_device(request)
+    if device.grant_flow != SIGN_IN:
+        raise HTTPException(403, PHONE_ONLY)
+    return device
+
+
 def optional_current_device(request: Request) -> CurrentDevice | None:
     """The sign-in routes' half-open door: no header means "create", a header means "link".
 
@@ -380,6 +503,17 @@ def optional_current_device(request: Request) -> CurrentDevice | None:
     if not header.lower().startswith("bearer "):
         raise HTTPException(401, "malformed authorization header")
     return _device_from_bearer(header[7:])
+
+
+def optional_linker(request: Request) -> CurrentDevice | None:
+    """`optional_current_device` for the sign in routes, where a bearer means "link this
+    identity to my account". Linking is the phone's: a paired machine that could link an
+    identity it controls would sign in as the account's phone with it, and every switch
+    `current_phone` guards would be one request away (0024). A device flow bearer is a 403."""
+    device = optional_current_device(request)
+    if device is not None and device.grant_flow != SIGN_IN:
+        raise HTTPException(403, "only the phone links another sign in to this account")
+    return device
 
 
 def _device_from_bearer(token: str) -> CurrentDevice:
@@ -404,12 +538,14 @@ def _device_from_bearer(token: str) -> CurrentDevice:
 
     with db_session(viewer_id=str(device.user_id)) as db:
         row = db.execute(
-            text("SELECT revoked_at FROM devices WHERE id = :d"), {"d": str(device.device_id)}
+            text("SELECT revoked_at, grant_flow FROM devices WHERE id = :d"),
+            {"d": str(device.device_id)},
         ).first()
     # No row covers both "deleted" and "belongs to someone else": under the owner policy
     # a device the viewer does not own is indistinguishable from one that does not exist.
     if row is None or row.revoked_at is not None:
         raise HTTPException(401, "device revoked")
+    device.grant_flow = row.grant_flow
     return device
 
 

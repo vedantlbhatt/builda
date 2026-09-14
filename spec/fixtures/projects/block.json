@@ -1,0 +1,1135 @@
+{
+ "window_days": 30,
+ "history_sessions": 12,
+ "history_first_at": "2026-09-01T15:00:00Z",
+ "projects_total": 2,
+ "projects": [
+  {
+   "key": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "rank": 1,
+   "history": {
+    "sessions": 6,
+    "first_at": "2026-09-01T15:00:00Z",
+    "last_at": "2026-09-06T16:20:00Z",
+    "active_days": 6,
+    "spans_days": 6,
+    "active_seconds": 19800,
+    "attended_seconds": 10800,
+    "autonomous_seconds": 9000,
+    "longest_streak_days": 6,
+    "current_streak_days": 0,
+    "days_since_last": 15,
+    "age_days": 20,
+    "days_built_recent": 0,
+    "days_built_before": 6,
+    "stage": "dormant",
+    "stage_rule": "quiet_two_weeks",
+    "momentum": {
+     "days": 7,
+     "sessions": 0,
+     "sessions_before": 0,
+     "attended_seconds": 0,
+     "attended_seconds_before": 0,
+     "direction": null,
+     "move": null,
+     "reason": "below_session_floor",
+     "needed": 4
+    },
+    "weeks": [
+     {
+      "week": "2026-08-31T00:00:00Z",
+      "sessions": 6,
+      "attended_seconds": 10800,
+      "active_seconds": 19800
+     },
+     {
+      "week": "2026-09-07T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-14T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-21T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     }
+    ]
+   },
+   "window": {
+    "sessions": 6,
+    "first_at": "2026-09-01T15:00:00Z",
+    "last_at": "2026-09-06T16:20:00Z",
+    "active_days": 6,
+    "active_seconds": 19800,
+    "attended_seconds": 10800,
+    "autonomous_seconds": 9000,
+    "share_of_attended": 0.5,
+    "clock": {
+     "peak_hour": 15,
+     "reason": null,
+     "active_minutes": 330,
+     "needed_minutes": null
+    },
+    "cards": [
+     {
+      "id": "builder_type",
+      "value": null,
+      "value_id": "generalist",
+      "unit": "archetype",
+      "basis": "archetype_rules",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "confidence": null,
+       "metric": null,
+       "metric_value": null,
+       "metric_lower_bound": false,
+       "closest": {
+        "name": "director",
+        "metric": "autonomy_score",
+        "value": 0.455,
+        "threshold": 0.5,
+        "score": 0.455
+       },
+       "runners_up": []
+      }
+     },
+     {
+      "id": "shipped",
+      "value": 720,
+      "value_id": null,
+      "unit": "lines",
+      "basis": "project_edit_tools_and_credited_shell_writes",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "commits": 5,
+       "assisted": 3,
+       "alone": 2,
+       "commits_basis": "git_log_distinct_commits"
+      }
+     },
+     {
+      "id": "work_style",
+      "value": null,
+      "value_id": "one_shot",
+      "unit": "style",
+      "basis": "autonomy_then_prompts_then_steer",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "autonomy": 0.455,
+       "median_prompts": 3.0,
+       "steer_rate": 0.333
+      }
+     },
+     {
+      "id": "longest_session",
+      "value": 1800,
+      "value_id": null,
+      "unit": "seconds",
+      "basis": "attended_seconds_rank",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "active_seconds": 1800,
+       "started_at": "2026-09-01T15:00:00Z"
+      }
+     },
+     {
+      "id": "agents_at_once",
+      "value": 1,
+      "value_id": null,
+      "unit": "sessions",
+      "basis": "sweep_over_first_to_last_event",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "subagents_peak": 2,
+       "subagents": 2
+      }
+     },
+     {
+      "id": "streak",
+      "value": 4,
+      "value_id": null,
+      "unit": "days",
+      "basis": "days_with_a_commit_and_an_attended_session",
+      "n": 4,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "commit_days": 5,
+       "attended_days": 6,
+       "both_days": 4
+      }
+     },
+     {
+      "id": "change_course",
+      "value": 0.333,
+      "value_id": null,
+      "unit": "share",
+      "basis": "interrupts_and_correction_markers",
+      "n": 18,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "interrupts": 0,
+       "corrective_prompts": 6
+      }
+     },
+     {
+      "id": "prompt_length",
+      "value": 5.3,
+      "value_id": null,
+      "unit": "words",
+      "basis": "words_per_prompt",
+      "n": 18,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "median": 5.0
+      }
+     },
+     {
+      "id": "deep_sessions",
+      "value": 0,
+      "value_id": null,
+      "unit": "sessions",
+      "basis": "attended_sessions_over_an_hour",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "avg_minutes": null,
+       "longest_minutes": 30
+      }
+     },
+     {
+      "id": "time_put_in",
+      "value": 5.5,
+      "value_id": null,
+      "unit": "hours",
+      "basis": "active_seconds",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "attended_hours": 3.0,
+       "attended_overlap_hours": 0.0
+      }
+     },
+     {
+      "id": "prompts_per_session",
+      "value": 3.0,
+      "value_id": null,
+      "unit": "prompts_per_session",
+      "basis": "prompts_over_attended_sessions",
+      "n": 6,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "median": 3.0,
+       "tool_calls_per_prompt": 2.3
+      }
+     },
+     {
+      "id": "kind_of_work",
+      "value": null,
+      "value_id": "source",
+      "unit": "kind",
+      "basis": "lines_by_file_role",
+      "n": 720,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "kinds": [
+        {
+         "kind": "feature",
+         "commits": 2
+        },
+        {
+         "kind": "fix",
+         "commits": 1
+        }
+       ],
+       "classified": 3,
+       "commits": 5,
+       "coverage": 0.6,
+       "role_lines": [
+        {
+         "role": "source",
+         "lines": 720
+        }
+       ],
+       "commit_refusal": "too_few_labelled",
+       "lines": 720,
+       "lines_needed": 200
+      }
+     }
+    ],
+    "scores": [
+     {
+      "name": "architect",
+      "metric": "planning_ratio",
+      "value": 0.0,
+      "threshold": 2.4,
+      "score": 0.0
+     },
+     {
+      "name": "velocity_machine",
+      "metric": "code_velocity",
+      "value": 130.9,
+      "threshold": 487.0,
+      "score": 0.134
+     },
+     {
+      "name": "quality_guardian",
+      "metric": "test_runs_per_hour",
+      "value": 1.09,
+      "threshold": 3.0,
+      "score": 0.182
+     },
+     {
+      "name": "night_owl",
+      "metric": "night_share",
+      "value": 0.0,
+      "threshold": 0.4,
+      "score": 0.0
+     },
+     {
+      "name": "director",
+      "metric": "autonomy_score",
+      "value": 0.455,
+      "threshold": 0.5,
+      "score": 0.455
+     },
+     {
+      "name": "skeptic",
+      "metric": "steer_rate",
+      "value": 0.333,
+      "threshold": 0.4,
+      "score": 0.416
+     }
+    ],
+    "quality": {
+     "runs": 6,
+     "passed": 6,
+     "failed": 0,
+     "first_try_rate": 1.0,
+     "time_to_green": null,
+     "reason": "no_recovery",
+     "needed": null
+    },
+    "languages": {
+     "lines": 720,
+     "generated_lines_excluded": 0,
+     "languages": [
+      {
+       "language": "Python",
+       "lines": 720,
+       "files": 3,
+       "share": 1.0
+      }
+     ],
+     "reason": null,
+     "needed": null
+    },
+    "commits": {
+     "assisted": 3,
+     "alone": 2,
+     "active_days": 5,
+     "longest_streak": 4,
+     "current_streak": 0,
+     "days": [
+      {
+       "day": "2026-09-01T00:00:00Z",
+       "assisted": 1,
+       "alone": 0
+      },
+      {
+       "day": "2026-09-02T00:00:00Z",
+       "assisted": 1,
+       "alone": 0
+      },
+      {
+       "day": "2026-09-03T00:00:00Z",
+       "assisted": 1,
+       "alone": 0
+      },
+      {
+       "day": "2026-09-04T00:00:00Z",
+       "assisted": 0,
+       "alone": 1
+      },
+      {
+       "day": "2026-09-10T00:00:00Z",
+       "assisted": 0,
+       "alone": 1
+      }
+     ]
+    },
+    "money": {
+     "usd": 3.15,
+     "basis": "anthropic_api_list_price",
+     "reason": null,
+     "prices_read_on": "2026-09-06T00:00:00Z",
+     "priced_sessions": 6,
+     "unpriced_sessions": 0,
+     "usd_per_active_hour": 0.57,
+     "usd_without_a_commit": null,
+     "share_without_a_commit": null,
+     "tokens": {
+      "input": 21000,
+      "output": 42000,
+      "cache_read": 1050000,
+      "cache_w5m": 0,
+      "cache_w1h": 147000
+     },
+     "token_sessions": 6,
+     "lines_added": 720,
+     "lines_removed": 0,
+     "lines_basis": "project_edit_tools_and_credited_shell_writes",
+     "by_model": [
+      {
+       "model": "claude-opus-5",
+       "usd": 3.15,
+       "output_tokens": 42000,
+       "sessions": 6,
+       "sessions_dominated": 6,
+       "commits": 3,
+       "usd_per_commit": 1.05
+      }
+     ]
+    },
+    "usd_per_commit": {
+     "usd": null,
+     "commits": 3,
+     "unpriced_sessions": 0,
+     "reason": "below_commit_floor",
+     "needed": 5
+    },
+    "burn": {
+     "share": 0.1,
+     "barren_tokens": 126000,
+     "tokens": 1260000,
+     "unreadable_tokens": 63000,
+     "sessions": 6,
+     "needed": null,
+     "reason": null,
+     "causes": [
+      {
+       "cause": "context_replay",
+       "tokens": 105000,
+       "share": 0.833,
+       "segments": 6
+      }
+     ]
+    },
+    "stack": {
+     "items": [
+      {
+       "id": "python",
+       "category": "language",
+       "evidence": "language",
+       "sessions": 6,
+       "first_seen": "2026-09-01T15:00:05Z"
+      },
+      {
+       "id": "react",
+       "category": "framework",
+       "evidence": "manifest",
+       "sessions": 0,
+       "first_seen": null
+      },
+      {
+       "id": "pytest",
+       "category": "testing",
+       "evidence": "command",
+       "sessions": 6,
+       "first_seen": "2026-09-01T15:01:40Z"
+      }
+     ],
+     "sessions": 6,
+     "manifests": 2,
+     "shell_calls": 24,
+     "shell_calls_cut": 0,
+     "reason": null
+    },
+    "agents": {
+     "agents": 2,
+     "produced": 2,
+     "max_concurrent": 2,
+     "agent_seconds": 240.0,
+     "wall_seconds": 130.0,
+     "busy_seconds": 130.0,
+     "parallelism": 1.85,
+     "by_type": [
+      {
+       "name": "general-purpose",
+       "agents": 2
+      }
+     ]
+    },
+    "harnesses": [
+     {
+      "harness": "claude_code",
+      "sessions": 6,
+      "active_seconds": 19800
+     }
+    ]
+   }
+  },
+  {
+   "key": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "rank": 2,
+   "history": {
+    "sessions": 5,
+    "first_at": "2026-09-01T21:00:00Z",
+    "last_at": "2026-09-05T21:30:00Z",
+    "active_days": 5,
+    "spans_days": 5,
+    "active_seconds": 9000,
+    "attended_seconds": 9000,
+    "autonomous_seconds": 0,
+    "longest_streak_days": 5,
+    "current_streak_days": 0,
+    "days_since_last": 16,
+    "age_days": 20,
+    "days_built_recent": 0,
+    "days_built_before": 5,
+    "stage": "dormant",
+    "stage_rule": "quiet_two_weeks",
+    "momentum": {
+     "days": 7,
+     "sessions": 0,
+     "sessions_before": 0,
+     "attended_seconds": 0,
+     "attended_seconds_before": 0,
+     "direction": null,
+     "move": null,
+     "reason": "below_session_floor",
+     "needed": 4
+    },
+    "weeks": [
+     {
+      "week": "2026-08-31T00:00:00Z",
+      "sessions": 5,
+      "attended_seconds": 9000,
+      "active_seconds": 9000
+     },
+     {
+      "week": "2026-09-07T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-14T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     },
+     {
+      "week": "2026-09-21T00:00:00Z",
+      "sessions": 0,
+      "attended_seconds": 0,
+      "active_seconds": 0
+     }
+    ]
+   },
+   "window": {
+    "sessions": 5,
+    "first_at": "2026-09-01T21:00:00Z",
+    "last_at": "2026-09-05T21:30:00Z",
+    "active_days": 5,
+    "active_seconds": 9000,
+    "attended_seconds": 9000,
+    "autonomous_seconds": 0,
+    "share_of_attended": 0.417,
+    "clock": {
+     "peak_hour": 21,
+     "reason": null,
+     "active_minutes": 150,
+     "needed_minutes": null
+    },
+    "cards": [
+     {
+      "id": "builder_type",
+      "value": null,
+      "value_id": "generalist",
+      "unit": "archetype",
+      "basis": "archetype_rules",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "confidence": null,
+       "metric": null,
+       "metric_value": null,
+       "metric_lower_bound": true,
+       "closest": {
+        "name": "quality_guardian",
+        "metric": "test_runs_per_hour",
+        "value": 2.0,
+        "threshold": 3.0,
+        "score": 0.333
+       },
+       "runners_up": []
+      }
+     },
+     {
+      "id": "shipped",
+      "value": 400,
+      "value_id": null,
+      "unit": "lines",
+      "basis": "project_edit_tools_and_credited_shell_writes",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "commits": 1,
+       "assisted": 1,
+       "alone": 0,
+       "commits_basis": "git_log_distinct_commits"
+      }
+     },
+     {
+      "id": "work_style",
+      "value": null,
+      "value_id": "one_shot",
+      "unit": "style",
+      "basis": "autonomy_then_prompts_then_steer",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "autonomy": 0.0,
+       "median_prompts": 2.0,
+       "steer_rate": 0.0
+      }
+     },
+     {
+      "id": "longest_session",
+      "value": 1800,
+      "value_id": null,
+      "unit": "seconds",
+      "basis": "attended_seconds_rank",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "active_seconds": 1800,
+       "started_at": "2026-09-01T21:00:00Z"
+      }
+     },
+     {
+      "id": "agents_at_once",
+      "value": 1,
+      "value_id": null,
+      "unit": "sessions",
+      "basis": "sweep_over_first_to_last_event",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "subagents_peak": 1,
+       "subagents": 1
+      }
+     },
+     {
+      "id": "streak",
+      "value": 1,
+      "value_id": null,
+      "unit": "days",
+      "basis": "days_with_a_commit_and_an_attended_session",
+      "n": 1,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "commit_days": 1,
+       "attended_days": 5,
+       "both_days": 1
+      }
+     },
+     {
+      "id": "change_course",
+      "value": 0.0,
+      "value_id": null,
+      "unit": "share",
+      "basis": "interrupts_and_correction_markers",
+      "n": 10,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "interrupts": 0,
+       "corrective_prompts": 0
+      }
+     },
+     {
+      "id": "prompt_length",
+      "value": 2.5,
+      "value_id": null,
+      "unit": "words",
+      "basis": "words_per_prompt",
+      "n": 10,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "median": 2.5
+      }
+     },
+     {
+      "id": "deep_sessions",
+      "value": 0,
+      "value_id": null,
+      "unit": "sessions",
+      "basis": "attended_sessions_over_an_hour",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "avg_minutes": null,
+       "longest_minutes": 30
+      }
+     },
+     {
+      "id": "time_put_in",
+      "value": 2.5,
+      "value_id": null,
+      "unit": "hours",
+      "basis": "active_seconds",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "attended_hours": 2.5,
+       "attended_overlap_hours": 0.0
+      }
+     },
+     {
+      "id": "prompts_per_session",
+      "value": 2.0,
+      "value_id": null,
+      "unit": "prompts_per_session",
+      "basis": "prompts_over_attended_sessions",
+      "n": 5,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "median": 2.0,
+       "tool_calls_per_prompt": 1.5
+      }
+     },
+     {
+      "id": "kind_of_work",
+      "value": null,
+      "value_id": "source",
+      "unit": "kind",
+      "basis": "lines_by_file_role",
+      "n": 400,
+      "needed": null,
+      "reason": null,
+      "extras": {
+       "kinds": [
+        {
+         "kind": "build",
+         "commits": 1
+        }
+       ],
+       "classified": 1,
+       "commits": 1,
+       "coverage": 1.0,
+       "role_lines": [
+        {
+         "role": "source",
+         "lines": 400
+        }
+       ],
+       "commit_refusal": "too_few_labelled",
+       "lines": 400,
+       "lines_needed": 200
+      }
+     }
+    ],
+    "scores": [
+     {
+      "name": "architect",
+      "metric": "planning_ratio",
+      "value": 0.0,
+      "threshold": 2.4,
+      "score": 0.0
+     },
+     {
+      "name": "velocity_machine",
+      "metric": "code_velocity",
+      "value": 160.0,
+      "threshold": 487.0,
+      "score": 0.164
+     },
+     {
+      "name": "quality_guardian",
+      "metric": "test_runs_per_hour",
+      "value": 2.0,
+      "threshold": 3.0,
+      "score": 0.333
+     },
+     {
+      "name": "night_owl",
+      "metric": "night_share",
+      "value": 0.0,
+      "threshold": 0.4,
+      "score": 0.0
+     },
+     {
+      "name": "director",
+      "metric": "autonomy_score",
+      "value": 0.0,
+      "threshold": 0.5,
+      "score": 0.0
+     },
+     {
+      "name": "skeptic",
+      "metric": "steer_rate",
+      "value": 0.0,
+      "threshold": 0.4,
+      "score": 0.0
+     }
+    ],
+    "quality": {
+     "runs": 5,
+     "passed": 5,
+     "failed": 0,
+     "first_try_rate": 1.0,
+     "time_to_green": null,
+     "reason": "no_recovery",
+     "needed": null
+    },
+    "languages": {
+     "lines": 400,
+     "generated_lines_excluded": 0,
+     "languages": [
+      {
+       "language": "Python",
+       "lines": 400,
+       "files": 1,
+       "share": 1.0
+      }
+     ],
+     "reason": null,
+     "needed": null
+    },
+    "commits": {
+     "assisted": 1,
+     "alone": 0,
+     "active_days": 1,
+     "longest_streak": 1,
+     "current_streak": 0,
+     "days": [
+      {
+       "day": "2026-09-01T00:00:00Z",
+       "assisted": 1,
+       "alone": 0
+      }
+     ]
+    },
+    "money": {
+     "usd": 6.75,
+     "basis": "anthropic_api_list_price",
+     "reason": null,
+     "prices_read_on": "2026-09-06T00:00:00Z",
+     "priced_sessions": 5,
+     "unpriced_sessions": 0,
+     "usd_per_active_hour": 2.7,
+     "usd_without_a_commit": null,
+     "share_without_a_commit": null,
+     "tokens": {
+      "input": 45000,
+      "output": 90000,
+      "cache_read": 2250000,
+      "cache_w5m": 0,
+      "cache_w1h": 315000
+     },
+     "token_sessions": 5,
+     "lines_added": 400,
+     "lines_removed": 0,
+     "lines_basis": "project_edit_tools_and_credited_shell_writes",
+     "by_model": [
+      {
+       "model": "claude-opus-5",
+       "usd": 6.75,
+       "output_tokens": 90000,
+       "sessions": 5,
+       "sessions_dominated": 5,
+       "commits": 1,
+       "usd_per_commit": 6.75
+      }
+     ]
+    },
+    "usd_per_commit": {
+     "usd": null,
+     "commits": 1,
+     "unpriced_sessions": 0,
+     "reason": "below_commit_floor",
+     "needed": 5
+    },
+    "burn": {
+     "share": 0.1,
+     "barren_tokens": 270000,
+     "tokens": 2700000,
+     "unreadable_tokens": 135000,
+     "sessions": 5,
+     "needed": null,
+     "reason": null,
+     "causes": [
+      {
+       "cause": "context_replay",
+       "tokens": 225000,
+       "share": 0.833,
+       "segments": 5
+      }
+     ]
+    },
+    "stack": {
+     "items": [
+      {
+       "id": "python",
+       "category": "language",
+       "evidence": "language",
+       "sessions": 5,
+       "first_seen": "2026-09-01T21:00:05Z"
+      },
+      {
+       "id": "fastapi",
+       "category": "framework",
+       "evidence": "manifest",
+       "sessions": 0,
+       "first_seen": null
+      },
+      {
+       "id": "pytest",
+       "category": "testing",
+       "evidence": "command",
+       "sessions": 5,
+       "first_seen": "2026-09-01T21:00:09Z"
+      }
+     ],
+     "sessions": 5,
+     "manifests": 1,
+     "shell_calls": 10,
+     "shell_calls_cut": 0,
+     "reason": null
+    },
+    "agents": {
+     "agents": 1,
+     "produced": 1,
+     "max_concurrent": 1,
+     "agent_seconds": 120.0,
+     "wall_seconds": 120.0,
+     "busy_seconds": 120.0,
+     "parallelism": 1.0,
+     "by_type": [
+      {
+       "name": "general-purpose",
+       "agents": 1
+      }
+     ]
+    },
+    "harnesses": [
+     {
+      "harness": "claude_code",
+      "sessions": 5,
+      "active_seconds": 9000
+     }
+    ]
+   }
+  }
+ ],
+ "unresolved": {
+  "sessions": 1,
+  "active_seconds": 1800,
+  "attended_seconds": 1800,
+  "history_sessions": 1
+ },
+ "comparisons": [
+  {
+   "metric": "steer_rate",
+   "high": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "low": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "high_value": 0.333,
+   "low_value": 0.0,
+   "high_sessions": 6,
+   "low_sessions": 5,
+   "ratio": null,
+   "gap": 0.333,
+   "projects": 2,
+   "needed": null,
+   "reason": null
+  },
+  {
+   "metric": "autonomy_score",
+   "high": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "low": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "high_value": 0.455,
+   "low_value": 0.0,
+   "high_sessions": 6,
+   "low_sessions": 5,
+   "ratio": null,
+   "gap": 0.455,
+   "projects": 2,
+   "needed": null,
+   "reason": null
+  },
+  {
+   "metric": "test_runs_per_hour",
+   "high": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "low": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "high_value": 2.0,
+   "low_value": 1.09,
+   "high_sessions": 5,
+   "low_sessions": 6,
+   "ratio": null,
+   "gap": null,
+   "projects": 2,
+   "needed": null,
+   "reason": "floors_only"
+  },
+  {
+   "metric": "tool_calls_per_prompt",
+   "high": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "low": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "high_value": 2.3,
+   "low_value": 1.5,
+   "high_sessions": 6,
+   "low_sessions": 5,
+   "ratio": 1.53,
+   "gap": 0.8,
+   "projects": 2,
+   "needed": null,
+   "reason": null
+  },
+  {
+   "metric": "prompts_per_session",
+   "high": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "low": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "high_value": 3.0,
+   "low_value": 2.0,
+   "high_sessions": 6,
+   "low_sessions": 5,
+   "ratio": 1.5,
+   "gap": 1.0,
+   "projects": 2,
+   "needed": null,
+   "reason": null
+  },
+  {
+   "metric": "code_velocity",
+   "high": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "low": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "high_value": 160.0,
+   "low_value": 130.9,
+   "high_sessions": 5,
+   "low_sessions": 6,
+   "ratio": null,
+   "gap": null,
+   "projects": 2,
+   "needed": null,
+   "reason": "floors_only"
+  },
+  {
+   "metric": "usd_per_active_hour",
+   "high": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "low": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "high_value": 2.7,
+   "low_value": 0.57,
+   "high_sessions": 5,
+   "low_sessions": 6,
+   "ratio": 4.74,
+   "gap": 2.13,
+   "projects": 2,
+   "needed": null,
+   "reason": null
+  },
+  {
+   "metric": "first_try_rate",
+   "high": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "low": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "high_value": 1.0,
+   "low_value": 1.0,
+   "high_sessions": 6,
+   "low_sessions": 5,
+   "ratio": null,
+   "gap": 0.0,
+   "projects": 2,
+   "needed": null,
+   "reason": "within_noise"
+  },
+  {
+   "metric": "ships_rate",
+   "high": null,
+   "low": null,
+   "high_value": null,
+   "low_value": null,
+   "high_sessions": null,
+   "low_sessions": null,
+   "ratio": null,
+   "gap": null,
+   "projects": 0,
+   "needed": 5,
+   "reason": "fewer_than_two_projects"
+  },
+  {
+   "metric": "night_share",
+   "high": "a9089a518c5877cfed8c74b8c4157c332049360b8d0975aae262b2cdadcf4d75",
+   "low": "df6b07176a9b17cc4c9afc257bd404732e7d09b76436c7890f7b7be14e579794",
+   "high_value": 0.0,
+   "low_value": 0.0,
+   "high_sessions": 6,
+   "low_sessions": 5,
+   "ratio": null,
+   "gap": 0.0,
+   "projects": 2,
+   "needed": null,
+   "reason": "within_noise"
+  }
+ ],
+ "weeks": [
+  {
+   "week": "2026-08-31T00:00:00Z",
+   "days": 6,
+   "sessions": 12,
+   "attended_seconds": 21600
+  },
+  {
+   "week": "2026-09-07T00:00:00Z",
+   "days": 7,
+   "sessions": 0,
+   "attended_seconds": 0
+  },
+  {
+   "week": "2026-09-14T00:00:00Z",
+   "days": 7,
+   "sessions": 0,
+   "attended_seconds": 0
+  },
+  {
+   "week": "2026-09-21T00:00:00Z",
+   "days": 1,
+   "sessions": 0,
+   "attended_seconds": 0
+  }
+ ],
+ "window_attended_seconds": 21600
+}

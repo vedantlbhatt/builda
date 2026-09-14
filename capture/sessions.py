@@ -30,8 +30,9 @@ The pipeline, and where each step's rules live:
    `ended_at` extended by the same amount so active never exceeds elapsed.
 5. **counts** — `analysis.digest.load_claude_code_events` supplies tool calls, edit-tool
    line deltas, human edits and compactions; nothing here re-parses tool inputs.
-6. **tokens** — deduped on `(source_id, message.id)`, first record in file order carries
-   the usage, `<synthetic>` and sidechain records excluded (`TokenAccountant.ledger`).
+6. **tokens** — deduped on `message.id` across the sitting's files (a resumed transcript
+   copies the old one's messages), first record in file order carries the usage,
+   `<synthetic>` and sidechain records excluded (`token_ledger`).
 
 **Every branch is treated as live.** The engine excludes records off the surviving DAG
 branch from lines, tool counts and the strip, and reports their tokens as
@@ -49,6 +50,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import functools
 import pathlib
 import time
 from collections import Counter
@@ -71,12 +73,100 @@ from .tuning import (
     TAU_COMMIT_ATTRIBUTION_SEC,
 )
 
-#: The tool names the Mac uploads counts for. Everything else is not on the wire.
+#: The tool names that keep their own key on the wire.
 UPLOADED_TOOLS = ("Read", "Edit", "Write", "Bash")
+
+#: Where every other call goes: an MCP tool (`mcp__<server>__<tool>`, whose name would say
+#: which service you use) to `mcp_other`, anything else to `other`. The contract has always
+#: said so ("unknown and MCP names bucket to mcp_other / other"), and v4 made the six keys
+#: data (`tool_calls.values`, `TOOL_CALL_KEYS`): an undeclared key is a 422.
+TOOL_BUCKETS = ("mcp_other", "other")
+
+#: The whole wire vocabulary of `tool_calls`, in the contract's order. Restated rather than
+#: read from `privacy/upload-contract.json` because the server-only image does not ship
+#: `privacy/`; `capture/tests/test_contract.py` pins it to the contract both ways.
+TOOL_CALL_KEYS = (*UPLOADED_TOOLS, *TOOL_BUCKETS)
+
+#: Every other harness's names for the same four acts.
+#:
+#: MEASURED off `spec/fixtures/{codex,gemini,cline,opencode,aider}` on 2026-09-06, which is
+#: what each real writer produced. Without this a Codex session that ran a hundred commands
+#: uploads `tool_calls: {}` and the phone says you reached for nothing, which is a plausible
+#: wrong number rather than a missing one.
+#:
+#: A name that is not here used to be DROPPED, and that was a second plausible wrong number
+#: (docs/overnight-integration.md 5.1): a sitting of WebSearch, ToolSearch or MCP calls
+#: uploaded fewer tool calls than it made, and could fall under its prompt count, which the
+#: server's `sanity_gate` rejects as a broken prompt filter. Now every call is bucketed
+#: (`uploaded_tool_counts`). MEASURED on `~/.builder-overnight/corpus` (2026-09-13), the
+#: five of 158 real sittings the gate rejected: ONE was this (3 prompts; 1 Bash, 1
+#: ToolSearch and 3 PostHog MCP calls, of which 1 was counted) and is accepted now. The other
+#: four have more typed prompts than tool calls with every call counted, checked against
+#: the raw JSONL (6 against 2, 5 against 2, 4 against 2, 2 against 1): conversations, not a
+#: broken filter, and the gate still rejects them (server/builder/routes/sync.py).
+#: RECORDED, NOT FIXED: the Mac stores four tool columns (`SyncCommand.swift`) and still
+#: drops the rest, so a sitting synced from the Mac carries fewer calls than the same
+#: sitting from capture until its local schema grows the two buckets.
+TOOL_ALIASES: dict[str, dict[str, str]] = {
+    "codex": {"exec_command": "Bash", "shell": "Bash", "apply_patch": "Edit"},
+    "gemini_cli": {
+        "run_shell_command": "Bash",
+        "read_file": "Read",
+        "write_file": "Write",
+        "replace": "Edit",
+    },
+    "cline": {
+        "execute_command": "Bash",
+        "read_file": "Read",
+        "write_to_file": "Write",
+        "replace_in_file": "Edit",
+    },
+    "opencode": {"bash": "Bash", "read": "Read", "write": "Write", "edit": "Edit"},
+    "aider": {"run": "Bash", "apply_edit": "Edit"},
+}
+
+
+def tool_bucket(tool: str, harness: str) -> str:
+    """The `tool_calls` key one call counts under: its own name when it is one of
+    `UPLOADED_TOOLS` or a harness's alias for one, `mcp_other` for an MCP tool, `other` for
+    everything else (WebSearch, WebFetch, ToolSearch, Task, Agent, Grep, Glob, TodoWrite,
+    ExitPlanMode, Skill, Aider's `commit`, opencode's `websearch`)."""
+    if tool in UPLOADED_TOOLS:
+        return tool
+    aliased = TOOL_ALIASES.get(harness, {}).get(tool)
+    if aliased is not None:
+        return aliased
+    return "mcp_other" if tool.startswith("mcp__") else "other"
+
+
+def uploaded_tool_counts(events: list[digest.Ev], harness: str) -> dict[str, int]:
+    """`{TOOL_CALL_KEYS: n}` for one session, whatever tool wrote it. Every tool call counts
+    exactly once (`tool_bucket`), so the total is the session's tool calls; a key with no
+    calls is absent, not 0."""
+    counts: Counter[str] = Counter()
+    for e in events:
+        if e.kind != "tool" or not e.tool:
+            continue
+        counts[tool_bucket(e.tool, harness)] += 1
+    return dict(counts)
 
 #: What the engine calls "meaningful": prompts, tool calls and human edits
 #: (`EventKind.isMeaningful`), the count `Tuning.countedMinMeaningfulEvents` reads.
 _MEANINGFUL_EV_KINDS = frozenset({"prompt", "tool", "human_edit"})
+
+
+def is_counted(s) -> bool:
+    """Whether a sitting is big enough to be one at all. THE ONE DEFINITION.
+
+    It decides `visible` on the wire, which decides the population every server-side
+    aggregate runs over, so anything measuring this machine's corpus has to use the same
+    rule or it describes a different person than the phone does. It was written out twice
+    — here and in `analysis/__main__.py` — and the second copy drifting is how the report
+    came to attribute seven commits to sessions the phone does not show.
+    """
+    active = s.attended + s.autonomous
+    meaningful = sum(1 for e in s.events if e.kind in _MEANINGFUL_EV_KINDS)
+    return active >= COUNTED_MIN_ACTIVE_SEC or meaningful >= COUNTED_MIN_MEANINGFUL_EVENTS
 
 
 # ----------------------------------------------------------------------------- records
@@ -96,6 +186,23 @@ def _extra(r: dict, line: int) -> dict:
         "model": model,
         "subtype": r.get("subtype") if isinstance(r.get("subtype"), str) else None,
         "sidechain": bool(r.get("isSidechain")),
+        # WHICH AGENT wrote this record. Claude Code stamps a stable `agentId` per agent
+        # instance and an `attributionAgent` naming its TYPE (general-purpose,
+        # workflow-subagent, Explore). MEASURED on this container: 119 distinct agent ids
+        # across 12,236 sidechain records. Everything downstream that counts tokens still
+        # excludes sidechains, because the parent's Agent tool result already reports them
+        # in aggregate (CLAUDE.md); these two fields are how the DELEGATION can be
+        # described without double counting the work.
+        "agent_id": r.get("agentId") if isinstance(r.get("agentId"), str) else None,
+        "agent_type": (
+            r.get("attributionAgent") if isinstance(r.get("attributionAgent"), str) else None
+        ),
+        # Links a subagent's records back to the Agent tool call that spawned it.
+        "spawned_by": (
+            r.get("sourceToolAssistantUUID")
+            if isinstance(r.get("sourceToolAssistantUUID"), str)
+            else None
+        ),
     }
 
 
@@ -120,9 +227,14 @@ def load_source(t: Transcript) -> Source:
 # ----------------------------------------------------------------------------- pooling
 
 
-def pool_key(project_dir: str) -> str:
-    """The lineage key: harness and project directory. Never a cwd (module docstring)."""
-    return f"claude_code|dir:{project_dir}"
+def pool_key(project_dir: str, harness: str = "claude_code") -> str:
+    """The lineage key: harness and project directory. Never a cwd (module docstring).
+
+    The harness leads so two tools working in the same directory are two lineages. They
+    are: a Codex rollout and a Claude Code transcript in one repo are two sittings that
+    happen to share a folder, and folding them together would credit one tool's idle gap
+    to the other's active time."""
+    return f"{harness}|dir:{project_dir}"
 
 
 def dominant_repo(records: list[dict]) -> repo.RepoIdentity | None:
@@ -164,6 +276,12 @@ class Session:
     presence: int
     end_reason: str
     state: str  # "live" | "final"
+
+    @property
+    def harness(self) -> str:
+        """Which tool wrote this sitting. Read back off the pool key, which is built from
+        it, so the payload's `harness` and the lineage it was cut in can never disagree."""
+        return self.pool.split("|", 1)[0]
 
     @property
     def last_record_ts(self) -> float:
@@ -227,7 +345,7 @@ def sessionize_sources(
     events_by_source: dict[str, list[digest.Ev]] = {}
     for src in sources:
         events_by_source[src.source_id] = src.events
-        key = pool_key(src.transcript.project_dir)
+        key = pool_key(src.transcript.project_dir, src.transcript.harness)
         keyed.extend((key, r) for r in src.records)
     pools = mb.fold_by_session_lineage(keyed)
 
@@ -291,9 +409,20 @@ class Ledger:
 
 
 def token_ledger(records: list[dict]) -> Ledger:
-    """`TokenAccountant.ledger`: first record per `(source, message.id)` in file order is
-    authoritative; sidechain and `<synthetic>` records never contribute."""
-    seen: set[tuple[str, str]] = set()
+    """`TokenAccountant.ledger` over ONE SITTING's records: the first record per
+    `message.id` in (source, line) order is authoritative; sidechain and `<synthetic>`
+    records never contribute.
+
+    Keyed on the message id alone across the sitting, not `(source, message.id)`: a
+    resumed transcript BEGINS WITH A COPY of the old one's records (the same message id
+    and usage under a new session id), the sitting pools both files, and a per source key
+    counted every copied message twice. A message id is the API's own id for one response,
+    so two files carrying it carry one response; `analysis.burn.turns_for_window` reads
+    each message once across a sitting's files by the same rule, so the payload's buckets
+    and its own burn block now count one set of messages. FOUND IN REVIEW (2026-09-13): the
+    suite's resumed sitting uploaded 1,380 tokens beside a burn block of 920; on the real
+    corpus 5 of 158 sittings, three of them exactly 2x (burn.py's measurement)."""
+    seen: set[str] = set()
     b = {"input": 0, "output": 0, "cache_read": 0, "cache_w5m": 0, "cache_w1h": 0}
     out_by_model: Counter[str] = Counter()
     saw = False
@@ -302,10 +431,9 @@ def token_ledger(records: list[dict]) -> Ledger:
         mid = r.get("msg_id")
         if not u or not mid or r.get("sidechain") or r.get("model") == SYNTHETIC_MODEL_SENTINEL:
             continue
-        key = (r["source_id"], mid)
-        if key in seen:
+        if mid in seen:
             continue
-        seen.add(key)
+        seen.add(mid)
         saw = True
         cc = u.get("cache_creation") if isinstance(u.get("cache_creation"), dict) else {}
         w5 = cc.get("ephemeral_5m_input_tokens")
@@ -378,21 +506,44 @@ def build_payload(
     client_version: str,
     observed_at: float | None = None,
     analysis: dict | None = None,
+    turns_loader=None,
 ) -> dict:
-    """Exactly the contract v2 fields, anonymous mode: no `repo_name`, `title` or
+    """Exactly the contract fields, anonymous mode: no `repo_name`, `title` or
     `title_source` — which repositories are public is a Mac-side setting.
 
     The two clocks are rounded the same way and the headline is their SUM, never rounded
     independently: the server rejects `attended + autonomous != active` beyond a second.
+
+    `burn`, `title_ids` and `call_tokens` (v4) are computed here, like `feedback`, so every
+    path that builds a payload carries them: `capture sync` and the hook channel alike.
+    `turns_loader` is a memoised `analysis.burn.load_turns` for a caller that builds many
+    payloads from one set of transcripts (`cli.build_payloads`); without one this payload
+    memoises its own (`_one_parse`), so burn and the call series read each file once.
+    `live` is NOT computed here: it moves with the clock, not the bytes, and is attached
+    after the hash (`attach_live`).
     """
+    from analysis import patterns as pat
+
     observed_at = time.time() if observed_at is None else observed_at
     attended = round(s.attended)
     autonomous = round(s.autonomous)
     active = attended + autonomous
     wall = s.ended_at - s.started_at
 
-    tools = [e for e in s.events if e.kind == "tool"]
-    tool_counts = Counter(e.tool for e in tools if e.tool in UPLOADED_TOOLS)
+    # EACH EVENT ONCE, before anything is counted (`patterns.distinct_events`, the rule the
+    # corpus cut applies as `corpus.distinct` and `session_burn` applies to its own block).
+    # A resumed transcript begins with a copy of the old one's records and the sitting pools
+    # both files, so every count below read the copies twice. FOUND IN REVIEW (2026-09-13),
+    # the suite's own resumed sitting through this function: tool calls 9 where there were
+    # 6, prompts 3 where there were 2, and tokens 1,380 beside its own burn block's 920.
+    s = dataclasses.replace(s, events=pat.distinct_events(s.events))
+    # The reference's prompt count (`measure_boundaries`: a `prompt` record), each record
+    # once: a copied record keeps its uuid, and a record with no uuid is never merged.
+    prompts = len(
+        {r.get("uuid") or (r["source_id"], r["line"]) for r in s.records if r["kind"] == "prompt"}
+    )
+
+    tool_counts = uploaded_tool_counts(s.events, s.harness)
     meaningful = sum(1 for e in s.events if e.kind in _MEANINGFUL_EV_KINDS)
     human_edits = sum(1 for e in s.events if e.kind == "human_edit")
     # Every event that carries a line count, exactly as `TokenAccountant.agentLines`
@@ -408,7 +559,7 @@ def build_payload(
     # a shell write and a human edit included.
     touched = {e.path for e in s.events if e.path}
 
-    counted = active >= COUNTED_MIN_ACTIVE_SEC or meaningful >= COUNTED_MIN_MEANINGFUL_EVENTS
+    counted = is_counted(s)
     unattended = s.presence == 0 and active >= NOTABLE_MIN_ACTIVE_SEC
     notable = counted and attended >= NOTABLE_MIN_ACTIVE_SEC and not unattended
 
@@ -431,7 +582,7 @@ def build_payload(
         "client_version": client_version,
         "sessionizer_version": SESSIONIZER_VERSION,
         "active_calc_version": ACTIVE_CALC_VERSION,
-        "harness": "claude_code",
+        "harness": s.harness,
         "agent_observed_at": _iso(observed_at),
         "client_clock_offset_ms": 0,
         "started_at": _iso(s.started_at),
@@ -451,9 +602,9 @@ def build_payload(
         "strip_columns": strip.encode_columns(cols),
         "strip_marks": marks,
         "timeline_fidelity": "full",
-        "human_prompt_count": s.prompts,
+        "human_prompt_count": prompts,
         "prompt_count_basis": "typed_promptsource",
-        "tool_calls": dict(tool_counts),
+        "tool_calls": tool_counts,
         "files_touched": len(touched),
         # The engine uploads 0 here today (SessionDeriver writes `n_files_created = 0`);
         # capture matches it rather than introduce a number the Mac never sends.
@@ -483,13 +634,233 @@ def build_payload(
         p["repo_hash"] = s.repo.hash
     if analysis is not None:
         p["analysis"] = analysis
+    notes = _feedback(s)
+    if notes is not None:
+        p["feedback"] = notes
+    loader = turns_loader if turns_loader is not None else _one_parse()
+    spent = session_burn_of(s, loader=loader)
+    if spent is not None:
+        p["burn"] = spent
+    title = title_ids(s)
+    if title is not None:
+        p["title_ids"] = title
+    per_call = session_calls_of(s, loader=loader)
+    if per_call is not None:
+        p["call_tokens"] = per_call
     p["content_hash"] = content_hash(p)
     return p
 
 
+# ----------------------------------------------------------------------------- burn
+
+
+def session_burn(
+    events: list[digest.Ev], turns: list, harness: str = "claude_code", files_record_usage: bool | None = None
+) -> dict:
+    """The contract v4 `burn` block (`SessionBurn`) for one sitting's events and usage:
+    `analysis.burn.session_wire` over `burn.session_report`, THE ONE producer of the block.
+    `burn_report` is the same report over one file; `session_report` takes events and turns
+    already in hand, which is what a pooled sitting (records from several files, a resumed
+    transcript) and the hook channel's in memory cut have. So `burn.explain` and the phone
+    read one document whichever way the session was loaded
+    (`spec/fixtures/burn/session.json` pins the phone's sentences to `explain`).
+
+    Each event once (`patterns.distinct_events`, the corpus cut's rule): a resumed
+    transcript's copy of the old one's records reaches the pooled sitting twice, and every
+    count read off the events would count it twice. `harness` is the ANALYSIS name
+    (`capture.harnesses.analysis_name`): it decides which refusal is true.
+
+    Numbers, bools and enums only; absent is null, never 0 (the contract's docs):
+    `capture/tests/test_burn_wire.py` holds the block to `burn_report` over the same bytes.
+    """
+    from analysis import burn as bn
+    from analysis import patterns as pat
+
+    report = bn.session_report(
+        pat.distinct_events(events), list(turns), harness=harness, files_record_usage=files_record_usage
+    )
+    return bn.session_wire(report)
+
+
+def session_burn_of(s: Session, loader=None) -> dict | None:
+    """`session_burn` for a cut sitting: its usage from every file its records came from,
+    windowed to it and each message once (`burn.turns_for_window`, the rule the corpus cut
+    uses). None when the engine is not deployed beside capture (the older server-only
+    image) or a file cannot be read: the field is then "not computed", which the contract
+    says null means, never a refusal it did not make."""
+    try:
+        from analysis import burn as bn
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    from .harnesses import analysis_name
+
+    kw = {} if loader is None else {"loader": loader}
+    paths = sorted({r["path"] for r in s.records})
+    try:
+        turns = bn.turns_for_window(paths, s.started_at, s.ended_at, **kw)
+    except (OSError, ValueError):
+        return None
+    try:
+        recorded = bn.files_record_usage(paths, **kw)
+    except (OSError, ValueError):
+        return None
+    return session_burn(s.events, turns, harness=analysis_name(s.harness), files_record_usage=recorded)
+
+
+def _one_parse():
+    """`analysis.burn.load_turns`, memoised for ONE payload: burn and the call series read
+    the same files, and the call series reads each of them whole (the call before the
+    window). None when the engine is not deployed beside capture."""
+    try:
+        from analysis import burn as bn
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    return functools.lru_cache(maxsize=None)(bn.load_turns)
+
+
+# ----------------------------------------------------------------------------- calls
+
+
+def session_calls_of(s: Session, loader=None) -> dict | None:
+    """The contract v4 `call_tokens` block (`SessionCallTokens`) for a cut sitting:
+    `analysis.calls.session_calls`, THE ONE producer of the block, over every file the
+    sitting's records came from. Its window is the one `burn` counts (`turns_for_window`, each
+    message once across the files), so the points sum to the burn block's tokens; the call
+    before each call is read from the call's own transcript, whole, because the break that
+    let a cache expire is usually the one that ended the sitting before (analysis/calls.py,
+    rule 1).
+
+    The hook channel builds its payloads here too, from the bytes the server still holds.
+    RECORDED, NOT FIXED: it retires a conversation's bytes once every session in them is final
+    (`routes/ingest.py`), so the first call after a return has no call before it there and is
+    never flagged by that channel, where `capture sync` reading the whole file flags it. The
+    chart and its numbers are the same either way; only the annotation is missing, which is
+    the safe way to be wrong.
+
+    None when the engine is not deployed beside capture or a file cannot be read: "not
+    computed", which the contract says null means, never a refusal it did not make."""
+    try:
+        from analysis import calls as cl
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    kw = {} if loader is None else {"loader": loader}
+    paths = sorted({r["path"] for r in s.records})
+    try:
+        return cl.session_calls(paths, s.started_at, s.ended_at, **kw)
+    except (OSError, ValueError):
+        return None
+
+
+# ----------------------------------------------------------------------------- title
+
+
+def title_ids(s: Session) -> dict | None:
+    """The contract v4 `title_ids` block: `analysis.vocab.session_title`'s verb, object and
+    numbers, never its words (the phone renders "Debugged a failing test suite" from the
+    ids) and never `names=True` (the one LOCAL title, with a directory name in it).
+
+    A REFUSAL (no tool calls, a parser blind spot, writes that name no file, only Claude
+    Code's own files written) is a document with no verb and the refusal's code in
+    `reason`, as a burn refusal is `burn.reason`. FOUND IN THE ADVERSARIAL REVIEW
+    (2026-09-13): it was None, which also means "not computed", so the server kept a live
+    cut's title after the same sitting's final cut refused one. None now means only that
+    the engine is not deployed beside capture. An answer says `reason: null`: every declared
+    key is on the wire, as burn's are (the payload's hash moves once for a titled sitting)."""
+    try:
+        from analysis import patterns as pat
+        from analysis import vocab
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    t = vocab.session_title(
+        pat.SessionEvents(
+            session_id=s.client_session_id,
+            started_at=s.started_at,
+            ended_at=s.ended_at,
+            active_seconds=s.attended + s.autonomous,
+            attended_seconds=s.attended,
+            tz_offset_minutes=0,
+            events=s.events,
+        )
+    )
+    if t["verb"] is None:
+        return {"verb": None, "object": None, "n": None, "modules": None, "reason": t["code"]}
+    return {
+        "verb": t["verb"],
+        "object": t["object"],
+        "n": t["count"],
+        "modules": t["modules"],
+        "reason": None,
+    }
+
+
+# ----------------------------------------------------------------------------- live
+
+
+def attach_live(
+    p: dict,
+    s: Session,
+    *,
+    now: float,
+    history: list | None,
+    salt: str,
+    repo_key: str | None = None,
+    names: bool = False,
+    loader=None,
+) -> dict:
+    """Attach contract v4 `live` (and, only with `names`, `live_names`) to a LIVE session's
+    payload, AFTER `build_payload` hashed it: `content_hash` stays the hash of the payload
+    without them, because the live block moves with the clock and not with the bytes
+    (docs/overnight-integration.md 3.2; `_VOLATILE` excludes them too, so a re-hash agrees).
+
+    The state is `analysis.live.session_state`, the one computation `capture sync --live`,
+    the hook channel and `python -m analysis live` share; `repo_key` is what the ETA matches
+    `history` on (the common root here, `repo_hash` on the server). Returns the LOCAL state,
+    which carries the sentence a terminal prints; never upload it.
+    """
+    from analysis import live as lv
+
+    if s.state != "live":
+        raise ValueError("a live block belongs on a live payload only (the server's gate refuses one on a final)")
+    st = lv.session_state(
+        s, now=now, history=history, salt=salt, repo_key=repo_key, names=names, loader=loader
+    )
+    p["live"] = lv.wire(st)
+    if names:
+        named = lv.wire_names(st)
+        if named is not None:
+            p["live_names"] = named
+    return st
+
+
+def _feedback(s: Session) -> list[dict] | None:
+    """What this sitting cost that the person would not have chosen, for the card.
+
+    NOT a parameter like `analysis`, and the difference is the point: an analysis costs a
+    model call, so the caller decides whether to pay for it. This is arithmetic over
+    events already in memory, so every path that builds a payload gets it — sync, the hook
+    channel, and the fixtures the contract test walks — and there is no way to end up with
+    a card that has it in one and not the other.
+
+    `analysis/` sits beside `capture/` and the repo-root Dockerfile copies both, but the
+    older server-only image has only one; `hook_ingest._capture` already handles that
+    shape the same way. A deployment without it uploads no feedback rather than failing to
+    upload the session.
+    """
+    try:
+        from analysis import feedback as fb
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return None
+    return fb.wire(s)
+
+
 #: Fields that change on every run without the session changing. Excluded from the hash so
-#: an unchanged session is `unchanged` on the server and skipped by `/v1/sync/known`.
-_VOLATILE = frozenset({"content_hash", "agent_observed_at", "client_clock_offset_ms"})
+#: an unchanged session is `unchanged` on the server and skipped by `/v1/sync/known`. The
+#: live block (`live`, `live_names`) moves with the CLOCK: "waiting on you for N minutes"
+#: advances with no new byte, so it is resent on the live interval (`cli.cmd_sync`), never
+#: because the hash moved (docs/overnight-integration.md 3.2).
+_VOLATILE = frozenset(
+    {"content_hash", "agent_observed_at", "client_clock_offset_ms", "live", "live_names"}
+)
 
 
 def content_hash(payload: dict) -> str:
@@ -505,4 +876,22 @@ def content_hash(payload: dict) -> str:
     import json
 
     body = {k: v for k, v in payload.items() if k not in _VOLATILE}
+    rules = _derived_rules()
+    if rules:
+        # What this machine DERIVES into the payload (the feedback notes) moves when its rules
+        # do, not only when the transcript does, and a sitting whose hash did not move is
+        # skipped by `/v1/sync/known`: the rules' version is in the hash, never on the wire
+        # (the contract has no field for it; the server compares hashes and nothing else).
+        body = {"payload": body, "rules": rules}
     return identity.sha256_hex(json.dumps(body, sort_keys=True, separators=(",", ":")))
+
+
+def _derived_rules() -> dict[str, int]:
+    """The versions of the rules that derive a payload's fields on this machine
+    (`analysis.feedback.RULES_VERSION`), or nothing in a deployment without `analysis`,
+    which derives none of them."""
+    try:
+        from analysis import feedback as fb
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return {}
+    return {"feedback": fb.RULES_VERSION}

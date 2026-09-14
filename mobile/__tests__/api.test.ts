@@ -24,6 +24,8 @@ mock.module('expo-constants', () => ({
 const { Api, ApiError } = await import('../src/data/api');
 type TokenStorage = import('../src/data/api').TokenStorage;
 type ApiError = import('../src/data/api').ApiError;
+type SessionDetail = import('../src/data/api').SessionDetail;
+type LiveState = import('../src/generated/live').LiveState;
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const m = new Map(Object.entries(initial));
@@ -313,5 +315,165 @@ describe('Api transport', () => {
     const e2 = (await api.profile().catch((e: unknown) => e)) as ApiError;
     expect(e2.status).toBe(503);
     expect(e2.message).toBe('Service Unavailable');
+  });
+});
+
+/**
+ * The engine's live state for one running session as the detail endpoint serves it: every
+ * block of `spec/live.v1.json`, the shape of the design's own example (section 2.6). Typed
+ * as the GENERATED `LiveState`, so a spec change that this literal no longer satisfies is a
+ * `tsc` failure here, not a surprise on a screen.
+ */
+const LIVE_STATE: LiveState = {
+  live_version: 1,
+  computed_at: '2026-09-13T07:41:05Z',
+  activity: { kind: 'delegating', role: 'unknown', attempt: 0, since_s: 212, files: 0, calls: 3, file_id: null },
+  verdict: {
+    state: 'starting',
+    basis: 'segment_tool_calls',
+    reason: null,
+    file_id: null,
+    evidence: {
+      window_calls: 3, errors_now: 0, errors_before: 0, new_files: 0, checkpoints: 0, repeats: 0,
+      churn_writes: 0, fail_run: 0, blind_edits: 0, stuck_s: 0, files_changed: 0, commits: 0, background: 0,
+    },
+  },
+  eta: {
+    elapsed_s: 5412, typical_s: null, p25_s: null, p75_s: null, remaining_s: null, n: 5, needed: 10,
+    unattended: false, basis: 'finished_sessions_same_repo_that_ran_at_least_this_long', reason: 'too_few_sessions',
+  },
+  decisions: [{ kind: 'reverted_changes', ts: 1757748660.2, event_n: 88, count: 1 }],
+  needs_you: { score: 5, reason: 'running_fine' },
+  map: {
+    files: [{ id: '3f9a0c1d2e4b5a69', dir_id: null, role: 'docs', depth: 1, reads: 2, edits: 1, last_read_ts: 1757748660.2, last_edit_ts: 1757749001.9 }],
+    files_total: 25,
+  },
+  timelapse: [{ t: 0, file_id: '3f9a0c1d2e4b5a69', kind: 'read' }],
+  sample: { events: 412, tool_calls: 131, segments: 9, tokens: 12900311 },
+};
+
+describe('contract v4 on the phone', () => {
+  test('builderProfile sends window_days, the name the server reads', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    const calls = installFetch(() => json(200, { builder_profile: null, window_days: 90, corpus: null }));
+    const api = new Api(BASE, storage);
+
+    await api.builderProfile();
+    await api.builderProfile(365);
+
+    // `?days=` is what the graph route reads; this route reads `window_days` and ignored
+    // `days` entirely, so the phone always got the 90 day default (section 5.3).
+    expect(calls.map((c) => c.url.replace(BASE, ''))).toEqual([
+      '/v1/profile/builder?window_days=90',
+      '/v1/profile/builder?window_days=365',
+    ]);
+    expect(calls.every((c) => !/[?&]days=/.test(c.url))).toBe(true);
+  });
+
+  test('profile still sends days, the name the graph route reads', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    const calls = installFetch(() => json(200, { graph: [] }));
+    await new Api(BASE, storage).profile(30);
+    expect(calls[0]!.url).toBe(`${BASE}/v1/profile?days=30`);
+  });
+
+  test('a session detail decodes live_state, live_names, burn, title_ids and lines_removed_agent', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    const detail = {
+      id: 's1',
+      state: 'live',
+      stats: { tokens_reported: true, lines_added_agent: 1840, lines_removed_agent: 212, commit_count: 3 },
+      live_state: LIVE_STATE,
+      live_names: { files: [{ id: '3f9a0c1d2e4b5a69', name: 'overnight-integration.md' }] },
+      burn: {
+        tokens: 12900311, cache_read_share: 0.945, barren_share: 0, unreadable_share: 0.1, segments: 9,
+        lines_added: 1840, lines_removed: 212, files_changed: 12, commits: 3, reason: null, spikes: [], spikes_needed: 5,
+      },
+      title_ids: { verb: 'shipped', object: 'source', n: 3, modules: 2 },
+    };
+    installFetch(() => json(200, detail));
+
+    const s: SessionDetail = await new Api(BASE, storage).session('s1');
+
+    expect(s.live_state?.computed_at).toBe('2026-09-13T07:41:05Z');
+    expect(s.live_state?.eta.reason).toBe('too_few_sessions');
+    expect(s.live_state?.timelapse).toHaveLength(1);
+    expect(s.live_names?.files[0]?.name).toBe('overnight-integration.md');
+    expect(s.stats?.lines_removed_agent).toBe(212);
+    expect(s.burn?.segments).toBe(9);
+    expect(s.title_ids?.verb).toBe('shipped');
+  });
+
+  test('a detail from a server older than v4 leaves every new field undefined, not zero', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    installFetch(() => json(200, { id: 's1', stats: { lines_added_agent: 10 } }));
+
+    const s = await new Api(BASE, storage).session('s1');
+
+    expect(s.live_state).toBeUndefined();
+    expect(s.burn).toBeUndefined();
+    expect(s.title_ids).toBeUndefined();
+    expect(s.stats?.lines_removed_agent).toBeUndefined();
+  });
+
+  test('privacy prefs: GET, then a PUT that sends only the key it was given', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    const calls = installFetch((call) =>
+      call.method === 'GET'
+        ? json(200, { quotes: false, live_names: false })
+        : json(200, { quotes: false, live_names: true, quotes_deleted: 2 })
+    );
+    const api = new Api(BASE, storage);
+
+    expect(await api.privacyPrefs()).toEqual({ quotes: false, live_names: false });
+    const out = await api.setPrivacyPrefs({ live_names: true, quotes: undefined });
+
+    expect(out.quotes_deleted).toBe(2);
+    expect(calls.map((c) => [c.method, c.url.replace(BASE, '')])).toEqual([
+      ['GET', '/v1/privacy/prefs'],
+      ['PUT', '/v1/privacy/prefs'],
+    ]);
+    // An explicit undefined must not travel as a key: the server reads the keys SET.
+    expect(calls[1]!.body).toEqual({ live_names: true });
+    expect(Object.keys(calls[1]!.body as object)).toEqual(['live_names']);
+  });
+
+  test('deleteQuotes and forgetLiveActivity accept a 204 with no body', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    const calls = installFetch(() => new Response(null, { status: 204 }));
+    const api = new Api(BASE, storage);
+
+    await api.deleteQuotes();
+    await api.forgetLiveActivity('ABC/def 1');
+
+    expect(calls.map((c) => [c.method, c.url.replace(BASE, '')])).toEqual([
+      ['DELETE', '/v1/profile/quotes'],
+      ['DELETE', '/v1/push/live-activity/ABC%2Fdef%201'],
+    ]);
+  });
+
+  test('registerLiveActivity posts the token with its session, activity, environment and creature', async () => {
+    const { storage } = memoryStorage({ 'builder.access': 'A1', 'builder.refresh': 'R1' });
+    const calls = installFetch(() => json(200, { status: 'ok' }));
+
+    await new Api(BASE, storage).registerLiveActivity({
+      kind: 'activity',
+      session_id: '8f1d2c3b-0000-4000-8000-000000000001',
+      activity_id: 'act-1',
+      token: 'ab12cd',
+      environment: 'sandbox',
+      creature: 'owl',
+    });
+
+    expect(calls[0]!.method).toBe('POST');
+    expect(calls[0]!.url).toBe(`${BASE}/v1/push/live-activity`);
+    expect(calls[0]!.body).toEqual({
+      kind: 'activity',
+      session_id: '8f1d2c3b-0000-4000-8000-000000000001',
+      activity_id: 'act-1',
+      token: 'ab12cd',
+      environment: 'sandbox',
+      creature: 'owl',
+    });
   });
 });

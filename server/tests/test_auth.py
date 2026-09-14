@@ -458,30 +458,134 @@ def test_refresh_rotates_and_reuse_actually_revokes(client, pairing_user):
     )
     assert r.status_code == 404, "authenticated, but no such pairing code"
 
+    # The successor is redeemed, so the phone had the answer: the spent token is not a
+    # retry any more (REFRESH_RETRY_GRACE_SECONDS), and replaying it is reuse.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair1["refresh_token"]})
+    assert r.status_code == 200, r.text
+    pair2 = r.json()
+
     # Replay the spent token.
     r = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
     assert r.status_code == 401
     assert "reuse" in r.json()["detail"]
 
+    assert _chain(pairing_user) == [True, True, True], "the whole chain must be revoked"
+
+    # And the not-yet-used successor is dead too.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair2["refresh_token"]})
+    assert r.status_code == 401
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": "never-issued"})
+    assert r.status_code == 401
+
+
+def _chain(user_id: str) -> list[bool]:
+    """Whether each of the user's refresh tokens is revoked, oldest first."""
     with owner_engine().connect() as c:
         rows = c.execute(
             text(
                 """
                 SELECT t.revoked_at FROM device_tokens t
                 JOIN devices d ON d.id = t.device_id
-                WHERE d.user_id = :u
+                WHERE d.user_id = :u ORDER BY t.issued_at, t.id
                 """
             ),
-            {"u": pairing_user},
+            {"u": user_id},
         ).all()
-    assert len(rows) == 2
-    assert all(r.revoked_at is not None for r in rows), "the whole chain must be revoked"
+    return [r.revoked_at is not None for r in rows]
 
-    # And the not-yet-used successor is dead too.
-    r = client.post("/v1/auth/refresh", json={"refresh_token": pair1["refresh_token"]})
+
+def test_a_refresh_whose_answer_was_lost_is_retried_not_a_sign_out(client, pairing_user):
+    """MEASURED 2026-09-14: the simulator's app reloaded between the server's rotation and
+    saving the new pair, presented the spent token 3 seconds later, and was signed out by
+    reuse detection. A phone on cellular losing one response is the same shape: inside the
+    grace, with the successor never redeemed, the spent token gets a new pair instead."""
+    code = _approved_grant(client, pairing_user)
+    pair0 = client.post("/v1/auth/device/poll", json={"device_code": code}).json()
+    lost = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]}).json()
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
+    assert r.status_code == 200, r.text
+    again = r.json()
+    assert again["refresh_token"] not in (pair0["refresh_token"], lost["refresh_token"])
+    # The spent token, the lost successor revoked in its place, the new one live.
+    assert _chain(pairing_user) == [False, True, False]
+
+    # The new pair is the chain now.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": again["refresh_token"]})
+    assert r.status_code == 200, r.text
+
+    # The lost answer surfacing later is a revoked token: reuse, and the chain ends.
+    r = client.post("/v1/auth/refresh", json={"refresh_token": lost["refresh_token"]})
     assert r.status_code == 401
+    assert "reuse" in r.json()["detail"]
+    assert all(_chain(pairing_user))
 
-    r = client.post("/v1/auth/refresh", json={"refresh_token": "never-issued"})
+
+def test_a_spent_token_past_the_grace_is_reuse(client, pairing_user):
+    from builder.auth import REFRESH_RETRY_GRACE_SECONDS
+
+    code = _approved_grant(client, pairing_user)
+    pair0 = client.post("/v1/auth/device/poll", json={"device_code": code}).json()
+    client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
+    with owner_engine().begin() as c:
+        c.execute(
+            text(
+                "UPDATE device_tokens t SET used_at = used_at - make_interval(secs => :g) "
+                "FROM devices d WHERE d.id = t.device_id AND d.user_id = :u "
+                "AND t.used_at IS NOT NULL"
+            ),
+            {"u": pairing_user, "g": REFRESH_RETRY_GRACE_SECONDS + 1},
+        )
+
+    r = client.post("/v1/auth/refresh", json={"refresh_token": pair0["refresh_token"]})
+    assert r.status_code == 401
+    assert "reuse" in r.json()["detail"]
+    assert all(_chain(pairing_user))
+
+
+def test_a_revoke_all_waits_for_a_refresh_in_flight_and_takes_its_successor(client, pairing_user):
+    """FOUND BY AN ADVERSARIAL REVIEW (2026-09-14): under READ COMMITTED the revoke all saw
+    only rows committed when it started, so a thief's refresh that had inserted its next
+    token and not yet committed kept a live chain while the phone was signed out. The
+    refreshes of one device are serialised now; the revoke all runs after the thief's commit
+    and takes that token too."""
+    import threading
+
+    from builder.auth import redeem_refresh_token
+    from builder.db import db_session
+
+    code = _approved_grant(client, pairing_user)
+    t0 = client.post("/v1/auth/device/poll", json={"device_code": code}).json()["refresh_token"]
+    phone = client.post("/v1/auth/refresh", json={"refresh_token": t0}).json()["refresh_token"]
+    # The thief replays the spent token inside the grace: the phone's successor is revoked.
+    thief = client.post("/v1/auth/refresh", json={"refresh_token": t0}).json()["refresh_token"]
+
+    # The thief's next refresh, held open: its successor inserted and not committed.
+    held = db_session()
+    db = held.__enter__()
+    _, thief_next, _ = redeem_refresh_token(db, thief)
+
+    outcome: dict = {}
+
+    def phone_presents() -> None:
+        try:
+            with db_session() as d:
+                redeem_refresh_token(d, phone)
+            outcome["status"] = 200
+        except HTTPException as e:
+            outcome["status"] = e.status_code
+
+    worker = threading.Thread(target=phone_presents)
+    worker.start()
+    worker.join(0.5)
+    assert worker.is_alive(), "the phone's refresh waits for the one in flight"
+    held.__exit__(None, None, None)  # the thief commits
+    worker.join(10)
+    assert not worker.is_alive()
+    assert outcome == {"status": 401}
+    assert all(_chain(pairing_user)), "the successor committed while the revoke all waited"
+    r = client.post("/v1/auth/refresh", json={"refresh_token": thief_next})
     assert r.status_code == 401
 
 
@@ -544,3 +648,68 @@ def test_session_finished_push_sees_the_users_tokens(client, pairing_user, monke
     assert sent == 1
     assert posted and posted[0].endswith("/3/device/abc123")
     assert "sandbox" in posted[0]
+
+
+# ------------------------------------------------------------ the phone and the machine (0024)
+
+
+def test_only_the_phones_sign_in_flips_a_switch_or_links(
+    client, google_jwks, google_key, created_users
+):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): `PUT /v1/privacy/prefs` took any device
+    token, and the device flow `capture pair` walks mints one. Through the real routes: the
+    phone signs in with Google and flips a switch; it approves a pairing code; the machine
+    that polls gets a token that may read the switches and upload, and is refused (403)
+    both the switch and linking an identity of its own, which would have made it a phone."""
+    r = client.post(
+        "/v1/auth/google",
+        json={
+            "id_token": google_token(google_key, f"g-{uuid.uuid4()}"),
+            "machine_id": MACHINE_A,
+            "platform": "ios",
+        },
+    )
+    assert r.status_code == 200, r.text
+    created_users.append(r.json()["user_id"])
+    phone = {"authorization": f"Bearer {r.json()['access_token']}"}
+    assert client.put("/v1/privacy/prefs", json={"quotes": True}, headers=phone).status_code == 200
+
+    started = client.post(
+        "/v1/auth/device/start",
+        json={
+            "machine_id": MACHINE_B,
+            "label": "Claude Code (box)",
+            "platform": "linux",
+            "agent_version": "cap",
+        },
+    ).json()
+    assert (
+        client.post(
+            "/v1/auth/device/approve", json={"user_code": started["user_code"]}, headers=phone
+        ).status_code
+        == 200
+    )
+    polled = client.post(
+        "/v1/auth/device/poll", json={"device_code": started["device_code"]}
+    ).json()
+    mac = {"authorization": f"Bearer {polled['access_token']}"}
+
+    assert client.get("/v1/privacy/prefs", headers=mac).json() == {
+        "quotes": True,
+        "live_names": False,
+    }
+    for body in ({"live_names": True}, {"quotes": False}):
+        refused = client.put("/v1/privacy/prefs", json=body, headers=mac)
+        assert refused.status_code == 403, refused.text
+    linked = client.post(
+        "/v1/auth/google",
+        json={"id_token": google_token(google_key, f"g-{uuid.uuid4()}"), "machine_id": MACHINE_B},
+        headers=mac,
+    )
+    assert linked.status_code == 403, linked.text
+    with owner_engine().connect() as c:
+        flows = c.execute(
+            text("SELECT platform, grant_flow FROM devices WHERE user_id = :u ORDER BY platform"),
+            {"u": r.json()["user_id"]},
+        ).all()
+    assert [tuple(f) for f in flows] == [("ios", "sign_in"), ("linux", "device_flow")]

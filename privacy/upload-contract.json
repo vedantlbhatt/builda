@@ -7,6 +7,10 @@
     "  server/builder/contract.py            (Pydantic, extra='forbid')",
     "  mobile/src/generated/contract.ts",
     "  web/public/upload-fields.json         (publicly served; what the verification curl fetches)",
+    "  server/builder/quotes_spec.py         (v4: the quotes document, Pydantic, extra='forbid')",
+    "  mobile/src/generated/quotes.ts",
+    "  server/builder/media_spec.py          (project_media: a presign request, Pydantic, extra='forbid')",
+    "  mobile/src/generated/media.ts",
     "  PRIVACY.md                            (the prose claim, from the same source)",
     "",
     "THE STRUCTURAL GUARANTEE IS THE SERIALIZER, NOT THE TEST.",
@@ -34,6 +38,20 @@
     "outside `analysis` carries prose, and `analysis` itself carries no paths, diffs, tool I/O,",
     "commit messages, branch names, URLs, hostnames or raw prompts.",
     "",
+    "THE SECOND FIELD ADDED SINCE v2 (v3): `feedback`. What ONE sitting cost you, for the card you",
+    "read once and close: a stretch that went nowhere, a run of failures, a file rewritten over and",
+    "over. It is NOT a second `analysis` and needed no exception, because it carries no prose at all",
+    "— an id from a fixed list of three, and two integers. The SENTENCE is written on the phone from",
+    "that id, so nothing about the wording travels either.",
+    "",
+    "What it deliberately does NOT carry, and both were in the local version of these notes:",
+    "  * the FAILING COMMAND. `analysis/feedback.py` says \"4 failures in a row on `bun test`\" on your",
+    "    own machine. Terminal commands are on the never-list above and stay there; the wire says how",
+    "    many and for how long.",
+    "  * the FILE NAME. The local note names the file that was rewritten five times. `analysis` may",
+    "    name files in prose because it is opt-in and bounded; this field is neither, so it says",
+    "    \"a file\" and the name stays on the machine.",
+    "",
     "Two design contradictions resolved here, deliberately:",
     "  1. Branch names are DELETED ENTIRELY. One design's never-list banned them while another",
     "     uploaded them for public repos. Branch was read by zero cards and zero queries, so",
@@ -42,76 +60,1273 @@
     "  2. NO PROMPT OR FILE NAME LEAVES IN ANY MODE. Three designs built a server titling",
     "     endpoint carrying first_prompt/last_prompt/commit_messages/file_basenames. It is",
     "     deleted, not restricted — every harness already writes a title to disk. This is also",
-    "     what makes the falsification command on /privacy safe to publish."
+    "     what makes the falsification command on /privacy safe to publish.",
+    "",
+    "v4 (2026-09-13, docs/overnight-integration.md section 2). Everything below is ids, numbers, enums and clocks unless it says OPT-IN.",
+    "  * `tool_calls` names its allowlist as data (`values`), and the server rejects a key outside it: the doc always promised that",
+    "    unknown and MCP names bucket to mcp_other and other, and now the door keeps the promise.",
+    "  * `live`: what a RUNNING session is doing, shaped by spec/live.v1.json. Enums, integers, clocks and 16 hex salted file ids. No",
+    "    path, file name, command, prompt or sentence. Deleted when the session is final.",
+    "  * `live_names`: THE THIRD OPT-IN EXCEPTION. The basename of each file in the live map, off by default, sent only with",
+    "    `capture sync --live --live-names`, stored only while the account has File names on, shown only on the session screen.",
+    "  * `burn` and `title_ids`: where a sitting's tokens went, and its engineer voice title, as numbers and ids (`objects` below).",
+    "    The sentences are written on the phone; no word, path or command travels.",
+    "  * `call_tokens`: what every call to the model sent and got back, as at most 240 points of five token counts, the calls that",
+    "    came back to an expired cache and the list price of each bucket (`objects` below). Numbers and two enums: no word, no model name.",
+    "  * `quotes`: THE SECOND OPT-IN EXCEPTION, a document of its own with its own route, modelled on `analysis`: up to three prompts",
+    "    verbatim, for the Wrapped cards that quote you. Off unless the phone's setting AND the machine's --quotes flag both say yes.",
+    "",
+    "`project_media` (2026-09-14, docs/demos.md): a project's demo, a channel of its own. Off by default and opt in per project AND per",
+    "publish: `python -m capture demo --publish` prints what it will send and waits for a yes. It carries the stills and one short video",
+    "the person made of their own project, PNG, JPEG and MP4 only, capped in size and count, and per file only the numbers, the `source`",
+    "enum and a short plain label (`project_media.fields`). Owner only; never in a post, feed, share, push or activity."
   ],
-
-  "version": 2,
-  "modes": ["public", "anonymous"],
+  "version": 4,
+  "modes": [
+    "public",
+    "anonymous"
+  ],
   "_excluded_note": "visibility 'excluded' is not a mode: an excluded repo produces ZERO uploads, and if ANY event in a session resolves to an excluded repo the ENTIRE session is dropped — never partially uploaded, never uploaded under the primary repo's visibility.",
-
   "fields": [
-    { "name": "client_session_id",    "type": "sha256hex", "modes": ["public", "anonymous"], "doc": "stable opaque session id; also the Idempotency-Key" },
-    { "name": "machine_id",           "type": "sha256hex", "modes": ["public", "anonymous"], "doc": "sha256 of this Mac's platform UUID" },
-    { "name": "content_hash",         "type": "sha256hex", "modes": ["public", "anonymous"], "doc": "hash of this payload; lets sync skip unchanged sessions" },
-    { "name": "client_version",       "type": "string",    "modes": ["public", "anonymous"], "doc": "agent version" },
-    { "name": "sessionizer_version",  "type": "int",       "modes": ["public", "anonymous"], "doc": "so a retuned boundary is a recompute, not a migration" },
-    { "name": "active_calc_version",  "type": "int",       "modes": ["public", "anonymous"], "doc": "so a retuned active-time formula is a recompute" },
-    { "name": "harness",              "type": "enum",      "modes": ["public", "anonymous"], "values": ["claude_code", "cursor_ide", "cursor_agent", "codex", "gemini_cli", "cline"] },
-    { "name": "agent_observed_at",    "type": "datetime",  "modes": ["public", "anonymous"], "doc": "when the agent produced this payload: the finalize instant for final, the snapshot instant for live" },
-    { "name": "client_clock_offset_ms", "type": "int",     "modes": ["public", "anonymous"], "doc": "measured against the server Date header" },
-
-    { "name": "started_at",           "type": "datetime",  "modes": ["public", "anonymous"] },
-    { "name": "ended_at",             "type": "datetime",  "modes": ["public", "anonymous"] },
-    { "name": "active_seconds",       "type": "int",       "modes": ["public", "anonymous"], "doc": "union of turn spans and capped gaps; the honest headline" },
-    { "name": "idle_seconds",         "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "tz_offset_minutes",    "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "time_quality",         "type": "enum",      "modes": ["public", "anonymous"], "values": ["ok", "mtime_corrected"] },
-    { "name": "state",                "type": "enum",      "modes": ["public", "anonymous"], "values": ["live", "final"], "doc": "live = an open/idle session snapshot, replaced in place when it finalizes; final = complete" },
-    { "name": "end_reason",           "type": "enum",      "modes": ["public", "anonymous"], "values": ["idle_gap", "human_returned", "day_boundary", "cleared", "switched_repo", "still_running"], "doc": "why the session ended (docs/session-boundaries.md). still_running IS the live upload; cleared (a typed /clear) and switched_repo (a new session opened in another repo) are v3 ends that, like idle_gap, mean the work stopped" },
-    { "name": "attended_seconds",     "type": "int",       "modes": ["public", "anonymous"], "doc": "active time with a human evidently present (docs/session-boundaries.md)" },
-    { "name": "autonomous_seconds",   "type": "int",       "modes": ["public", "anonymous"], "doc": "active time after the human went quiet for > tauAutonomousSec" },
-    { "name": "presence_count",       "type": "int",       "modes": ["public", "anonymous"], "doc": "typed prompts + interrupts + human file edits" },
-    { "name": "unattended",           "type": "bool",      "modes": ["public", "anonymous"], "doc": "zero presence signals. Hours only: no record, no streak, no notification" },
-    { "name": "visible",              "type": "bool",      "modes": ["public", "anonymous"], "doc": "counts toward hours, graph, streaks" },
-    { "name": "notable",              "type": "bool",      "modes": ["public", "anonymous"], "doc": "eligible for a card or a record" },
-
-    { "name": "strip_columns",        "type": "base64",    "bytes": 1024, "modes": ["public", "anonymous"], "doc": "1024 bytes: 2-bit class, 2-bit density. No text, no paths, by construction" },
-    { "name": "strip_marks",          "type": "marks",     "modes": ["public", "anonymous"], "doc": "[{ms, k}] where k is prompt|commit|compact" },
-    { "name": "timeline_fidelity",    "type": "enum",      "modes": ["public", "anonymous"], "values": ["full", "coarse", "header_only"] },
-
-    { "name": "human_prompt_count",   "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "prompt_count_basis",   "type": "enum",      "modes": ["public", "anonymous"], "values": ["typed_promptsource", "user_bubble"], "doc": "so Cursor's looser rule never sums with Claude Code's" },
-    { "name": "tool_calls",           "type": "toolmap",   "modes": ["public", "anonymous"], "doc": "allowlisted tool names only; unknown and MCP names bucket to mcp_other / other" },
-    { "name": "files_touched",        "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "files_created",        "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "lines_added_agent",    "type": "int",       "modes": ["public", "anonymous"], "doc": "live-path only; rewound edits never landed" },
-    { "name": "lines_removed_agent",  "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "commit_count",         "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "commit_insertions",    "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "commit_deletions",     "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "human_edit_events",    "type": "int",       "modes": ["public", "anonymous"], "doc": "count of edited_text_file / humanChanges signals. Existence only — these carry no line counts" },
-    { "name": "agent_line_bucket",    "type": "enum",      "modes": ["public", "anonymous"], "values": ["almost_all_agent", "nine_in_ten", "three_in_four", "about_half", "mostly_you", "unknown"], "doc": "a 5-way LOWER BOUND, never a percentage" },
-    { "name": "attrib_confidence",    "type": "enum",      "modes": ["public", "anonymous"], "values": ["high", "medium", "low", "none"] },
-
-    { "name": "tokens_reported",      "type": "bool",      "modes": ["public", "anonymous"], "doc": "false for EVERY Cursor session, forever — Cursor never writes token counts locally" },
-    { "name": "tokens",               "type": "tokens",    "nullable": true, "modes": ["public", "anonymous"], "doc": "five separate buckets. Null, never zero, when unreported" },
-    { "name": "abandoned_branch_tokens", "type": "int",    "modes": ["public", "anonymous"], "doc": "tokens spent on rewound DAG branches. You paid for them" },
-    { "name": "token_dedupe",         "type": "enum",      "modes": ["public", "anonymous"], "values": ["message_id", "request_id", "none"], "doc": "server rejects none + tokens_reported: that is the 1.88x arriving unlabeled" },
-    { "name": "token_scope",          "type": "enum",      "modes": ["public", "anonymous"], "values": ["parent_aggregated", "mixed"], "doc": "'flat' is NOT a legal value — it would let the ~3x subagent glob overcount in wearing a legitimate label" },
-    { "name": "token_coverage",       "type": "enum",      "modes": ["public", "anonymous"], "values": ["complete", "partial", "structurally_absent"] },
-    { "name": "models",               "type": "models",    "modes": ["public", "anonymous"], "doc": "[{model_id, output_token_share}] — labels only. The [1m] suffix is preserved verbatim" },
-    { "name": "model_state",          "type": "enum",      "modes": ["public", "anonymous"], "values": ["known", "partial", "unknown"], "doc": "Cursor is ~84% unknown: modelName is 'default' on 115 of 137 composers" },
-
-    { "name": "repo_hash",            "type": "sha256hex", "nullable": true, "modes": ["public", "anonymous"], "doc": "HMAC of the normalized origin URL. Full 64 hex, never truncated" },
-    { "name": "repo_pepper_version",  "type": "int",       "modes": ["public", "anonymous"] },
-    { "name": "repo_id_basis",        "type": "enum",      "modes": ["public", "anonymous"], "values": ["origin", "root_commit"] },
-
-    { "name": "repo_name",            "type": "string",    "nullable": true, "modes": ["public"], "doc": "PUBLIC REPOS ONLY. Absent from the anonymous key set entirely" },
-    { "name": "title",                "type": "string",    "nullable": true, "modes": ["public"], "doc": "PUBLIC REPOS ONLY. The title the HARNESS already wrote to your disk. Never model-generated by us" },
-    { "name": "title_source",         "type": "enum",      "nullable": true, "modes": ["public"], "values": ["harness", "template"] },
-
-    { "name": "card_png_url",         "type": "url",       "nullable": true, "modes": ["public", "anonymous"], "doc": "populated ONLY when you tap Share. The image you chose to publish; contains no field not listed above" },
-
-    { "name": "analysis",             "type": "analysis",  "nullable": true, "modes": ["public", "anonymous"], "doc": "model-written reading of the session, produced on the user's machine by their own Claude Code from a digest of the transcript (spec/analysis.v1.json). Present only when analysis upload is enabled. Private to the account under RLS; leaves it only when the session is shared. This is the ONE field that carries prose derived from prompts and code, and it is opt-in for exactly that reason." }
-  ]
+    {
+      "name": "client_session_id",
+      "type": "sha256hex",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "stable opaque session id; also the Idempotency-Key"
+    },
+    {
+      "name": "machine_id",
+      "type": "sha256hex",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "sha256 of this Mac's platform UUID"
+    },
+    {
+      "name": "content_hash",
+      "type": "sha256hex",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "hash of this payload; lets sync skip unchanged sessions"
+    },
+    {
+      "name": "client_version",
+      "type": "string",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "agent version"
+    },
+    {
+      "name": "sessionizer_version",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "so a retuned boundary is a recompute, not a migration"
+    },
+    {
+      "name": "active_calc_version",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "so a retuned active-time formula is a recompute"
+    },
+    {
+      "name": "harness",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "claude_code",
+        "cursor_ide",
+        "cursor_agent",
+        "codex",
+        "gemini_cli",
+        "cline",
+        "opencode",
+        "aider"
+      ]
+    },
+    {
+      "name": "agent_observed_at",
+      "type": "datetime",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "when the agent produced this payload: the finalize instant for final, the snapshot instant for live"
+    },
+    {
+      "name": "client_clock_offset_ms",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "measured against the server Date header"
+    },
+    {
+      "name": "started_at",
+      "type": "datetime",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "ended_at",
+      "type": "datetime",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "active_seconds",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "union of turn spans and capped gaps; the honest headline"
+    },
+    {
+      "name": "idle_seconds",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "tz_offset_minutes",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "time_quality",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "ok",
+        "mtime_corrected"
+      ]
+    },
+    {
+      "name": "state",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "live",
+        "final"
+      ],
+      "doc": "live = an open/idle session snapshot, replaced in place when it finalizes; final = complete"
+    },
+    {
+      "name": "end_reason",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "idle_gap",
+        "human_returned",
+        "day_boundary",
+        "cleared",
+        "switched_repo",
+        "still_running"
+      ],
+      "doc": "why the session ended (docs/session-boundaries.md). still_running IS the live upload; cleared (a typed /clear) and switched_repo (a new session opened in another repo) are v3 ends that, like idle_gap, mean the work stopped"
+    },
+    {
+      "name": "attended_seconds",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "active time with a human evidently present (docs/session-boundaries.md)"
+    },
+    {
+      "name": "autonomous_seconds",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "active time after the human went quiet for > tauAutonomousSec"
+    },
+    {
+      "name": "presence_count",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "typed prompts + interrupts + human file edits"
+    },
+    {
+      "name": "unattended",
+      "type": "bool",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "zero presence signals. Hours only: no record, no streak, no notification"
+    },
+    {
+      "name": "visible",
+      "type": "bool",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "counts toward hours, graph, streaks"
+    },
+    {
+      "name": "notable",
+      "type": "bool",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "eligible for a card or a record"
+    },
+    {
+      "name": "strip_columns",
+      "type": "base64",
+      "bytes": 1024,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "1024 bytes: 2-bit class, 2-bit density. No text, no paths, by construction"
+    },
+    {
+      "name": "strip_marks",
+      "type": "marks",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "[{ms, k}] where k is prompt, commit or compact"
+    },
+    {
+      "name": "timeline_fidelity",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "full",
+        "coarse",
+        "header_only"
+      ]
+    },
+    {
+      "name": "human_prompt_count",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "prompt_count_basis",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "typed_promptsource",
+        "user_bubble"
+      ],
+      "doc": "so Cursor's looser rule never sums with Claude Code's"
+    },
+    {
+      "name": "tool_calls",
+      "type": "toolmap",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "allowlisted tool names only; unknown and MCP names bucket to mcp_other / other",
+      "values": [
+        "Read",
+        "Edit",
+        "Write",
+        "Bash",
+        "mcp_other",
+        "other"
+      ]
+    },
+    {
+      "name": "files_touched",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "files_created",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "lines_added_agent",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "live-path only; rewound edits never landed"
+    },
+    {
+      "name": "lines_removed_agent",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "commit_count",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "commit_insertions",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "commit_deletions",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "human_edit_events",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "count of edited_text_file / humanChanges signals. Existence only: these carry no line counts"
+    },
+    {
+      "name": "agent_line_bucket",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "almost_all_agent",
+        "nine_in_ten",
+        "three_in_four",
+        "about_half",
+        "mostly_you",
+        "unknown"
+      ],
+      "doc": "a 5-way LOWER BOUND, never a percentage"
+    },
+    {
+      "name": "attrib_confidence",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "high",
+        "medium",
+        "low",
+        "none"
+      ]
+    },
+    {
+      "name": "tokens_reported",
+      "type": "bool",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "false for EVERY Cursor session, forever: Cursor never writes token counts locally"
+    },
+    {
+      "name": "tokens",
+      "type": "tokens",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "five separate buckets. Null, never zero, when unreported"
+    },
+    {
+      "name": "abandoned_branch_tokens",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "tokens spent on rewound DAG branches. You paid for them"
+    },
+    {
+      "name": "token_dedupe",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "message_id",
+        "request_id",
+        "none"
+      ],
+      "doc": "server rejects none + tokens_reported: that is the 1.88x arriving unlabeled"
+    },
+    {
+      "name": "token_scope",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "parent_aggregated",
+        "mixed"
+      ],
+      "doc": "'flat' is NOT a legal value: it would let the ~3x subagent glob overcount in wearing a legitimate label"
+    },
+    {
+      "name": "token_coverage",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "complete",
+        "partial",
+        "structurally_absent"
+      ]
+    },
+    {
+      "name": "models",
+      "type": "models",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "[{model_id, output_token_share}], labels only. The [1m] suffix is preserved verbatim"
+    },
+    {
+      "name": "model_state",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "known",
+        "partial",
+        "unknown"
+      ],
+      "doc": "Cursor is ~84% unknown: modelName is 'default' on 115 of 137 composers"
+    },
+    {
+      "name": "repo_hash",
+      "type": "sha256hex",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "HMAC of the normalized origin URL. Full 64 hex, never truncated"
+    },
+    {
+      "name": "repo_pepper_version",
+      "type": "int",
+      "modes": [
+        "public",
+        "anonymous"
+      ]
+    },
+    {
+      "name": "repo_id_basis",
+      "type": "enum",
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "values": [
+        "origin",
+        "root_commit"
+      ]
+    },
+    {
+      "name": "repo_name",
+      "type": "string",
+      "nullable": true,
+      "modes": [
+        "public"
+      ],
+      "doc": "PUBLIC REPOS ONLY. Absent from the anonymous key set entirely"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "nullable": true,
+      "modes": [
+        "public"
+      ],
+      "doc": "PUBLIC REPOS ONLY. The title the HARNESS already wrote to your disk. Never model-generated by us"
+    },
+    {
+      "name": "title_source",
+      "type": "enum",
+      "nullable": true,
+      "modes": [
+        "public"
+      ],
+      "values": [
+        "harness",
+        "template"
+      ]
+    },
+    {
+      "name": "card_png_url",
+      "type": "url",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "populated ONLY when you tap Share. The image you chose to publish; contains no field not listed above"
+    },
+    {
+      "name": "analysis",
+      "type": "analysis",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "model-written reading of the session, produced on the user's machine by their own Claude Code from a digest of the transcript (spec/analysis.v1.json). Present only when analysis upload is enabled. Private to the account under RLS; leaves it only when the session is shared. This is the ONE field that carries prose derived from prompts and code, and it is opt-in for exactly that reason."
+    },
+    {
+      "name": "feedback",
+      "type": "feedback",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "what this one sitting cost that you would not have chosen: [{id, seconds, count}] where id is one of three fixed notes. Numbers only: no command, no file name, no prose. Computed on the machine (analysis/feedback.py); the sentence is rendered on the phone. Null, never [], when the sitting had nothing worth saying",
+      "values": [
+        "went_nowhere",
+        "failed_in_a_row",
+        "one_file_over_and_over"
+      ]
+    },
+    {
+      "name": "live",
+      "type": "live",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "what a RUNNING session is doing now (spec/live.v1.json): enums, integers, clocks and 16 hex salted file ids. No path, file name, command, prompt or sentence. Only on state=live payloads; deleted when the session is final."
+    },
+    {
+      "name": "live_names",
+      "type": "live_names",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "OPT-IN, OFF BY DEFAULT: the basename of each file in live.map, keyed by its id. Sent only with `capture sync --live --live-names` and stored only while the account has File names on. Owner only; shown on the session screen, never on the Lock Screen, the widget, a push or a share."
+    },
+    {
+      "name": "burn",
+      "type": "object",
+      "item": "SessionBurn",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "where this sitting's tokens went and whether anything came of it (analysis/burn.py over the session window): counts, shares, enums and at most three costly stretches. No prompt, path, command, file name or tool name. Computed on the machine or by the hook channel; the phone writes every sentence. Null when the producer does not compute it; a refusal is burn.reason, never a zero."
+    },
+    {
+      "name": "title_ids",
+      "type": "object",
+      "item": "SessionTitleIds",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "an engineer voice title as ids (analysis/vocab.py session_title): a verb and an object from fixed tables and the numbers the title says. The phone renders the words from them; no file or directory name travels. A refusal is title_ids.reason with no verb or object, and it replaces a title stored before; null means only that the producer does not compute titles."
+    },
+    {
+      "name": "call_tokens",
+      "type": "object",
+      "item": "SessionCallTokens",
+      "nullable": true,
+      "modes": [
+        "public",
+        "anonymous"
+      ],
+      "doc": "what every call to the model sent and got back in this sitting (analysis/calls.py over the session window, each message counted once): at most 240 points of five token counts, the calls that came back to an expired cache, and the list price of each kind of token. Numbers and two enums: no prompt, path, command, file name, tool name or model name. Computed on the machine or by the hook channel; the phone draws the chart and writes every sentence. Null when the producer does not compute it; a refusal is call_tokens.reason, never a zero."
+    }
+  ],
+  "_objects_note": [
+    "The shapes of the three structured session fields added in v4, `burn`, `title_ids` and `call_tokens`, in the notation of spec/*.json",
+    "(scripts/gen_analysis.py's emitters read it). Numbers, bools and enums only: server/tests/test_contract.py fails on any",
+    "string field here. Every enum copies a Python table and is pinned to it both ways by that test: burn_cause to",
+    "analysis/burn.py _CAUSE_SENTENCES and the causes Segment detects, burn_repeat to burn._REPEAT_SENTENCES, title_verb,",
+    "title_object and title_refusal to analysis/vocab.py VERBS, OBJECTS and TITLE_REFUSALS; burn_refusal equals spec/report.v1.json's burn_refusal, one list of codes",
+    "for one module's refusals; call_tokens_refusal to analysis/calls.py REFUSALS and call_price_refusal to calls.PRICE_REFUSALS (pricing's own code).",
+    "A double is a 0 to 1 share and a number is a count of dollars at API list prices. The sentences are written on the phone from these",
+    "(burn.explain is the reference; spec/fixtures/burn/session.json pins the port), so nothing here carries a word."
+  ],
+  "enums": {
+    "burn_cause": [
+      "context_replay",
+      "subagent_fanout",
+      "error_loop",
+      "repeated_call",
+      "file_churn",
+      "compaction",
+      "investigated"
+    ],
+    "burn_refusal": [
+      "no_token_counts",
+      "below_session_floor",
+      "nothing_inside_segments",
+      "not_segmented"
+    ],
+    "burn_repeat": [
+      "shell",
+      "edit",
+      "read",
+      "other"
+    ],
+    "title_verb": [
+      "debugged",
+      "wired",
+      "refactored",
+      "shipped",
+      "committed",
+      "tested",
+      "built",
+      "explored",
+      "worked_through",
+      "edited",
+      "looked_around"
+    ],
+    "title_object": [
+      "test",
+      "source",
+      "config",
+      "docs",
+      "migration",
+      "style",
+      "build",
+      "dependency",
+      "unknown",
+      "test_suite",
+      "commit",
+      "failure",
+      "codebase"
+    ],
+    "title_refusal": [
+      "no_tool_calls",
+      "writes_name_no_file",
+      "harness_files_only",
+      "below_checkpoint_density"
+    ],
+    "call_tokens_refusal": [
+      "no_token_counts",
+      "too_few_calls"
+    ],
+    "call_price_refusal": [
+      "model_not_in_price_table"
+    ]
+  },
+  "objects": {
+    "SessionBurnCause": [
+      {
+        "name": "cause",
+        "type": "enum",
+        "values": "burn_cause"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "doc": "the count behind the cause: helpers dispatched, failing results, copies of one call, rewrites of one file, cache read tokens for context_replay, compactions, reads"
+      },
+      {
+        "name": "tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "the tokens this cause can claim out of the segment (burn.Segment.attribution). Claims overlap, so they never sum. Null when the segment carries no token counts"
+      },
+      {
+        "name": "repeat",
+        "type": "enum",
+        "values": "burn_repeat",
+        "nullable": true,
+        "doc": "repeated_call only: what repeated (burn._repeat_kind), so the phrase says a command only when one was. Null for every other cause"
+      }
+    ],
+    "SessionBurnSpike": [
+      {
+        "name": "tokens",
+        "type": "int",
+        "doc": "tokens in this segment"
+      },
+      {
+        "name": "multiple",
+        "type": "number",
+        "doc": "its tokens over the session's median segment, 1 dp"
+      },
+      {
+        "name": "barren",
+        "type": "bool",
+        "doc": "it spent tokens and provably changed nothing (burn.Segment.barren)"
+      },
+      {
+        "name": "lines_added",
+        "type": "int"
+      },
+      {
+        "name": "lines_removed",
+        "type": "int"
+      },
+      {
+        "name": "seconds",
+        "type": "int",
+        "doc": "from its prompt to its last event"
+      },
+      {
+        "name": "causes",
+        "type": "list",
+        "item": "SessionBurnCause",
+        "max_items": 3,
+        "doc": "why it cost what it did: the causes claiming the most tokens, most first, ties in burn's order, so causes[0] is burn's dominant cause whenever one claims a token. [] when no cause was detected"
+      },
+      {
+        "name": "files_changed",
+        "type": "int",
+        "nullable": true,
+        "doc": "files it changed, less the calls an error answered (burn.Segment.files_touched); the stretch's verdict reads it"
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "nullable": true,
+        "doc": "commit calls in it no error answered (burn.Segment.commits)"
+      },
+      {
+        "name": "unreadable",
+        "type": "bool",
+        "nullable": true,
+        "doc": "no visible work, but it ran something that could have changed a file the transcript does not show (burn.Segment.unreadable), so its verdict says it cannot be read rather than that nothing was written"
+      }
+    ],
+    "SessionBurn": [
+      {
+        "name": "tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "tokens inside this session's segments over its window, every assistant message counted once (burn.segments over burn.turns_for_window, deduplicated on message id). Null when refused, never 0 standing in for not counted"
+      },
+      {
+        "name": "cache_read_share",
+        "type": "double",
+        "nullable": true,
+        "doc": "share of tokens served from cache, the conversation re-reading itself. Not rounded: the phone rounds once, as burn._unrounded does. Null exactly when tokens is"
+      },
+      {
+        "name": "barren_share",
+        "type": "double",
+        "nullable": true,
+        "doc": "share of tokens spent in segments that provably changed nothing (burn.Segment.barren). Not rounded. Null exactly when tokens is"
+      },
+      {
+        "name": "unreadable_share",
+        "type": "double",
+        "nullable": true,
+        "doc": "share of tokens spent in segments with no visible work whose scripts, builds or helper agents could have changed files the transcript does not show (burn.Segment.unreadable): neither barren nor productive. Not rounded. Null exactly when tokens is"
+      },
+      {
+        "name": "segments",
+        "type": "int",
+        "doc": "segments the window was cut into, one human prompt to the next (burn.segments); 0 only with reason not_segmented"
+      },
+      {
+        "name": "lines_added",
+        "type": "int",
+        "nullable": true,
+        "doc": "lines added across the segments (burn.Segment.lines_added: edit tools plus credited shell writes), the count the summary's first sentence reads. Null when the window held no events"
+      },
+      {
+        "name": "lines_removed",
+        "type": "int",
+        "nullable": true,
+        "doc": "lines removed across the segments (burn.Segment.lines_removed). Null when the window held no events"
+      },
+      {
+        "name": "files_changed",
+        "type": "int",
+        "nullable": true,
+        "doc": "distinct files a call changed and no error answered, over the window (burn's rule, the one live's files_changed reads). Not files_touched, which counts every file named. Null when the window held no events"
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "nullable": true,
+        "doc": "commit calls no error answered, summed over the segments (burn.Segment.commits). Not commit_count, which is git log. Null when the window held no events"
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "burn_refusal",
+        "nullable": true,
+        "doc": "why tokens and the shares are null: no_token_counts (the transcript records no usage), not_segmented (no events to cut into segments), nothing_inside_segments (usage recorded, but no token fell inside a segment). below_session_floor is the corpus block's and never appears on a session. Null when answered"
+      },
+      {
+        "name": "spikes",
+        "type": "list",
+        "item": "SessionBurnSpike",
+        "max_items": 3,
+        "nullable": true,
+        "doc": "the costliest segments that cost at least burn.SPIKE_MULTIPLE times the median segment, most expensive first. Null when no spike can be named: reason is set, or segments is under spikes_needed, where a median would be an accident. [] only when enough segments were measured and none cleared the bar"
+      },
+      {
+        "name": "spikes_needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "burn.MIN_SEGMENTS_FOR_SPIKES, the segments a median needs before any segment is called a spike, so the phone can say why spikes is null"
+      }
+    ],
+    "SessionTitleIds": [
+      {
+        "name": "verb",
+        "type": "enum",
+        "values": "title_verb",
+        "nullable": true,
+        "doc": "the first title rule the session satisfied (vocab.VERBS, in the order they are tried). Null exactly when reason is set"
+      },
+      {
+        "name": "object",
+        "type": "enum",
+        "values": "title_object",
+        "nullable": true,
+        "doc": "what the title is about: a file role, or test_suite, commit, failure, codebase (vocab.OBJECTS). Null exactly when reason is set"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "nullable": true,
+        "doc": "the number the title says (vocab session_title count): files of that role, migrations, commits, recoveries, or failures in a row. Null only for looked_around"
+      },
+      {
+        "name": "modules",
+        "type": "int",
+        "nullable": true,
+        "doc": "distinct directories the project files were written in, the refactor title's second number (vocab session_title modules). Null when no project file was written"
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "title_refusal",
+        "nullable": true,
+        "doc": "why no title rule fired (vocab.TITLE_REFUSALS): no_tool_calls, writes_name_no_file (a harness that does not say which file a patch touched), harness_files_only (only Claude Code's own scratch or notes were written), below_checkpoint_density (too few visible writes, tests or commits for a title to describe the work rather than what the transcript hides). Null when a title answered"
+      }
+    ],
+    "SessionCallPoint": [
+      {
+        "name": "at",
+        "type": "int",
+        "doc": "seconds from the session's start to the first call in this point"
+      },
+      {
+        "name": "cache_read",
+        "type": "int",
+        "doc": "tokens re-read from the cache (cache_read_input_tokens), summed over the point's calls: the conversation so far, sent again"
+      },
+      {
+        "name": "cache_write",
+        "type": "int",
+        "doc": "tokens written to the cache (cache_creation_input_tokens, both lifetimes): what was new in the conversation, or all of it again after the cache expired"
+      },
+      {
+        "name": "input",
+        "type": "int",
+        "doc": "fresh input tokens, neither read from nor written to the cache"
+      },
+      {
+        "name": "output",
+        "type": "int",
+        "doc": "tokens the model wrote back"
+      }
+    ],
+    "SessionCallRewrite": [
+      {
+        "name": "call",
+        "type": "int",
+        "doc": "the call's number in this session, counting from 1; the first per_point calls are the first point, the next per_point the second"
+      },
+      {
+        "name": "away_seconds",
+        "type": "int",
+        "doc": "seconds since the call before it in the same transcript, which can sit in an earlier session: longer than lifetime_seconds. The session detail serves it to the session's owner only; anyone else reads null, since it would say when an earlier, perhaps unshared, session happened"
+      },
+      {
+        "name": "written",
+        "type": "int",
+        "doc": "the tokens it wrote to the cache again, more than half of everything it sent (calls.REWRITE_MIN_SHARE)"
+      }
+    ],
+    "SessionCallTokens": [
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "call_tokens_refusal",
+        "nullable": true,
+        "doc": "why there is no chart: no_token_counts (the sitting's files record no usage, or the harness is one burn does not read yet), too_few_calls (fewer than calls_needed; 0 when the files record usage and none of it fell inside this session). Null when answered; then every field below that can be is set"
+      },
+      {
+        "name": "calls",
+        "type": "int",
+        "nullable": true,
+        "doc": "calls to the model in the session window, each assistant message once and `<synthetic>` placeholders left out (calls.calls_of). Null only with reason no_token_counts, where nothing was counted"
+      },
+      {
+        "name": "calls_needed",
+        "type": "int",
+        "doc": "calls.MIN_CALLS, the calls a chart needs, so the phone can say why a short session has none"
+      },
+      {
+        "name": "per_point",
+        "type": "int",
+        "nullable": true,
+        "doc": "consecutive calls summed into each point: 1 up to 240 calls, then ceil(calls / 240), the last point holding the rest. Null when refused"
+      },
+      {
+        "name": "points",
+        "type": "list",
+        "item": "SessionCallPoint",
+        "max_items": 240,
+        "nullable": true,
+        "doc": "the calls in time order, per_point to a point. Their tokens sum to the tokens burn counts for the same window. Null when refused"
+      },
+      {
+        "name": "lifetime_seconds",
+        "type": "int",
+        "nullable": true,
+        "doc": "how long the cache kept what these calls wrote: 3600 when any call wrote with the one hour lifetime, 300 when they wrote only with five minutes, null when nothing was written to a cache (then no call is a rewrite) or when refused"
+      },
+      {
+        "name": "rewrites",
+        "type": "list",
+        "item": "SessionCallRewrite",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "calls that came back to an expired cache and wrote most of the conversation into it again, the 12 that wrote the most, in call order. [] when none did; null when refused"
+      },
+      {
+        "name": "rewrite_calls",
+        "type": "int",
+        "nullable": true,
+        "doc": "every such call, however many rewrites keeps. Null when refused"
+      },
+      {
+        "name": "usd_cache_read",
+        "type": "number",
+        "nullable": true,
+        "doc": "the re-reads at API list prices, dollars, each call priced on its own model (analysis/pricing.py cost_usd). Never a bill. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "usd_cache_write",
+        "type": "number",
+        "nullable": true,
+        "doc": "the cache writes at API list prices, dollars, the five minute and the one hour writes each at its own rate. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "usd_input",
+        "type": "number",
+        "nullable": true,
+        "doc": "the fresh input at API list prices, dollars. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "usd_output",
+        "type": "number",
+        "nullable": true,
+        "doc": "what the model wrote back at API list prices, dollars. Null when refused or when price_reason is set"
+      },
+      {
+        "name": "price_reason",
+        "type": "enum",
+        "values": "call_price_refusal",
+        "nullable": true,
+        "doc": "why the four dollar fields are null on an answered chart: model_not_in_price_table (a call that carries tokens names a model analysis/pricing.py has no price for, so it is not priced at a guess). Null otherwise"
+      }
+    ]
+  },
+  "quotes": {
+    "doc": [
+      "THE SECOND OPT-IN EXCEPTION (v4). Up to three prompts, verbatim, for the Wrapped cards that quote you. Off until BOTH Settings on the phone",
+      "and --quotes on the machine say yes. Masked, identifier filtered twice. Owner only; never in a post, feed, share, push or activity. Off deletes."
+    ],
+    "route": "PUT /v1/profile/quotes",
+    "default": "off",
+    "max_lengths": {
+      "quote": 160
+    },
+    "enums": {
+      "quote_card": [
+        "go_to_prompt",
+        "crash_out",
+        "cryptic_prompt"
+      ]
+    },
+    "objects": {
+      "QuoteWire": [
+        {
+          "name": "card",
+          "type": "enum",
+          "values": "quote_card"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "max": "quote",
+          "doc": "wrapped._quote: whitespace collapsed, cut at the last space inside 160"
+        },
+        {
+          "name": "client_session_id",
+          "type": "sha256hex",
+          "doc": "the session it was sent in, already on the server"
+        },
+        {
+          "name": "sent_at",
+          "type": "datetime"
+        },
+        {
+          "name": "seconds_in",
+          "type": "int",
+          "doc": "from that session's start to this prompt (the crash out sentence)"
+        },
+        {
+          "name": "tool_calls_after",
+          "type": "int",
+          "nullable": true,
+          "doc": "cryptic_prompt only"
+        },
+        {
+          "name": "corrected",
+          "type": "bool",
+          "nullable": true,
+          "doc": "cryptic_prompt only"
+        }
+      ]
+    },
+    "fields": [
+      {
+        "name": "quotes_version",
+        "type": "int"
+      },
+      {
+        "name": "generated_at",
+        "type": "datetime"
+      },
+      {
+        "name": "quotes",
+        "type": "list",
+        "item": "QuoteWire",
+        "max_items": 3
+      }
+    ]
+  },
+  "project_media": {
+    "doc": [
+      "PROJECT DEMOS (docs/demos.md). The stills and the one short video of a project, made on the Mac by `python -m capture demo`.",
+      "Nothing leaves by default. Opt in per project and per publish: `python -m capture demo --publish` prints how many files and how many",
+      "bytes it will send and waits for a yes. Owner only, whatever the session sharing settings; never in a post, feed, share, push or",
+      "activity. They are stored in a PRIVATE bucket of their own, never the one public post photos are served from, and no public address",
+      "reaches it: the phone reads each file through a presigned link good for 15 minutes (on the local stack, through the API's own bearer",
+      "check). Each upload link lives only as long as that one file's upload needs. Deleting a demo deletes its objects and rows in one",
+      "request, and deleting the account or excluding the repository deletes them too; whatever an upload leaves after its row is gone",
+      "(a link still good at the bucket) is swept by the same request, or by `python -m builder.media_sweep` when it lands later."
+    ],
+    "route": "POST /v1/projects/{key}/media:presign",
+    "default": "off",
+    "measured": [
+      "Still cap, 6 MiB: 1,043 simulator screenshots at 1206x2622 in this repository's shots/ (2026-09-14) run p50 252,957, p90 2,301,149",
+      "and max 4,122,031 bytes (a Lock Screen over a photo wallpaper). A 1320x2868 Pro Max frame has 1.20 times the pixels, about 4.9 MB",
+      "at the same content, so 6 MiB takes both. Video cap, 40 MiB: 30 s of 1206x2622 at 60 fps, H.264 CRF 18, fresh grain in every frame",
+      "(the worst case tried) came to 17,828,912 bytes; a smooth 30 s scroll through four real screens at CRF 23, 2,372,236. 40 MiB is 2.35",
+      "times the worst. Video length, 31,000 ms: the design's 30 s cut plus one second for frame rounding (a 29.97 fps cut of 30 s is 30.03 s)."
+    ],
+    "content_types": {
+      "image/png": {"kind": "image", "max_bytes": 6291456},
+      "image/jpeg": {"kind": "image", "max_bytes": 6291456},
+      "video/mp4": {"kind": "video", "max_bytes": 41943040}
+    },
+    "caps": {
+      "images": 8,
+      "videos": 1,
+      "video_ms": 31000,
+      "pixels": 8192,
+      "label_word": 24
+    },
+    "label_rule": "letters A to Z and a to z, digits, the space and , . ' ( ) : ? ! & only, at least one letter, no word over 24 characters, no dash of any kind and no hyphen",
+    "label_pattern": "^[A-Za-z0-9 ,.'():?!&]+$",
+    "max_lengths": {
+      "label": 80
+    },
+    "enums": {
+      "media_kind": [
+        "image",
+        "video"
+      ],
+      "media_content_type": [
+        "image/png",
+        "image/jpeg",
+        "video/mp4"
+      ],
+      "media_source": [
+        "capture",
+        "checkout",
+        "transcript",
+        "previous"
+      ],
+      "poster_content_type": [
+        "image/jpeg",
+        "image/png"
+      ]
+    },
+    "objects": {
+      "MediaPoster": [
+        {
+          "name": "content_type",
+          "type": "enum",
+          "values": "poster_content_type"
+        },
+        {
+          "name": "bytes",
+          "type": "int",
+          "doc": "1-6291456: the poster file's size in bytes, what the upload must send exactly"
+        }
+      ]
+    },
+    "fields": [
+      {
+        "name": "publish_id",
+        "type": "hex16",
+        "doc": "a random id the Mac mints for one publish run, so the server can tell the new set of files from the set it replaces. It says nothing about you or the project"
+      },
+      {
+        "name": "kind",
+        "type": "enum",
+        "values": "media_kind"
+      },
+      {
+        "name": "content_type",
+        "type": "enum",
+        "values": "media_content_type",
+        "doc": "PNG or JPEG for an image, MP4 for the video; the server checks the file starts like one"
+      },
+      {
+        "name": "bytes",
+        "type": "int",
+        "doc": "1-41943040: the file's size in bytes, what the upload must send exactly (an image at most 6291456)"
+      },
+      {
+        "name": "width",
+        "type": "int",
+        "doc": "1-8192: pixels across"
+      },
+      {
+        "name": "height",
+        "type": "int",
+        "doc": "1-8192: pixels down"
+      },
+      {
+        "name": "duration_ms",
+        "type": "int",
+        "nullable": true,
+        "doc": "1-31000: the video's length. Null for an image"
+      },
+      {
+        "name": "position",
+        "type": "int",
+        "doc": "0-63: its place in the set, one file per place"
+      },
+      {
+        "name": "label",
+        "type": "string",
+        "max": "label",
+        "doc": "the state it shows, in plain words (the session page, scrolled to the chart); the characters are bounded by label_rule"
+      },
+      {
+        "name": "source",
+        "type": "enum",
+        "values": "media_source",
+        "doc": "where it came from: capture (recorded from the running app), checkout (an image already in the repository), transcript (one your coding tool saved), previous (the last good capture)"
+      },
+      {
+        "name": "poster",
+        "type": "object",
+        "item": "MediaPoster",
+        "nullable": true,
+        "doc": "the video's still frame, shown before it plays and under Reduce Motion. Null for an image"
+      }
+    ]
+  }
 }

@@ -190,15 +190,199 @@ line in the message. The rule lives in `mobile/src/config/apiBaseUrl.ts`, not in
 config, so `bun test` can run it: a guard nobody has ever executed is a guard nobody should
 trust.
 
+**One sitting in three containers is three sittings.** opencode keeps every session in a
+SQLite database, and a machine upgraded from an older release still has the pre-SQLite
+`storage/session/**.json` tree it was migrated from; an `opencode export` file may be
+sitting beside both. All three hold the same sessions, so discovering "every session file
+under the data directory" TRIPLES that person's hours with no error anywhere.
+`capture/harnesses.py` keeps one container per session id, database first, and Gemini's
+legacy whole-conversation `.json` is deduped against its `.jsonl` the same way.
+
+**A contract enum value is always also a migration.** Adding `opencode` and `aider` to
+`privacy/upload-contract.json` regenerates the Pydantic model, the Swift enum and the
+TypeScript union, and all three accept the new value immediately. Postgres does not: the
+`harness` TYPE is created in `0001` and grown by hand, so the first upload carrying a new
+label is `invalid input value for enum harness` on the INSERT and a 500 the client cannot
+act on. `test_every_contract_harness_exists_in_the_postgres_enum` reads the migrations
+rather than trusting a comment.
+
+**A correct per-session number can be an incorrect corpus total.** Every session asks git
+what landed in its own window (plus the 30-minute attribution lookback), which is right on
+its own card: "19 commits landed while you worked". Two sessions running AT ONCE in one
+repository both get the same commits, so the SUM is not the number of commits. MEASURED on
+this container: eleven sessions summed to 98 where `git log` over the same day counted 75,
+because parallel agent sessions overlapped and one ran entirely inside another. The corpus
+total is refused (`overlapping_session_windows`) rather than reported 31% high, and null is
+not zero: the phone drops the row instead of claiming nothing was committed.
+
+**A default root that guesses reads files nobody offered.** Every tool but one owns a
+directory: `~/.codex`, `~/.gemini`, the extension's globalStorage, opencode's data dir.
+Aider writes `.aider.chat.history.md` into the REPOSITORY you ran it in, and the first
+version of `capture/harnesses.py` guessed `~/src`, `~/code`, `~/projects`, `~/work` and
+walked them recursively. On a CI runner `~/work` IS the checkout, so discovery walked this
+repository and reported its own Aider FIXTURES as the user's sessions. Aider now has no
+default root at all; `discover(repo_roots=...)` reads only `<repo>/.aider.chat.history.md`
+in repositories this machine's own transcripts already resolved to, which is knowledge
+rather than a guess.
+
+**A heredoc body is DATA, and this parser read a piece of documentation as a file write.**
+`_bash_file_effect` searched the whole Bash command for `cat > path <<'EOF'`. CLAUDE.md contains
+that string inside a sentence about this very rule, and CLAUDE.md is edited through
+`python3 - <<'PY' … PY` — an opener the `cat|tee` pattern does not match, so the scan walked past
+it, found the quoted one INSIDE the prose, and attributed 134 lines to a file literally named
+`path`. Corpus total 10,487 attributable lines -> 10,280 once bodies are skipped. The scan is
+line-based now and skips every heredoc body it meets, in `analysis/digest.py` and in
+`BuilderParse.ShellFileEffect` together. `<<<` is a here-STRING with no body and is excluded from
+BOTH SIDES: `<<(?!<)` alone still matches the second and third `<`, which turned
+`grep x <<< 'hello'` into a heredoc with the delimiter `hello` that swallowed the rest of the
+command.
+
+**"Nothing happened" is a claim about the parser until you prove it is not.** The per-session
+card grew a note saying the agent ran a long way with nothing written, tested or committed. The
+first time a payload was actually built with it, 38 OF THE 45 boundary fixtures carried it, one of
+them for 22 hours. Those fixtures are synthetic and contain no write, test or commit at all — and a
+real harness whose transcripts hide file writes produces the same shape, because an edit made by a
+script the agent wrote is a Bash call with no line count anywhere in it. `patterns.py` already had
+`MIN_CHECKPOINT_DENSITY` for exactly this and the session note did not; it does now, importing the
+same threshold rather than choosing a second one. Two of the existing tests then failed, because
+their fixtures were pure busywork — they had been passing on a refusal, not on the bar they named.
+
+**A window is a QUESTION, and answering it without saying how much of it you had is the
+worst failure in this file — I made it myself.** `python -m analysis report --days 30` in a
+fresh container answered with two days of transcripts and said so nowhere. I then read the
+result out as a description of somebody who had been building for over a month, including
+"109 commits, none written alone" — which was true of a container that had existed since
+Tuesday and false about the person. No number anywhere in the document would have caught it.
+`sample.days` existed and was the count of days BUILT, which is not how far back the
+transcripts go: two sittings a month apart are 2 active days across 30, and reading one as
+the other is how this happened. `sample.spans_days` is the calendar distance now, and the
+report carries a `coverage` block stating the window asked for beside what was found. NO
+THRESHOLD AND NO VERDICT: 30 against 2 needs no adjective, and a `partial` boolean would be
+a judgement the reader could not overrule.
+
+**A denominator that stops meaning anything is a wrong number with no error.** `Fanout.parallelism`
+was agent-seconds over WALL seconds, which over one sitting reads correctly as "four hours of
+agent work inside one hour of your life". Over a corpus it does not: MEASURED on this container,
+53 agents did 11.9 hours of work inside a 19.3 hour stretch, and the ratio came out `0.61x` — a
+concurrency figure below one, printed beside `max_concurrent: 8`, with nothing to tell a reader
+which of the two was wrong. The denominator is now BUSY seconds, the union of the spans, so the
+number is "while agents were running, this many were running" and can never fall below 1.0 when
+anything ran. How much of the stretch had an agent in it is a different question and is reported
+as one (`busy_share`).
+
+**A rule copied into a second module is a definition that will drift.** `counted` decides
+`visible` on the wire, which decides the population every server-side aggregate runs over. It was
+written out twice — `capture/sessions.py` and `analysis/__main__.py` — and the uploader's own new
+report path used neither, so it measured sittings the phone does not display and moved SEVEN of
+this container's commits from "alone" to "assisted". `capture.sessions.is_counted` is the one
+definition now, and a test asserts the constant appears exactly twice in that file: once imported,
+once used.
+
 **The density floor is a design constant, not a detail.** At 0.45 the identity amber
 rendered as muddy brown across most of a real strip, because a 71-minute session is 4.2s
 per column and most columns land in the lowest bucket. Density should modulate the colour,
 not dilute it.
 
+**Silence after the agent stopped is not the agent spinning.**
+`patterns._runs_with_nothing_to_show` credited the trailing stretch to the session's
+`ended_at` rather than to the last tool call, so every idle second after the work finished
+counted as the agent going nowhere. A sitting whose last 50 calls finished in 100 seconds
+and whose window ran two more hours reported a two hour stretch. The boundary rules
+deliberately extend `endedAt` by the trailing gap, which is right for active time and wrong
+for this: the corpus total was 2h11m and is 2h09m.
+
+**The subagent sidecars are 12,236 records nothing had ever read.** Excluding them from
+token counts is correct and it also made every agent invisible. `analysis/agents.py` reads
+them and NEVER contributes a token, a line or a commit: it answers how many agents, of what
+kind, running at once or one after another, and whether the delegation produced anything.
+MEASURED: 52 agents in one sitting, up to 8 at the same moment, 712 agent-minutes inside a
+1,159 minute stretch. Two rules that fail silently: discovery is an ALLOWLIST on path shape
+(50 of 165 jsonl files here are in sibling `workflows/` and `tool-results/` directories),
+and a handoff at the same instant is NOT two agents at once, or every consecutive chain
+reads as parallel.
+
+**A cost in tokens and the same cost in dollars can point opposite ways.** The sittings
+that ended with no commit were 23% of the output TOKENS and 1% of the money, because the
+quiet ones were cheap Sonnet sittings and every expensive Opus one shipped. The token
+version was a true sentence pointing at waste that was not there. `analysis/pricing.py` is
+the only place a price lives, it carries the day it was read, and the number is labelled
+API LIST PRICES everywhere: most people are on a subscription and "you spent $12" is false
+for them.
+
+**One rule is one function, even when the arguments are in a different order.** The build
+post migration first added a `repo_excluded_for_owner(repo, user)` beside the existing
+`session_repo_excluded(user, repo)`. `can_view_post` COALESCEs the pair out of whichever of
+the session or the post carries it and calls the one function.
+
+**A `JOIN` written when a post could only be about one session.** `can_view_post` and the
+feed query both INNER JOIN `sessions`, so a build post (0017) matched nothing: invisible to
+everyone including its author, and absent from every feed, with no error. The exclusion
+sweep had the same shape, deleting sessions and never reaching a post that has none.
+
+**A clock anchored on the wrong row ages every number by how long the transcript was quiet.**
+The phone put "waiting since" and the ETA on the Lock Screen from the SESSION row's
+`updated_at`. A heartbeat re-cut of an unchanged transcript refreshes the live state and
+leaves the session row alone (the content hash does not move), so both clocks drifted by
+the length of every quiet stretch while the server's push for the same state said
+something else. Every clock counts from `live_state.computed_at` (`surface.anchorOf`,
+`live_push.anchor_of`); `spec/fixtures/live/content_state.json` holds its rows 90 s older
+than their states so an anchor on the wrong one fails 12 cases.
+
+**A dash rule copied three times is three rules.** `plain.py` counts four characters (em,
+en, the horizontal bar, the U+2212 minus sign); `src/live/sentence.ts` and the phone's copy
+scan each held two, and the Lock Screen drew U+2212 before a removed line count, which the
+widget string scan passed because it read the Swift escape `\u{2212}` as six letters. One
+rule on the phone now (`src/copy/plain.ts`, which the others import), the scan decodes
+escapes, and a removed count is `-88` on every surface.
+
+**A paragraph measured at exactly N lines can lose its last line, with no error.** React Native
+0.79 measures text and ceils it to the pixel, but Yoga then rounds a frame's two edges to the grid
+separately, so four lines of 23 points were framed 91.99975 tall, and `RCTTextLayoutManager` built
+its text container from that frame; NSLayoutManager lays out only lines that fit whole, so the
+sentence ended "and 118,884 toke" with nothing after it. Where a paragraph lands on screen decides
+whether it happens, so it is app wide and sporadic. `mobile/patches/react-native@0.79.6.patch`
+(bun's `patchedDependencies`) gives the container half a point of slack each way; checked on the
+simulator with the chapter's own JS workaround switched off: cut before, whole after.
+
+**A debug build's API address is baked in at build time, not served by Metro.** The
+simulator ran JavaScript from a Metro started with `BUILDER_API_URL=http://127.0.0.1:8787`
+and still called `localhost:8000` for everything: this is not a dev client build, and
+`expo-constants` reads the `app.config` embedded when Xcode built it. Build with the
+variable set (`BUILDER_API_URL=... npx expo run:ios --device <udid> --no-bundler`) and
+check `Builder.app/EXConstants.bundle/app.config`, not Metro's manifest.
+
+**A gate written for a 13x bug refused four honest conversations.** `sanity_gate` rejects
+more typed prompts than tool calls, because counting every `type: "user"` record puts
+every tool RESULT in the prompt count. After capture bucketed every tool call, MEASURED:
+four real sittings still had more prompts than calls (6 to 2, 5 to 2, 4 to 2, 2 to 1),
+each checked against the raw JSONL. The bug lifts EVERY session with a typed prompt above
+its tool count, so the gate reads the comparison only from `PROMPT_GATE_MIN_TOOL_CALLS` (3)
+calls up, where it still catches a broken client on 110 of the corpus's 115 sessions with a
+prompt; 6 of 158 sittings have fewer calls than that.
+
+**A window is a question the report answered about everything.** `report.from_corpus` built
+every block over every sitting the machine held and the phone printed "the last 30 days" over it.
+MEASURED on the committed report: coverage Aug 11 to Sep 13, 33 dates, 158 sittings, under
+`window_days: 30`. The cut stays whole (the trends need the window before this one) and
+`corpus.window` narrows facts, sittings, commits, agents and manifests to one bound inside
+`from_corpus`; the phone says "the last N days" only when `withinWindow` holds and the stretch it
+read otherwise. Over the same corpus: 143 sittings over 31 dates, $2,564.02 where $2,951.68 was
+the whole history.
+
+**`--git-common-dir` has a second half.** Git runs in the common root, the main checkout, and a
+bare `git log` there walks only ITS HEAD, so every sitting in a worktree uploaded zero commits.
+MEASURED on this machine: 0 commits in two days from the common root against 32 with
+`--branches`; over the overnight report's window, 197 against 503, the sittings whose own window
+held no commit 74 against 35. `--branches`, never `--all`: that adds remote only branches (a cloud
+session's push) and `refs/stash`. One constant, `GIT_LOG_REFS` / `Tuning.gitLogRefs`, read by every
+`git log`. The 139 commits on this repository's overnight branch were made in sittings outside the
+overnight corpus, so its report counts them as written alone: the corpus's reach, not the rule's.
+
 ## Commands
 
 ```bash
 make gen          regenerate from the three specs
+make lint         the server lint EXACTLY as CI runs it, pinned ruff
 make test         the ground-truth regression suite
 make scan         parse everything and report
 make watch        daemon: watch, sessionize, notify on completion
@@ -211,25 +395,53 @@ cd server && pytest            contract, RLS, boot guard, auth bootstrap
 make measure                   boundary rules over your corpus, read-only
 make analyze T=<jsonl>         digest + your own Claude Code -> SessionAnalysis
 python -m analysis probe DIR   what record shapes a foreign transcript store holds
+python -m analysis trends       how you build now against how you built before
+python -m analysis agents       several agents at once: who ran, and what landed
+python -m analysis rules --list failures that recurred across DIFFERENT sittings
+python -m analysis playbook     your prompts that landed, against the ones that cost
+python -m analysis contributions your commits, split by whether an agent was in the room
+python -m analysis cards        what this corpus gives you to put in a feed
+python -m analysis shipped      a build post: what you made, and what was hard
+python -m analysis wrapped      the fifteen cards: how you build, each one answered or refused with a reason
+python -m analysis live         mission control: what each running session is doing, who needs you first (--watch N)
+python -m analysis vocab        the words your sessions earned, what the project is made of, engineer titles
 make capture-test              the cloud uploader against the boundary fixtures and the contract
+make check-gen                 make gen, then fail if any generated file moved (the first CI gate)
+python -m analysis report          the whole builder report, printed: trends, agents, commits, green
+python -m capture report --dry-run what would be uploaded to the profile, without sending
+python -m capture report --quotes  also up to three quoted prompts, only while Settings > Quote my prompts is on
+python -m capture quotes --delete  delete every quote the server holds
 python -m capture sync --dry-run   what a cloud container would upload, without sending
+python -m capture sync --live      a running session's upload carries its live state (--live-names: basenames, opt in)
+python -m capture live --transcript T  the hook's route with no hook installed: tail a running transcript to the server
+python -m capture demo [PATH] --plan  how it would run the project (kind, steps, why each); runs nothing
+python -m capture demo --project P [--app A.app]  stills + a 10 to 30 s video of it running, in a clone, Vision checked (docs/demos.md)
+python -m capture demo --publish   a project's demo to your account, after it prints every file and you say yes (--list shows it, --delete removes it)
+cd server && python -m builder.media_sweep [--dry-run]  delete demo objects no row keeps (uploads that outlived their row); hourly, as WORKER_DATABASE_URL
 curl $SERVER/v1/ingest/hook.sh   the Claude Code hook: nothing installed, sessions on the phone (docs/hooks-capture.md)
+scripts/overnight_stack.sh up|sync|live T|token|phone|test|status   the local end to end stack, API on 127.0.0.1:8787
 ```
 
 Design notes worth reading before touching the corresponding code: `docs/session-boundaries.md`
 (when a session ends, two clocks, three cuts), `docs/analysis.md` (the digest rules and the
 prompt), `docs/integrations.md` (where every tool keeps its transcripts), `docs/social.md`
-(the layer that is deliberately small).
+(the layer that is deliberately small), `docs/analysis-complete.md` (the two kinds of
+analysis, every metric, and the nine things this codebase refuses to compute), `docs/approved-roadmap.md` (what is being built, and what was
+rejected with the evidence), `brief.md` and `PROGRESS.md` (the overnight brief and where it stands),
+`docs/overnight-engine.md` (the fifteen wrapped cards, the live engine, vocabulary, the burn and profile
+fixes, each deviation with its measurement), `docs/overnight-integration.md` (how the engine reaches the
+phone: report v2, contract v4, the live spec, pushes, the opt in quotes and file names, and every
+deviation), `docs/hooks-capture.md` (the hook channel and the live watcher).
 
 ## What each suite is actually for
 
 | suite | n | protects |
 |---|---|---|
-| `swift test` | 136 | the measured ground truth, that a shell-written file reaches the card, the strip fixtures, the boundary fixtures (v3: lineage pooling, the threshold fitter against the Python fit), the Codex and Gemini fixtures, the live-path fixtures, digest parity with the Python reference, the analysis scheduler's retry rules |
-| `bun test` | 389 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the eight-animal pack's frames, palette recipes and per-frame change ceiling; the profile screen's archetype wording and its closest-rule fallback |
-| `pytest` | 124 | that undeclared fields cannot be stored, that RLS is real (as builder_app, through the routes), auth bootstrap, contract v2/v3, social, capture keys and their scope, the notification horizon, the hook channel's parity with capture, the corpus profile's server-side refusals |
-| `unittest` (analysis/) | 160 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules |
-| `make capture-test` | 56 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth |
+| `swift test` | 139 | the measured ground truth, that a shell-written file reaches the card, the strip fixtures, the boundary fixtures (v3: lineage pooling, the threshold fitter against the Python fit), the Codex and Gemini fixtures, the live-path fixtures, digest parity with the Python reference, the analysis scheduler's retry rules; that a worktree's commits are counted from the common root (every local branch) |
+| `bun test` | 2052 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the pixel family's rules, Bit and the eight animals held to the same ones (one ink, the shared eye holes, the 12x12 live area and row-13 baseline, mass within 15% of the mean, no one-cell-thin parts, outlines 24 cells apart, all facing forward, idle as rest, a drawn breath and one gesture with no drift or scale); the profile screen's archetype wording and its closest-rule fallback; that no refused block of the report renders as a zero; that every feedback note the contract declares has a sentence on the phone, and that an id this build does not know renders nothing rather than a debug string; that a machine covering the whole window stays silent rather than caveating nothing; the Live Activity card `toState` builds equals the server's `live_push.content_state` key for key on every `content_state.json` case, and the live sentence equals `live.sentence` over 45,000 states; activity tokens go to the server only with Lock Screen details on and are forgotten when a card ends; details off says only "Builder · N running"; every Wrapped card and every session burn sentence renders exactly what Python renders; the one dash rule, U+2015 and U+2212 included; that "the last N days" is said only when the numbers sit inside that window, and the stretch read otherwise; one whole minutes rule for a session's figure and its sentence, one formatter for a token count; that the agents header never shows a count the card does not; every shipped route, derived from `app/`, held to the design law |
+| `pytest` | 309 | that undeclared fields cannot be stored, that RLS is real (as builder_app, through the routes), auth bootstrap, contract v2/v3, social, capture keys and their scope, the notification horizon, the hook channel's parity with capture, the corpus profile's server-side refusals, the report's door (nested extras, enums, string bounds) and that a null block survives the round trip; that a session's feedback round trips, is not wiped by a client that does not compute it, and cannot carry an undeclared note id or a word of prose; contract v4 (tool map keys, live, live names, burn, title ids, quotes) and its enums pinned to the engine's tables both ways; the live state's ingest, slim list body, RLS and deletion at finalise; ActivityKit pushes only on a phase or trajectory change, an end on every live to final move; quotes and file names off by default and deleted when turned off, a racing store included; report v2's five blocks; spend priced from the stored token buckets |
+| `unittest` (analysis/) | 1218 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules; that the report's keys ARE the spec's keys at every level and that no field in it can carry free text; that a session note refuses to call a parser blind spot "nothing happened", that neither the failing command nor the file name reaches the wire, that a heredoc body is never read as a command, and that a lockfile is never the language you chose, and that a report always says how much of the window it could actually answer; burn forensics (usage deduplicated on message.id, the refusal when a harness writes no counts, the refusal to name a spike below five segments, cause attribution, no dashes); the fifteen wrapped cards (one shape, refusals with reasons, attended time decides records, quotes only when asked, nothing LOCAL on the wire); live verdicts, ETA refusals, decisions and the needs you order; the vocab catalog, titles and stack; `plain`'s role rules and the one definition of a dash; that the digest text does not move with the two new `Ev` fields; and that the CLI printers print no dash and no zero nobody measured; report v2's blocks pinned to the spec and its tables; the one corpus cut; eleven scenario transcripts read back through the real parser, the capture cut and `live.session_state`; that every report block reads the window it names (`corpus.window`), commits and agents included; that an excluded repository's agents never reach the report and agent types travel as an enum; that the inner of two parallel sittings did not end with no commit; dollars an hour over the priced hours alone |
+| `make capture-test` | 137 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth, and that every other harness discovers, dedupes and uploads; every tool call bucketed; burn and title ids on the wire; the live watcher sends only complete lines, resumes on a 409 and heartbeats, backs off to 300 s and remembers a tail too big to post; `report --quotes`; a worktree's commits counted over every local branch; a resumed sitting's payload counting each event and message once |
 | CI `reference` job | — | the boundary fixtures are what `scripts/measure_boundaries.py` produces |
 
 CI runs on `main`, on `claude/**` branches and on demand. The macOS job is the only Swift

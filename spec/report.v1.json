@@ -1,0 +1,2474 @@
+{
+  "_comment": [
+    "THE BUILDER REPORT. The second of the two documents about a person: the session card",
+    "says what just happened, and this says how they build and whether it is changing.",
+    "",
+    "NOTHING IN HERE IS WRITTEN BY A MODEL. Every field is a number this machine measured,",
+    "which is why there is no JSON Schema output and no `stamped` rule: there is no",
+    "constrained decoder to constrain and no claim to take back. What the spec buys is the",
+    "same thing it buys everywhere else — one definition, three notations, and a door the",
+    "server can close with `extra='forbid'` on a document it did not compute.",
+    "",
+    "scripts/gen_report.py emits, both committed, both `git diff --exit-code`'d in CI:",
+    "  server/builder/report_spec.py     Pydantic, extra='forbid', on the way into Postgres",
+    "  mobile/src/generated/report.ts    what the profile screen renders",
+    "",
+    "WHY THE SERVER CANNOT COMPUTE IT. Three of the five blocks rest on things that never",
+    "leave the machine (privacy/upload-contract.json): subagent sidecar transcripts, shell",
+    "command text, and prompt text. The server has counts, not commands, so it can no more",
+    "compute `quality` than it can compute the narrative.",
+    "",
+    "WHAT IS DELIBERATELY NOT HERE. `analysis/rules.py` produces CLAUDE.md lines from ERROR",
+    "TEXT, which carries paths and file names; it stays on the machine and is written to a",
+    "file there. `analysis/playbook.py` splits PROMPTS, so only its counts travel and not one",
+    "word of a prompt. Every field below is a number, a date, a metric name or a label from",
+    "a fixed table in this repository.",
+    "",
+    "NULL IS NOT ZERO, everywhere in this document. A block is null when it was refused, and",
+    "the refusal carries its reason so the phone can say why instead of drawing an empty",
+    "chart. A `reason` beside a null number is the difference between 'we do not know' and",
+    "'it was nothing'.",
+    "",
+    "VERSION 2 appends five nullable blocks after `languages`: wrapped, money, burn, vocab",
+    "and stack (docs/overnight-integration.md section 1), so a v1 document still validates.",
+    "A null BLOCK means only that the machine which sent this report does not compute it (an",
+    "older capture). A refusal is the block's own `reason` with its numbers null.",
+    "",
+    "INSIDE THE FIVE BLOCKS NO FIELD IS A STRING. Every one is an enum from a fixed table in",
+    "this repository, a number or a clock, and every `reason` is an enum code the phone turns",
+    "into a sentence with `n` and `needed`. The phone renders every word; nothing rendered",
+    "travels (docs/overnight-engine.md rule 5).",
+    "",
+    "Four enums copy a Python table, and a test pins each copy both ways: wrapped_card is",
+    "wrapped.CARD_IDS, priced_model is pricing.PRICES, vocab_term is vocab.CATALOG and",
+    "stack_item is vocab.STACK. A new row there is an edit here plus `make gen`, never a",
+    "migration: the report is stored as JSONB.",
+    "",
+    "VERSION 3 appends one nullable block after stack: projects (docs/projects.md). The",
+    "report's own blocks, asked of one repository at a time, each project under its KEY,",
+    "the repository's salted hash every session upload already carries as repo_hash. No",
+    "name travels: the server adds a public repository's name beside the key when it",
+    "serves the block. Like the version 2 blocks, no field inside it is a string: enums,",
+    "numbers, clocks and keys, and every reason an enum code the phone words.",
+    "",
+    "Two more enums copy a table, each pinned both ways by a test: language is every name",
+    "analysis/languages.py can give a language, and harness is the upload contract's own.",
+    "",
+    "The projects block also carries a week axis (weeks, at most twelve ISO weeks on the local",
+    "day at 04:00, never before the machine's first sitting) and each project's sittings on it",
+    "(history.weeks), for the phone's week by week drawings. Both are nullable and appended",
+    "without a version: a version 3 document from before them still validates, and its phone",
+    "reads their absence as not computed, never as weeks of zero."
+  ],
+  "version": 3,
+  "max_lengths": {
+    "label": 80,
+    "reason": 200
+  },
+  "enums": {
+    "trend_direction": [
+      "up",
+      "down",
+      "steady"
+    ],
+    "agent_type": [
+      "general-purpose",
+      "Explore",
+      "Plan",
+      "fork",
+      "workflow-subagent",
+      "statusline-setup",
+      "output-style-setup",
+      "claude-code-guide",
+      "unknown",
+      "custom"
+    ],
+    "wrapped_card": [
+      "builder_type",
+      "shipped",
+      "work_style",
+      "longest_session",
+      "agents_at_once",
+      "go_to_prompt",
+      "streak",
+      "change_course",
+      "crash_out",
+      "prompt_length",
+      "deep_sessions",
+      "time_put_in",
+      "cryptic_prompt",
+      "prompts_per_session",
+      "kind_of_work"
+    ],
+    "wrapped_unit": [
+      "archetype",
+      "lines",
+      "style",
+      "seconds",
+      "sessions",
+      "sends",
+      "days",
+      "share",
+      "score",
+      "words",
+      "hours",
+      "prompts_per_session",
+      "kind"
+    ],
+    "wrapped_basis": [
+      "archetype_rules",
+      "project_edit_tools_and_credited_shell_writes",
+      "edit_tools_only",
+      "uploaded_agent_lines",
+      "absent",
+      "autonomy_then_prompts_then_steer",
+      "attended_seconds_rank",
+      "sweep_over_first_to_last_event",
+      "normalized_prompt_text_across_sessions",
+      "days_with_a_commit_and_an_attended_session",
+      "interrupts_and_correction_markers",
+      "profanity_caps_punctuation_markers",
+      "words_per_prompt",
+      "attended_sessions_over_an_hour",
+      "active_seconds",
+      "vowelless_runs",
+      "prompts_over_attended_sessions",
+      "commit_subject_labels",
+      "lines_by_file_role",
+      "commit_subject_labels_then_lines_by_file_role"
+    ],
+    "wrapped_value": [
+      "architect",
+      "velocity_machine",
+      "quality_guardian",
+      "night_owl",
+      "director",
+      "skeptic",
+      "generalist",
+      "hand_off",
+      "dialogue",
+      "steering",
+      "one_shot",
+      "feature",
+      "fix",
+      "refactor",
+      "docs",
+      "test",
+      "chore",
+      "perf",
+      "style",
+      "build",
+      "revert",
+      "source",
+      "config",
+      "migration",
+      "dependency",
+      "unknown"
+    ],
+    "wrapped_refusal": [
+      "no_sessions",
+      "below_session_floor",
+      "below_attended_floor",
+      "below_prompt_floor",
+      "below_own_words_floor",
+      "no_prompt_text",
+      "no_archetype_metric",
+      "no_line_counts",
+      "no_lines_attributed",
+      "no_presence",
+      "no_events",
+      "no_repeated_prompt",
+      "no_commit_history",
+      "no_crash_out",
+      "no_cryptic_prompt",
+      "neither_kind_basis"
+    ],
+    "archetype": [
+      "architect",
+      "velocity_machine",
+      "quality_guardian",
+      "night_owl",
+      "director",
+      "skeptic"
+    ],
+    "archetype_metric": [
+      "planning_ratio",
+      "code_velocity",
+      "test_runs_per_hour",
+      "night_share",
+      "autonomy_score",
+      "steer_rate"
+    ],
+    "commits_basis": [
+      "git_log_distinct_commits"
+    ],
+    "kind_refusal": [
+      "no_subjects",
+      "too_few_labelled",
+      "low_label_coverage"
+    ],
+    "commit_kind": [
+      "feature",
+      "fix",
+      "refactor",
+      "docs",
+      "test",
+      "chore",
+      "perf",
+      "style",
+      "build",
+      "revert"
+    ],
+    "plain_role": [
+      "test",
+      "source",
+      "config",
+      "docs",
+      "migration",
+      "style",
+      "build",
+      "dependency",
+      "unknown"
+    ],
+    "money_basis": [
+      "anthropic_api_list_price",
+      "stale_prices"
+    ],
+    "money_refusal": [
+      "tokens_not_reported",
+      "model_not_in_price_table"
+    ],
+    "priced_model": [
+      "claude-fable-5-1",
+      "claude-mythos-5-1",
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5"
+    ],
+    "lines_basis": [
+      "project_edit_tools_and_credited_shell_writes",
+      "edit_tools_only",
+      "uploaded_agent_lines",
+      "absent"
+    ],
+    "burn_cause": [
+      "context_replay",
+      "subagent_fanout",
+      "error_loop",
+      "repeated_call",
+      "file_churn",
+      "compaction",
+      "investigated"
+    ],
+    "burn_refusal": [
+      "no_token_counts",
+      "below_session_floor",
+      "nothing_inside_segments",
+      "not_segmented"
+    ],
+    "vocab_term": [
+      "commit",
+      "branch",
+      "merge",
+      "rebase",
+      "diff",
+      "stash",
+      "revert",
+      "cherry_pick",
+      "worktree",
+      "pull_request",
+      "force_push",
+      "git_hook",
+      "test_suite",
+      "unit_test",
+      "fixture",
+      "snapshot_test",
+      "end_to_end_test",
+      "mock",
+      "coverage",
+      "type_check",
+      "linter",
+      "formatter",
+      "ci",
+      "dependency",
+      "lockfile",
+      "package_manager",
+      "build",
+      "bundler",
+      "monorepo",
+      "virtualenv",
+      "env_var",
+      "secret",
+      "module",
+      "api",
+      "endpoint",
+      "schema",
+      "migration",
+      "database",
+      "query",
+      "rls",
+      "orm",
+      "cache",
+      "queue",
+      "webhook",
+      "cron_job",
+      "auth",
+      "jwt",
+      "cors",
+      "rate_limit",
+      "container",
+      "deploy",
+      "server",
+      "port",
+      "process",
+      "log",
+      "stack_trace",
+      "ssh",
+      "shell_script",
+      "makefile",
+      "simulator",
+      "subagent",
+      "mcp",
+      "web_search",
+      "regex",
+      "glob",
+      "compaction",
+      "heredoc",
+      "patch",
+      "symlink",
+      "permissions",
+      "feature_flag",
+      "type_definitions",
+      "monitoring",
+      "routing_engine"
+    ],
+    "vocab_refusal": [
+      "no_events"
+    ],
+    "stack_item": [
+      "python",
+      "typescript",
+      "javascript",
+      "swift",
+      "kotlin",
+      "go",
+      "rust",
+      "ruby",
+      "java",
+      "sql",
+      "shell",
+      "dart",
+      "cpp",
+      "csharp",
+      "php",
+      "html",
+      "css",
+      "react",
+      "react_native",
+      "expo",
+      "nextjs",
+      "fastapi",
+      "django",
+      "flask",
+      "express",
+      "tailwind",
+      "vue",
+      "svelte",
+      "reanimated",
+      "swiftui",
+      "sqlalchemy",
+      "react_native_maps",
+      "postgres",
+      "sqlite",
+      "redis",
+      "mongodb",
+      "mysql",
+      "docker",
+      "railway",
+      "vercel",
+      "cloudflare",
+      "aws",
+      "github_actions",
+      "eas",
+      "fly",
+      "prometheus",
+      "grafana",
+      "google_cloud",
+      "pytest",
+      "jest",
+      "vitest",
+      "bun_test",
+      "playwright",
+      "xctest",
+      "cypress",
+      "maestro",
+      "locust",
+      "git",
+      "bun",
+      "npm",
+      "uv",
+      "ruff",
+      "eslint",
+      "prettier",
+      "make",
+      "xcode",
+      "android_sdk",
+      "cocoapods",
+      "alembic",
+      "posthog",
+      "stripe",
+      "sentry",
+      "openai",
+      "anthropic",
+      "supabase",
+      "firebase",
+      "mapbox",
+      "google_maps",
+      "valhalla",
+      "transloc"
+    ],
+    "stack_refusal": [
+      "no_evidence"
+    ],
+    "stack_category": [
+      "language",
+      "framework",
+      "database",
+      "infra",
+      "testing",
+      "tooling",
+      "service"
+    ],
+    "stack_evidence": [
+      "manifest",
+      "language",
+      "command",
+      "path",
+      "tool"
+    ],
+    "project_stage": [
+      "starting",
+      "active",
+      "winding_down",
+      "dormant"
+    ],
+    "project_stage_rule": [
+      "quiet_two_weeks",
+      "quiet_a_week",
+      "cadence_halved",
+      "new_this_fortnight",
+      "steady"
+    ],
+    "momentum_refusal": [
+      "below_session_floor",
+      "nothing_before"
+    ],
+    "clock_refusal": [
+      "below_active_floor"
+    ],
+    "quality_refusal": [
+      "below_run_floor",
+      "no_recovery"
+    ],
+    "language_refusal": [
+      "below_line_floor"
+    ],
+    "cost_refusal": [
+      "no_price",
+      "unpriced_sessions",
+      "commits_not_from_git",
+      "below_commit_floor"
+    ],
+    "comparison_metric": [
+      "steer_rate",
+      "autonomy_score",
+      "test_runs_per_hour",
+      "tool_calls_per_prompt",
+      "prompts_per_session",
+      "code_velocity",
+      "usd_per_active_hour",
+      "first_try_rate",
+      "ships_rate",
+      "night_share"
+    ],
+    "comparison_refusal": [
+      "fewer_than_two_projects",
+      "within_noise",
+      "floors_only"
+    ],
+    "language": [
+      "Python",
+      "Swift",
+      "TypeScript",
+      "JavaScript",
+      "Ruby",
+      "Go",
+      "Rust",
+      "Java",
+      "Kotlin",
+      "Objective-C",
+      "C header",
+      "C",
+      "C++",
+      "C#",
+      "PHP",
+      "Scala",
+      "Elixir",
+      "Erlang",
+      "Haskell",
+      "Lua",
+      "Dart",
+      "R",
+      "Julia",
+      "Zig",
+      "Shell",
+      "PowerShell",
+      "SQL",
+      "HTML",
+      "CSS",
+      "Vue",
+      "Svelte",
+      "JSON",
+      "YAML",
+      "TOML",
+      "INI",
+      "XML",
+      "Markdown",
+      "reStructuredText",
+      "Text",
+      "Protobuf",
+      "GraphQL",
+      "Terraform",
+      "Dockerfile",
+      "Gradle",
+      "Notebook",
+      "Make",
+      "CMake",
+      "other"
+    ],
+    "harness": [
+      "claude_code",
+      "cursor_ide",
+      "cursor_agent",
+      "codex",
+      "gemini_cli",
+      "cline",
+      "opencode",
+      "aider"
+    ]
+  },
+  "objects": {
+    "ReportTrend": [
+      {
+        "name": "metric",
+        "type": "string",
+        "max": "label",
+        "doc": "the metric's key, from analysis/profile.py. Stable across versions; the label is not."
+      },
+      {
+        "name": "label",
+        "type": "string",
+        "max": "label",
+        "doc": "the metric in words a person reads, from the one table in analysis/trends.py."
+      },
+      {
+        "name": "before",
+        "type": "number",
+        "doc": "its value over the older of the two equal windows."
+      },
+      {
+        "name": "now",
+        "type": "number",
+        "doc": "its value over the newer window."
+      },
+      {
+        "name": "move",
+        "type": "number",
+        "doc": "the signed relative change, (now - before) / before. 0.7 is up 70 percent."
+      },
+      {
+        "name": "direction",
+        "type": "enum",
+        "values": "trend_direction",
+        "doc": "up, down, or steady. Steady is a real answer: under the noise floor is not a move."
+      },
+      {
+        "name": "good",
+        "type": "bool",
+        "nullable": true,
+        "doc": "whether this direction is the one they want, when the metric has a direction at all. Null means the change is reported with no verdict: more hours is not better and a night owl is not broken."
+      },
+      {
+        "name": "sessions_before",
+        "type": "int",
+        "doc": "sittings in the older window. Both windows need a sample or there is no trend."
+      },
+      {
+        "name": "sessions_now",
+        "type": "int",
+        "doc": "sittings in the newer window."
+      }
+    ],
+    "ReportAgentType": [
+      {
+        "name": "name",
+        "type": "enum",
+        "values": "agent_type",
+        "doc": "the subagent type, one of the harness's own (analysis/agents.py BUILTIN_AGENT_TYPES); unknown when the sidecar never said, and custom for every name somebody gave their own agent, which is free text and never leaves the machine."
+      },
+      {
+        "name": "agents",
+        "type": "int",
+        "doc": "how many instances of that type ran."
+      }
+    ],
+    "ReportAgents": [
+      {
+        "name": "agents",
+        "type": "int",
+        "doc": "subagent instances that ran in the window. Counted from sidecar transcripts, which every other tool skips."
+      },
+      {
+        "name": "produced",
+        "type": "int",
+        "doc": "how many of them did anything at all: a tool call, a file, an error. An agent that produced nothing is a delegation that cost tokens and returned air."
+      },
+      {
+        "name": "max_concurrent",
+        "type": "int",
+        "doc": "the most that were running at the same moment. A handoff is not two agents at once, so an end sorts before a start at equal timestamps."
+      },
+      {
+        "name": "agent_seconds",
+        "type": "number",
+        "doc": "the sum of every agent's own span. Deliberately larger than wall time when they overlap; that overlap is the point."
+      },
+      {
+        "name": "wall_seconds",
+        "type": "number",
+        "doc": "clock time from the first agent starting to the last one stopping."
+      },
+      {
+        "name": "busy_seconds",
+        "type": "number",
+        "doc": "how much of that stretch had at least one agent running. The union of the spans, so an overlap counts once."
+      },
+      {
+        "name": "parallelism",
+        "type": "number",
+        "doc": "agent_seconds over busy_seconds: while agents were running, how many were running at once. 1.0 is a queue, 3.4 is three and a bit at a time. Never below 1.0 when anything ran, which is why the denominator is the union and not the stretch."
+      },
+      {
+        "name": "by_type",
+        "type": "list",
+        "item": "ReportAgentType",
+        "max_items": 12,
+        "doc": "the split by subagent type, most common first."
+      }
+    ],
+    "ReportDay": [
+      {
+        "name": "day",
+        "type": "string",
+        "max": "label",
+        "doc": "the day, YYYY-MM-DD, with the 04:00 boundary this repository uses everywhere else."
+      },
+      {
+        "name": "assisted",
+        "type": "int",
+        "doc": "commits that landed while an agent was working."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "doc": "commits that landed outside every session window. Deliberately generous: anything the capture never saw counts here."
+      }
+    ],
+    "ReportContributions": [
+      {
+        "name": "assisted",
+        "type": "int",
+        "doc": "commits with an agent in the room."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "doc": "commits you wrote on your own."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days you shipped something. Not days you opened the app: a streak a tab can extend is a streak about the tab."
+      },
+      {
+        "name": "longest_streak",
+        "type": "int",
+        "doc": "the longest run of consecutive shipping days."
+      },
+      {
+        "name": "current_streak",
+        "type": "int",
+        "doc": "the run ending today or yesterday. Yesterday still counts, because today is not over."
+      },
+      {
+        "name": "days",
+        "type": "list",
+        "item": "ReportDay",
+        "max_items": 400,
+        "doc": "one entry per day that had a commit, oldest first. Days with none are absent rather than zero rows."
+      }
+    ],
+    "ReportGreen": [
+      {
+        "name": "n",
+        "type": "int",
+        "doc": "how many times a failing test run was followed by a passing one."
+      },
+      {
+        "name": "median_seconds",
+        "type": "int",
+        "doc": "the median of those recoveries. The solo builder's answer to DORA's mean time to restore."
+      },
+      {
+        "name": "worst_seconds",
+        "type": "int",
+        "doc": "the longest one."
+      },
+      {
+        "name": "median_attempts",
+        "type": "int",
+        "doc": "how many runs it typically took to get back to green."
+      }
+    ],
+    "ReportQuality": [
+      {
+        "name": "runs",
+        "type": "int",
+        "doc": "test runs seen in the window, counted from shell commands."
+      },
+      {
+        "name": "passed",
+        "type": "int",
+        "nullable": true,
+        "doc": "runs with no error after them."
+      },
+      {
+        "name": "failed",
+        "type": "int",
+        "nullable": true,
+        "doc": "runs an error followed."
+      },
+      {
+        "name": "first_try_rate",
+        "type": "number",
+        "nullable": true,
+        "doc": "the share of test runs that were already green. Not 'the first try worked' per feature, which nothing here can see."
+      },
+      {
+        "name": "time_to_green",
+        "type": "object",
+        "item": "ReportGreen",
+        "nullable": true,
+        "doc": "the recovery numbers, or null when nothing in the window failed and then passed."
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "max": "reason",
+        "nullable": true,
+        "doc": "why the rates are null, when they are. Present only on a refusal."
+      }
+    ],
+    "ReportPrompting": [
+      {
+        "name": "attempts",
+        "type": "int",
+        "doc": "prompts long enough to be an instruction rather than a nudge."
+      },
+      {
+        "name": "clean",
+        "type": "int",
+        "nullable": true,
+        "doc": "of those, how many landed something without a correction and without the agent stalling."
+      },
+      {
+        "name": "costly",
+        "type": "int",
+        "nullable": true,
+        "doc": "how many cost a correction or a long stall."
+      },
+      {
+        "name": "clean_share",
+        "type": "number",
+        "nullable": true,
+        "doc": "clean over attempts. NO PROMPT TEXT TRAVELS: this is the whole of what the playbook uploads."
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "max": "reason",
+        "nullable": true,
+        "doc": "why the share is null, when it is."
+      }
+    ],
+    "ReportLanguage": [
+      {
+        "name": "name",
+        "type": "string",
+        "max": "label",
+        "doc": "the language, from a fixed table of extensions. `other` is an extension nobody mapped, counted rather than guessed at."
+      },
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "lines the agent added in it."
+      },
+      {
+        "name": "files",
+        "type": "int",
+        "doc": "distinct files. A count, never a name: paths do not leave the machine."
+      },
+      {
+        "name": "share",
+        "type": "number",
+        "doc": "its share of the attributable lines."
+      }
+    ],
+    "ReportLanguages": [
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "attributable lines in the window, generated files already excluded."
+      },
+      {
+        "name": "generated_lines_excluded",
+        "type": "int",
+        "doc": "lines nobody wrote: lockfiles, `node_modules`, this repository's own generated Swift, TypeScript and Python. Reported rather than hidden, because a silent exclusion is indistinguishable from a parser that missed the file."
+      },
+      {
+        "name": "languages",
+        "type": "list",
+        "item": "ReportLanguage",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "most lines first, the tail summed into `other`. Null when there were too few attributable lines to split."
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "max": "reason",
+        "nullable": true,
+        "doc": "why the split is null, when it is."
+      }
+    ],
+    "ReportCoverage": [
+      {
+        "name": "window_days",
+        "type": "int",
+        "doc": "the window that was ASKED FOR. Repeated from the top level so this block is readable on its own."
+      },
+      {
+        "name": "spans_days",
+        "type": "int",
+        "doc": "the calendar distance from the first sitting on this machine to the last. NOT the same as days built: two sittings a month apart span 30 days and are 2 active days."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days that actually had a sitting."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings the numbers above rest on."
+      },
+      {
+        "name": "first_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "the earliest sitting found. Null when there are none."
+      },
+      {
+        "name": "last_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "the latest."
+      }
+    ],
+    "ReportArchetypeScore": [
+      {
+        "name": "name",
+        "type": "enum",
+        "values": "archetype",
+        "doc": "the archetype a rule names, from analysis/profile.py ARCHETYPE_RULES."
+      },
+      {
+        "name": "metric",
+        "type": "enum",
+        "values": "archetype_metric",
+        "doc": "the metric that rule reads."
+      },
+      {
+        "name": "value",
+        "type": "number",
+        "nullable": true,
+        "doc": "the metric's value on this corpus. Null when it could not be computed."
+      },
+      {
+        "name": "threshold",
+        "type": "number",
+        "nullable": true,
+        "doc": "the value the rule needs to win, from ARCHETYPE_RULES. Null when the sender left it out."
+      },
+      {
+        "name": "score",
+        "type": "double",
+        "nullable": true,
+        "doc": "value over threshold, capped at 2 and halved, a fraction: meeting the threshold exactly scores 0.5. Null when value is."
+      }
+    ],
+    "ReportKindCount": [
+      {
+        "name": "kind",
+        "type": "enum",
+        "values": "commit_kind",
+        "doc": "a kind of change, as a commit subject labels it (wrapped.classify_subject)."
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "doc": "commits whose subject says this kind."
+      }
+    ],
+    "ReportRoleLines": [
+      {
+        "name": "role",
+        "type": "enum",
+        "values": "plain_role",
+        "doc": "a file role from analysis/plain.py role_of: the path's shape, never its contents."
+      },
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "agent lines added to project files of this role."
+      }
+    ],
+    "ReportWrappedExtras": [
+      {
+        "name": "confidence",
+        "type": "double",
+        "nullable": true,
+        "doc": "builder_type: the archetype's confidence, a fraction: its margin over the runner up, damped below ten sessions."
+      },
+      {
+        "name": "metric",
+        "type": "enum",
+        "values": "archetype_metric",
+        "nullable": true,
+        "doc": "builder_type: the metric behind the winning rule."
+      },
+      {
+        "name": "metric_value",
+        "type": "number",
+        "nullable": true,
+        "doc": "builder_type: that metric's value, the number its sentence says."
+      },
+      {
+        "name": "metric_lower_bound",
+        "type": "bool",
+        "nullable": true,
+        "doc": "builder_type: true when that metric's basis says it is a floor, so the sentence says at least."
+      },
+      {
+        "name": "closest",
+        "type": "object",
+        "item": "ReportArchetypeScore",
+        "nullable": true,
+        "doc": "builder_type, generalist only: the rule that came nearest."
+      },
+      {
+        "name": "runners_up",
+        "type": "list",
+        "item": "ReportArchetypeScore",
+        "max_items": 2,
+        "nullable": true,
+        "doc": "builder_type: the next rules by score."
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "nullable": true,
+        "doc": "shipped: distinct commits git log found across every repository these sessions ran in. kind_of_work: commit subjects read."
+      },
+      {
+        "name": "assisted",
+        "type": "int",
+        "nullable": true,
+        "doc": "shipped: of those, commits inside a session window or the lookback before one."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "nullable": true,
+        "doc": "shipped: the rest of them."
+      },
+      {
+        "name": "commits_basis",
+        "type": "enum",
+        "values": "commits_basis",
+        "nullable": true,
+        "doc": "shipped: how the commits were counted. Null when no commit history was read."
+      },
+      {
+        "name": "autonomy",
+        "type": "double",
+        "nullable": true,
+        "doc": "work_style: the share of active time the agent ran with nobody present."
+      },
+      {
+        "name": "median_prompts",
+        "type": "number",
+        "nullable": true,
+        "doc": "work_style: median prompts over sessions with you there."
+      },
+      {
+        "name": "steer_rate",
+        "type": "number",
+        "nullable": true,
+        "doc": "work_style: interrupts plus corrections over prompts. A number and not a fraction, because interrupts can outnumber prompts."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "nullable": true,
+        "doc": "longest_session: that session's active seconds, beside the attended seconds in value."
+      },
+      {
+        "name": "started_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "longest_session: when it started."
+      },
+      {
+        "name": "subagents_peak",
+        "type": "int",
+        "nullable": true,
+        "doc": "agents_at_once: the most helper agents running at one moment across the corpus."
+      },
+      {
+        "name": "subagents",
+        "type": "int",
+        "nullable": true,
+        "doc": "agents_at_once: helper agents that ran."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "nullable": true,
+        "doc": "go_to_prompt: distinct sessions the prompt was sent in."
+      },
+      {
+        "name": "words",
+        "type": "int",
+        "nullable": true,
+        "doc": "go_to_prompt: its length in words. A count, never the words."
+      },
+      {
+        "name": "commit_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "streak: days with a commit."
+      },
+      {
+        "name": "attended_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "streak: days with a session you were there for."
+      },
+      {
+        "name": "both_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "streak: days with both, the only days a streak can run over."
+      },
+      {
+        "name": "interrupts",
+        "type": "int",
+        "nullable": true,
+        "doc": "change_course: interrupts counted."
+      },
+      {
+        "name": "corrective_prompts",
+        "type": "int",
+        "nullable": true,
+        "doc": "change_course: prompts that corrected the agent."
+      },
+      {
+        "name": "median",
+        "type": "number",
+        "nullable": true,
+        "doc": "prompt_length: median words a prompt. prompts_per_session: median prompts a session."
+      },
+      {
+        "name": "avg_minutes",
+        "type": "int",
+        "nullable": true,
+        "doc": "deep_sessions: average minutes with you there across the deep sessions."
+      },
+      {
+        "name": "longest_minutes",
+        "type": "int",
+        "nullable": true,
+        "doc": "deep_sessions: the longest session with you there, in whole minutes, floored."
+      },
+      {
+        "name": "attended_hours",
+        "type": "number",
+        "nullable": true,
+        "doc": "time_put_in: hours with you there."
+      },
+      {
+        "name": "attended_overlap_hours",
+        "type": "number",
+        "nullable": true,
+        "doc": "time_put_in: at most this many of the attended hours are counted twice, because sessions ran at the same time. Its sentence says so when it is above 0."
+      },
+      {
+        "name": "tool_calls_per_prompt",
+        "type": "number",
+        "nullable": true,
+        "doc": "prompts_per_session: tool calls over prompts, across the sessions the card counts."
+      },
+      {
+        "name": "kinds",
+        "type": "list",
+        "item": "ReportKindCount",
+        "max_items": 10,
+        "nullable": true,
+        "doc": "kind_of_work: labelled commits by kind, in wrapped.KINDS order, kinds with none left out."
+      },
+      {
+        "name": "classified",
+        "type": "int",
+        "nullable": true,
+        "doc": "kind_of_work: commit subjects that say what kind of change they are."
+      },
+      {
+        "name": "coverage",
+        "type": "double",
+        "nullable": true,
+        "doc": "kind_of_work: the share of subjects read that carry a label."
+      },
+      {
+        "name": "role_lines",
+        "type": "list",
+        "item": "ReportRoleLines",
+        "max_items": 9,
+        "nullable": true,
+        "doc": "kind_of_work: agent lines by file role, in plain.ROLES order, roles with none left out."
+      },
+      {
+        "name": "commit_refusal",
+        "type": "enum",
+        "values": "kind_refusal",
+        "nullable": true,
+        "doc": "kind_of_work: why the commit labels could not decide the card, when they could not."
+      },
+      {
+        "name": "lines",
+        "type": "int",
+        "nullable": true,
+        "doc": "kind_of_work: attributable lines the file role fallback read."
+      },
+      {
+        "name": "lines_needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "kind_of_work: the lines that fallback needs (languages.MIN_LINES)."
+      }
+    ],
+    "ReportWrappedCard": [
+      {
+        "name": "id",
+        "type": "enum",
+        "values": "wrapped_card",
+        "doc": "which of the fifteen questions this card answers. The phone writes the question."
+      },
+      {
+        "name": "value",
+        "type": "number",
+        "nullable": true,
+        "doc": "the answer as a number, in `unit`. Null on a refusal, and on a card whose answer is an id."
+      },
+      {
+        "name": "value_id",
+        "type": "enum",
+        "values": "wrapped_value",
+        "nullable": true,
+        "doc": "the answer as an id, for the units archetype, style and kind. Null otherwise."
+      },
+      {
+        "name": "unit",
+        "type": "enum",
+        "values": "wrapped_unit",
+        "doc": "what value counts. An identifier, never rendered."
+      },
+      {
+        "name": "basis",
+        "type": "enum",
+        "values": "wrapped_basis",
+        "doc": "the rule the answer came from, or would have come from."
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "doc": "the sample the answer rests on: sessions, prompts, days, lines or commit subjects, per card."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the floor a refusal names, read beside n."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "wrapped_refusal",
+        "nullable": true,
+        "doc": "why the card is refused, null when it is answered. The phone writes the sentence from this code, n, needed and the card's numeric extras through wrapped.REFUSALS (generated into copy.ts); the kind of work card's commit half is extras.commit_refusal through wrapped.KIND_REFUSALS."
+      },
+      {
+        "name": "extras",
+        "type": "object",
+        "item": "ReportWrappedExtras",
+        "doc": "the numbers the card's sentence is written from. Always an object: a card sets only its own keys and the rest are null."
+      }
+    ],
+    "ReportWrapped": [
+      {
+        "name": "cards",
+        "type": "list",
+        "item": "ReportWrappedCard",
+        "max_items": 15,
+        "doc": "all fifteen, in wrapped.CARD_IDS order, answered or refused. crash_out and cryptic_prompt carry only id, unit, basis, n and reason: every other number on them is a reading of what somebody typed."
+      },
+      {
+        "name": "prompts_with_text",
+        "type": "int",
+        "doc": "prompts in the person's own words, the pool the prompt cards read."
+      },
+      {
+        "name": "attended_sessions",
+        "type": "int",
+        "doc": "sessions with you there, the pool the attended time cards count."
+      }
+    ],
+    "ReportTokens": [
+      {
+        "name": "input",
+        "type": "int",
+        "doc": "uncached input tokens."
+      },
+      {
+        "name": "output",
+        "type": "int",
+        "doc": "output tokens."
+      },
+      {
+        "name": "cache_read",
+        "type": "int",
+        "doc": "tokens read from the prompt cache."
+      },
+      {
+        "name": "cache_w5m",
+        "type": "int",
+        "doc": "tokens written to the five minute cache."
+      },
+      {
+        "name": "cache_w1h",
+        "type": "int",
+        "doc": "tokens written to the one hour cache."
+      }
+    ],
+    "ReportModelCost": [
+      {
+        "name": "model",
+        "type": "enum",
+        "values": "priced_model",
+        "doc": "the price table row, a key of analysis/pricing.py PRICES."
+      },
+      {
+        "name": "usd",
+        "type": "number",
+        "doc": "dollars at API list prices for this model's part of the tokens. Not a bill."
+      },
+      {
+        "name": "output_tokens",
+        "type": "int",
+        "doc": "output tokens this model wrote."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sessions it worked in."
+      },
+      {
+        "name": "sessions_dominated",
+        "type": "int",
+        "doc": "sessions it wrote most of the output in."
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "doc": "commits from those dominated sessions only. Rows are never summed: a session's commits belong to the session, not to a model."
+      },
+      {
+        "name": "usd_per_commit",
+        "type": "number",
+        "nullable": true,
+        "doc": "dollars over commits across the dominated sessions. Null with no commit."
+      }
+    ],
+    "ReportMoney": [
+      {
+        "name": "usd",
+        "type": "number",
+        "nullable": true,
+        "doc": "what the work would cost at API list prices. NOT A BILL: most people are on a subscription. Null on a refusal."
+      },
+      {
+        "name": "basis",
+        "type": "enum",
+        "values": "money_basis",
+        "nullable": true,
+        "doc": "how it was priced: list prices, or list prices past the day they were last read. Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "money_refusal",
+        "nullable": true,
+        "doc": "why there is no price. Null when priced."
+      },
+      {
+        "name": "prices_read_on",
+        "type": "datetime",
+        "doc": "the day the price table was read, at 00:00Z. Always sent, so the phone can say how old a price is."
+      },
+      {
+        "name": "priced_sessions",
+        "type": "int",
+        "doc": "sessions with token counts and a model the price table knows."
+      },
+      {
+        "name": "unpriced_sessions",
+        "type": "int",
+        "doc": "sessions with token counts and a model it does not know. 0 when every such session was priced."
+      },
+      {
+        "name": "usd_per_active_hour",
+        "type": "number",
+        "nullable": true,
+        "doc": "dollars over active hours. Null without priced sessions or active time."
+      },
+      {
+        "name": "usd_without_a_commit",
+        "type": "number",
+        "nullable": true,
+        "doc": "dollars on sessions that ended with no commit. Null below the session floor."
+      },
+      {
+        "name": "share_without_a_commit",
+        "type": "double",
+        "nullable": true,
+        "doc": "that spend as a share of the spend on sessions with a git commit count."
+      },
+      {
+        "name": "tokens",
+        "type": "object",
+        "item": "ReportTokens",
+        "nullable": true,
+        "doc": "the five token buckets, summed over the sessions that reported them. Null when none did."
+      },
+      {
+        "name": "token_sessions",
+        "type": "int",
+        "doc": "sessions summed into tokens."
+      },
+      {
+        "name": "lines_added",
+        "type": "int",
+        "nullable": true,
+        "doc": "agent lines added. Null when no session carries a line count."
+      },
+      {
+        "name": "lines_removed",
+        "type": "int",
+        "nullable": true,
+        "doc": "agent lines removed. Null when no session carries a line count."
+      },
+      {
+        "name": "lines_basis",
+        "type": "enum",
+        "values": "lines_basis",
+        "doc": "what the line counts were read from."
+      },
+      {
+        "name": "by_model",
+        "type": "list",
+        "item": "ReportModelCost",
+        "max_items": 10,
+        "doc": "the spend split by price table row, most dollars first."
+      }
+    ],
+    "ReportBurnCause": [
+      {
+        "name": "cause",
+        "type": "enum",
+        "values": "burn_cause",
+        "doc": "why a stretch that changed nothing cost what it did (analysis/burn.py)."
+      },
+      {
+        "name": "tokens",
+        "type": "int",
+        "doc": "barren tokens this cause can claim."
+      },
+      {
+        "name": "share",
+        "type": "double",
+        "doc": "those tokens as a share of the barren tokens. Causes overlap, so the shares are never summed."
+      },
+      {
+        "name": "segments",
+        "type": "int",
+        "doc": "barren stretches this cause appeared in."
+      }
+    ],
+    "ReportBurn": [
+      {
+        "name": "share",
+        "type": "double",
+        "nullable": true,
+        "doc": "the share of tokens spent in stretches where nothing was written, tested or committed. A floor: stretches the transcript cannot judge are counted apart. Null on a refusal."
+      },
+      {
+        "name": "barren_tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "tokens in those stretches. Null when no session reported token counts."
+      },
+      {
+        "name": "tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "tokens across every stretch. Null when no session reported token counts."
+      },
+      {
+        "name": "unreadable_tokens",
+        "type": "int",
+        "nullable": true,
+        "doc": "tokens in stretches the transcript cannot judge. Null unless every session supplied it."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sessions whose token counts were split into stretches."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the session floor a below_session_floor refusal names."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "burn_refusal",
+        "nullable": true,
+        "doc": "why the share is null. Null when answered."
+      },
+      {
+        "name": "causes",
+        "type": "list",
+        "item": "ReportBurnCause",
+        "max_items": 7,
+        "nullable": true,
+        "doc": "barren tokens by cause, in analysis/burn.py order. Null exactly when share is; an empty list only when barren_tokens is a measured 0."
+      }
+    ],
+    "ReportTerm": [
+      {
+        "name": "id",
+        "type": "enum",
+        "values": "vocab_term",
+        "doc": "a glossary term, from analysis/vocab.py CATALOG. The phone has its word and definition."
+      },
+      {
+        "name": "count",
+        "type": "int",
+        "doc": "events that matched it. A lower bound where the digest cut a shell command."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sessions it appeared in."
+      },
+      {
+        "name": "first_seen",
+        "type": "datetime",
+        "doc": "the first time a session met it."
+      }
+    ],
+    "ReportVocab": [
+      {
+        "name": "terms",
+        "type": "list",
+        "item": "ReportTerm",
+        "max_items": 80,
+        "doc": "every term these sessions unlocked, in the order they were met."
+      },
+      {
+        "name": "locked",
+        "type": "int",
+        "nullable": true,
+        "doc": "catalog terms not met yet. Null on a refusal: there is nothing left to find over sessions nobody read."
+      },
+      {
+        "name": "catalog_size",
+        "type": "int",
+        "doc": "terms in the catalog."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sessions with any event to read."
+      },
+      {
+        "name": "shell_calls",
+        "type": "int",
+        "doc": "shell calls read."
+      },
+      {
+        "name": "shell_calls_cut",
+        "type": "int",
+        "doc": "of those, how many the digest cut, so a command term may have happened unseen."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "vocab_refusal",
+        "nullable": true,
+        "doc": "why there is no glossary. Null when answered."
+      }
+    ],
+    "ReportStackItem": [
+      {
+        "name": "id",
+        "type": "enum",
+        "values": "stack_item",
+        "doc": "a stack item, from analysis/vocab.py STACK. The phone has its name."
+      },
+      {
+        "name": "category",
+        "type": "enum",
+        "values": "stack_category",
+        "doc": "its category in that catalog."
+      },
+      {
+        "name": "evidence",
+        "type": "enum",
+        "values": "stack_evidence",
+        "doc": "the first kind of evidence that put it here, in vocab.EVIDENCE order."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sessions with event evidence for it. 0 when only a manifest names it."
+      },
+      {
+        "name": "first_seen",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "its first event evidence. Null when only a manifest names it."
+      }
+    ],
+    "ReportStack": [
+      {
+        "name": "items",
+        "type": "list",
+        "item": "ReportStackItem",
+        "max_items": 120,
+        "doc": "what the project is made of, by category, then sessions."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sessions with any event to read."
+      },
+      {
+        "name": "manifests",
+        "type": "int",
+        "doc": "dependency names read from manifests. A count, never a name."
+      },
+      {
+        "name": "shell_calls",
+        "type": "int",
+        "doc": "shell calls read."
+      },
+      {
+        "name": "shell_calls_cut",
+        "type": "int",
+        "doc": "of those, how many the digest cut."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "stack_refusal",
+        "nullable": true,
+        "doc": "why there is no stack. Null when answered."
+      }
+    ],
+    "ReportProjectMomentum": [
+      {
+        "name": "days",
+        "type": "int",
+        "doc": "the length of each of the two stretches compared, in days: the last seven against the seven before, on the clock the report was made on."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings that started in the last stretch."
+      },
+      {
+        "name": "sessions_before",
+        "type": "int",
+        "doc": "sittings that started in the stretch before it."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "seconds with you there in the last stretch."
+      },
+      {
+        "name": "attended_seconds_before",
+        "type": "int",
+        "doc": "seconds with you there in the stretch before."
+      },
+      {
+        "name": "direction",
+        "type": "enum",
+        "values": "trend_direction",
+        "nullable": true,
+        "doc": "up, down or steady by analysis/trends.py compare, its session floor and its noise floor: steady is a real answer. Null on a refusal."
+      },
+      {
+        "name": "move",
+        "type": "number",
+        "nullable": true,
+        "doc": "the signed relative change, (now - before) / before. 0.4 is up 40 percent. Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "momentum_refusal",
+        "nullable": true,
+        "doc": "why there is no direction: a stretch under the session floor, or nothing with you there before. Null when answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the session floor a below_session_floor refusal names, for each stretch."
+      }
+    ],
+    "ReportProjectWeek": [
+      {
+        "name": "week",
+        "type": "datetime",
+        "doc": "the Monday of an ISO week: the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings of this project that started in the week, by the local day each started on."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "their seconds with you there. 0 is measured: the machine holds every sitting of every week on the axis."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time, both clocks."
+      }
+    ],
+    "ReportProjectHistory": [
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "EVERY counted sitting this machine holds in the repository, however old. Not the window."
+      },
+      {
+        "name": "first_at",
+        "type": "datetime",
+        "doc": "the first of them."
+      },
+      {
+        "name": "last_at",
+        "type": "datetime",
+        "doc": "the end of the last of them."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days with a sitting, cut at 04:00 local."
+      },
+      {
+        "name": "spans_days",
+        "type": "int",
+        "doc": "the calendar distance from the first day to the last. Not the same as active_days."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "active time across all of them, both clocks."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "the part of it with you there."
+      },
+      {
+        "name": "autonomous_seconds",
+        "type": "int",
+        "doc": "the part the agent ran with nobody present."
+      },
+      {
+        "name": "longest_streak_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "the longest run of consecutive days with a sitting you were at. An unattended run never extends a streak. Null when no sitting had you there."
+      },
+      {
+        "name": "current_streak_days",
+        "type": "int",
+        "nullable": true,
+        "doc": "the run still going, ending today or yesterday (today is not over). 0 when it has ended. Null when no sitting had you there."
+      },
+      {
+        "name": "days_since_last",
+        "type": "int",
+        "doc": "days from the last sitting to today, both cut at 04:00 local. 0 is today."
+      },
+      {
+        "name": "age_days",
+        "type": "int",
+        "doc": "days from the first sitting to today. 0 is today."
+      },
+      {
+        "name": "days_built_recent",
+        "type": "int",
+        "doc": "days with a sitting in the last fourteen, today included: what the cadence rule reads."
+      },
+      {
+        "name": "days_built_before",
+        "type": "int",
+        "doc": "days with a sitting in the fourteen before those."
+      },
+      {
+        "name": "stage",
+        "type": "enum",
+        "values": "project_stage",
+        "doc": "where the project is in its life, by the first rule that fires (analysis/projects.py _stage). The thresholds are judgement calls and say so in docs/projects.md."
+      },
+      {
+        "name": "stage_rule",
+        "type": "enum",
+        "values": "project_stage_rule",
+        "doc": "which rule decided the stage, so the phone can say whether winding down is the silence or the cadence."
+      },
+      {
+        "name": "momentum",
+        "type": "object",
+        "item": "ReportProjectMomentum",
+        "doc": "the last week against the week before, attended time."
+      },
+      {
+        "name": "weeks",
+        "type": "list",
+        "item": "ReportProjectWeek",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "this project's sittings in each week of the block's weeks, the same weeks in the same order, every one present. Null from a machine that does not compute it."
+      }
+    ],
+    "ReportProjectClock": [
+      {
+        "name": "peak_hour",
+        "type": "int",
+        "nullable": true,
+        "doc": "0-23: the local hour with the most active time, spread across each sitting by where its span falls (analysis/profile.py). Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "clock_refusal",
+        "nullable": true,
+        "doc": "why there is no peak hour. Null when answered."
+      },
+      {
+        "name": "active_minutes",
+        "type": "int",
+        "doc": "whole minutes of active time the hour was read over."
+      },
+      {
+        "name": "needed_minutes",
+        "type": "int",
+        "nullable": true,
+        "doc": "the active minutes a below_active_floor refusal names."
+      }
+    ],
+    "ReportProjectQuality": [
+      {
+        "name": "runs",
+        "type": "int",
+        "doc": "test runs seen in the window, counted from shell commands. A floor: the digest cuts a long command."
+      },
+      {
+        "name": "passed",
+        "type": "int",
+        "nullable": true,
+        "doc": "runs with no error after them. Null below the run floor."
+      },
+      {
+        "name": "failed",
+        "type": "int",
+        "nullable": true,
+        "doc": "runs an error followed. Null below the run floor."
+      },
+      {
+        "name": "first_try_rate",
+        "type": "double",
+        "nullable": true,
+        "doc": "the share of test runs that were already green. Null below the run floor."
+      },
+      {
+        "name": "time_to_green",
+        "type": "object",
+        "item": "ReportGreen",
+        "nullable": true,
+        "doc": "the recovery numbers, or null when nothing failed and then passed inside one sitting."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "quality_refusal",
+        "nullable": true,
+        "doc": "why the rate or the time to green is null. Null when both answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the run floor a below_run_floor refusal names."
+      }
+    ],
+    "ReportProjectLanguage": [
+      {
+        "name": "language",
+        "type": "enum",
+        "values": "language",
+        "doc": "the language, by the name analysis/languages.py gives an extension. other is an extension nobody mapped, counted rather than guessed at."
+      },
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "lines the agent added in it, generated files excluded."
+      },
+      {
+        "name": "files",
+        "type": "int",
+        "doc": "distinct files. A count, never a name."
+      },
+      {
+        "name": "share",
+        "type": "double",
+        "doc": "its share of the attributable lines."
+      }
+    ],
+    "ReportProjectLanguages": [
+      {
+        "name": "lines",
+        "type": "int",
+        "doc": "attributable lines in the window, generated files already excluded."
+      },
+      {
+        "name": "generated_lines_excluded",
+        "type": "int",
+        "doc": "lines nobody wrote (lockfiles, vendored and generated files), reported rather than hidden."
+      },
+      {
+        "name": "languages",
+        "type": "list",
+        "item": "ReportProjectLanguage",
+        "max_items": 9,
+        "nullable": true,
+        "doc": "most lines first, the tail summed into other. Null on a refusal."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "language_refusal",
+        "nullable": true,
+        "doc": "why the split is null. Null when answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the line floor a below_line_floor refusal names."
+      }
+    ],
+    "ReportProjectDay": [
+      {
+        "name": "day",
+        "type": "datetime",
+        "doc": "the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day."
+      },
+      {
+        "name": "assisted",
+        "type": "int",
+        "doc": "commits that landed while a sitting in THIS repository was running, or in the 30 minutes before one."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "doc": "the rest of that day's commits in this repository."
+      }
+    ],
+    "ReportProjectCommits": [
+      {
+        "name": "assisted",
+        "type": "int",
+        "doc": "commits in the window with a sitting of this project in the room. A commit that landed while only another project's sitting ran is alone here."
+      },
+      {
+        "name": "alone",
+        "type": "int",
+        "doc": "commits in the window you made on your own, as far as this machine saw."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days with a commit."
+      },
+      {
+        "name": "longest_streak",
+        "type": "int",
+        "doc": "the longest run of consecutive days with a commit."
+      },
+      {
+        "name": "current_streak",
+        "type": "int",
+        "doc": "the run ending today or yesterday."
+      },
+      {
+        "name": "days",
+        "type": "list",
+        "item": "ReportProjectDay",
+        "max_items": 400,
+        "doc": "one entry per day with a commit, oldest first. Days with none are absent rather than zero rows."
+      }
+    ],
+    "ReportProjectCostPerCommit": [
+      {
+        "name": "usd",
+        "type": "number",
+        "nullable": true,
+        "doc": "dollars at API list prices over the commits the same sittings landed. NOT A BILL. Null on a refusal."
+      },
+      {
+        "name": "commits",
+        "type": "int",
+        "doc": "commits the priced sittings claimed, each once across sittings (git log over each sitting's window)."
+      },
+      {
+        "name": "unpriced_sessions",
+        "type": "int",
+        "doc": "sittings with token counts the price table could not price."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "cost_refusal",
+        "nullable": true,
+        "doc": "why there is no cost a commit. Null when answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the commit floor a below_commit_floor refusal names."
+      }
+    ],
+    "ReportProjectHarness": [
+      {
+        "name": "harness",
+        "type": "enum",
+        "values": "harness",
+        "doc": "the tool that wrote these sittings, as the upload contract names it."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings it wrote."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time."
+      }
+    ],
+    "ReportProjectWindow": [
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "sittings of this project that started inside the report window."
+      },
+      {
+        "name": "first_at",
+        "type": "datetime",
+        "doc": "the first of them."
+      },
+      {
+        "name": "last_at",
+        "type": "datetime",
+        "doc": "the end of the last of them."
+      },
+      {
+        "name": "active_days",
+        "type": "int",
+        "doc": "days with one of them, cut at 04:00 local."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time, both clocks."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "the part of it with you there."
+      },
+      {
+        "name": "autonomous_seconds",
+        "type": "int",
+        "doc": "the part the agent ran with nobody present."
+      },
+      {
+        "name": "share_of_attended",
+        "type": "double",
+        "nullable": true,
+        "doc": "this project's share of the attended seconds of every counted sitting in the window, projects and unresolved alike. Null when that total is 0."
+      },
+      {
+        "name": "clock",
+        "type": "object",
+        "item": "ReportProjectClock",
+        "doc": "when in the day this project gets built."
+      },
+      {
+        "name": "cards",
+        "type": "list",
+        "item": "ReportWrappedCard",
+        "max_items": 12,
+        "doc": "the Wrapped cards asked of this project's sittings, in wrapped.CARD_IDS order: every card but the three that read the words of prompts. The same shape and codes as the report's own deck."
+      },
+      {
+        "name": "scores",
+        "type": "list",
+        "item": "ReportArchetypeScore",
+        "max_items": 6,
+        "doc": "every archetype rule scored on this project, in analysis/profile.py ARCHETYPE_RULES order: the six rates with their thresholds."
+      },
+      {
+        "name": "quality",
+        "type": "object",
+        "item": "ReportProjectQuality",
+        "doc": "how often the tests are already green, and how long it takes to get back to green."
+      },
+      {
+        "name": "languages",
+        "type": "object",
+        "item": "ReportProjectLanguages",
+        "doc": "what this project is written in, by lines the agent added."
+      },
+      {
+        "name": "commits",
+        "type": "object",
+        "item": "ReportProjectCommits",
+        "nullable": true,
+        "doc": "this repository's commits in the window, split by whether one of its sittings was running. Null when no commit was read."
+      },
+      {
+        "name": "money",
+        "type": "object",
+        "item": "ReportMoney",
+        "doc": "what this project's sittings would cost at API list prices, with tokens, lines and the model split: the report's own money block over them."
+      },
+      {
+        "name": "usd_per_commit",
+        "type": "object",
+        "item": "ReportProjectCostPerCommit",
+        "doc": "the dollars over the commits those same sittings landed."
+      },
+      {
+        "name": "burn",
+        "type": "object",
+        "item": "ReportBurn",
+        "doc": "the tokens this project spent in stretches that changed nothing, and why: the report's own burn block over its sittings."
+      },
+      {
+        "name": "stack",
+        "type": "object",
+        "item": "ReportStack",
+        "doc": "what this project is made of: the report's own stack block over its sittings and its own manifests."
+      },
+      {
+        "name": "agents",
+        "type": "object",
+        "item": "ReportAgents",
+        "nullable": true,
+        "doc": "the helper agents its sittings dispatched. Null when none did."
+      },
+      {
+        "name": "harnesses",
+        "type": "list",
+        "item": "ReportProjectHarness",
+        "max_items": 8,
+        "doc": "the tools that wrote its sittings, most active time first."
+      }
+    ],
+    "ReportProject": [
+      {
+        "name": "key",
+        "type": "sha256hex",
+        "doc": "the repository's salted hash, the repo_hash every session upload carries. The only name a private repository has off the machine; the server adds a public one's name beside it."
+      },
+      {
+        "name": "rank",
+        "type": "int",
+        "doc": "its place in this list: most attended time in the window first, then the projects with no sitting in it, most recent first."
+      },
+      {
+        "name": "history",
+        "type": "object",
+        "item": "ReportProjectHistory",
+        "doc": "every sitting this machine holds in the repository, however old."
+      },
+      {
+        "name": "window",
+        "type": "object",
+        "item": "ReportProjectWindow",
+        "nullable": true,
+        "doc": "the report window only. Null when the project had no sitting in it."
+      }
+    ],
+    "ReportProjectsUnresolved": [
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "counted sittings in the window whose repository did not resolve (a home directory, a folder with no git), so they belong to no project."
+      },
+      {
+        "name": "active_seconds",
+        "type": "int",
+        "doc": "their active time."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "their attended time, which is in the denominator of every share_of_attended."
+      },
+      {
+        "name": "history_sessions",
+        "type": "int",
+        "doc": "every such sitting the machine holds, however old."
+      }
+    ],
+    "ReportProjectComparison": [
+      {
+        "name": "metric",
+        "type": "enum",
+        "values": "comparison_metric",
+        "doc": "what is compared (analysis/projects.py COMPARISONS). The phone writes the sentence from this."
+      },
+      {
+        "name": "high",
+        "type": "sha256hex",
+        "nullable": true,
+        "doc": "the project with the highest value, by key. Null when refused below the floor."
+      },
+      {
+        "name": "low",
+        "type": "sha256hex",
+        "nullable": true,
+        "doc": "the project with the lowest value, by key. Null when refused below the floor."
+      },
+      {
+        "name": "high_value",
+        "type": "number",
+        "nullable": true,
+        "doc": "its value, in the unit of the block it came from (a rate, a share, dollars an hour)."
+      },
+      {
+        "name": "low_value",
+        "type": "number",
+        "nullable": true,
+        "doc": "the low project's value."
+      },
+      {
+        "name": "high_sessions",
+        "type": "int",
+        "nullable": true,
+        "doc": "sittings in the window the high value rests on."
+      },
+      {
+        "name": "low_sessions",
+        "type": "int",
+        "nullable": true,
+        "doc": "sittings in the window the low value rests on."
+      },
+      {
+        "name": "ratio",
+        "type": "number",
+        "nullable": true,
+        "doc": "high over low, for a rate. Null for a share, for two floors, below the floor, and when the low value is a measured 0."
+      },
+      {
+        "name": "gap",
+        "type": "number",
+        "nullable": true,
+        "doc": "high less low. Null for two floors and below the floor."
+      },
+      {
+        "name": "projects",
+        "type": "int",
+        "doc": "projects with enough sittings in the window and the metric answered."
+      },
+      {
+        "name": "needed",
+        "type": "int",
+        "nullable": true,
+        "doc": "the sittings in the window each project needs, when refused below the floor."
+      },
+      {
+        "name": "reason",
+        "type": "enum",
+        "values": "comparison_refusal",
+        "nullable": true,
+        "doc": "why there is no difference to state: under two projects clear the floor, the gap is under the bar, or both values are floors that fall short by different amounts. within_noise and floors_only still carry both values. Null when answered."
+      }
+    ],
+    "ReportProjectsWeek": [
+      {
+        "name": "week",
+        "type": "datetime",
+        "doc": "the Monday of an ISO week: the LOCAL day, cut at 04:00, written as midnight UTC of that date. Read the date and never convert it to a zone: it is already the local day."
+      },
+      {
+        "name": "days",
+        "type": "int",
+        "doc": "days of the week the machine's history covers: 7, fewer in the week history starts in and in the current week, which counts today."
+      },
+      {
+        "name": "sessions",
+        "type": "int",
+        "doc": "every counted sitting that started in the week: every project, the unresolved and any past the list's cap."
+      },
+      {
+        "name": "attended_seconds",
+        "type": "int",
+        "doc": "their seconds with you there: what a project's share of the week is out of."
+      }
+    ],
+    "ReportProjects": [
+      {
+        "name": "window_days",
+        "type": "int",
+        "doc": "the report window every project window reads, repeated so this block is readable on its own."
+      },
+      {
+        "name": "history_sessions",
+        "type": "int",
+        "doc": "every counted sitting on this machine, however old: what the history halves rest on."
+      },
+      {
+        "name": "history_first_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "the earliest of them: how far back history reaches. Null with no sitting."
+      },
+      {
+        "name": "projects_total",
+        "type": "int",
+        "doc": "repositories this machine holds sittings for. More than the list when the list is capped."
+      },
+      {
+        "name": "projects",
+        "type": "list",
+        "item": "ReportProject",
+        "max_items": 20,
+        "doc": "one per repository, most attended time in the window first."
+      },
+      {
+        "name": "unresolved",
+        "type": "object",
+        "item": "ReportProjectsUnresolved",
+        "doc": "the sittings that belong to no project."
+      },
+      {
+        "name": "comparisons",
+        "type": "list",
+        "item": "ReportProjectComparison",
+        "max_items": 10,
+        "doc": "one per metric in analysis/projects.py COMPARISONS, answered or refused, in that order."
+      },
+      {
+        "name": "weeks",
+        "type": "list",
+        "item": "ReportProjectsWeek",
+        "max_items": 12,
+        "nullable": true,
+        "doc": "the week axis every project's weeks read on: the last twelve ISO weeks through the current one (analysis/projects.py WEEKS), oldest first, never a week before the machine's first sitting. Empty with no sitting. Null from a machine that does not compute it."
+      },
+      {
+        "name": "window_attended_seconds",
+        "type": "int",
+        "nullable": true,
+        "doc": "seconds with you there in every counted sitting in the window: every listed project, any past the list's cap, and the sittings in no repository. What each project's share_of_attended is out of. Null from a machine that does not compute it."
+      }
+    ]
+  },
+  "fields": [
+    {
+      "name": "report_version",
+      "type": "int",
+      "doc": "the spec version these rules came from. A retuned threshold is a recompute, not a migration."
+    },
+    {
+      "name": "generated_at",
+      "type": "datetime",
+      "doc": "when this was computed. A report describes a corpus as it stood."
+    },
+    {
+      "name": "window_days",
+      "type": "int",
+      "doc": "how far back the blocks below look."
+    },
+    {
+      "name": "coverage",
+      "type": "object",
+      "item": "ReportCoverage",
+      "nullable": true,
+      "doc": "WHAT THESE NUMBERS ACTUALLY REST ON. A window is a question; this is how much of it the machine could answer. Both numbers are always reported and neither is judged: a reader who asked for 30 days and is told the transcripts span 2 knows immediately that the rest of their history is somewhere else. Null when the report was built with no profile to read it from."
+    },
+    {
+      "name": "trend_headline",
+      "type": "string",
+      "max": "reason",
+      "nullable": true,
+      "doc": "the one sentence version of the trends, phrased to match the window. Null when nothing moved enough to say."
+    },
+    {
+      "name": "trends",
+      "type": "list",
+      "item": "ReportTrend",
+      "max_items": 24,
+      "doc": "you against you, two equal windows back to back. Never a window against all of history, which would report the trend of the corpus growing."
+    },
+    {
+      "name": "agents",
+      "type": "object",
+      "item": "ReportAgents",
+      "nullable": true,
+      "doc": "how many agents you ran and how much of it was at once. Null when no sidecar transcripts were found, which is the normal state for someone who has never delegated."
+    },
+    {
+      "name": "contributions",
+      "type": "object",
+      "item": "ReportContributions",
+      "nullable": true,
+      "doc": "commits split by whether an agent was in the room. Null below the minimum, never zero."
+    },
+    {
+      "name": "quality",
+      "type": "object",
+      "item": "ReportQuality",
+      "nullable": true,
+      "doc": "the two of DORA's four questions a transcript can answer. Null when no repository was resolved."
+    },
+    {
+      "name": "prompting",
+      "type": "object",
+      "item": "ReportPrompting",
+      "nullable": true,
+      "doc": "how often a prompt lands cleanly, and nothing else. Null when neither pile has enough in it to be a rate."
+    },
+    {
+      "name": "languages",
+      "type": "object",
+      "item": "ReportLanguages",
+      "nullable": true,
+      "doc": "what you actually build in, by lines the agent added. Null when no session in the window had a countable write."
+    },
+    {
+      "name": "wrapped",
+      "type": "object",
+      "item": "ReportWrapped",
+      "nullable": true,
+      "doc": "the fifteen Wrapped cards, each answered or refused with a code. Null when the machine that sent this report does not compute it."
+    },
+    {
+      "name": "money",
+      "type": "object",
+      "item": "ReportMoney",
+      "nullable": true,
+      "doc": "what the work would cost at API list prices, beside its tokens and lines. Null when the machine that sent this report does not compute it."
+    },
+    {
+      "name": "burn",
+      "type": "object",
+      "item": "ReportBurn",
+      "nullable": true,
+      "doc": "the tokens spent in stretches that changed nothing, and why. Null when the machine that sent this report does not compute it."
+    },
+    {
+      "name": "vocab",
+      "type": "object",
+      "item": "ReportVocab",
+      "nullable": true,
+      "doc": "the glossary terms these sessions unlocked. Null when the machine that sent this report does not compute it."
+    },
+    {
+      "name": "stack",
+      "type": "object",
+      "item": "ReportStack",
+      "nullable": true,
+      "doc": "what the project is made of. Null when the machine that sent this report does not compute it."
+    },
+    {
+      "name": "projects",
+      "type": "object",
+      "item": "ReportProjects",
+      "nullable": true,
+      "doc": "the report's blocks asked of each repository: time, how you build it, what shipped, what it cost, what it is made of, where it is in its life, and how the projects compare. Null when the machine that sent this report does not compute it."
+    }
+  ]
+}

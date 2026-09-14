@@ -1,0 +1,190 @@
+[
+ {
+  "command": "ls -la",
+  "reads_only": true
+ },
+ {
+  "command": "cd /repo\nsed -n '1254,1275p' mobile/src/screens/HomeScreen.js",
+  "reads_only": true
+ },
+ {
+  "command": "grep -rn \"rank_limit\" mobile/src | head -12",
+  "reads_only": true
+ },
+ {
+  "command": "grep -rn \"a|b\" src/ 2>/dev/null | head -20",
+  "reads_only": true
+ },
+ {
+  "command": "git status --short && echo \"---\" && git diff --stat",
+  "reads_only": true
+ },
+ {
+  "command": "git -C /repo log --oneline -8 && git stash list",
+  "reads_only": true
+ },
+ {
+  "command": "git branch -a | head -20",
+  "reads_only": true
+ },
+ {
+  "command": "df -h / 2>/dev/null | awk 'NR==1 {print}'",
+  "reads_only": true
+ },
+ {
+  "command": "for c in a1b2c3d 4e5f6a7; do echo \"== $c\"; git show --stat --oneline $c | head -8; done",
+  "reads_only": true
+ },
+ {
+  "command": "echo \"clean=$(git status --porcelain | wc -l | tr -d ' ')\"",
+  "reads_only": true
+ },
+ {
+  "command": "curl -s http://localhost:5001/api/health > /dev/null 2>&1",
+  "reads_only": true
+ },
+ {
+  "command": "X=1 timeout 5 cat a.txt",
+  "reads_only": true
+ },
+ {
+  "command": "awk -F: '{print $1}' /etc/passwd",
+  "reads_only": true
+ },
+ {
+  "command": "git log --format='%h %s' -5",
+  "reads_only": true
+ },
+ {
+  "command": "grep -c x <<< 'hello'",
+  "reads_only": true
+ },
+ {
+  "command": "cat <<'EOF'\nprint('not run, only printed')\nEOF",
+  "reads_only": true
+ },
+ {
+  "command": "env A=1 B=2 git -c color.ui=never log -3",
+  "reads_only": true
+ },
+ {
+  "command": "git remote -v && git config --list && git tag",
+  "reads_only": true
+ },
+ {
+  "command": "[ -f a.txt ] && wc -l a.txt || echo missing",
+  "reads_only": true
+ },
+ {
+  "command": "cd /Users/someone/Downloads/projects/tramline/backend && grep -rn \"shadow_walk\" --include=*.py services/ routes/ | head -40 && git log --oneline -20 -- services/route_service.py",
+  "reads_only": true
+ },
+ {
+  "command": "cd /Users/someone/Downloads/projects/tramline/backend && grep -rn \"shadow_walk\" --include=*.py services/ routes/ | head -40 && git log --oneline -20 -- services/route_service.py\ncd /Users/someone/Downloads/projects/tramline/backend && grep -rn \"route_table\" --include=*.py services/ routes/ | head -40 && git log --oneline -20 -- services/route_service.py",
+  "reads_only": true
+ },
+ {
+  "command": "python3 - <<'PY'\nopen('a.py', 'w').write(s)\nPY",
+  "reads_only": false
+ },
+ {
+  "command": "cd ~/projects && git clone https://github.com/x/y.git && ls -la y",
+  "reads_only": false
+ },
+ {
+  "command": "npx expo start --ios 2>&1",
+  "reads_only": false
+ },
+ {
+  "command": "echo done > status.txt",
+  "reads_only": false
+ },
+ {
+  "command": "grep -n x a.py 2> errors.log",
+  "reads_only": false
+ },
+ {
+  "command": "echo \"$(rm -rf build)\"",
+  "reads_only": false
+ },
+ {
+  "command": "ls `rm -rf build`",
+  "reads_only": false
+ },
+ {
+  "command": "git checkout -- mobile/src/utils/routeOrdering.js",
+  "reads_only": false
+ },
+ {
+  "command": "git stash",
+  "reads_only": false
+ },
+ {
+  "command": "git branch -D old",
+  "reads_only": false
+ },
+ {
+  "command": "find . -name '*.pyc' -delete",
+  "reads_only": false
+ },
+ {
+  "command": "curl -s -o page.html https://example.com",
+  "reads_only": false
+ },
+ {
+  "command": "sed -i 's/a/b/' notes",
+  "reads_only": false
+ },
+ {
+  "command": "make build",
+  "reads_only": false
+ },
+ {
+  "command": "./scripts/fix.sh",
+  "reads_only": false
+ },
+ {
+  "command": "cd /repo && cat a.py && python3 -c 'print(1)'",
+  "reads_only": false
+ },
+ {
+  "command": "awk '{print > \"out.txt\"}' a.log",
+  "reads_only": false
+ },
+ {
+  "command": "sed -n 's/a/b/w out.txt' a.txt",
+  "reads_only": false
+ },
+ {
+  "command": "sort -o sorted.txt a.txt",
+  "reads_only": false
+ },
+ {
+  "command": "git commit -m 'fix; rm x next time'",
+  "reads_only": false
+ },
+ {
+  "command": "git config --get remote.origin.url",
+  "reads_only": false
+ },
+ {
+  "command": "cat > notes.md <<'EOF'\n# notes\nEOF",
+  "reads_only": false
+ },
+ {
+  "command": "cd /Users/someone/Downloads/projects/tramline/backend && grep -rn \"shadow_walk\" --include=*.py services/ routes/ | head -40 && git log --oneline -20 -- services/route_service.py && ./scripts/regen_routes.sh > services/route_table.py",
+  "reads_only": false
+ },
+ {
+  "command": "cd /Users/someone/Downloads/projects/tramline/backend && grep -rn \"shadow_walk\" --include=*.py services/ routes/ | head -40 && git log --oneline -20 -- services/route_service.py\npython3 scripts/regen_routes.py",
+  "reads_only": false
+ },
+ {
+  "command": "",
+  "reads_only": false
+ },
+ {
+  "command": "   ",
+  "reads_only": false
+ }
+]

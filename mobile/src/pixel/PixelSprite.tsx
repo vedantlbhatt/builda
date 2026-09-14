@@ -11,23 +11,19 @@ import {
 import Svg, { Rect } from 'react-native-svg';
 
 import type { Scheme } from '../theme';
+import { useScheme } from '../ui/scheme';
 import { EMPTY, GRID, runsFor, type Frame } from './frames';
 import {
   CUT,
   MOTION,
   blinkGapMs,
   blinks,
-  breathPeriodMs,
   clampTempo,
   closeEyes,
   crossfadeFor,
   decompose,
-  gestureGapMs,
-  gestures,
-  glanceAside,
   initLayers,
   layerFrames,
-  pickGesture,
   settleFor,
   staggered,
   stepLayers,
@@ -37,7 +33,7 @@ import {
   type Layers,
   type Overlay,
 } from './motion';
-import { spritePalette, type SpritePalette } from './palette';
+import { HUE_SNAP_MS, spritePalette, type InkTone, type SpritePalette } from './palette';
 import { SPRITES, type SpriteState } from './sprites';
 
 export { spritePalette } from './palette';
@@ -54,10 +50,16 @@ interface SpriteProps {
    * because a caller asked for 4 fps). Speed is `tempo`.
    */
   fps?: number;
+  /** Default: the kit's `SchemeProvider`, which is dark unless a surface says otherwise. */
   scheme?: Scheme;
   paused?: boolean;
-  /** 0.5–2: shortens every beat and breath. A live card can hand in recent activity. */
+  /** 0.5–2: shortens every beat. A live card can hand in recent activity. */
   tempo?: number;
+  /**
+   * Which ink (`palette.ts`): `rest` amber, `idle` on an unselected picker tile, `selected`
+   * (`#1C1917`) on a tile filled with amber, `faint` for a Bit who is not there.
+   */
+  tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -87,40 +89,41 @@ export function useReducedMotion(): boolean {
 }
 
 /**
- * Bit, alive.
+ * Bit, alive, in amber: the brand's creature in the brand's colour (the spectrum gives each
+ * animal its own hue and Bit the accent; `palette.ts`). Amber on dark, amber's 3:1 mark tone
+ * on light, one ink for every role.
  *
  * Reduced motion (or `paused`) renders the state's first frame, still — `paused` is OR-ed
  * with the OS setting, so a caller can stop a sprite but can never force one to move
  * against it. Otherwise `LiveSprite` runs the motion in `motion.ts`.
  */
-export function PixelSprite({
-  state,
-  size = 64,
-  scheme = 'dark',
-  paused = false,
-  tempo,
-  style,
-}: SpriteProps) {
+export function PixelSprite({ state, size = 64, scheme: schemeProp, paused = false, tempo, tone = 'rest', style }: SpriteProps) {
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
   const reduced = useReducedMotion();
   if (paused || reduced) {
-    return <FrameView frame={SPRITES[state][0]!} size={size} scheme={scheme} style={style} />;
+    return <FrameView frame={SPRITES[state][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
   }
-  return <LiveSprite state={state} size={size} scheme={scheme} tempo={tempo} style={style} />;
+  return <LiveSprite state={state} size={size} scheme={scheme} tempo={tempo} tone={tone} style={style} />;
 }
 
 /** The first frame of a state, static. For list rows and anywhere motion would be noise. */
 export function PixelIcon({
   state,
   size = 24,
-  scheme = 'dark',
+  scheme: schemeProp,
+  tone = 'rest',
   style,
 }: {
   state: SpriteState;
   size?: number;
   scheme?: Scheme;
+  tone?: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
-  return <FrameView frame={SPRITES[state][0]!} size={size} scheme={scheme} style={style} />;
+  const contextScheme = useScheme();
+  const scheme = schemeProp ?? contextScheme;
+  return <FrameView frame={SPRITES[state][0]!} size={size} scheme={scheme} tone={tone} style={style} />;
 }
 
 // ─── the runtime ─────────────────────────────────────────────────────────────────────
@@ -162,29 +165,30 @@ function LiveSprite({
   size,
   scheme,
   tempo,
+  tone,
   style,
 }: {
   state: SpriteState;
   size: number;
   scheme: Scheme;
   tempo: number | undefined;
+  tone: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
   const px = Math.max(1, Math.floor(size / GRID));
   const drawn = px * GRID;
-  const palette = useMemo(() => spritePalette(scheme), [scheme]);
+  const palette = useMemo(() => spritePalette(scheme, tone), [scheme, tone]);
   const rate = clampTempo(tempo);
   const { base, overlays } = decompose(state);
   const overlayValues = useOverlayValues(overlays);
 
-  // Whole-sprite transforms. `breath` and `settleScale` multiply; `bodyY` (impact) and
-  // `sag` (the sleeping breath) add. All native-driver-safe.
-  const breath = useRef(new Animated.Value(1)).current;
+  // Whole-sprite transforms, all one-off: the entrance settle, and the hammer's one-cell
+  // impact on the strike beat. Nothing runs continuously (no breath scale, no sag, no tilt):
+  // a transform that never stops keeps a pixel glyph off whole device pixels. Idle breathes
+  // in drawn frames instead (`SPRITES.idle`). All native-driver-safe.
   const settleScale = useRef(new Animated.Value(MOTION.settle.fromScale)).current;
   const settleOpacity = useRef(new Animated.Value(0)).current;
   const bodyY = useRef(new Animated.Value(0)).current;
-  const sag = useRef(new Animated.Value(0)).current;
-  const tilt = useRef(new Animated.Value(0)).current;
   const layerA = useRef(new Animated.Value(1)).current;
   const layerB = useRef(new Animated.Value(0)).current;
 
@@ -237,62 +241,40 @@ function LiveSprite({
     // Derived frames are memoised per source frame so the layer scheduler, which compares
     // by identity, sees a blink as one change and its end as one change.
     const closed = new Map<Frame, Frame>();
-    const aside = new Map<Frame, Frame>();
-    const derive = (cache: Map<Frame, Frame>, f: Frame, fn: (f: Frame) => Frame) => {
-      let d = cache.get(f);
+    const shut = (f: Frame) => {
+      let d = closed.get(f);
       if (!d) {
-        d = fn(f);
-        cache.set(f, d);
+        d = closeEyes(f);
+        closed.set(f, d);
       }
       return d;
     };
 
     let beatFrame = base[0]!;
     let eyesShut = false;
-    let glancing = false;
     const show = (fade: Fade) => {
-      let f = glancing ? derive(aside, beatFrame, glanceAside) : beatFrame;
-      if (eyesShut) f = derive(closed, f, closeEyes);
+      const f = eyesShut ? shut(beatFrame) : beatFrame;
       setLayers((l) => stepLayers(l, f, fade, Date.now()));
     };
 
-    // 1. Entrance: opacity 0 → 1 with scale fromScale → 1. 220 ms ease-out, or the 600 ms
-    //    ease-out-back rise for a celebration.
+    // 1. Entrance: scale fromScale → 1, 220 ms ease-out or the 600 ms ease-out-back rise for a
+    //    celebration, with the opacity snapping in (`HUE_SNAP_MS`): amber at partial opacity
+    //    over the warm ground is brown for as long as the fade lasts (DESIGN-V2 1.3).
     const settle = settleFor(state);
     setLayers(initLayers(base[0]!, Date.now()));
     settleOpacity.setValue(0);
     settleScale.setValue(settle.fromScale);
     bodyY.setValue(0);
-    sag.setValue(0);
-    tilt.setValue(0);
     run(
       Animated.parallel([
-        timing(settleOpacity, 1, settle.ms, 'out'),
+        timing(settleOpacity, 1, Math.min(settle.ms, HUE_SNAP_MS), 'out'),
         timing(settleScale, 1, settle.ms, settle.easing),
       ])
     );
 
-    // 2. Breath: 1 → 1.03 → 1, ease-in-out, on the state's period. Sleeping also sags one
-    //    pixel at the bottom of each breath.
-    const period = breathPeriodMs(state, rate);
-    breath.setValue(1);
-    const inhale = [timing(breath, MOTION.breath.scale, period / 2, 'inOut'), timing(breath, 1, period / 2, 'inOut')];
-    if (state === 'sleeping') {
-      const drop = MOTION.sleeping.settleCells * px;
-      run(
-        Animated.loop(
-          Animated.parallel([
-            Animated.sequence(inhale),
-            Animated.sequence([timing(sag, drop, period / 2, 'inOut'), timing(sag, 0, period / 2, 'inOut')]),
-          ])
-        )
-      );
-    } else {
-      run(Animated.loop(Animated.sequence(inhale)));
-    }
-
-    // 3. Beats: the frame timeline, cross-faded. The strike beat also drops the body one
-    //    pixel (squash, no stretch) and fires that beat's sparks.
+    // 2. Beats: the frame timeline, cross-faded. Idle's timeline is its drawn loop (rest,
+    //    breath, rest, antenna tip). The strike beat also drops the body one pixel (squash,
+    //    no stretch) and fires that beat's sparks.
     const timeline = timelineFor(state, rate);
     const fade = crossfadeFor(state);
     const onBeat = (frame: number) => {
@@ -321,7 +303,7 @@ function LiveSprite({
       tick();
     }
 
-    // 4. Blinks: a two-frame cut, 120 ms shut, on a random 3–6 s gap.
+    // 3. Blinks: a two-frame cut, 120 ms shut, on a random 3–6 s gap. The eye holes fill.
     if (blinks(state)) {
       const blink = () =>
         after(blinkGapMs(), () => {
@@ -336,28 +318,7 @@ function LiveSprite({
       blink();
     }
 
-    // 5. Idle micro-gestures every 15–40 s: a 2.5° tilt and back, or a glance aside.
-    if (gestures(state)) {
-      const g = MOTION.gesture;
-      const gesture = () =>
-        after(gestureGapMs(), () => {
-          if (pickGesture() === 'tilt') {
-            run(Animated.sequence([timing(tilt, g.tiltDeg, g.tiltMs / 2, 'inOut'), timing(tilt, 0, g.tiltMs / 2, 'inOut')]));
-            gesture();
-          } else {
-            glancing = true;
-            show(fade);
-            after(g.asideMs, () => {
-              glancing = false;
-              show(fade);
-              gesture();
-            });
-          }
-        });
-      gesture();
-    }
-
-    // 6. Continuous overlays. Each is a 0 → 1 progress the render maps to its motion.
+    // 4. Continuous overlays. Each is a 0 → 1 progress the render maps to its motion.
     overlays.forEach((o, k) => {
       const v = overlayValues[k]!;
       v.setValue(0);
@@ -399,19 +360,14 @@ function LiveSprite({
       for (const id of timers) clearTimeout(id);
       for (const a of anims) a.stop();
     };
-  }, [state, rate, base, overlays, overlayValues, px, breath, settleScale, settleOpacity, bodyY, sag, tilt]);
+  }, [state, rate, base, overlays, overlayValues, px, settleScale, settleOpacity, bodyY]);
 
   /*
-   * The breathing scale sits on the View that WRAPS the Svg, never on the Rects. At 1.03,
-   * a 64 pt sprite grows by under two points — sub-pixel by design. That is why it reads
-   * as breathing rather than resizing, and why the pixel edges inside stay where the
-   * integer-scale rule put them.
+   * The settle scale sits on the View that WRAPS the Svg, never on the Rects, and it ends at
+   * exactly 1 within 220 ms. The impact is whole sprite pixels. So once a state has arrived,
+   * every pixel edge is where the integer-scale rule put it.
    */
-  const transform = [
-    { translateY: Animated.add(bodyY, sag) },
-    { scale: Animated.multiply(breath, settleScale) },
-    { rotate: tilt.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] }) },
-  ];
+  const transform = [{ translateY: bodyY }, { scale: settleScale }];
 
   return (
     <View
@@ -501,7 +457,7 @@ interface Cell {
  * One Rect per run of identical non-transparent pixels in a row.
  *
  * The palette is any glyph → colour map, not `SpritePalette` specifically: the animal
- * pack draws the same frames with a two-role palette (`animalPalette`). A glyph the
+ * pack draws the same frames with a one-role palette (`animalPalette`). A glyph the
  * palette does not name is SKIPPED rather than drawn in a fallback colour — a sprite with
  * a hole in it is a bug someone reports; a sprite with a stray magenta pixel is one
  * someone ships.
@@ -554,15 +510,17 @@ function FrameView({
   frame,
   size,
   scheme,
+  tone,
   style,
 }: {
   frame: Frame;
   size: number;
   scheme: Scheme;
+  tone: InkTone;
   style?: StyleProp<ViewStyle>;
 }) {
   const px = Math.max(1, Math.floor(size / GRID));
-  const palette = useMemo(() => spritePalette(scheme), [scheme]);
+  const palette = useMemo(() => spritePalette(scheme, tone), [scheme, tone]);
   return (
     <View
       style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}

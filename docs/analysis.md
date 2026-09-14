@@ -244,9 +244,16 @@ two are things you can measure (autonomy, steer rate) and "explorer" is not.
 Six rules, each ONE metric crossing ONE threshold, all in `ARCHETYPE_RULES` with the
 source of the threshold beside it: architect (planning_ratio 2.4), velocity_machine
 (code_velocity 487/h), quality_guardian (test runs 3/h), night_owl (night_share 0.4),
-director (autonomy 0.5), skeptic (steer_rate 0.4). Four are anchored on Paxel's published
-example figures or on arithmetic (the six night hours are 0.25 of the clock);
-quality_guardian's is an unmeasured judgement call and says so. A rule whose metric is
+director (autonomy 0.5), skeptic (steer_rate 0.4). None is fitted, and each source says
+where it came from. The architect (2.4) and velocity_machine (487) thresholds were once
+credited to Paxel's example report; they come from an explainx.ai mock of a Paxel report,
+which Paxel never published, and are labelled `EXPLAINX_MOCK` ("UNMEASURED: from an
+explainx.ai mock of a Paxel report, which Paxel never published; not a measurement"). The
+skeptic threshold is the one figure that is Paxel's own copy, landing card 10's "about 4
+prompts in 10", which describes a heavy steerer and not a norm (`PAXEL_HEAVY_STEERER`).
+Night owl and director rest on arithmetic (the six night hours are 0.25 of the clock; half
+the clock), and quality_guardian's is an unmeasured judgement call and says so. No
+threshold moved when the labels did: moving one moves people's archetypes. A rule whose metric is
 null does not score and cannot win, the winner must have MET its threshold, and the
 response carries every score plus the two runners up so the UI can say "Architect, with a
 streak of Night Owl". Confidence is the winner's margin over the runner up, damped by how
@@ -256,7 +263,12 @@ many sessions the corpus has.
 
 `headline_facts` turns the metrics into second-person one-liners with the number in the
 sentence, ranked by distance from a documented baseline (`BASELINES`, each with its
-source: Paxel's example report, this repository's reference corpus, or arithmetic). The
+source: this repository's reference corpus, arithmetic, or the label that says it has no
+measurement). Two baselines are MEASURED here (planning_ratio 2.5, code_velocity 523).
+Of the three without a measurement, only steer_rate 0.4 is Paxel's copy, and it describes
+a heavy steerer, not a norm; autonomy_score 0.82 and the 156 character prompt come from
+the explainx.ai mock (design-refs/research/paxel.md section 6, where the launch capture
+and three later ones were checked). Their values did not move. The
 most unusual thing about you leads. Every fact carries `{id, text, value, unit}` so the UI
 can style the number, and no fact is ever built on a metric that came back null.
 

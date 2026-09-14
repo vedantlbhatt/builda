@@ -210,6 +210,15 @@ struct CardTests {
         }
     }
 
+    /// Under half of git's count says nothing about who wrote the rest (parallel sessions,
+    /// generated files and lockfiles are in it too), so "mostly you" never leads the card.
+    /// FOUND 2026-09-14: "Most of these lines are yours" beside +507 of the agent's lines.
+    @Test func mostlyYouIsNeverTheHeadline() {
+        let s = Superlative.choose(Self.model(lines: 507, commits: 2, bucket: .mostlyYou, confidence: .high))
+        #expect(!s.headline.contains("yours"))
+        #expect(s.headline == Superlative.choose(Self.model(lines: 507, commits: 2)).headline)
+    }
+
     /// A chore-log title must never become a headline. Reading all 82 on-disk titles on
     /// the reference machine turned up "Check backend service running on port 5001" and
     /// "Say hi in three words" — a card leading with that reads like a Jira ticket.

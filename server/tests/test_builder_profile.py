@@ -12,6 +12,7 @@ Same harness as test_sync.py, whose fixtures are reused directly.
 """
 
 import copy
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -287,6 +288,9 @@ def test_the_corpus_metrics_are_computed_from_the_sessions_not_from_any_analysis
         "total_hours": 4.0,
         "total_prompts": 40,
         "total_lines_added": 800,
+        # 10 a session, from the stored `lines_removed_agent` (5.2): summed like the added
+        # lines, so the money view can put red beside green.
+        "total_lines_removed": 40,
         "total_commits": 8,
         "commit_basis": "git_log_window",
         "total_tool_calls": 400,
@@ -326,7 +330,7 @@ def test_what_the_server_cannot_see_is_null_with_a_reason_rather_than_zero(clien
         assert m[key]["value"] is None, key
         assert missing[key], key
     assert "not stored server side" in missing["steer_rate"]
-    assert "allowlist" in missing["tool_diversity"]
+    assert "only the names of common tools" in missing["tool_diversity"]
     # And no fact is ever built on a metric that is null.
     ids = {f["id"] for f in corpus["facts"]}
     assert ids.isdisjoint({"steer_rate", "planning_ratio", "avg_prompt_chars"})
@@ -344,7 +348,11 @@ def test_the_facts_are_ranked_second_person_sentences_with_no_dashes(client, pai
     for f in facts:
         assert {"id", "text", "value", "unit"} <= set(f)
         assert "\u2014" not in f["text"] and "\u2013" not in f["text"]
-        assert any(ch.isdigit() for ch in f["text"])
+        # Every fact carries its number, except the peak hour at 0 or 12, which `profile._hour`
+        # spells "midnight" and "noon". The sessions start at now minus whole days, so this
+        # test failed only when the suite ran in those hours (seen 2026-09-13: "at noon").
+        spelled = f["id"] == "peak_hour" and f["value"] in (0, 12)
+        assert spelled or any(ch.isdigit() for ch in f["text"]), f["text"]
     assert any(f["text"].startswith("You default to Opus") for f in facts)
 
 
@@ -404,3 +412,221 @@ def test_another_users_sessions_never_enter_the_corpus(client, created_users):
     a = client.get("/v1/profile/builder", headers=headers_a).json()["corpus"]
     assert a["totals"]["total_sessions"] == 0
     assert a["archetype"]["name"] is None
+
+
+# ------------------------------------------------------------ spend from the stored buckets
+#: Big enough that a rounding to cents cannot hide a missing bucket: 1.2M input, 300k
+#: output, 40M cache reads and 1M of cache writes split across the two TTLs.
+BUCKETS = {
+    "input": 1_200_000,
+    "output": 300_000,
+    "cache_read": 40_000_000,
+    "cache_w5m": 900_000,
+    "cache_w1h": 100_000,
+}
+
+
+def _priced(days_ago: int, **overrides) -> dict:
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(days=days_ago)
+    return _payload(
+        **{"started_at": started, "ended_at": started + timedelta(hours=1), "tokens": BUCKETS}
+        | overrides
+    )
+
+
+def test_spend_is_priced_from_the_stored_token_buckets(client, paired):
+    """docs/overnight-integration.md 5.2. The server passed the output split and no
+    buckets, so pricing skipped every session and `spend_usd` said "no session reported
+    token counts" about sessions that all had. Two sessions, one model, and the dollars
+    worked out here by hand from the price table's own rates."""
+    from builder.builder_profile import _profile_module
+
+    pricing = _profile_module().pricing
+    # THE rounding rule for a number a person reads (`analysis.plain.rounded`, a tie up):
+    # an hour at $40.125 is $40.13, where Python's own `round` said $40.12.
+    rounded = _profile_module().plain.rounded
+    uid, headers = paired
+    _upload(client, headers, _priced(3), _priced(2))
+
+    m = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["metrics"]
+    p = pricing.PRICES["claude-opus-5"]  # the sample payload's claude-opus-5[1m]
+    one = (
+        BUCKETS["input"] * p.input
+        + BUCKETS["output"] * p.output
+        + BUCKETS["cache_read"] * p.cache_read
+        + BUCKETS["cache_w5m"] * p.cache_write_5m
+        + BUCKETS["cache_w1h"] * p.cache_write_1h
+    ) / 1_000_000
+    spend = m["spend_usd"]
+    assert spend["value"] == rounded(2 * one, 2), spend
+    assert spend["n"] == 2 and spend["reason"] is None
+    assert spend["basis"] in (pricing.BASIS_LIST_PRICE, "stale_prices")
+    assert spend["prices_read_on"] == str(pricing.PRICES_READ_ON)
+    assert m["spend_per_hour_usd"]["value"] == rounded(2 * one / 2, 2)
+
+
+def test_a_corpus_with_no_token_buckets_refuses_as_not_reported(client, paired):
+    """Absent is not zero: sessions whose harness reported no counts are refused by basis,
+    never priced at $0."""
+    uid, headers = paired
+    _upload(
+        client,
+        headers,
+        *[_priced(d, tokens_reported=False, tokens=None) for d in (3, 2, 1)],
+    )
+    spend = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["metrics"][
+        "spend_usd"
+    ]
+    assert spend["value"] is None
+    assert spend["basis"] == "tokens_not_reported"
+    assert spend["reason"]
+
+
+def test_model_costs_carry_the_price_table_key(client, paired):
+    """The report's `by_model` names a model by its price table key (`priced_model`); the
+    server's rows carry the same key beside the display name, from the same function."""
+    from builder.builder_profile import _profile_module
+
+    pricing = _profile_module().pricing
+    uid, headers = paired
+    _upload(client, headers, _priced(3), _priced(2))
+    rows = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["model_costs"]
+    assert [r["model_id"] for r in rows] == ["claude-opus-5"]
+    assert rows[0]["model_id"] in pricing.PRICES
+    assert rows[0]["model"] == pricing.family("claude-opus-5")
+    assert rows[0]["sessions"] == 2
+
+
+def _opus_sitting(started: datetime, repo: str) -> dict:
+    """One hour, priced, all Opus (the sample's model), ten commits in its git window."""
+    return _payload(
+        started_at=started,
+        ended_at=started + timedelta(hours=1),
+        tokens=BUCKETS,
+        repo_hash=repo,
+        commit_count=10,
+    )
+
+
+def test_per_model_commits_are_refused_when_the_windows_overlap(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13, `advrev/num/probes/p_model_commits.py`):
+    two sittings in one repository ten minutes apart both asked git about the same commits,
+    and the server's per model row summed them (20 for 10) and priced dollars per commit off
+    the double count. The machine claims each commit once by its SHA
+    (`profile.attribute_commits`); the server stores no SHA, so when the windows overlap,
+    the rule that already refuses `totals.total_commits`, both per model fields are null
+    with the reason. The dollars are still the dollars."""
+    uid, headers = paired
+    repo = uuid.uuid4().hex * 2
+    t0 = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
+    _upload(
+        client, headers, _opus_sitting(t0, repo), _opus_sitting(t0 + timedelta(minutes=10), repo)
+    )
+    corpus = client.get("/v1/profile/builder", headers=headers).json()["corpus"]
+    assert corpus["totals"]["total_commits"] is None
+    assert corpus["totals"]["commit_basis"] == "overlapping_session_windows"
+    (row,) = corpus["model_costs"]
+    assert (row["commits"], row["usd_per_commit"]) == (None, None), row
+    assert row["commits_refusal"] == "overlapping_session_windows"
+    assert row["usd"] > 0 and row["sessions"] == 2
+
+
+def test_per_model_commits_stand_when_no_windows_overlap(client, paired):
+    uid, headers = paired
+    t0 = datetime.now(UTC).replace(microsecond=0) - timedelta(days=3)
+    _upload(
+        client,
+        headers,
+        _opus_sitting(t0, uuid.uuid4().hex * 2),
+        _opus_sitting(t0 + timedelta(days=1), uuid.uuid4().hex * 2),
+    )
+    (row,) = client.get("/v1/profile/builder", headers=headers).json()["corpus"]["model_costs"]
+    assert row["commits"] == 20 and row["usd_per_commit"] is not None
+    assert row["commits_refusal"] is None
+
+
+def test_window_days_is_the_query_the_phone_sends(client, paired):
+    """docs/overnight-integration.md 5.3: the phone sent `?days=119`, which this route does
+    not read, so it always got 90 and nothing said so. `window_days` is the name, it is
+    echoed back, and an unknown name changes nothing."""
+    uid, headers = paired
+    assert (
+        client.get("/v1/profile/builder?window_days=30", headers=headers).json()["window_days"]
+        == 30
+    )
+    assert client.get("/v1/profile/builder?days=30", headers=headers).json()["window_days"] == 90
+
+
+# ------------------------------------------------------------------------ quotes (0021)
+QUOTES_DOC = {
+    "quotes_version": 1,
+    "generated_at": "2026-09-13T08:00:00Z",
+    "quotes": [
+        {
+            "card": "go_to_prompt",
+            "text": "run the tests again",
+            "client_session_id": "a" * 64,
+            "sent_at": "2026-09-12T21:00:00Z",
+            "seconds_in": 640,
+            "tool_calls_after": None,
+            "corrected": None,
+        }
+    ],
+}
+
+
+def test_quotes_are_served_to_their_owner_only_while_the_switch_is_on(client, created_users):
+    """The second opt-in exception, read side. Null by default; a stored document shows
+    only while Quote my prompts is on (off deletes it, and the read checks the switch too);
+    and another person's profile never carries it. The document is seeded as the owner
+    because writing it is `PUT /v1/profile/quotes`'s job, not this route's."""
+    import json
+
+    from sqlalchemy import text
+    from test_sync import owner_engine
+
+    uid_a, headers_a = _pair(client, created_users)
+    uid_b, headers_b = _pair(client, created_users)
+    assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] is None
+    # The session the quote was sent in: a quote is served only while it is on the server.
+    held = QUOTES_DOC["quotes"][0]["client_session_id"]
+    assert _upload(client, headers_a, _payload(client_session_id=held))["accepted"] == 1
+
+    with owner_engine().begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO builder_quotes (user_id, quotes_version, generated_at, body) "
+                "VALUES (:u, 1, now(), CAST(:b AS jsonb))"
+            ),
+            {"u": uid_a, "b": json.dumps(QUOTES_DOC)},
+        )
+    assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] is None
+
+    with owner_engine().begin() as c:
+        c.execute(
+            text("INSERT INTO privacy_prefs (user_id, quotes) VALUES (:u, true)"), {"u": uid_a}
+        )
+    assert client.get("/v1/profile/builder", headers=headers_a).json()["quotes"] == QUOTES_DOC
+    assert client.get("/v1/profile/builder", headers=headers_b).json()["quotes"] is None
+    # The profile tab's own request never carries them.
+    assert "run the tests again" not in client.get("/v1/profile", headers=headers_a).text
+
+
+def test_the_server_only_rounding_is_the_one_rule():
+    """The server only image has no `analysis/`, and its fallback used Python's `round`, a tie
+    to the even digit: 72.25 said 72.2 there and 72.3 everywhere else (FOUND IN REVIEW,
+    2026-09-14). The fallback is the one rule's arithmetic, held to it here."""
+    import random
+
+    from builder import builder_profile as bp
+
+    plain = bp._profile_module().plain
+    rng = random.Random(20260914)
+    values = [72.25, 0.185, 2.675, 1.005, 0.5, 1.5, 2.5, -0.5, 3929.6, 0.0, 12.345]
+    values += [rng.uniform(-1000, 1000) for _ in range(2000)]
+    values += [round(rng.uniform(0, 100), 3) for _ in range(2000)]
+    for x in values:
+        for digits in (None, 0, 1, 2, 3):
+            assert bp._half_up(x, digits) == plain.rounded(x, digits), (x, digits)
+    assert bp._half_up(72.25, 1) == 72.3
+    assert bp._half_up(7, 2) == 7

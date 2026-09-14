@@ -122,7 +122,13 @@ def _verify_excerpts(analysis: dict, digest_text: str) -> int:
 #: excerpt worth showing.
 _VERBATIM_FIELDS = frozenset({"prompt_excerpt"})
 
-_DASHES = ("\u2014", "\u2013", "\u2015", "\u2212")
+
+def _dashes() -> tuple[str, ...]:
+    """`plain.DASH_CHARS`, the one list of dash characters. Imported when read: `plain`
+    imports `shipped`, which imports this module."""
+    from . import plain
+
+    return plain.DASH_CHARS
 
 
 def _dedash(text: str) -> str:
@@ -135,7 +141,7 @@ def _dedash(text: str) -> str:
     comma otherwise.
     """
     out = text
-    for dash in _DASHES:
+    for dash in _dashes():
         while dash in out:
             i = out.index(dash)
             before, after = out[:i], out[i + 1 :]
@@ -151,9 +157,9 @@ def _dedash(text: str) -> str:
 def dedash(node, *, field: str | None = None) -> tuple[object, int]:
     """Rewrite every dash in every string of a decoded analysis. Returns (node, count)."""
     if isinstance(node, str):
-        if field in _VERBATIM_FIELDS or not any(d in node for d in _DASHES):
+        if field in _VERBATIM_FIELDS or not any(d in node for d in _dashes()):
             return node, 0
-        return _dedash(node), sum(node.count(d) for d in _DASHES)
+        return _dedash(node), sum(node.count(d) for d in _dashes())
     if isinstance(node, dict):
         total = 0
         for k, v in node.items():

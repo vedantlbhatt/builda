@@ -5,13 +5,15 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from ..auth import (
+    DEVICE_FLOW,
+    SIGN_IN,
     CurrentDevice,
     ProviderIdentity,
     current_device,
     issue_access_token,
     issue_refresh_token,
     new_user_code,
-    optional_current_device,
+    optional_linker,
     redeem_refresh_token,
     register_device,
     resolve_or_create_user,
@@ -122,6 +124,7 @@ def device_poll(body: DevicePollRequest):
             grant.label,
             grant.platform,
             grant.agent_version,
+            grant_flow=DEVICE_FLOW,
         )
 
         access = issue_access_token(str(grant.user_id), device_id)
@@ -173,7 +176,9 @@ def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(c
 # user, and an identity that already belongs to someone else is a 409. A bearer that is
 # present but invalid is a 401 rather than "treat as anonymous" — silently creating a
 # second account for a person whose token merely expired is the failure linking exists
-# to prevent. Nothing is ever merged on email. See `resolve_or_create_user`.
+# to prevent. Nothing is ever merged on email. See `resolve_or_create_user`. Only the
+# phone links (`optional_linker`, 0024): a paired machine's bearer is a 403 here, or it could
+# link an identity it controls and sign in as the account's phone.
 
 
 class ProviderSignInRequest(BaseModel):
@@ -205,7 +210,13 @@ def _sign_in(
             link_to=str(linker.user_id) if linker else None,
         )
         device_id = register_device(
-            db, user_id, body.machine_id, body.label, body.platform, body.agent_version
+            db,
+            user_id,
+            body.machine_id,
+            body.label,
+            body.platform,
+            body.agent_version,
+            grant_flow=SIGN_IN,
         )
         access = issue_access_token(user_id, device_id)
         refresh = issue_refresh_token(db, device_id)
@@ -221,7 +232,7 @@ def _sign_in(
 
 @router.post("/apple")
 def apple_sign_in(
-    body: AppleSignInRequest, linker: CurrentDevice | None = Depends(optional_current_device)
+    body: AppleSignInRequest, linker: CurrentDevice | None = Depends(optional_linker)
 ):
     audiences = [settings().apple_primary_bundle_id]
     if settings().apple_service_id:
@@ -232,7 +243,7 @@ def apple_sign_in(
 
 @router.post("/google")
 def google_sign_in(
-    body: GoogleSignInRequest, linker: CurrentDevice | None = Depends(optional_current_device)
+    body: GoogleSignInRequest, linker: CurrentDevice | None = Depends(optional_linker)
 ):
     """Google Sign-In. `platform` is "ios" or "android"; the token's audience says which
     OAuth client issued it, and all of them are in GOOGLE_CLIENT_IDS."""

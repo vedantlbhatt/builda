@@ -1,0 +1,26 @@
+diff --git a/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm b/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
+index f75f78fddb1b6411d2a5a50403583b3b1d99f45c..a7d7762f4b1b5acbdffc07024d565d8f11956c56 100644
+--- a/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
++++ b/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
+@@ -232,7 +232,20 @@ - (NSTextStorage *)_textStorageAndLayoutManagerWithAttributesString:(NSAttribute
+                                                 paragraphAttributes:(ParagraphAttributes)paragraphAttributes
+                                                                size:(CGSize)size
+ {
+-  NSTextContainer *textContainer = [[NSTextContainer alloc] initWithSize:size];
++  // Builda: Yoga rounds a frame's two edges to the pixel grid separately, so a paragraph measured
++  // at exactly N lines can be framed a hair under it (91.99975 points for four lines of 23), and
++  // NSLayoutManager lays out only lines that fit whole: the last line was silently dropped (found
++  // on the simulator, 2026-09-13). Half a point of slack in each direction stops that, and a
++  // width a hair under the measured one can no longer wrap a word into a line that has no room.
++  // The overflow is a fraction of a pixel; font fitting below still uses the true size.
++  CGSize containerSize = size;
++  if (size.width < CGFLOAT_MAX / 2) {
++    containerSize.width += 0.5;
++  }
++  if (size.height < CGFLOAT_MAX / 2) {
++    containerSize.height += 0.5;
++  }
++  NSTextContainer *textContainer = [[NSTextContainer alloc] initWithSize:containerSize];
+ 
+   textContainer.lineFragmentPadding = 0.0; // Note, the default value is 5.
+   textContainer.lineBreakMode = paragraphAttributes.maximumNumberOfLines > 0

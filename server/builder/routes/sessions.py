@@ -1,18 +1,29 @@
 import base64
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
-from ..auth import CurrentDevice, current_device
+from .. import live_store
+from ..auth import CurrentDevice, current_device, current_uploader
 from ..builder_profile import (
     DEFAULT_WINDOW_DAYS,
     MAX_WINDOW_DAYS,
     MIN_SESSIONS,
+    builder_narrative,
     builder_profile,
+    builder_quotes,
+    builder_report,
     corpus_metrics,
+    held_report,
+    project_names,
+    put_builder_narrative,
+    put_builder_report,
 )
 from ..contract import ENUM_VALUES
 from ..db import db_session
+from ..narrative_spec import BuilderNarrative
+from ..report_spec import BuilderReport
 
 router = APIRouter(prefix="/v1", tags=["sessions"])
 
@@ -22,8 +33,11 @@ router = APIRouter(prefix="/v1", tags=["sessions"])
 LIVE_LIMIT = 10
 
 
-def _row_to_session(r) -> dict:
-    return {
+def _row_to_session(r, *, own: bool = False) -> dict:
+    """One session as every route serves it. `own` is True only where the row is the
+    VIEWER'S OWN session, and adds `repo_key` (below); the feed and a stranger reading a
+    shared session never get it."""
+    out = {
         "id": str(r.id),
         "client_session_id": r.client_session_id,
         "harness": r.harness,
@@ -41,6 +55,11 @@ def _row_to_session(r) -> dict:
         "local_date": r.local_date.isoformat(),
         "title": r.title,
         "title_source": r.title_source,
+        # Contract v4 (0023): the engineer voice title as ids, `{verb, object, n, modules}`,
+        # or null when no title rule fired or the producer does not compute one. On every
+        # row, not only the detail, because a title is what a list shows; the phone renders
+        # the words from the ids, so no word of it is stored.
+        "title_ids": r.title_ids,
         "notable": r.notable,
         "unattended": r.unattended,
         "timeline_fidelity": r.timeline_fidelity,
@@ -53,6 +72,16 @@ def _row_to_session(r) -> dict:
         # its id. `posts.session_id` is UNIQUE, so the join can never multiply rows.
         "post_id": str(r.post_id) if r.post_id else None,
     }
+    if own:
+        # The repository's KEY (report v3, docs/projects.md): the salted `repo_hash` the
+        # upload already carried, which is the report's `projects[].key`, so the phone can
+        # put each of its own sessions in its project (the project page's session swarm).
+        # Never a name: a private repository's name never reaches the server. Owner only,
+        # because the pepper is global: one repository has one key in every account, and a
+        # key on a shared session would tell a stranger two people work in the same one.
+        # Null when the sitting's repository did not resolve.
+        out["repo_key"] = r.repo_hash
+    return out
 
 
 def _live_rows(db, user_id: str) -> list[dict]:
@@ -62,21 +91,34 @@ def _live_rows(db, user_id: str) -> list[dict]:
     pull-to-refresh agree on what "right now" means. `updated_at` is included because a
     live row's `ended_at` is the last record the Mac had seen, and the phone wants to say
     "as of 40 s ago" rather than pretend the snapshot is the present.
+
+    `live_state` is the SLIM state (`live_store.slim`: no time lapse, only the map rows
+    the activity and the verdict name) or null when no producer has computed one. Mission
+    control, the widget and ActivityKit read this list, and `live_names` is never on it:
+    a basename that reached this route could reach a Lock Screen.
     """
     rows = db.execute(
         text(
             """
-            SELECT s.*, r.public_name, p.id AS post_id
+            SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id, sl.body AS live_body
             FROM sessions s
             LEFT JOIN repos r ON r.id = s.repo_id
             LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
+            LEFT JOIN session_live sl ON sl.session_id = s.id
             WHERE s.user_id = :u AND s.state = 'live'
             ORDER BY s.updated_at DESC LIMIT :limit
             """
         ),
         {"u": user_id, "limit": LIVE_LIMIT},
     ).all()
-    return [{**_row_to_session(r), "updated_at": r.updated_at.isoformat()} for r in rows]
+    return [
+        {
+            **_row_to_session(r, own=True),
+            "updated_at": r.updated_at.isoformat(),
+            "live_state": live_store.slim(r.live_body),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/sessions")
@@ -116,7 +158,7 @@ def list_sessions(
         rows = db.execute(
             text(
                 f"""
-                SELECT s.*, r.public_name, p.id AS post_id
+                SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
                 FROM sessions s
                 LEFT JOIN repos r ON r.id = s.repo_id
                 LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
@@ -128,7 +170,8 @@ def list_sessions(
         ).all()
 
     return {
-        "sessions": [_row_to_session(r) for r in rows],
+        # `s.user_id = :u` above: every row is the viewer's own.
+        "sessions": [_row_to_session(r, own=True) for r in rows],
         "next_before": rows[-1].started_at.isoformat() if len(rows) == limit else None,
     }
 
@@ -155,7 +198,7 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
         row = db.execute(
             text(
                 """
-                SELECT s.*, r.public_name, p.id AS post_id
+                SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
                 FROM sessions s
                 LEFT JOIN repos r ON r.id = s.repo_id
                 LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
@@ -179,8 +222,24 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
         analysis = db.execute(
             text("SELECT body FROM session_analysis WHERE session_id = :id"), {"id": session_id}
         ).first()
+        # Owner only (0020): a stranger reading a shared session gets no row from either
+        # query, whatever this code does with the result.
+        live = db.execute(
+            text("SELECT body, names FROM session_live WHERE session_id = :id"),
+            {"id": session_id},
+        ).first()
+        names_on = bool(
+            live is not None
+            and live.names is not None
+            and db.execute(
+                text("SELECT live_names FROM privacy_prefs WHERE user_id = :u"),
+                {"u": str(row.user_id)},
+            ).scalar()
+        )
 
-    out = _row_to_session(row)
+    # A shared session read by a stranger passes RLS too; only its owner gets the key.
+    own = str(row.user_id) == uid
+    out = _row_to_session(row, own=own)
     if strip:
         out["strip"] = {
             # base64 on the wire: the phone decodes it with the generated TypeScript
@@ -204,14 +263,49 @@ def get_session(session_id: str, device: CurrentDevice = Depends(current_device)
             "prompt_count_basis": stats.prompt_count_basis,
             "files_touched": stats.files_touched,
             "lines_added_agent": stats.lines_added_agent,
+            # Stored since 0002 and never served: the Live Activity's `linesRemoved` and
+            # the money view read it (docs/overnight-integration.md 5.4).
+            "lines_removed_agent": stats.lines_removed_agent,
             "commit_count": stats.commit_count,
             "agent_line_bucket": stats.agent_line_bucket,
             "attrib_confidence": stats.attrib_confidence,
         }
+    # Null, never absent, and never [] standing in for null: the phone tells "this sitting
+    # had nothing worth saying" from "an older server does not know the key" by whether
+    # the key is there at all. Stored on session_stats (0019); the SENTENCE is not stored
+    # because it is not uploaded — the client writes it from the id.
+    out["feedback"] = (stats.feedback if stats else None) or None
     # Null, never absent: the phone distinguishes "no analysis for this session" from an
     # older server that does not know the key.
     out["analysis"] = analysis.body if analysis else None
+    # Contract v4 (0023). Where this sitting's tokens went, as numbers and enums; the
+    # session screen writes the sentences. Null when no producer computed it, and a
+    # refusal is the document's own `reason`, never a missing key or a zero.
+    out["burn"] = stats.burn if stats else None
+    # Contract v4 (0025). What every call to the model sent and got back, as numbers and two
+    # enums; the session screen draws it and writes the sentences. On `session_stats` beside
+    # burn, so it travels to exactly the viewers burn does (a shared session's stranger
+    # included, through the same policies) and nowhere else: not the list, not the feed.
+    # Null when no producer computed it; a refusal is the document's own `reason`.
+    out["call_tokens"] = _call_tokens_for(stats.call_tokens if stats else None, own)
+    # The FULL live state, time lapse and whole map included, while the session runs;
+    # null once it is final (the row is deleted then; the state check is the second lock).
+    out["live_state"] = live.body if live is not None and row.state == "live" else None
+    # Opt in basenames for the session screen, and only here: null unless the account
+    # has File names on AND names are stored. Never on the live list, a push or a share.
+    out["live_names"] = live.names if names_on and row.state == "live" else None
     return out
+
+
+def _call_tokens_for(block: dict | None, own: bool) -> dict | None:
+    """The stored `call_tokens` as this viewer may read it. A rewrite's `away_seconds` measures
+    back to the conversation's previous call, which usually sits in an EARLIER session: on a
+    shared session it would tell a stranger when another, perhaps unshared, session happened.
+    So anyone but the owner reads it as null, and the phone says the cache had expired without
+    saying for how long. FOUND IN REVIEW (2026-09-13)."""
+    if not block or own or not block.get("rewrites"):
+        return block
+    return {**block, "rewrites": [{**r, "away_seconds": None} for r in block["rewrites"]]}
 
 
 #: `window_days` for the builder profile, shared by both routes below.
@@ -357,7 +451,7 @@ def profile(
 def profile_builder(device: CurrentDevice = Depends(current_device), window_days: int = WindowDays):
     """The builder profile alone, so the phone can refresh it without the whole tab.
 
-    TWO profiles under one route, and they are not the same kind of thing:
+    THREE documents under one route, and they are not the same kind of thing:
 
     * `builder_profile` aggregates the model-written session analyses (dimension means,
       modal archetype, build style, tags). Null until three analysed sessions exist. The
@@ -369,15 +463,190 @@ def profile_builder(device: CurrentDevice = Depends(current_device), window_days
       needs no analysis at all, and every metric it cannot honestly compute is null with
       a reason in `sample.missing`. Null for the whole block means only one thing: the
       metrics module is not deployed on this server.
+    * `report` is MEASURED ON THE MACHINE and uploaded: trends against the window before,
+      subagent fan-out, commits split by whether an agent was in the room, time to green,
+      and how often a prompt lands clean. None of it is computable here — it rests on
+      sidecar transcripts, shell command text, prompt text and commit times, none of which
+      the contract puts on the wire. Null until that machine has run `capture report`,
+      which is the normal state for somebody who has only ever used the phone.
+
+    Beside them, `quotes`: the opt-in prompts the Wrapped cards quote (contract v4, 0021).
+    Null unless the account has Quote my prompts on and its machine sent them with
+    `capture report --quotes`; this route is the only reader, and it only ever reads the
+    viewer's own.
+
+    And `project_names` (report v3, docs/projects.md): the report names a project by its
+    repository KEY alone, and this is the PUBLIC name of each key that has one, read from
+    the `repos` row every session reads its `repo_name` from. A private repository has no
+    entry, never a placeholder, and the phone labels it. The report's projects in a
+    repository the account excluded are taken out before it is served (`held_report`).
     """
     uid = str(device.user_id)
     with db_session(viewer_id=uid) as db:
         builder, analysed = builder_profile(db, uid, window_days)
         corpus = corpus_metrics(db, uid, window_days)
+        narrative = builder_narrative(db, uid)
+        report, names = held_report(db, uid, builder_report(db, uid))
+        quotes = builder_quotes(db, uid)
     return {
         "builder_profile": builder,
         "sessions_analysed": analysed,
         "min_sessions": MIN_SESSIONS,
         "window_days": window_days,
         "corpus": corpus,
+        "narrative": narrative,
+        "report": report,
+        "quotes": quotes,
+        "project_names": names,
     }
+
+
+#: A project key in a path: the repository hash the report and the sessions carry, whole
+#: (64 hex) or as the 12 character prefix `GET /v1/profile` lists projects by.
+PROJECT_KEY = r"^[0-9a-f]{12,64}$"
+#: Sessions a project page lists by default, newest first. The phone's session list pages by 50.
+PROJECT_SESSIONS = 50
+#: The most one page of a project's sessions may ask for.
+PROJECT_SESSIONS_MAX = 200
+
+
+@router.get("/projects/{key}")
+def project(
+    key: str,
+    device: CurrentDevice = Depends(current_device),
+    before: str | None = None,
+    limit: int = Query(PROJECT_SESSIONS, ge=1, le=PROJECT_SESSIONS_MAX),
+):
+    """One project's slice: its block from the stored report, its public name if it has
+    one, the comparisons that name it, and its own sessions from the server's rows (which
+    the report does not carry), so the phone's project page is one request.
+
+    The sessions page like `/sessions` does, keyset on `started_at` (`before`, and
+    `next_before` back while there may be more), and `sessions_total` says how many there are
+    in all, so the page's session swarm can reach back to the project's first session, or say
+    how many of how many it drew.
+
+    `key` is the repository's hash or the 12 character prefix `GET /v1/profile` lists. It
+    resolves among the repositories this viewer has a session in and the keys in their own
+    report, never anybody else's: a prefix that matches two is a 409 rather than a guess,
+    and a key the account excluded is a 404, as if it had never been uploaded.
+    """
+    uid = str(device.user_id)
+    if not re.fullmatch(PROJECT_KEY, key):
+        raise HTTPException(422, "a project key is 12 to 64 lowercase hex characters")
+    with db_session(viewer_id=uid) as db:
+        report, _names = held_report(db, uid, builder_report(db, uid))
+        block = (report or {}).get("projects") or {}
+        in_report = {p["key"]: p for p in block.get("projects") or []}
+        rows = db.execute(
+            text(
+                """
+                SELECT r.repo_hash FROM repos r
+                WHERE left(r.repo_hash, :n) = :k
+                  AND NOT session_repo_excluded(CAST(:u AS uuid), r.id)
+                  AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = :u AND s.repo_id = r.id)
+                """
+            ),
+            {"u": uid, "k": key, "n": len(key)},
+        ).all()
+        found = {r.repo_hash for r in rows} | {k for k in in_report if k.startswith(key)}
+        if not found:
+            raise HTTPException(404, "not found")
+        if len(found) > 1:
+            raise HTTPException(
+                409, "that prefix names more than one project; send more of the key"
+            )
+        (full,) = found
+        page = ["s.user_id = :u", "r.repo_hash = :h", "s.state = 'final'", "s.visible"]
+        params: dict = {"u": uid, "h": full, "limit": limit}
+        if before:
+            page.append("s.started_at < :before")
+            params["before"] = before
+        sessions = db.execute(
+            text(
+                f"""
+                SELECT s.*, r.public_name, r.repo_hash, p.id AS post_id
+                FROM sessions s
+                JOIN repos r ON r.id = s.repo_id
+                LEFT JOIN posts p ON p.session_id = s.id AND p.user_id = CAST(:u AS uuid)
+                WHERE {" AND ".join(page)}
+                ORDER BY s.started_at DESC LIMIT :limit
+                """
+            ),
+            params,
+        ).all()
+        total = db.execute(
+            text(
+                """
+                SELECT count(*) FROM sessions s JOIN repos r ON r.id = s.repo_id
+                WHERE s.user_id = :u AND r.repo_hash = :h AND s.state = 'final' AND s.visible
+                """
+            ),
+            {"u": uid, "h": full},
+        ).scalar()
+        comparisons = [
+            c for c in block.get("comparisons") or [] if full in (c.get("high"), c.get("low"))
+        ]
+        names = project_names(
+            db, uid, {full} | {c[k] for c in comparisons for k in ("high", "low") if c.get(k)}
+        )
+    return {
+        "key": full,
+        "name": names.get(full),
+        "window_days": block.get("window_days"),
+        "generated_at": (report or {}).get("generated_at") if in_report.get(full) else None,
+        "project": in_report.get(full),
+        "comparisons": comparisons,
+        "project_names": names,
+        "sessions": [_row_to_session(r, own=True) for r in sessions],
+        "sessions_total": int(total or 0),
+        "next_before": sessions[-1].started_at.isoformat() if len(sessions) == limit else None,
+    }
+
+
+@router.put("/profile/narrative")
+def put_narrative(doc: BuilderNarrative, device: CurrentDevice = Depends(current_uploader)):
+    """Store the "how you work" page this account's own machine wrote.
+
+    The server cannot produce this document and does not try. It rests on prompt text and
+    the events around it, which never leave the machine (privacy/upload-contract.json), so
+    it is written where the transcripts are, by the user's own `claude`, under
+    spec/narrative.v1.json. What arrives here is validated against the Pydantic half of
+    that same spec, which is where the string bounds are actually enforced: the constrained
+    decoder that produced it honours `required` and `additionalProperties` and nothing
+    about lengths.
+
+    PUT, not POST: there is one narrative per person and this replaces it. A person whose
+    corpus has moved on does not want two.
+
+    `current_uploader`, not `current_device`: a headless container holds a capture key,
+    because the device flow's rotating refresh token cannot be shared by a fleet (0011),
+    and this is the same write a machine with the transcripts already does when it attaches
+    an `analysis` to a session. The GET side stays on `current_device`, so a leaked key can
+    still read nothing at all.
+    """
+    uid = str(device.user_id)
+    with db_session(viewer_id=uid) as db:
+        put_builder_narrative(db, uid, doc.model_dump(mode="json"))
+    return {"ok": True, "narrative_version": doc.narrative_version}
+
+
+@router.put("/profile/report")
+def put_report(doc: BuilderReport, device: CurrentDevice = Depends(current_uploader)):
+    """Store the measured builder report this account's own machine computed.
+
+    Unlike the narrative there is no model anywhere in this document's history: every
+    field is a number `analysis/report.py` measured. That makes the validation MORE
+    important rather than less. A model-written document arrived through a constrained
+    decoder that had already enforced its shape; this one arrives from code that can grow
+    a field without the spec growing it, and `extra='forbid'` on report_spec.py is the
+    only thing between that and a column of values nothing on the phone can render.
+
+    PUT, not POST: one report per person, replacing the last. `current_uploader` for the
+    same reason the narrative uses it — a headless container holds a capture key — and the
+    GET side stays on `current_device`, so a leaked key still reads nothing.
+    """
+    uid = str(device.user_id)
+    with db_session(viewer_id=uid) as db:
+        put_builder_report(db, uid, doc.model_dump(mode="json"))
+    return {"ok": True, "report_version": doc.report_version}

@@ -23,7 +23,16 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
-from test_contract import SAMPLE_ANALYSIS, valid_payload
+from test_contract import (
+    SAMPLE_ANALYSIS,
+    SAMPLE_BURN,
+    SAMPLE_BURN_FOR_CALLS,
+    SAMPLE_CALL_TOKENS,
+    SAMPLE_CALL_TOKENS_REFUSED,
+    SAMPLE_TITLE_IDS,
+    SAMPLE_TITLE_REFUSAL,
+    valid_payload,
+)
 
 TEST_DB = os.environ.get("BUILDER_TEST_DB")
 pytestmark = pytest.mark.skipif(not TEST_DB, reason="set BUILDER_TEST_DB to run")
@@ -128,6 +137,30 @@ def paired(client, created_users):
     return _pair(client, created_users)
 
 
+def _phone(uid: str) -> dict:
+    """The account's PHONE: a device registered the way Sign in with Apple and Google
+    register one (`grant_flow` sign_in, 0024), and its bearer. The phone is the one device
+    that flips a privacy switch; `paired` is a machine (the device flow `capture pair`
+    walks), which may not. Minted in process through the one writer, `register_device`,
+    because no test holds an Apple identity token; test_auth.py walks the Google route."""
+    from builder.auth import SIGN_IN, issue_access_token, register_device
+    from builder.db import db_session
+
+    with db_session() as db:
+        did = register_device(
+            db, uid, uuid.uuid4().hex * 2, "test-phone", "ios", "test", grant_flow=SIGN_IN
+        )
+    return {"authorization": f"Bearer {issue_access_token(uid, did)}"}
+
+
+def _phone_for(headers: dict) -> dict:
+    """`_phone` of the account a bearer belongs to (its `sub`)."""
+    import jwt
+
+    token = headers["authorization"].removeprefix("Bearer ")
+    return _phone(jwt.decode(token, options={"verify_signature": False})["sub"])
+
+
 def _payload(**overrides) -> dict:
     """A JSON-ready payload with a unique session id and content hash unless overridden."""
     base = {
@@ -221,6 +254,97 @@ def test_live_snapshot_is_replaced_in_place_by_the_final(client, paired):
 
     # Re-sending the identical final is free.
     assert _upload(client, headers, final)["unchanged"] == 1
+
+
+SAMPLE_FEEDBACK = [
+    {"id": "went_nowhere", "seconds": 1217, "count": 1},
+    {"id": "failed_in_a_row", "seconds": 64, "count": 7},
+]
+
+
+def test_feedback_round_trips_and_is_not_wiped_by_a_client_that_does_not_compute_it(client, paired):
+    """Contract v3. The card's notes: an id and two integers, no prose on the wire.
+
+    The retraction half is the point. The Mac does not compute feedback, so a resync from
+    it carries none — and "none" must not mean "delete what another client measured".
+    Same rule `analysis` follows, for the same reason, and the only way to see it is to
+    upload without it and read back.
+    """
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+
+    assert (
+        _upload(client, headers, _payload(client_session_id=csid, feedback=SAMPLE_FEEDBACK))[
+            "accepted"
+        ]
+        == 1
+    )
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == SAMPLE_FEEDBACK
+
+    # A payload with no feedback at all leaves the stored notes alone.
+    # The same sitting, from a client that computes no feedback. Only `content_hash`
+    # differs, which is exactly what a Mac resync of an already-uploaded session looks
+    # like.
+    r = _upload(client, headers, _payload(client_session_id=csid))
+    assert r["accepted"] == 1, r
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == SAMPLE_FEEDBACK
+
+
+def test_a_producer_that_computed_burn_takes_back_a_stored_note(client, paired):
+    """FOUND IN THE DEFECTS PASS (2026-09-14): a sitting kept a note from a rule since fixed
+    ("3 stretches with nothing written, tested or committed, 3h 09m" of a 3h 12m sitting
+    that landed 13 commits), because a corrected re-upload with no note was read as a
+    client that does not compute feedback. `burn` and `feedback` come from one pass of the
+    same package, so a payload carrying burn says its missing note is a finding.
+    """
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    stale = [{"id": "went_nowhere", "seconds": 11341, "count": 3}]
+    _upload(client, headers, _payload(client_session_id=csid, feedback=stale, burn=SAMPLE_BURN))
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == stale
+
+    # The Mac's resync (neither burn nor feedback) still leaves it alone...
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] == stale
+
+    # ...and the corrected producer's re-upload, burn and no note, takes it back.
+    r = _upload(client, headers, _payload(client_session_id=csid, burn=SAMPLE_BURN))
+    assert r["accepted"] == 1, r
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["feedback"] is None
+
+
+def test_a_sitting_with_nothing_worth_saying_reads_back_as_null_not_an_empty_list(client, paired):
+    """Null and [] are the same thing on this card and must not be two things in the
+    client. The key is always present, so an older server is still distinguishable."""
+    uid, headers = paired
+    assert _upload(client, headers, _payload())["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    body = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert "feedback" in body and body["feedback"] is None
+
+
+def test_a_feedback_note_the_contract_does_not_declare_is_refused(client, paired):
+    """`FeedbackNoteWire` checks the id at the door. An id the client cannot render is a
+    blank row on the card and no error anywhere."""
+    _, headers = paired
+    # Built as a dict rather than through `_payload`, which validates on the way out and
+    # would raise here instead of letting the ROUTE refuse it.
+    bad = _payload()
+    bad["feedback"] = [{"id": "burned_tokens", "seconds": 10, "count": 1}]
+    r = client.post("/v1/sync/sessions:batch", json={"sessions": [bad]}, headers=headers)
+    assert r.status_code == 422, r.text
+
+
+def test_a_feedback_note_carrying_prose_is_refused(client, paired):
+    """extra='forbid'. The sentence is written on the client; a `text` field arriving here
+    would be the wire growing prose nobody declared."""
+    _, headers = paired
+    bad = _payload()
+    bad["feedback"] = [{"id": "went_nowhere", "seconds": 10, "count": 1, "text": "you spun"}]
+    r = client.post("/v1/sync/sessions:batch", json={"sessions": [bad]}, headers=headers)
+    assert r.status_code == 422, r.text
 
 
 def test_analysis_upserts_reads_back_and_is_not_retracted_by_a_payload_without_one(client, paired):
@@ -389,3 +513,299 @@ def test_analysis_is_invisible_to_another_viewer(client, created_users):
     assert as_a == 1, "the owner must see their own analysis, or the table is over-locked"
     assert as_b == 0
     assert as_nobody == 0, "an unshared analysis must not be public"
+
+
+# ------------------------------------------------------------ contract v4: burn, title_ids
+
+
+def test_session_detail_carries_lines_removed_agent(client, paired):
+    """Stored since 0002 and never served, while the Live Activity's `linesRemoved` and the
+    money view read it (docs/overnight-integration.md 5.4)."""
+    uid, headers = paired
+    _upload(client, headers, _payload(lines_added_agent=412, lines_removed_agent=37))
+    sid = _owner_rows(uid)[0].id
+    stats = client.get(f"/v1/sessions/{sid}", headers=headers).json()["stats"]
+    assert (stats["lines_added_agent"], stats["lines_removed_agent"]) == (412, 37)
+
+
+def test_burn_and_title_ids_round_trip_and_are_not_wiped_by_a_client_that_does_not_compute_them(
+    client, paired
+):
+    """The addendum's two session objects: stored and returned exactly, and, like
+    `feedback`, left alone by a resync from a client that computes neither (the Mac)."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    first = _payload(client_session_id=csid, burn=SAMPLE_BURN, title_ids=SAMPLE_TITLE_IDS)
+    assert _upload(client, headers, first)["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert detail["burn"] == SAMPLE_BURN
+    assert detail["title_ids"] == SAMPLE_TITLE_IDS
+    # A title belongs to every place a session is listed, not only to its detail.
+    listed = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert [s["title_ids"] for s in listed] == [SAMPLE_TITLE_IDS]
+
+    # The same sitting from a client that computes neither: only the hash differs.
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert detail["burn"] == SAMPLE_BURN
+    assert detail["title_ids"] == SAMPLE_TITLE_IDS
+
+
+def test_a_burn_refusal_replaces_a_stored_answer(client, paired):
+    """Null on the wire means "not computed" and keeps what is stored; a REFUSAL is a
+    document, and it is the newer fact: a transcript whose counts could not be read this
+    time must not keep showing numbers from a cut that could."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    _upload(client, headers, _payload(client_session_id=csid, burn=SAMPLE_BURN))
+    refused = {
+        "tokens": None,
+        "cache_read_share": None,
+        "barren_share": None,
+        "unreadable_share": None,
+        "segments": 9,
+        "lines_added": 412,
+        "lines_removed": 38,
+        "files_changed": 6,
+        "commits": 2,
+        "reason": "no_token_counts",
+        "spikes": None,
+        "spikes_needed": 5,
+    }
+    assert _upload(client, headers, _payload(client_session_id=csid, burn=refused))["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["burn"] == refused
+
+
+def test_an_upload_after_exclusion_is_refused_and_stores_nothing(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): excluding a repository deleted its
+    sessions, and the next upload from any machine (a `capture sync` without the local
+    variable, a hook tail) recreated the session, its live row and the pushes that follow:
+    `store_payloads` never asked `repo_visibility`. It asks now, with the one function the
+    policies use (`session_repo_excluded`), and the client reads why."""
+    from test_contract import SAMPLE_LIVE
+
+    uid, headers = paired
+    rhash = uuid.uuid4().hex * 2
+    csid = uuid.uuid4().hex * 2
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=20)
+    first = _live(started, 15, client_session_id=csid, repo_hash=rhash, live=SAMPLE_LIVE)
+    assert _upload(client, headers, first)["accepted"] == 1
+    r = client.post(
+        "/v1/repos/visibility", json={"repo_hash": rhash, "visibility": "excluded"}, headers=headers
+    )
+    assert r.status_code == 200 and r.json()["sessions_deleted"] == 1, r.text
+
+    again = _live(started, 16, client_session_id=csid, repo_hash=rhash, live=SAMPLE_LIVE)
+    out = _upload(client, headers, again)
+    assert (out["accepted"], out["unchanged"]) == (0, 0), out
+    assert out["rejected"] == [
+        {
+            "client_session_id": csid,
+            "reason": "this repository is excluded for this account, so nothing from it is stored",
+        }
+    ]
+    assert _owner_rows(uid) == []
+    with owner_engine().connect() as c:
+        live_rows = c.execute(
+            text("SELECT count(*) FROM session_live WHERE user_id = :u"), {"u": uid}
+        ).scalar()
+    assert live_rows == 0
+    # Every other repository still uploads.
+    assert _upload(client, headers, _payload(repo_hash=uuid.uuid4().hex * 2))["accepted"] == 1
+
+
+def test_a_title_refusal_clears_a_stale_title(client, paired):
+    """FOUND IN THE ADVERSARIAL REVIEW (2026-09-13): a live cut at 14 tool calls is titled,
+    and the same sitting's final cut at 40 is refused (its checkpoints fell below the bar:
+    a title would describe what the transcript hides). The wire said null for a refusal and
+    for "not computed" alike, and the upsert's COALESCE kept the live title forever. A
+    refusal is a document now, `reason` set and no verb, and it replaces what was stored;
+    a client that computes no title (the Mac) still leaves the stored document alone."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    assert (
+        _upload(client, headers, _payload(client_session_id=csid, title_ids=SAMPLE_TITLE_IDS))[
+            "accepted"
+        ]
+        == 1
+    )
+    sid = _owner_rows(uid)[0].id
+    refused = _payload(client_session_id=csid, title_ids=SAMPLE_TITLE_REFUSAL)
+    assert _upload(client, headers, refused)["accepted"] == 1
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["title_ids"] == (
+        SAMPLE_TITLE_REFUSAL
+    )
+    listed = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert [s["title_ids"] for s in listed] == [SAMPLE_TITLE_REFUSAL]
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["title_ids"] == (
+        SAMPLE_TITLE_REFUSAL
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {**SAMPLE_TITLE_IDS, "reason": "no_tool_calls"},
+        {"verb": None, "object": "source", "n": 3, "modules": None, "reason": None},
+        {"verb": "shipped", "object": None, "n": 3, "modules": None, "reason": None},
+        {"verb": None, "object": None, "n": None, "modules": None, "reason": None},
+    ],
+)
+def test_a_title_is_a_verb_and_an_object_or_a_reason_never_both(client, paired, bad):
+    """A refusal with a verb still renders a title on the phone, and a verb with no object
+    renders nothing without saying why: either is a client that set one half and forgot
+    the other."""
+    uid, headers = paired
+    out = _upload(client, headers, _payload(title_ids=bad))
+    assert out["accepted"] == 0
+    assert out["rejected"][0]["reason"].startswith("title_ids"), out
+    assert _owner_rows(uid) == []
+
+
+def test_burn_and_title_ids_read_back_null_never_missing(client, paired):
+    """Null, never absent: the phone tells "not computed" from an older server by whether
+    the key is there, and never reads a missing block as a zero."""
+    uid, headers = paired
+    _upload(client, headers, _payload())
+    sid = _owner_rows(uid)[0].id
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert "burn" in detail and detail["burn"] is None
+    assert "title_ids" in detail and detail["title_ids"] is None
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=20)
+    _upload(client, headers, _live(started, 15, title_ids=SAMPLE_TITLE_IDS))
+    (live,) = client.get("/v1/sessions/live", headers=headers).json()["sessions"]
+    assert live["title_ids"] == SAMPLE_TITLE_IDS
+
+
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("burn", {**SAMPLE_BURN, "sentence": "The most expensive stretch cost 9.1M tokens."}),
+        ("burn", {**SAMPLE_BURN, "reason": "no token counts were recorded"}),
+        ("title_ids", {**SAMPLE_TITLE_IDS, "title": "Refactored three files across two modules"}),
+        ("title_ids", {**SAMPLE_TITLE_IDS, "object": "zqx_sentinel_dir"}),
+    ],
+)
+def test_prose_or_an_undeclared_id_in_burn_or_title_ids_is_refused_at_the_route(
+    client, paired, field, bad
+):
+    """The words are the phone's. A sentence, a refusal written out, or an id outside its
+    table is a 422 at the route, and nothing is stored."""
+    uid, headers = paired
+    p = _payload()
+    p[field] = bad
+    r = client.post("/v1/sync/sessions:batch", json={"sessions": [p]}, headers=headers)
+    assert r.status_code == 422, r.text
+    assert _owner_rows(uid) == []
+
+
+# ---------------------------------------------------------------- contract v4: call_tokens
+
+
+def test_call_tokens_round_trip_and_are_not_wiped_by_a_client_that_does_not_compute_them(
+    client, paired
+):
+    """0025: stored and returned exactly, on the detail only, and left alone by a resync from
+    a client that computes none (the Mac, or a server still running the code from before)."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    first = _payload(
+        client_session_id=csid, burn=SAMPLE_BURN_FOR_CALLS, call_tokens=SAMPLE_CALL_TOKENS
+    )
+    assert _upload(client, headers, first)["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    assert client.get(f"/v1/sessions/{sid}", headers=headers).json()["call_tokens"] == (
+        SAMPLE_CALL_TOKENS
+    )
+    # A chart is the detail's, not the list's: 240 points a row would be the whole list.
+    listed = client.get("/v1/sessions", headers=headers).json()["sessions"]
+    assert all("call_tokens" not in s for s in listed)
+
+    assert _upload(client, headers, _payload(client_session_id=csid))["accepted"] == 1
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert detail["call_tokens"] == SAMPLE_CALL_TOKENS
+    assert detail["burn"] == SAMPLE_BURN_FOR_CALLS
+
+
+def test_a_call_tokens_refusal_replaces_a_stored_chart(client, paired):
+    """Null on the wire keeps what is stored; a refusal is a document and the newer fact."""
+    uid, headers = paired
+    csid = uuid.uuid4().hex * 2
+    _upload(client, headers, _payload(client_session_id=csid, call_tokens=SAMPLE_CALL_TOKENS))
+    refused = _payload(client_session_id=csid, call_tokens=SAMPLE_CALL_TOKENS_REFUSED)
+    assert _upload(client, headers, refused)["accepted"] == 1
+    sid = _owner_rows(uid)[0].id
+    got = client.get(f"/v1/sessions/{sid}", headers=headers).json()["call_tokens"]
+    assert got == SAMPLE_CALL_TOKENS_REFUSED
+
+
+def test_call_tokens_read_back_null_never_missing(client, paired):
+    uid, headers = paired
+    _upload(client, headers, _payload())
+    sid = _owner_rows(uid)[0].id
+    detail = client.get(f"/v1/sessions/{sid}", headers=headers).json()
+    assert "call_tokens" in detail and detail["call_tokens"] is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {**SAMPLE_CALL_TOKENS, "sentence": "Call 1, in the first minute: sent 167,003 tokens."},
+        {**SAMPLE_CALL_TOKENS, "price_reason": "priced as Opus 5"},
+        {
+            **SAMPLE_CALL_TOKENS,
+            "points": [{**SAMPLE_CALL_TOKENS["points"][0], "model": "claude-opus-5"}],
+        },
+    ],
+)
+def test_prose_or_a_model_name_in_call_tokens_is_refused_at_the_route(client, paired, bad):
+    uid, headers = paired
+    p = _payload()
+    p["call_tokens"] = bad
+    r = client.post("/v1/sync/sessions:batch", json={"sessions": [p]}, headers=headers)
+    assert r.status_code == 422, r.text
+    assert _owner_rows(uid) == []
+
+
+def test_a_call_tokens_block_that_disagrees_with_itself_is_rejected_and_stores_nothing(
+    client, paired
+):
+    uid, headers = paired
+    out = _upload(client, headers, _payload(call_tokens={**SAMPLE_CALL_TOKENS, "calls": 9}))
+    assert out["accepted"] == 0
+    assert out["rejected"][0]["reason"].startswith("call_tokens"), out
+    assert _owner_rows(uid) == []
+
+
+def test_a_dollar_figure_of_infinity_is_rejected_not_a_500(client, paired):
+    """FOUND IN REVIEW (2026-09-13): JSON's `Infinity` parses to a float the door accepts, and
+    Postgres jsonb refuses it on the INSERT, which failed the whole batch with a 500. The gate
+    refuses it now and says why, and nothing is stored."""
+    import json
+
+    uid, headers = paired
+    p = _payload(call_tokens=SAMPLE_CALL_TOKENS)
+    p["call_tokens"]["usd_output"] = float("inf")
+    body = json.dumps({"sessions": [p]})  # Python writes the bare `Infinity` a client could send
+    assert "Infinity" in body
+    r = client.post(
+        "/v1/sync/sessions:batch",
+        content=body,
+        headers={**headers, "content-type": "application/json"},
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["accepted"] == 0 and out["rejected"][0]["reason"].startswith("call_tokens"), out
+    assert _owner_rows(uid) == []
+
+
+def test_a_chart_that_disagrees_with_its_own_burn_is_rejected(client, paired):
+    uid, headers = paired
+    p = _payload(burn=SAMPLE_BURN, call_tokens=SAMPLE_CALL_TOKENS)
+    out = _upload(client, headers, p)
+    assert out["accepted"] == 0 and "where burn counts" in out["rejected"][0]["reason"], out
+    assert _owner_rows(uid) == []

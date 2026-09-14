@@ -79,6 +79,27 @@ def assert_policies_present() -> None:
         # 0014. Raw transcript bytes from the hook channel — the conversation itself,
         # held until the session is final. Owner-only.
         "transcript_chunks",
+        # 0016. Prose about the PERSON, not about a session. Owner-only with no public
+        # policy at all, so a deployment where the migration never ran must not serve it.
+        "builder_narrative",
+        # 0018. Numbers about the PERSON, from transcripts the server never sees. Same
+        # shape as 0016 and for the same reason: sharing a session shares a session.
+        "builder_report",
+        # 0020. A running session's live state (and, opt in, its file basenames), and the
+        # two privacy switches with the salt the hook channel hashes paths under. Owner
+        # only: a deployment without the migration must not serve another person's live
+        # map, or hand out a salt.
+        "session_live",
+        "privacy_prefs",
+        # 0021. Prompts, VERBATIM, for the Wrapped cards: the second opt-in exception.
+        # With RLS off every quote would be readable by every viewer.
+        "builder_quotes",
+        # 0022. Where a Live Activity's pushes go. Another viewer's token is another
+        # person's Lock Screen.
+        "live_activity_tokens",
+        # 0026. A project's published demo: images of a person's own app, which may show a
+        # private repository's name. Owner only whatever else is shared.
+        "project_media",
     }
     with engine().connect() as conn:
         rows = conn.execute(
@@ -106,7 +127,24 @@ def assert_policies_present() -> None:
         )
 
 
+def assert_object_store_safe() -> None:
+    """Refuse to start with an object store configuration that would expose project demos.
+
+    `objectstore.store_config_problem` is the rule: the demos bucket must be its own and
+    private (not the posts bucket, not reached by the posts' public base, no public base of
+    its own, all four settings or none), and a file:// store is the local stack's, never
+    production's. FOUND IN THE SECURITY REVIEW (2026-09-14): demos sharing the posts bucket
+    were one cut query string from a permanent public link. Every environment, test
+    included: a wrong store configuration is wrong wherever it is set."""
+    from . import objectstore
+
+    problem = objectstore.store_config_problem()
+    if problem:
+        raise UnsafeDatabaseRole(f"FATAL: {problem} Refusing to start.")
+
+
 def run_startup_checks() -> None:
+    assert_object_store_safe()
     if settings().environment == "test":
         return
     assert_rls_enforced()

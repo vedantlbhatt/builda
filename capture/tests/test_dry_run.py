@@ -86,6 +86,13 @@ class _Harness(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         base = pathlib.Path(self.tmp.name)
+        # An empty HOME, so the other harnesses' default stores (`~/.codex`, `~/.gemini`,
+        # ...) are this test's and hold nothing. Without it the test described the machine
+        # it ran on: on a Mac with real Codex rollouts, "two finished sittings and one
+        # live" came back as seven and one, and six tests failed for a reason that was
+        # not in the code.
+        self._home = os.environ.get("HOME")
+        os.environ["HOME"] = str(base / "home")
         self.root = base / "projects"
         proj = self.root / "-Users-dev-proj"
         proj.mkdir(parents=True)
@@ -112,6 +119,10 @@ class _Harness(unittest.TestCase):
     def tearDown(self):
         self.server.stop()
         self.tmp.cleanup()
+        if self._home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = self._home
         os.environ.pop("BUILDER_CREDENTIALS", None)
         os.environ.pop("BUILDER_TZ", None)
         os.environ.pop("BUILDER_CAPTURE_KEY", None)
@@ -166,6 +177,64 @@ class DryRun(_Harness):
         self.assertEqual([p["state"] for p in self.server.uploads[1]], ["final", "final"])
         state = json.loads(cl.state_path().read_text())
         self.assertEqual(len(state["live"]), 1)
+
+
+class LiveBlock(_Harness):
+    """`sync --live` (docs/overnight-integration.md 3.2): the live payload carries its live
+    state, its names only with `--live-names`, and a hash that is the payload's WITHOUT
+    them, so the block is resent on the live interval and never because the hash moved."""
+
+    def live_payload(self, *args) -> dict:
+        rc, out, err = self._run("--dry-run", "--live", *args)
+        self.assertEqual(rc, 0, err)
+        return next(p for p in json.loads(out)["sessions"] if p["state"] == "live")
+
+    def test_sync_live_attaches_live_and_never_names_without_the_flag(self):
+        p = self.live_payload()
+        self.assertEqual(p["live"]["live_version"], 1)
+        self.assertEqual(p["live"]["eta"]["reason"], "repo_unresolved")
+        self.assertNotIn("live_names", p)
+        named = self.live_payload("--live-names")
+        self.assertIn("live_names", named)
+        self.assertEqual(named["content_hash"], p["content_hash"], "the block is not in the hash")
+        finals = [q for q in json.loads(self._run("--dry-run", "--live")[1])["sessions"] if q["state"] == "final"]
+        self.assertTrue(finals and all("live" not in q for q in finals))
+
+    def test_a_live_payload_is_resent_on_the_interval_although_its_hash_is_known(self):
+        self._run("--live")
+        [first] = [p for p in self.server.uploads[0] if p["state"] == "live"]
+        # The server knows the hash, and the clock has moved past the live interval.
+        state = json.loads(cl.state_path().read_text())
+        for v in state["live"].values():
+            v["at"] -= 61
+        cl.write_private_json(cl.state_path(), state)
+        self._run("--live")
+        self.assertEqual(len(self.server.uploads), 2)
+        [again] = self.server.uploads[1]
+        self.assertEqual(again["client_session_id"], first["client_session_id"])
+        self.assertIn("live", again)
+
+    def test_the_map_salt_is_stable_across_runs_and_never_in_a_payload(self):
+        from analysis import __main__ as analysis_cli
+        from analysis import live
+
+        from capture import identity
+
+        a = identity.map_salt()
+        path = self.creds.with_name("map-salt")
+        self.assertEqual(path.read_text().strip(), a)
+        self.assertEqual(oct(path.stat().st_mode & 0o777), oct(0o600))
+        self.assertEqual(oct(path.parent.stat().st_mode & 0o777), oct(0o700))
+        self.assertEqual(identity.map_salt(), a, "stable across runs")
+        self.assertGreaterEqual(len(a), live.SALT_MIN_CHARS)
+        self.assertEqual(analysis_cli._map_salt(), a, "`python -m analysis live` reads the same file")
+        # The raw machine identifier is a fresh random UUID per call on a Mac; the salt is
+        # not derived from it, or from anything hashed onto the wire.
+        self.assertNotEqual(a, identity.sha256_hex("builder-map-salt:" + identity.raw_machine_identifier()))
+        _, out, _ = self._run("--dry-run", "--live", "--live-names")
+        self.assertNotIn(a, out)
+        path.write_text("short\n")
+        self.assertNotEqual(identity.map_salt(), "short", "a short salt is replaced, never used")
 
 
 class CaptureKeySync(_Harness):

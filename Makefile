@@ -1,10 +1,11 @@
 SWIFT_PKG := Packages/BuilderKit
 
-.PHONY: help gen icons check-gen build test scan watch doctor share clean measure measure-gaps analyze fixtures capture-test
+.PHONY: help gen icons lint check-gen build test scan watch doctor share clean measure measure-gaps analyze fixtures capture-test
 
 help:
 	@echo "gen        regenerate everything from privacy/, spec/ and design/"
 	@echo "icons      re-render the store icons from the mascot frame and design/tokens.json"
+	@echo "lint       the server lint EXACTLY as CI runs it (pinned ruff)"
 	@echo "check-gen  regenerate and fail if anything changed (this is the CI gate)"
 	@echo "build      swift build"
 	@echo "test       swift test — the ground-truth regression suite"
@@ -17,15 +18,40 @@ help:
 	@echo "fixtures   regenerate spec/fixtures/boundaries from the reference implementation"
 	@echo "capture-test  the cloud uploader: boundary parity, contract conformance, refresh-on-401"
 
-# The four specs are the only hand-edited definitions of the wire payload, the strip
-# format, the palette and the session analysis. Everything downstream is generated into
-# Swift, TypeScript and Python so the same numbers cannot drift across three languages.
+# The specs are the only hand-edited definitions of the wire payload, the strip format,
+# the palette, the session analysis, the report and the live state. Everything downstream
+# is generated into Swift, TypeScript and Python so the same numbers cannot drift across
+# three languages.
+#
+# Order (docs/overnight-integration.md section 6): contract, strip, tokens, analysis,
+# narrative, shipped, report, live, copy, live_fixtures, fixtures. gen_contract reads
+# spec/live.v1.json only for its leaf paths, so it may run first; gen_copy and
+# gen_live_fixtures read the analysis modules, so they run after every spec.
+#
+# gen_copy.py belongs to report v2 (WP-B) and is run once it exists: before that there is no
+# copy.ts to be stale. gen_live_fixtures.py says which of its inputs is missing and writes
+# nothing until all of them exist.
 gen:
 	@python3 scripts/gen_contract.py
 	@python3 scripts/gen_strip.py
 	@python3 scripts/gen_tokens.py
+	@python3 scripts/gen_harness_logos.py
 	@python3 scripts/gen_analysis.py
+	@python3 scripts/gen_narrative.py
+	@python3 scripts/gen_shipped.py
+	@python3 scripts/gen_report.py
+	@python3 scripts/gen_live.py
+	@if [ -f scripts/gen_copy.py ]; then python3 scripts/gen_copy.py; else echo "gen_copy.py: not written yet, nothing to generate"; fi
+	@python3 scripts/gen_stack_logos.py
+	@python3 scripts/gen_live_fixtures.py
 	@python3 scripts/gen_fixtures.py
+
+# The exact command the backend job runs, with the version CI pins. Three pushes went red
+# on an import-sort finding nobody had run locally, which is the cheapest possible way to
+# waste a CI cycle. `ruff format --check` drifts between releases, so the version is part
+# of the gate.
+lint:
+	@uvx ruff@0.16.6 check server && uvx ruff@0.16.6 format --check server
 
 # NOT part of `make gen`, and deliberately not a CI gate: a zlib-compressed PNG is not
 # guaranteed byte-identical across zlib builds, so `git diff --exit-code` on one would
@@ -40,9 +66,13 @@ check-gen: gen
 		Packages/BuilderKit/Sources/BuilderModel/Generated \
 		Packages/BuilderKit/Sources/BuilderSync/Generated \
 		mobile/src/generated server/builder/contract.py server/builder/strip.py \
-		server/builder/analysis_spec.py analysis \
+		server/builder/analysis_spec.py server/builder/report_spec.py \
+		server/builder/narrative_spec.py server/builder/shipped_spec.py \
+		server/builder/live_spec.py server/builder/quotes_spec.py server/builder/media_spec.py analysis \
 		Packages/BuilderKit/Sources/BuilderAnalysis/Resources/analysis_schema.json \
 		server/builder/static/upload-fields.json PRIVACY.md spec/fixtures \
+		mobile/targets/widget/_shared/Palette.swift mobile/targets/widget/_shared/HarnessMarks.swift \
+		mobile/src/pixel/harnessLogos.ts mobile/src/stack/stackLogos.ts \
 		|| (echo ""; echo "FAIL: generated files are stale or hand-edited. Run 'make gen' and commit."; exit 1)
 	@echo "generated files match their specs"
 

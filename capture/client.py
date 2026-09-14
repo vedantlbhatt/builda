@@ -30,12 +30,14 @@ bring a revoked key back, and the paired-token path is untouched by any of this.
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import pathlib
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from . import CLIENT_VERSION, identity
@@ -46,7 +48,7 @@ DEFAULT_SERVER = "http://localhost:8000"
 
 class NotPaired(Exception):
     def __str__(self) -> str:
-        return "not paired — run `python -m capture pair --server URL` first"
+        return "not paired: run `python -m capture pair --server URL` first"
 
 
 class HTTPFailure(Exception):
@@ -59,6 +61,35 @@ class HTTPFailure(Exception):
 class PairingTimedOut(Exception):
     def __str__(self) -> str:
         return "pairing expired before it was approved"
+
+
+class QuotesRefused(Exception):
+    """A 409 from `PUT /v1/profile/quotes`: the account has quotes off. Carries the server's
+    own sentence, which names the switch."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+    def __str__(self) -> str:
+        return self.reason or "quotes are off for this account"
+
+
+class OffsetConflict(Exception):
+    """A 409 from `POST /v1/ingest/transcript`: the server holds fewer bytes of this
+    transcript than the offset claimed ("gap: resend from next_offset"). `next_offset` is
+    the byte to resend from, when the answer said; None means ask `/offset`."""
+
+    def __init__(self, next_offset: int | None):
+        super().__init__(f"the server holds {next_offset} bytes; resend from there")
+        self.next_offset = next_offset
+
+
+#: Tails at least this long are gzipped before they are posted, and the route
+#: (`routes/ingest.py`) inflates them. docs/overnight-integration.md section 4: "gzipped
+#: above 64 KB". UNMEASURED JUDGEMENT CALL: below it the tail is one or two records and the
+#: header costs more than the saving.
+GZIP_MIN_BYTES = 64 * 1024
 
 
 #: The server's prefix for a capture key (`CAPTURE_KEY_PREFIX` in builder/auth.py). Checked
@@ -206,15 +237,25 @@ class Client:
     # -- raw ---------------------------------------------------------------------------
 
     def _request(
-        self, method: str, path: str, body: dict | None, token: str | None
+        self,
+        method: str,
+        path: str,
+        body: dict | bytes | None,
+        token: str | None,
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, dict]:
+        """One request. A dict body is JSON; `bytes` go as they are (a transcript tail),
+        with whatever `Content-Type` the caller put in `extra_headers`."""
         data = None
         headers = {"Accept": "application/json", "User-Agent": f"builder-capture/{CLIENT_VERSION}"}
-        if body is not None:
+        if isinstance(body, bytes):
+            data = body
+        elif body is not None:
             data = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
             headers["Content-Type"] = "application/json"
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        headers.update(extra_headers or {})
         req = urllib.request.Request(self.server + path, data=data, method=method, headers=headers)
         try:
             with self._open(req, timeout=60) as resp:
@@ -237,26 +278,39 @@ class Client:
             raise HTTPFailure(status, json.dumps(parsed))
         return parsed
 
-    def _authenticated(self, method: str, path: str, body: dict | None) -> dict:
-        """Bearer from the credentials file; on 401 refresh ONCE, store, retry ONCE.
+    def _authorized(
+        self,
+        method: str,
+        path: str,
+        body: dict | bytes | None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict]:
+        """(status, body) with the bearer from the credentials file; on 401 refresh ONCE,
+        store, retry ONCE. Any other status is the caller's to read, so a route whose 409
+        means something (an offset gap, quotes turned off) can say what it means.
 
         With a capture key: bearer is the key, a 401 is final (`CaptureKeyRejected`), and
         neither the credentials file nor the refresh route is consulted.
         """
         if self.key is not None:
-            status, parsed = self._request(method, path, body, self.key)
+            status, parsed = self._request(method, path, body, self.key, extra_headers)
             if status == 401:
                 raise CaptureKeyRejected(key_prefix(self.key))
-            if not 200 <= status < 300:
-                raise HTTPFailure(status, json.dumps(parsed))
-            return parsed
+            return status, parsed
         creds = load_credentials()
         if creds is None:
             raise NotPaired()
-        status, parsed = self._request(method, path, body, creds["access_token"])
+        status, parsed = self._request(method, path, body, creds["access_token"], extra_headers)
         if status == 401:
             creds = self.refresh(creds)
-            status, parsed = self._request(method, path, body, creds["access_token"])
+            status, parsed = self._request(
+                method, path, body, creds["access_token"], extra_headers
+            )
+        return status, parsed
+
+    def _authenticated(self, method: str, path: str, body: dict | None) -> dict:
+        """`_authorized`, with anything but a 2xx raised as `HTTPFailure`."""
+        status, parsed = self._authorized(method, path, body)
         if not 200 <= status < 300:
             raise HTTPFailure(status, json.dumps(parsed))
         return parsed
@@ -334,6 +388,133 @@ class Client:
         r = self._authenticated("GET", "/v1/sync/known", None)
         known = r.get("known")
         return known if isinstance(known, dict) else {}
+
+    def put_narrative(self, doc: dict) -> dict:
+        """PUT /v1/profile/narrative: the "how you work" page this machine just wrote.
+
+        One document per person, replaced rather than appended: a narrative describes the
+        corpus as it stands, and the server keeps no history of ones that no longer do.
+        """
+        return self._authenticated("PUT", "/v1/profile/narrative", doc)
+
+    def put_report(self, doc: dict) -> dict:
+        """PUT /v1/profile/report: the measured half of the profile.
+
+        Same shape as `put_narrative` and for the same reason — one document per person,
+        replaced rather than appended. Unlike the narrative no model was involved, so this
+        one is cheap enough to run on a schedule.
+        """
+        return self._authenticated("PUT", "/v1/profile/report", doc)
+
+    def put_quotes(self, doc: dict) -> dict:
+        """PUT /v1/profile/quotes: the opt in quotes document (contract v4 `quotes`).
+
+        Sent only when this run was given `--quotes` AND the account has "Quote my prompts"
+        on. With the account off the server answers 409 and a sentence saying where the
+        switch is; that is `QuotesRefused`, printed as it came, and nothing is stored.
+        """
+        status, parsed = self._authorized("PUT", "/v1/profile/quotes", doc)
+        if status == 409:
+            raise QuotesRefused(str(parsed.get("reason") or parsed.get("detail") or ""))
+        if not 200 <= status < 300:
+            raise HTTPFailure(status, json.dumps(parsed))
+        return parsed
+
+    def delete_quotes(self) -> None:
+        """DELETE /v1/profile/quotes (204): the quotes this account stored, gone."""
+        status, parsed = self._authorized("DELETE", "/v1/profile/quotes", None)
+        if not 200 <= status < 300:
+            raise HTTPFailure(status, json.dumps(parsed))
+
+    def post_transcript(
+        self,
+        sid: str,
+        project_dir: str,
+        offset: int,
+        body: bytes,
+        hook: str = "Watch",
+        tz_offset_minutes: int = 0,
+    ) -> dict:
+        """POST /v1/ingest/transcript: a transcript tail at `offset`, through the route the
+        Claude Code hook uses (`routes/ingest.py`, the same headers `hook.sh` sends), so
+        the server cuts it with the one pipeline both channels share.
+
+        `body` must end at a newline or be empty (a heartbeat, which re-cuts on the server's
+        clock so "idle" and "waiting on you for N minutes" advance). Gzipped at
+        `GZIP_MIN_BYTES` and up. A 409 is `OffsetConflict` with the server's offset. Returns
+        the route's answer: `next_offset`, the counts, and `live`.
+        """
+        if body and not body.endswith(b"\n"):
+            raise ValueError("a tail must end at a newline: a partial line is never sent")
+        headers = {
+            "Content-Type": "application/x-ndjson",
+            "X-Builder-Session-Id": sid,
+            "X-Builder-Project-Dir": project_dir,
+            "X-Builder-Offset": str(int(offset)),
+            "X-Builder-Hook": hook,
+            "X-Builder-Tz-Offset-Minutes": str(int(tz_offset_minutes)),
+        }
+        data = body
+        if len(body) >= GZIP_MIN_BYTES:
+            data = gzip.compress(body)
+            headers["Content-Encoding"] = "gzip"
+        status, parsed = self._authorized("POST", "/v1/ingest/transcript", data, headers)
+        if status == 409:
+            nxt = parsed.get("next_offset")
+            raise OffsetConflict(nxt if isinstance(nxt, int) and not isinstance(nxt, bool) else None)
+        if not 200 <= status < 300:
+            raise HTTPFailure(status, json.dumps(parsed))
+        return parsed
+
+    def transcript_offset(self, sid: str) -> int:
+        """GET /v1/ingest/transcript/{sid}/offset: the bytes the server holds (0 once it
+        retired them)."""
+        r = self._authenticated("GET", f"/v1/ingest/transcript/{sid}/offset", None)
+        n = r.get("next_offset")
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            raise HTTPFailure(200, f"the offset route answered {json.dumps(r)}")
+        return n
+
+    # -- project demos (docs/demos.md, capture/demo_publish.py) -------------------------
+
+    def media_presign(self, key: str, body: dict) -> dict:
+        """POST /v1/projects/{key}/media:presign: where one file of a publish goes."""
+        return self._authenticated("POST", f"/v1/projects/{key}/media:presign", body)
+
+    def media_commit(self, key: str, media_id: str) -> dict:
+        """POST /v1/projects/{key}/media/{id}:commit: the file is there; the server checks."""
+        return self._authenticated("POST", f"/v1/projects/{key}/media/{media_id}:commit", None)
+
+    def media_list(self, key: str) -> dict:
+        """GET /v1/projects/{key}/media: what the phone shows for the project now."""
+        return self._authenticated("GET", f"/v1/projects/{key}/media", None)
+
+    def media_delete(self, key: str) -> dict:
+        """DELETE /v1/projects/{key}/media: every file of the project's demo, answered with how
+        many went."""
+        return self._authenticated("DELETE", f"/v1/projects/{key}/media", None)
+
+    def put_object(self, url: str, data: bytes, headers: dict[str, str], timeout: float = 600) -> int:
+        """PUT `data` to a presigned upload URL and return the status.
+
+        The URL is absolute (a bucket) or relative to this server (the local stack's file
+        backend), and it IS the grant: NO bearer is sent, because the device token must never
+        reach a bucket and the file backend's URL carries a token of its own. The headers are
+        the presign's, sent verbatim (the bucket signed them). Ten minutes: 40 MiB over a
+        0.5 Mb/s uplink."""
+        full = urllib.parse.urljoin(self.server + "/", url)
+        req = urllib.request.Request(full, data=data, method="PUT", headers=dict(headers))
+        try:
+            with self._open(req, timeout=timeout) as resp:
+                status = resp.status
+                resp.read()
+        except urllib.error.HTTPError as e:
+            raise HTTPFailure(e.code, e.read().decode("utf-8", "replace")) from e
+        except (urllib.error.URLError, OSError) as e:
+            raise HTTPFailure(0, f"network error: {e}") from e
+        if not 200 <= status < 300:
+            raise HTTPFailure(status, "")
+        return status
 
     def upload(self, sessions: list[dict], chunk_size: int = 200) -> dict:
         """POST /v1/sync/sessions:batch in chunks of 200, as the Mac does."""

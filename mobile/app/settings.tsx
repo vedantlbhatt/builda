@@ -1,13 +1,30 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { Stack, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState, type ReactNode } from 'react';
 import * as ReactNative from 'react-native';
-import { Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { isGoogleConfigured, onGoogleSignIn, startGoogleSignIn } from '../src/auth/googleFlow';
-import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me } from '../src/data/api';
+import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me, type PrivacyPrefs } from '../src/data/api';
+import { forgetCachedQuotes } from '../src/data/builderCache';
 import * as cache from '../src/data/cache';
+import {
+  FILE_NAMES_DETAIL,
+  FILE_NAMES_TITLE,
+  LIVE_ACTIVITIES_TITLE,
+  liveActivitiesDetail,
+  loadPrivacyPrefs,
+  LOCK_SCREEN_TITLE,
+  lockScreenDetail,
+  type PrivacySwitch,
+  QUOTES_DETAIL,
+  QUOTES_MACHINE_COMMAND,
+  QUOTES_MACHINE_HINT,
+  QUOTES_TITLE,
+  setPrivacySwitch,
+} from '../src/data/privacy';
 import {
   appendKey,
   atKeyCap,
@@ -23,52 +40,118 @@ import {
 } from '../src/data/captureKeys';
 import { api, API_BASE_URL } from '../src/data/client';
 import { getMachineId } from '../src/data/machine';
-import { PixelSprite } from '../src/pixel/PixelSprite';
+import { refreshLiveSurfaces } from '../src/live/useLiveSurfaces';
+import { Band, BandWords } from '../src/insights/Band';
+import { CreaturePrint } from '../src/insights/Creature';
+import { fitSize, numSpec } from '../src/insights/format';
+import { figure, GUTTER } from '../src/insights/kit';
+import { Num } from '../src/insights/Num';
+import { GROUND, ON_HUE } from '../src/insights/palette';
+import { Block, RevealPage, Section, usePageReveal } from '../src/insights/reveal';
+import { useRevealScroll } from '../src/insights/RevealScroll';
+import { AccentButton, WordLink } from '../src/nav/chrome';
+import { getLocalName } from '../src/nav/name';
+import { sendPendingName } from '../src/nav/onboarding';
+import { colourLine, creatureLabel, identityLines, keysCaption } from '../src/nav/settingsCopy';
 import { registerForPush } from '../src/push/push';
 import {
   describeHandleConflict,
   displayNameProblem,
   handleProblem,
   HANDLE_MAX,
+  HANDLE_MIN,
   isValidHandle,
   MAX_DISPLAY_NAME,
   normalizeHandle,
 } from '../src/social/account';
 import { colors, space, TAP_TARGET } from '../src/theme';
+import { refreshAccent, useAccent, type AccentState } from '../src/theme/accent';
+import { forgetProjectsOnThisPhone } from '../src/projects/nicknames';
+import { Button, Hairline, SHAPE, T, TextField, useReduceMotion } from '../src/ui';
 
-const c = colors('dark');
+/**
+ * Settings, on the chapter grammar (design-refs/HOUSE-STYLE.md): not a stack of boxed rows but a
+ * column of chapters on the warm dark ground, opened by one band.
+ *
+ * The band is the builder, in the builder's hue: it prints itself in pixels when the page lands,
+ * their creature printed on it, their name set large in dark ink, their handle under it, and the
+ * one sentence that says what this app's colour is and how to change it (the owner, 2026-09-13:
+ * "what even is the theme of this app?"). Tapping the creature opens the picker, and coming back
+ * repaints the band, the bar and every button in the new hue (`src/theme/accent.tsx`).
+ *
+ * Under it, each chapter is a hairline, a heading and one plain sentence, then its content open
+ * on the ground: the privacy switches each with their sentence, fields as lines, keys as lines,
+ * actions as words. The one primary action per chapter is the accent capsule (`AccentButton`);
+ * the kit's amber button is not used here. Sections play as they arrive, once (`RevealPage`).
+ *
+ * Borrowed, by name: the band and its reveal are the analysis page's (`src/insights/`); the
+ * profile at the top of settings, Revolut's (design-md/finance/revolut: avatar, name and plan
+ * first, then the account); a number set large where there is one to count, Duolingo's ("numbers
+ * are stars", design-md/misc/duolingo), for the live capture keys.
+ */
 
-/** "Builder · v0.1.0" — the version is read from the config, never typed here twice. */
+/** The sign-in buttons: the same 52pt capsule as every primary action. */
+const SIGN_IN_HEIGHT = 52;
+
+/** Google's sign-in button is white by their guideline (`colors().googleButton`). */
+const GOOGLE_WHITE = colors('dark').googleButton;
+
+/** "Builda · v0.1.0": the version is read from the config, never typed here twice. */
 function appLine(): string {
   const v = Constants.expoConfig?.version;
-  return v ? `Builder · v${v}` : 'Builder';
+  return v ? `Builda · v${v}` : 'Builda';
 }
+
+/** Settings stages no chapters (they are few and light), so a first scroll has nothing to hurry. */
+const NOTHING = () => {};
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const [signedIn, setSignedIn] = useState(false);
+  const { width } = useWindowDimensions();
+  const accent = useAccent();
+  const reduced = useReduceMotion();
+  const page = usePageReveal(reduced);
+  const { scrollRef, onScroll, onLayout } = useRevealScroll(page, NOTHING);
+
+  // null until the keychain has answered: the band says "Signed in" or "Not signed in", and it
+  // must not say the wrong one for a frame.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [localName, setLocalName] = useState<string | null>(null);
   const [pairCode, setPairCode] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
+  // The outcome of the last thing done, said where the eye is after the tap: under the band
+  // for what changes the whole page (signed in, signed out), in its chapter for the rest.
+  const [topLine, setTopLine] = useState<string | null>(null);
+  const [signInLine, setSignInLine] = useState<string | null>(null);
+  const [macLine, setMacLine] = useState<string | null>(null);
+  const [accountLine, setAccountLine] = useState<string | null>(null);
   const googleReady = isGoogleConfigured();
 
+  const readLocalName = useCallback(() => {
+    getLocalName(cache)
+      .then(setLocalName)
+      .catch(() => setLocalName(null));
+  }, []);
+
   useEffect(() => {
+    readLocalName();
     void api.isSignedIn().then(setSignedIn);
     // The Google redirect is finished by the root layout; this screen only learns the
     // outcome, so it updates in place when the browser hands control back.
     return onGoogleSignIn((r) => {
       if (r.ok) {
         setSignedIn(true);
-        setStatus('Signed in with Google. Pull to refresh on Sessions.');
+        setSignInLine(null);
+        setTopLine('Signed in with Google. Pull to refresh on Sessions.');
       } else {
-        setStatus(r.message);
+        setSignInLine(r.message);
       }
     });
-  }, []);
+  }, [readLocalName]);
 
   // The viewer's own row, once there is a viewer. Re-read whenever sign-in flips on, so a
-  // fresh sign-in shows the handle it already has rather than "not set".
+  // fresh sign-in shows the handle it already has rather than "No handle yet".
   useEffect(() => {
     if (!signedIn) {
       setMe(null);
@@ -100,40 +183,55 @@ export default function SettingsScreen() {
       const tokens = await api.signInWithApple(credential.identityToken, machineId);
       await api.setTokens(tokens.access_token, tokens.refresh_token);
       setSignedIn(true);
-      setStatus('Signed in. Pull to refresh on Sessions.');
+      setSignInLine(null);
+      setTopLine('Signed in. Pull to refresh on Sessions.');
       void registerForPush(api);
+      // The name picked in onboarding while signed out, if it has not reached the account yet.
+      void sendPendingName();
     } catch (e) {
       if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return;
-      setStatus(e instanceof Error ? e.message : 'sign in failed');
+      setSignInLine(e instanceof Error ? e.message : 'sign in failed');
     }
   }, []);
 
   const signInGoogle = useCallback(async () => {
     try {
-      setStatus('Continue in the browser…');
+      setSignInLine('Continue in the browser…');
       await startGoogleSignIn();
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : 'could not open Google sign-in');
+      setSignInLine(e instanceof Error ? e.message : 'could not open Google sign-in');
     }
   }, []);
 
   const pair = useCallback(async () => {
     try {
       const result = await api.approvePairing(pairCode.trim().toUpperCase());
-      setStatus(`Paired with ${result.label}.`);
+      setMacLine(`Paired with ${result.label}.`);
       setPairCode('');
     } catch {
-      setStatus('That code was not recognised, or it expired.');
+      setMacLine('That code was not recognised, or it expired.');
     }
   }, [pairCode]);
+
+  // Signing out clears everything this phone saved but its device keys, the chosen creature and
+  // the onboarding name with it (`cache.clear`), so the band and the app's colour are read again.
+  const afterLeaving = useCallback(() => {
+    readLocalName();
+    void refreshAccent();
+    // The names and numbers this phone gave the last account's projects (src/projects/nicknames.ts).
+    void forgetProjectsOnThisPhone();
+  }, [readLocalName]);
 
   const signOut = useCallback(async () => {
     await api.clearTokens();
     // Cached sessions are the user's data, not ours to keep once they leave.
     await cache.clear();
     setSignedIn(false);
-    setStatus('Signed out. Local copies deleted.');
-  }, []);
+    setMacLine(null);
+    setAccountLine(null);
+    setTopLine('Signed out. Local copies deleted.');
+    afterLeaving();
+  }, [afterLeaving]);
 
   const deleteAccount = useCallback(() => {
     // In-app account deletion, not an email link. App Review guideline 5.1.1(x) treats a
@@ -152,148 +250,497 @@ export default function SettingsScreen() {
               await api.clearTokens();
               await cache.clear();
               setSignedIn(false);
-              setStatus(`Deleted. Receipt ${result.receipt.slice(0, 12)}…`);
+              setAccountLine(null);
+              setTopLine(`Deleted. Receipt ${result.receipt.slice(0, 12)}…`);
+              afterLeaving();
             } catch {
-              setStatus('Could not reach the server. Nothing was deleted.');
+              setAccountLine('Could not reach the server. Nothing was deleted.');
             }
           },
         },
       ]
     );
-  }, []);
+  }, [afterLeaving]);
+
+  const known = signedIn !== null;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      contentContainerStyle={{ padding: space.md, paddingBottom: space.xxl }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-        <PixelSprite state="idle" size={32} fps={2} />
-        <Text style={{ color: c.textDim, fontSize: 13, fontVariant: ['tabular-nums'] }}>{appLine()}</Text>
-      </View>
-
-      {!signedIn ? (
-        <Section title="Account">
-          <Text style={{ color: c.textDim, fontSize: 13, marginBottom: space.md }}>
-            Builder works without an account. You are seeing a sample session. Sign in to
-            sync your own from the Mac agent.
-          </Text>
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-            cornerRadius={10}
-            style={{ height: 48 }}
-            onPress={signIn}
-          />
-          <Pressable
-            onPress={() => void signInGoogle()}
-            disabled={!googleReady}
-            style={({ pressed }) => [
-              {
-                height: 48,
-                borderRadius: 10,
-                marginTop: space.sm,
-                backgroundColor: c.googleButton,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: googleReady ? 1 : 0.4,
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={{ color: c.onAccent, fontWeight: '600', fontSize: 16 }}>
-              Continue with Google
-            </Text>
-          </Pressable>
-          {!googleReady && (
-            <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.xs, textAlign: 'center' }}>
-              Google sign-in not configured
-            </Text>
+    <>
+      {/* The chapter pages' bar (the analysis page and the You pages): the large title on the
+          ground, no rule under it, the band right below. */}
+      <Stack.Screen
+        options={{
+          title: 'Settings',
+          headerLargeTitle: true,
+          headerLargeTitleShadowVisible: false,
+          headerShadowVisible: false,
+          headerTransparent: false,
+          headerBackground: undefined,
+          headerStyle: { backgroundColor: GROUND.bg },
+          headerLargeStyle: { backgroundColor: GROUND.bg },
+          headerTintColor: GROUND.text,
+          headerTitleStyle: { color: GROUND.text },
+          headerLargeTitleStyle: { color: GROUND.text },
+        }}
+      />
+      <Animated.ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.content}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onLayout={onLayout}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
+        <RevealPage page={page}>
+          {known ? (
+            <IdentityBand
+              key={accent.animal}
+              accent={accent}
+              signedIn={signedIn}
+              me={me}
+              localName={localName}
+              width={width}
+              topLine={topLine}
+              onCreature={() => router.push('/icon')}
+            />
+          ) : (
+            <View style={styles.bandSkeleton} />
           )}
-        </Section>
-      ) : (
-        <>
-          <Section title="Pair your Mac">
-            <Text style={{ color: c.textDim, fontSize: 13, marginBottom: space.sm }}>
-              Run `builder pair` on your Mac, then scan the code it shows or type it.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: space.sm }}>
-              <TextInput
-                value={pairCode}
-                onChangeText={setPairCode}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                placeholder="XXXX-XXXX"
-                placeholderTextColor={c.textDim}
-                style={{
-                  flex: 1,
-                  // SEEN ON WEB: a text input's intrinsic width (its `size`) is a flex
-                  // minimum there, so `flex: 1` alone let it push the Scan button off the
-                  // card. minWidth 0 lets it shrink; a no-op on iOS.
-                  minWidth: 0,
-                  color: c.text,
-                  backgroundColor: c.bg,
-                  borderRadius: 8,
-                  padding: space.md,
-                  fontSize: 20,
-                  letterSpacing: 2,
-                  textAlign: 'center',
-                }}
-              />
-              <Pressable
-                onPress={() => router.push('/pair')}
-                style={({ pressed }) => [
-                  {
-                    flexShrink: 0,
-                    backgroundColor: c.bg,
-                    borderRadius: 8,
-                    paddingHorizontal: space.md,
-                    justifyContent: 'center',
-                  },
-                  pressed && { opacity: 0.6 },
-                ]}
+
+          {known && !signedIn ? (
+            <Chapter
+              title="Sign in"
+              line="Builda works without an account. You are seeing a sample session. Sign in to sync your own from the Mac agent."
+            >
+              <View style={styles.stack}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                  cornerRadius={SIGN_IN_HEIGHT / 2}
+                  style={{ height: SIGN_IN_HEIGHT }}
+                  onPress={signIn}
+                />
+                {/* White by Google's guideline, in either scheme; shaped like Apple's beside it.
+                    A build without a Google client id has no button at all: a white capsule at
+                    40% was a grey slab that looked broken and could not be pressed. */}
+                {googleReady ? (
+                  <Pressable
+                    onPress={() => void signInGoogle()}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.google, { opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    <T role="headline" tone="onAccent">
+                      Continue with Google
+                    </T>
+                  </Pressable>
+                ) : __DEV__ ? (
+                  <T role="meta" tone="faint">
+                    Google sign in is off in this build: no client id.
+                  </T>
+                ) : null}
+                <Outcome line={signInLine} />
+              </View>
+            </Chapter>
+          ) : null}
+
+          {known && signedIn ? (
+            <Chapter title="Profile" line="The name and handle on your account.">
+              {me ? (
+                <ProfileFields me={me} onChange={setMe} accent={accent} />
+              ) : (
+                <T role="row" weight={400} tone="dim">
+                  {meError ?? 'Loading your profile…'}
+                </T>
+              )}
+            </Chapter>
+          ) : null}
+
+          {known ? (
+            <Chapter title="Privacy" line="What leaves your Mac, and what this phone shows.">
+              <PrivacySwitches signedIn={signedIn} accent={accent} />
+              <View style={styles.promise}>
+                <T role="body">Your prompts, your code, your diffs and your file names stay on your machine.</T>
+                <T role="row" weight={400} tone="dim">
+                  What syncs is timings, counts, the shape of the session, and, only for repositories you mark public,
+                  the repository name and the title your editor already wrote to your own disk.
+                  {signedIn ? ' Quotes and file names are the only exceptions, and only while their switches above are on.' : ''}
+                </T>
+                {/* The command on a line of its own: run inline, the line breaker split it after
+                    "--" and set "dry-run" on the next line, which no one can paste. */}
+                <T role="row" weight={400} tone="dim">
+                  The Mac agent is open source. This prints every byte it would send, without sending it:
+                </T>
+                <View style={styles.code}>
+                  <T role="mono" selectable>
+                    builder sync --dry-run --print-payload
+                  </T>
+                </View>
+              </View>
+            </Chapter>
+          ) : null}
+
+          {known && signedIn ? (
+            <>
+              <Chapter title="Your Mac">
+                <T role="row" weight={400} tone="dim">
+                  Run{' '}
+                  <T role="mono" tone="text">
+                    builder pair
+                  </T>{' '}
+                  on your Mac, then type the code it shows.
+                </T>
+                <View style={styles.inputRow}>
+                  <TextField
+                    value={pairCode}
+                    onChangeText={setPairCode}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    placeholder="XXXX-XXXX"
+                    accessibilityLabel="Pairing code"
+                    selectionColor={accent.ink}
+                    cursorColor={accent.ink}
+                    // SEEN ON WEB: a text input's intrinsic width (its `size`) is a flex
+                    // minimum there, so `flex: 1` alone let it push the button off the
+                    // row. minWidth 0 lets it shrink; a no-op on iOS.
+                    style={styles.grow}
+                  />
+                  <AccentButton label="Pair" onPress={() => void pair()} disabled={pairCode.trim().length < 8} />
+                </View>
+                <WordLink title="Scan the code instead" onPress={() => router.push('/pair')} />
+                <Outcome line={macLine} />
+              </Chapter>
+
+              <Chapter
+                title="Cloud capture"
+                line="Sessions from claude.ai/code run in a cloud container the Mac agent never sees. A capture key lets that container upload them, and do nothing else."
               >
-                <Text style={{ color: c.accent, fontWeight: '600', fontSize: 14 }}>Scan code</Text>
-              </Pressable>
-            </View>
-            <Button label="Pair" onPress={pair} disabled={pairCode.trim().length < 8} />
-          </Section>
+                <CaptureKeysPanel accent={accent} />
+              </Chapter>
 
-          <Section title="Cloud capture">
-            <CaptureKeysPanel />
-          </Section>
+              <Chapter title="Account">
+                <View style={styles.action}>
+                  <Button kind="secondary" size="compact" block={false} label="Sign out" onPress={() => void signOut()} />
+                  <T role="row" weight={400} tone="dim">
+                    Deletes what this phone saved, your creature and name included. Your sessions stay on your account.
+                  </T>
+                </View>
+                <Hairline />
+                <View style={styles.action}>
+                  <Button kind="secondary" size="compact" block={false} destructive label="Delete account and all data" onPress={deleteAccount} />
+                  <T role="row" weight={400} tone="dim">
+                    Every session, device and token on the server, at once. There is no undo.
+                  </T>
+                </View>
+                <Outcome line={accountLine} />
+              </Chapter>
+            </>
+          ) : null}
 
-          <Section title="Profile">
-            {me ? (
-              <ProfileFields me={me} onChange={setMe} />
-            ) : (
-              <Text style={{ color: c.textDim, fontSize: 13 }}>{meError ?? 'Loading your profile…'}</Text>
-            )}
-          </Section>
+          {known ? (
+            <Section style={styles.footer}>
+              <Block>
+                <T role="meta" tone="faint">
+                  {appLine()}
+                </T>
+              </Block>
+            </Section>
+          ) : null}
+        </RevealPage>
+      </Animated.ScrollView>
+    </>
+  );
+}
 
-          <Section title="Account">
-            <Button label="Sign out" onPress={signOut} />
-            <Button label="Delete account and all data" onPress={deleteAccount} destructive />
-          </Section>
+/**
+ * The band: the builder, in their hue. Keyed by the creature where it is used, so a new creature
+ * prints a new band rather than recolouring the old one in place.
+ */
+function IdentityBand({
+  accent,
+  signedIn,
+  me,
+  localName,
+  width,
+  topLine,
+  onCreature,
+}: {
+  accent: AccentState;
+  signedIn: boolean;
+  me: Me | null;
+  localName: string | null;
+  width: number;
+  topLine: string | null;
+  onCreature: () => void;
+}) {
+  const id = identityLines({ signedIn, me, localName });
+  const inner = width - GUTTER * 2;
+  const creature = Math.min(112, Math.floor((inner * 0.32) / 16) * 16);
+  const nameSize = fitSize(id.name, inner, 56, 34);
+  return (
+    <Section>
+      <Band hue={accent} title={id.title}>
+        <BandWords delay={260}>
+          <T
+            role="hero"
+            accessibilityRole="header"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            style={{ color: ON_HUE, fontSize: nameSize, lineHeight: Math.round(nameSize * 1.04) }}
+          >
+            {id.name}
+          </T>
+        </BandWords>
+        <View style={styles.bandRow}>
+          <View style={styles.bandWords}>
+            {id.handle ? (
+              <BandWords delay={340}>
+                <T role="headline" style={{ color: ON_HUE }}>
+                  {id.handle}
+                </T>
+              </BandWords>
+            ) : null}
+            <BandWords delay={420}>
+              <T role="row" weight={500} style={styles.bandNote}>
+                {colourLine(accent.animal, accent.name)}
+              </T>
+            </BandWords>
+          </View>
+          <Pressable
+            onPress={onCreature}
+            accessibilityRole="button"
+            accessibilityLabel={creatureLabel(accent.animal)}
+            hitSlop={8}
+            // The creature gives a little under a thumb, as a doorway band does: scale, never a
+            // dimmed hue.
+            style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.96 : 1 }] })}
+          >
+            <CreaturePrint animal={accent.animal} size={creature} color={ON_HUE} delay={200} spread={620} />
+          </Pressable>
+        </View>
+      </Band>
+      {topLine ? (
+        <Block style={styles.under}>
+          <T role="row" weight={600} accessibilityLiveRegion="polite">
+            {topLine}
+          </T>
+        </Block>
+      ) : null}
+    </Section>
+  );
+}
+
+/**
+ * A chapter under the band: a hairline, its heading and one plain sentence, then its content open
+ * on the ground. Two blocks, so the heading plays when it arrives and the content right after.
+ */
+function Chapter({ title, line, children }: { title: string; line?: string; children: ReactNode }) {
+  return (
+    <Section style={styles.chapter}>
+      <Block>
+        <Hairline />
+        <T role="title" accessibilityRole="header" style={styles.chapterTitle}>
+          {title}
+        </T>
+        {line ? (
+          <T role="row" weight={400} tone="dim" style={styles.chapterLine}>
+            {line}
+          </T>
+        ) : null}
+      </Block>
+      <Block style={styles.chapterBody}>{children}</Block>
+    </Section>
+  );
+}
+
+/** What the last action in a chapter did, in a sentence, where the tap was. */
+function Outcome({ line }: { line: string | null }) {
+  if (!line) return null;
+  return (
+    <T role="row" weight={600} accessibilityLiveRegion="polite">
+      {line}
+    </T>
+  );
+}
+
+/**
+ * One switch, open on the ground: what it does in a headline with the platform's switch beside it
+ * (native, in the accent), its sentence under it, and anything the switch needs said while on.
+ */
+function SwitchLine({
+  title,
+  sentence,
+  value,
+  disabled,
+  onChange,
+  accent,
+  first = false,
+  below,
+}: {
+  title: string;
+  sentence: string;
+  value: boolean;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+  accent: AccentState;
+  first?: boolean;
+  below?: ReactNode;
+}) {
+  return (
+    <View style={[styles.switchLine, first ? null : styles.hairTop]}>
+      <View style={styles.switchHead}>
+        <T role="headline" style={styles.grow}>
+          {title}
+        </T>
+        <Switch
+          value={value}
+          disabled={disabled}
+          onValueChange={onChange}
+          trackColor={{ true: accent.fill, false: GROUND.raised }}
+          ios_backgroundColor={GROUND.raised}
+          accessibilityLabel={title}
+        />
+      </View>
+      <T role="row" weight={400} tone="dim">
+        {sentence}
+      </T>
+      {below}
+    </View>
+  );
+}
+
+/**
+ * The privacy switches. Two belong to the account and are the only way words from your
+ * machine reach the server (contract v4): Quotes, and File names. Both start off, and
+ * turning either off deletes what it let through (`src/data/privacy.ts`). The third,
+ * Show details on Lock Screen, belongs to this phone: the Lock Screen is public.
+ *
+ * A switch flips when the server agrees, not before: a privacy switch that shows "off"
+ * while the server still holds the quotes would be the one wrong state that matters.
+ */
+function PrivacySwitches({ signedIn, accent }: { signedIn: boolean; accent: AccentState }) {
+  // undefined: still loading. null: this server has no such switches (hidden, not "off").
+  const [prefs, setPrefs] = useState<PrivacyPrefs | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<PrivacySwitch | null>(null);
+  const [line, setLine] = useState<string | null>(null);
+  const [lockDetails, setLockDetails] = useState<boolean | null>(null);
+  const [activities, setActivities] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void cache.getLockScreenDetails().then(setLockDetails);
+    void cache.getLiveActivities().then(setActivities);
+  }, []);
+
+  useEffect(() => {
+    setLine(null);
+    if (!signedIn) {
+      setPrefs(undefined);
+      setLoadError(null);
+      return;
+    }
+    let cancelled = false;
+    loadPrivacyPrefs(api)
+      .then((p) => {
+        if (!cancelled) setPrefs(p);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'could not load your privacy settings');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const flip = useCallback(
+    async (key: PrivacySwitch, on: boolean) => {
+      if (!prefs || busy) return;
+      setBusy(key);
+      const out = await setPrivacySwitch(api, prefs, key, on, cache.forgetLiveNames, () => forgetCachedQuotes(cache));
+      setPrefs(out.prefs);
+      setLine(out.message);
+      setBusy(null);
+    },
+    [prefs, busy]
+  );
+
+  const flipLock = useCallback(async (on: boolean) => {
+    setLockDetails(on);
+    await cache.setLockScreenDetails(on);
+  }, []);
+
+  // Takes effect now, not on the next poll: off takes every card down while the switch is
+  // still under the thumb, on starts one for each running session.
+  const flipActivities = useCallback(async (on: boolean) => {
+    setActivities(on);
+    await cache.setLiveActivities(on);
+    await refreshLiveSurfaces().catch(() => null);
+  }, []);
+
+  const accountSwitches = signedIn && prefs;
+  return (
+    <View>
+      {accountSwitches ? (
+        <>
+          <SwitchLine
+            first
+            title={QUOTES_TITLE}
+            sentence={QUOTES_DETAIL}
+            value={prefs.quotes}
+            disabled={busy !== null}
+            onChange={(v) => void flip('quotes', v)}
+            accent={accent}
+            below={
+              prefs.quotes ? (
+                <View style={styles.below}>
+                  <T role="row" weight={400} tone="dim">
+                    {QUOTES_MACHINE_HINT}
+                  </T>
+                  <View style={styles.code}>
+                    <T role="mono" selectable>
+                      {QUOTES_MACHINE_COMMAND}
+                    </T>
+                  </View>
+                </View>
+              ) : undefined
+            }
+          />
+          <SwitchLine
+            title={FILE_NAMES_TITLE}
+            sentence={FILE_NAMES_DETAIL}
+            value={prefs.live_names}
+            disabled={busy !== null}
+            onChange={(v) => void flip('live_names', v)}
+            accent={accent}
+          />
         </>
-      )}
-
-      <Section title="Privacy">
-        <Text style={{ color: c.textDim, fontSize: 13, lineHeight: 19 }}>
-          Your prompts, your code, your diffs and your file names never leave your machine.
-          What syncs is timings, counts, the shape of the session, and, only for
-          repositories you mark public, the repository name and the title your editor
-          already wrote to your own disk.
-          {'\n\n'}
-          The Mac agent is open source, and `builder sync --dry-run --print-payload` prints
-          every byte it would send without sending it.
-        </Text>
-      </Section>
-
-      {status && (
-        <Text style={{ color: c.accent, fontSize: 13, marginTop: space.lg }}>{status}</Text>
-      )}
-    </ScrollView>
+      ) : signedIn && prefs === undefined ? (
+        <T role="row" weight={400} tone="dim" style={styles.switchLine}>
+          {loadError ?? 'Loading your privacy settings…'}
+        </T>
+      ) : null}
+      <SwitchLine
+        first={!accountSwitches}
+        title={LOCK_SCREEN_TITLE}
+        sentence={lockScreenDetail(lockDetails ?? cache.LOCK_SCREEN_DETAILS_DEFAULT)}
+        value={lockDetails ?? cache.LOCK_SCREEN_DETAILS_DEFAULT}
+        disabled={lockDetails === null}
+        onChange={(v) => void flipLock(v)}
+        accent={accent}
+      />
+      <SwitchLine
+        title={LIVE_ACTIVITIES_TITLE}
+        sentence={liveActivitiesDetail(activities ?? cache.LIVE_ACTIVITIES_DEFAULT)}
+        value={activities ?? cache.LIVE_ACTIVITIES_DEFAULT}
+        disabled={activities === null}
+        onChange={(v) => void flipActivities(v)}
+        accent={accent}
+      />
+      <Outcome line={line} />
+    </View>
   );
 }
 
@@ -301,11 +748,13 @@ export default function SettingsScreen() {
  * Capture keys: the credential a Claude Code cloud container uploads with, because the
  * pairing flow's rotating refresh token cannot be shared between containers
  * (docs/cloud-capture.md). The list shows name, prefix and last use; "New key" shows the
- * plaintext ONCE, with a copy button, and forgets it when dismissed — the server keeps a
+ * plaintext ONCE, with a copy button, and forgets it when dismissed: the server keeps a
  * hash, so there is no second look. Revoke asks first: the container holding that key
  * gets a 401 from its next upload on.
+ *
+ * How many are live is set large, counted up once, beside the cap: the one number here.
  */
-function CaptureKeysPanel() {
+function CaptureKeysPanel({ accent }: { accent: AccentState }) {
   const [keys, setKeys] = useState<CaptureKey[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -397,215 +846,138 @@ function CaptureKeysPanel() {
   const canMint = !minting && keys !== null && !capped && nameProblem === null;
 
   return (
-    <>
-      <Text style={{ color: c.textDim, fontSize: 13, lineHeight: 19, marginBottom: space.sm }}>
-        Sessions from claude.ai/code run in a cloud container the Mac agent never sees. A
-        capture key lets that container upload them, and do nothing else.
-      </Text>
-
-      {created && (
-        <View
-          style={{
-            backgroundColor: c.bg,
-            borderRadius: 10,
-            padding: space.md,
-            marginBottom: space.md,
-            borderWidth: 1,
-            borderColor: c.accent,
-          }}
-        >
-          <Text style={{ color: c.text, fontSize: 13, fontWeight: '700' }}>
-            {created.name}: copy it now
-          </Text>
-          <Text style={{ color: c.textDim, fontSize: 11, marginTop: space.xs, lineHeight: 16 }}>
-            This is the only time the key is shown. {CAPTURE_KEY_PASTE_HINT}
-          </Text>
-          <Text
-            selectable
-            accessibilityLabel="Capture key"
-            style={{
-              color: c.text,
-              fontSize: 13,
-              fontFamily: 'Menlo',
-              marginTop: space.sm,
-              padding: space.sm,
-              backgroundColor: c.card,
-              borderRadius: 8,
-            }}
-          >
-            {created.key}
-          </Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.md, marginTop: space.xs }}>
-            <Pressable
-              onPress={() => setCreated(null)}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', paddingHorizontal: space.sm },
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Text style={{ color: c.textDim, fontSize: 14, fontWeight: '600' }}>Done</Text>
-            </Pressable>
-            <Pressable
-              onPress={copy}
-              accessibilityRole="button"
-              accessibilityLabel="Copy capture key"
-              style={({ pressed }) => [
-                {
-                  minHeight: TAP_TARGET,
-                  minWidth: TAP_TARGET,
-                  justifyContent: 'center',
-                  paddingHorizontal: space.md,
-                  borderRadius: 10,
-                  backgroundColor: c.accent,
-                },
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{copied ? 'Copied' : 'Copy'}</Text>
-            </Pressable>
+    <View style={styles.stack}>
+      {/* The one showing of a fresh key: marked by a rule in the accent down its edge, not a
+          card. The key in mono on the level above the ground, and one primary action: copy. */}
+      {created ? (
+        <View style={styles.fresh}>
+          <View style={[styles.freshRule, { backgroundColor: accent.ink }]} />
+          <View style={styles.freshBody}>
+            <T role="headline">{created.name}: copy it now</T>
+            <T role="row" weight={400} tone="dim">
+              This is the only time the key is shown. {CAPTURE_KEY_PASTE_HINT}
+            </T>
+            <View style={styles.code}>
+              <T role="mono" selectable accessibilityLabel="Capture key">
+                {created.key}
+              </T>
+            </View>
+            <View style={styles.actions}>
+              <AccentButton label={copied ? 'Copied' : 'Copy'} accessibilityHint="Copies the capture key" onPress={copy} />
+              <Button kind="secondary" size="compact" block={false} label="Done" onPress={() => setCreated(null)} />
+            </View>
+            <T role="headline" style={styles.freshSetup}>
+              Set up the hook, once, in a terminal
+            </T>
+            <View style={[styles.code, styles.codeFlush]}>
+              {/* Code keeps its lines: it scrolls sideways rather than wrapping mid command. */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.codeScroll}>
+                <T role="mono" tone="dim" selectable>
+                  {hookInstallSnippet(API_BASE_URL, created.key)}
+                </T>
+              </ScrollView>
+            </View>
+            <Button
+              kind="secondary"
+              size="compact"
+              block={false}
+              label={setupCopied ? 'Setup copied' : 'Copy setup'}
+              accessibilityHint="Copies the hook setup commands"
+              onPress={() => {
+                ReactNative.Clipboard.setString(hookInstallSnippet(API_BASE_URL, created.key));
+                setSetupCopied(true);
+              }}
+            />
           </View>
-          <Text style={{ color: c.text, fontSize: 14, fontWeight: '600', marginTop: space.md }}>
-            Set up the hook (paste once in a terminal)
-          </Text>
-          <Text
-            selectable
-            style={{
-              color: c.textDim,
-              fontFamily: 'Menlo',
-              fontSize: 11,
-              lineHeight: 15,
-              marginTop: space.xs,
-            }}
-          >
-            {hookInstallSnippet(API_BASE_URL, created.key)}
-          </Text>
-          <Pressable
-            onPress={() => {
-              ReactNative.Clipboard.setString(hookInstallSnippet(API_BASE_URL, created.key));
-              setSetupCopied(true);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Copy hook setup commands"
-            style={({ pressed }) => [
-              {
-                minHeight: TAP_TARGET,
-                justifyContent: 'center',
-                alignSelf: 'flex-start',
-                paddingHorizontal: space.md,
-                borderRadius: 10,
-                backgroundColor: c.bg,
-                borderWidth: 1,
-                borderColor: c.accent,
-                marginTop: space.sm,
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={{ color: c.accent, fontSize: 14, fontWeight: '700' }}>
-              {setupCopied ? 'Setup copied' : 'Copy setup'}
-            </Text>
-          </Pressable>
+        </View>
+      ) : null}
+
+      {keys === null ? (
+        <T role="row" weight={400} tone="dim">
+          {loadError ?? 'Loading your keys…'}
+        </T>
+      ) : keys.length === 0 ? (
+        <T role="row" weight={400} tone="dim">
+          No keys yet.
+        </T>
+      ) : (
+        <View>
+          <View style={styles.count}>
+            <Num spec={numSpec(keys.length, String(keys.length))} textStyle={figure(44, accent.ink)} accessibilityLabel={`${keys.length} ${keysCaption(keys.length, CAPTURE_KEY_MAX_LIVE)}`} />
+            <T role="headline" style={styles.grow}>
+              {keysCaption(keys.length, CAPTURE_KEY_MAX_LIVE)}
+            </T>
+          </View>
+          {keys.map((k) => (
+            <View key={k.id} style={[styles.keyLine, styles.hairTop]}>
+              <View style={styles.grow}>
+                <T role="headline" numberOfLines={1}>
+                  {k.name}
+                </T>
+                <T role="meta" tone="dim">
+                  {`${keyLabel(k.key_prefix)} · ${lastUsedLabel(k.last_used_at)}`}
+                </T>
+              </View>
+              <Button
+                kind="secondary"
+                destructive
+                size="compact"
+                block={false}
+                label={revoking === k.id ? 'Revoking…' : 'Revoke'}
+                busy={revoking === k.id}
+                accessibilityHint={`Revokes ${k.name}`}
+                onPress={() => revoke(k)}
+              />
+            </View>
+          ))}
         </View>
       )}
 
-      {keys === null ? (
-        <Text style={{ color: c.textDim, fontSize: 13 }}>{loadError ?? 'Loading your keys…'}</Text>
-      ) : keys.length === 0 ? (
-        <Text style={{ color: c.textDim, fontSize: 13 }}>No keys yet.</Text>
-      ) : (
-        keys.map((k) => (
-          <View
-            key={k.id}
-            style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET, gap: space.sm }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: c.text, fontSize: 15 }} numberOfLines={1}>
-                {k.name}
-              </Text>
-              <Text style={{ color: c.textDim, fontSize: 11, fontVariant: ['tabular-nums'] }}>
-                {keyLabel(k.key_prefix)} · {lastUsedLabel(k.last_used_at)}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => revoke(k)}
-              disabled={revoking === k.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Revoke ${k.name}`}
-              style={({ pressed }) => [
-                { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', alignItems: 'flex-end' },
-                (pressed || revoking === k.id) && { opacity: 0.6 },
-              ]}
-            >
-              <Text style={{ color: c.danger, fontSize: 14, fontWeight: '600' }}>
-                {revoking === k.id ? 'Revoking…' : 'Revoke'}
-              </Text>
-            </Pressable>
-          </View>
-        ))
-      )}
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md }}>
-        <TextInput
-          value={name}
-          onChangeText={(t) => {
-            setMintError(null);
-            setName(t.slice(0, CAPTURE_KEY_NAME_MAX + 8));
-          }}
-          placeholder={CAPTURE_KEY_DEFAULT_NAME}
-          placeholderTextColor={c.textDim}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!minting}
-          onSubmitEditing={() => void mint()}
-          returnKeyType="done"
-          accessibilityLabel="New key name"
-          style={{
-            flex: 1,
-            color: c.text,
-            backgroundColor: c.bg,
-            borderRadius: 8,
-            paddingHorizontal: space.md,
-            minHeight: TAP_TARGET,
-            fontSize: 15,
-          }}
-        />
-        <Pressable
-          onPress={() => void mint()}
-          disabled={!canMint}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            {
-              minHeight: TAP_TARGET,
-              justifyContent: 'center',
-              paddingHorizontal: space.md,
-              borderRadius: 10,
-              backgroundColor: c.accent,
-              opacity: canMint ? 1 : 0.4,
-            },
-            pressed && canMint && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{minting ? 'Minting…' : 'New key'}</Text>
-        </Pressable>
+      <View style={styles.stackTight}>
+        <View style={styles.inputRow}>
+          <TextField
+            value={name}
+            onChangeText={(t) => {
+              setMintError(null);
+              setName(t.slice(0, CAPTURE_KEY_NAME_MAX + 8));
+            }}
+            placeholder={CAPTURE_KEY_DEFAULT_NAME}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!minting}
+            onSubmitEditing={() => void mint()}
+            returnKeyType="done"
+            accessibilityLabel="New key name"
+            selectionColor={accent.ink}
+            cursorColor={accent.ink}
+            style={styles.grow}
+          />
+          <AccentButton
+            label="New key"
+            busy={minting}
+            busyLabel={'Minting…'}
+            disabled={!canMint && !minting}
+            onPress={() => void mint()}
+          />
+        </View>
+        <T role="meta" tone={mintError || nameProblem ? 'del' : 'dim'}>
+          {mintError ??
+            nameProblem ??
+            (capped
+              ? `Up to ${CAPTURE_KEY_MAX_LIVE} keys; revoke one to make room.`
+              : 'Name it after where it lives. One key per cloud environment is plenty.')}
+        </T>
       </View>
-      <Text style={{ color: mintError || nameProblem ? c.danger : c.textDim, fontSize: 11, marginTop: space.xs }}>
-        {mintError ??
-          nameProblem ??
-          (capped
-            ? `Up to ${CAPTURE_KEY_MAX_LIVE} keys; revoke one to make room.`
-            : 'Name it after where it lives. One key per cloud environment is plenty.')}
-      </Text>
-    </>
+    </View>
   );
 }
 
 /**
- * Handle, display name, and whether the profile is public. Each field saves on its own:
- * the handle is the one with a 30-day rule and a uniqueness race, and a person fixing a
+ * Handle, display name, and whether the profile is public, as lines. Each field saves on its
+ * own: the handle is the one with a 30-day rule and a uniqueness race, and a person fixing a
  * typo in their display name should not be told their handle is locked.
  */
-function ProfileFields({ me, onChange }: { me: Me; onChange: (next: Me) => void }) {
+function ProfileFields({ me, onChange, accent }: { me: Me; onChange: (next: Me) => void; accent: AccentState }) {
   const [publicBusy, setPublicBusy] = useState(false);
 
   const saveHandle = useCallback(
@@ -643,21 +1015,23 @@ function ProfileFields({ me, onChange }: { me: Me; onChange: (next: Me) => void 
   );
 
   return (
-    <>
+    <View>
       <InlineField
+        first
         label="Handle"
         value={me.handle}
         placeholder="pick a handle"
         empty="not set"
         prefix="@"
         maxLength={HANDLE_MAX}
-        hint={`3-${HANDLE_MAX} characters: a-z, 0-9 and _. Changeable once every 30 days after the first pick.`}
+        hint={`${HANDLE_MIN} to ${HANDLE_MAX} characters: a to z, 0 to 9 and _. Changeable once every 30 days after the first pick.`}
         normalize={normalizeHandle}
         problem={handleProblem}
         canSave={(raw) => isValidHandle(raw) && normalizeHandle(raw) !== (me.handle ?? '')}
         onSave={saveHandle}
         describeError={(e) => (e.status === 409 ? describeHandleConflict(e.message) : e.message)}
         autoCapitalize="none"
+        accent={accent}
       />
       <InlineField
         label="Display name"
@@ -670,30 +1044,24 @@ function ProfileFields({ me, onChange }: { me: Me; onChange: (next: Me) => void 
         canSave={(raw) => displayNameProblem(raw) === null && (raw.trim() || null) !== me.display_name}
         onSave={saveDisplayName}
         describeError={(e) => e.message}
+        accent={accent}
       />
-      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET, marginTop: space.sm }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: c.text, fontSize: 14 }}>Public profile</Text>
-          <Text style={{ color: c.textDim, fontSize: 11 }}>
-            {me.profile_public ? 'Anyone can follow you at once.' : 'Follows need your approval.'}
-          </Text>
-        </View>
-        <Switch
-          value={me.profile_public}
-          disabled={publicBusy}
-          onValueChange={(v) => void setPublic(v)}
-          trackColor={{ true: c.accent }}
-          accessibilityLabel="Public profile"
-        />
-      </View>
-    </>
+      <SwitchLine
+        title="Public profile"
+        sentence={me.profile_public ? 'Anyone can follow you at once.' : 'Follows need your approval.'}
+        value={me.profile_public}
+        disabled={publicBusy}
+        onChange={(v) => void setPublic(v)}
+        accent={accent}
+      />
+    </View>
   );
 }
 
 /**
- * A labelled value with an Edit affordance that turns into a text field, a live rule
- * under it, and Save/Cancel. The rule (`problem`) is the phone's copy of the server's;
- * the server's own refusal (`describeError`) replaces it when the save comes back.
+ * A labelled value with an Edit word that turns into a text field, a live rule under it, and
+ * Cancel and Save. The rule (`problem`) is the phone's copy of the server's; the server's own
+ * refusal (`describeError`) replaces it when the save comes back.
  */
 function InlineField({
   label,
@@ -709,6 +1077,8 @@ function InlineField({
   onSave,
   describeError,
   autoCapitalize,
+  accent,
+  first = false,
 }: {
   label: string;
   value: string | null;
@@ -723,6 +1093,8 @@ function InlineField({
   onSave: (raw: string) => Promise<void>;
   describeError: (e: ApiError) => string;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  accent: AccentState;
+  first?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -753,24 +1125,23 @@ function InlineField({
 
   if (!editing) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: TAP_TARGET }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: c.textDim, fontSize: 11 }}>{label}</Text>
-          <Text style={{ color: value ? c.text : c.textDim, fontSize: 15 }} numberOfLines={1}>
+      <View style={[styles.fieldLine, first ? null : styles.hairTop]}>
+        <View style={styles.grow}>
+          <T role="label" tone="dim">
+            {label.toLocaleLowerCase()}
+          </T>
+          <T role="headline" tone={value ? 'text' : 'dim'} numberOfLines={1}>
             {value ? `${prefix}${value}` : empty}
-          </Text>
+          </T>
         </View>
-        <Pressable
+        <Button
+          kind="secondary"
+          size="compact"
+          block={false}
+          label="Edit"
+          accessibilityHint={`Edits your ${label.toLowerCase()}`}
           onPress={begin}
-          accessibilityRole="button"
-          accessibilityLabel={`Edit ${label.toLowerCase()}`}
-          style={({ pressed }) => [
-            { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', alignItems: 'flex-end' },
-            pressed && { opacity: 0.6 },
-          ]}
-        >
-          <Text style={{ color: c.accent, fontSize: 14, fontWeight: '600' }}>Edit</Text>
-        </Pressable>
+        />
       </View>
     );
   }
@@ -778,121 +1149,94 @@ function InlineField({
   const rule = serverError ?? problem(draft);
   const ok = !saving && canSave(draft);
   return (
-    <View style={{ paddingVertical: space.sm }}>
-      <Text style={{ color: c.textDim, fontSize: 11, marginBottom: space.xs }}>{label}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-        {prefix ? <Text style={{ color: c.textDim, fontSize: 16 }}>{prefix}</Text> : null}
-        <TextInput
+    <View style={[styles.fieldEdit, first ? null : styles.hairTop]}>
+      <T role="label" tone="dim">
+        {label.toLocaleLowerCase()}
+      </T>
+      <View style={styles.inputRow}>
+        {prefix ? (
+          <T role="body" tone="dim">
+            {prefix}
+          </T>
+        ) : null}
+        <TextField
           value={draft}
           onChangeText={(t) => {
             setServerError(null);
             setDraft(normalize(t).slice(0, maxLength));
           }}
           placeholder={placeholder}
-          placeholderTextColor={c.textDim}
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
           autoFocus
           editable={!saving}
           onSubmitEditing={() => void save()}
           returnKeyType="done"
-          style={{
-            flex: 1,
-            color: c.text,
-            backgroundColor: c.bg,
-            borderRadius: 8,
-            paddingHorizontal: space.md,
-            minHeight: TAP_TARGET,
-            fontSize: 16,
-          }}
+          accessibilityLabel={label}
+          selectionColor={accent.ink}
+          cursorColor={accent.ink}
+          style={styles.grow}
         />
       </View>
-      <Text style={{ color: rule ? c.danger : c.textDim, fontSize: 11, marginTop: space.xs }}>{rule ?? hint}</Text>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.md, marginTop: space.xs }}>
-        <Pressable
-          onPress={() => setEditing(false)}
-          disabled={saving}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            { minHeight: TAP_TARGET, minWidth: TAP_TARGET, justifyContent: 'center', paddingHorizontal: space.sm },
-            pressed && { opacity: 0.6 },
-          ]}
-        >
-          <Text style={{ color: c.textDim, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void save()}
-          disabled={!ok}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            {
-              minHeight: TAP_TARGET,
-              minWidth: TAP_TARGET,
-              justifyContent: 'center',
-              paddingHorizontal: space.md,
-              borderRadius: 10,
-              backgroundColor: c.accent,
-              opacity: ok ? 1 : 0.4,
-            },
-            pressed && ok && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={{ color: c.onAccent, fontSize: 14, fontWeight: '700' }}>{saving ? 'Saving…' : 'Save'}</Text>
-        </Pressable>
+      <T role="meta" tone={rule ? 'del' : 'dim'}>
+        {rule ?? hint}
+      </T>
+      <View style={styles.actions}>
+        <AccentButton label="Save" busy={saving} busyLabel={'Saving…'} disabled={!ok && !saving} onPress={() => void save()} />
+        <Button kind="secondary" size="compact" block={false} label="Cancel" disabled={saving} onPress={() => setEditing(false)} />
       </View>
     </View>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={{ marginTop: space.lg }}>
-      <Text
-        style={{
-          color: c.textDim,
-          fontSize: 11,
-          fontWeight: '700',
-          letterSpacing: 0.8,
-          marginBottom: space.sm,
-        }}
-      >
-        {title.toUpperCase()}
-      </Text>
-      <View style={{ backgroundColor: c.card, borderRadius: 12, padding: space.md }}>
-        {children}
-      </View>
-    </View>
-  );
-}
-
-function Button({
-  label,
-  onPress,
-  destructive,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  destructive?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        {
-          paddingVertical: space.md,
-          alignItems: 'center',
-          borderRadius: 10,
-          marginTop: space.sm,
-          backgroundColor: destructive ? 'transparent' : c.bg,
-          opacity: disabled ? 0.4 : 1,
-        },
-        pressed && { opacity: 0.6 },
-      ]}
-    >
-      <Text style={{ color: destructive ? c.danger : c.text, fontWeight: '600' }}>{label}</Text>
-    </Pressable>
-  );
-}
+const styles = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: GROUND.bg },
+  content: { paddingBottom: space.xxl },
+  bandSkeleton: { height: 220, backgroundColor: GROUND.raised },
+  bandRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.tile, marginTop: space.tile },
+  bandWords: { flex: 1, gap: space.sm, paddingBottom: space.xs },
+  bandNote: { color: ON_HUE, opacity: 0.8 },
+  under: { paddingHorizontal: GUTTER, marginTop: space.md },
+  chapter: { paddingHorizontal: GUTTER, marginTop: space.xl },
+  chapterTitle: { marginTop: space.lg },
+  chapterLine: { marginTop: space.sm },
+  chapterBody: { marginTop: space.md, gap: space.md },
+  footer: { paddingHorizontal: GUTTER, marginTop: space.xxl },
+  stack: { gap: space.tile },
+  stackTight: { gap: space.sm },
+  promise: { gap: space.sm, marginTop: space.sm },
+  grow: { flex: 1, minWidth: 0 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: space.tile },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
+  action: { gap: space.xs, paddingVertical: space.xs },
+  google: {
+    height: SIGN_IN_HEIGHT,
+    borderRadius: SHAPE.action,
+    borderCurve: 'continuous',
+    backgroundColor: GOOGLE_WHITE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hairTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: GROUND.border },
+  switchLine: { paddingVertical: space.md, gap: space.xs },
+  switchHead: { flexDirection: 'row', alignItems: 'center', gap: space.tile, minHeight: TAP_TARGET },
+  below: { gap: space.xs, paddingTop: space.xs },
+  code: {
+    backgroundColor: GROUND.raised,
+    borderRadius: SHAPE.inner,
+    borderCurve: 'continuous',
+    paddingHorizontal: space.tile,
+    paddingVertical: space.sm,
+    alignSelf: 'stretch',
+  },
+  codeFlush: { paddingHorizontal: 0, paddingVertical: 0 },
+  codeScroll: { padding: space.tile },
+  fresh: { flexDirection: 'row', gap: space.md, marginBottom: space.sm },
+  freshRule: { width: 3 },
+  freshBody: { flex: 1, gap: space.tile },
+  freshSetup: { marginTop: space.sm },
+  count: { flexDirection: 'row', alignItems: 'baseline', gap: space.tile, paddingBottom: space.sm },
+  keyLine: { flexDirection: 'row', alignItems: 'center', gap: space.tile, paddingVertical: space.tile },
+  fieldLine: { flexDirection: 'row', alignItems: 'center', gap: space.tile, minHeight: TAP_TARGET, paddingVertical: space.tile },
+  fieldEdit: { gap: space.sm, paddingVertical: space.tile },
+});

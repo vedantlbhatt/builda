@@ -1,0 +1,370 @@
+/**
+ * What the codebase map and the time lapse show (`src/map/view.ts`): which state a session is
+ * in, and every sentence either screen says. A refusal is a sentence from the data, never a
+ * zero, a blank map or "--"; no sentence carries a dash; a number is never said without its
+ * unit.
+ */
+import { describe, expect, test } from 'bun:test';
+
+import { hasDash } from '../src/copy/plain';
+import type { SessionDetail } from '../src/data/api';
+import type { LiveFile, LiveState } from '../src/generated/live';
+import { renderLiveSentence } from '../src/live/sentence';
+import { cleanFrames } from '../src/map/frames';
+import { findBurst, findKnot } from '../src/map/knot';
+import { layoutMap } from '../src/map/layout';
+import { MAP_SAMPLE_VARIANTS, mapSample, mapSampleVariant } from '../src/map/sample';
+import {
+  burstSentence,
+  cellCaption,
+  cutNote,
+  elapsedLabel,
+  hotRows,
+  asSentence,
+  hotLedger,
+  ISLANDS_NOTE,
+  knotSentence,
+  legend,
+  mapHeadline,
+  mapContent,
+  mapMeta,
+  mapSummary,
+  namesOf,
+  offMapNote,
+  refusalCopy,
+  replayNote,
+  roleWord,
+  ROLES_NOTE,
+  rolesOnMap,
+  sentenceInput,
+  TAP_HINT,
+  thinnedNote,
+  timelapseContent,
+  timelapseMeta,
+  timelapseTitle,
+  times,
+  updatedLine,
+  updatedSentence,
+  whenOf,
+  type Refusal,
+} from '../src/map/view';
+
+const NOW = Date.parse('2026-09-13T15:00:00Z');
+const base = {
+  id: 'x1',
+  client_session_id: 'x1',
+  harness: 'claude_code',
+  repo_name: 'gt-transit',
+  started_at: '2026-09-13T13:00:00Z',
+  ended_at: '2026-09-13T14:02:00Z',
+  state: 'live',
+} as unknown as SessionDetail;
+const sample = (v: (typeof MAP_SAMPLE_VARIANTS)[number]) => mapSample(base, v, NOW);
+
+/** Every string a person could read, collected so one assertion holds them all. */
+function allCopy(s: SessionDetail): string[] {
+  const out: string[] = [];
+  const state = s.live_state!;
+  const files = state.map!.files;
+  const names = namesOf(s, files);
+  out.push(renderLiveSentence(sentenceInput(state)), mapMeta(s, state, NOW), mapSummary(files, layoutMap(files).folders.length));
+  const cut = cutNote(state);
+  if (cut) out.push(cut);
+  for (const f of files) out.push(cellCaption(f, names?.[f.id], NOW));
+  const hot = hotRows(files, names, NOW);
+  out.push(hot.label, ...hot.rows.flatMap((r) => [r.title, r.meta, r.value ?? '']));
+  for (const screen of ['map', 'timelapse'] as const) {
+    for (const knot of [true, false])
+      for (const reduceMotion of [true, false])
+        for (const path of [true, false]) out.push(...legend(screen, { knot, reduceMotion, path, stuck: 'pink' }).map((i) => i.text));
+  }
+  out.push(ISLANDS_NOTE, ROLES_NOTE, TAP_HINT);
+  const lapse = files.map((f) => f.role);
+  for (const r of new Set(lapse)) out.push(roleWord(r));
+  const ledger = hotLedger(files, names, NOW);
+  out.push(ledger.label, ...ledger.rows.flatMap((r) => [r.what, r.note ?? '']));
+  out.push(mapHeadline(state, 3).said, mapHeadline(state, 0).said, updatedSentence(state.computed_at, NOW) ?? '');
+  const frames = cleanFrames(state.timelapse) ?? [];
+  if (frames.length) {
+    out.push(timelapseTitle(frames), timelapseMeta(s, state, frames, NOW));
+    const knot = findKnot(frames);
+    const burst = findBurst(frames, knot);
+    if (knot) out.push(knotSentence(knot, files, names));
+    if (burst) out.push(burstSentence(burst, frames[frames.length - 1]!.t, knot !== null));
+    for (const n of [thinnedNote(frames, files), offMapNote(frames, layoutMap(files).index)]) if (n) out.push(n);
+    out.push(replayNote(state, frames, NOW));
+  }
+  return out.filter((x) => x !== '');
+}
+
+describe('which state a session is in', () => {
+  const live = sample('map').live_state!;
+  const withLive = (l: Partial<LiveState> | null | undefined, state: 'live' | 'final' = 'live') =>
+    ({ ...base, state, live_state: l === undefined ? undefined : l === null ? null : { ...live, ...l } }) as SessionDetail;
+
+  test('a server older than the live state sent no field: not sent, on both screens', () => {
+    const s = { ...base } as SessionDetail;
+    delete (s as { live_state?: unknown }).live_state;
+    expect(mapContent(s).kind).toBe('notSent');
+    expect(timelapseContent(s).kind).toBe('notSent');
+  });
+
+  test('a finished session has none: its live state went with it', () => {
+    expect(mapContent(withLive(null, 'final')).kind).toBe('finished');
+    expect(timelapseContent(withLive(null, 'final')).kind).toBe('finished');
+  });
+
+  test('a running session nobody computes a live state for: not computed', () => {
+    expect(mapContent(withLive(null)).kind).toBe('notComputed');
+    expect(timelapseContent(withLive(null)).kind).toBe('notComputed');
+  });
+
+  test('a live state without its map', () => {
+    expect(mapContent(withLive({ map: null })).kind).toBe('noMap');
+    expect(timelapseContent(withLive({ map: null })).kind).toBe('noMap');
+  });
+
+  test('the slim body from the live list is never drawn as if it were the map', () => {
+    const slim = withLive({ timelapse: null, map: { files: live.map!.files.slice(0, 2), files_total: live.map!.files_total } });
+    expect(mapContent(slim).kind).toBe('partial');
+    expect(timelapseContent(slim).kind).toBe('partial');
+    // A map that holds every file it counts is whole, frames or not.
+    const whole = withLive({ timelapse: null, map: { files: live.map!.files, files_total: live.map!.files.length } });
+    expect(mapContent(whole).kind).toBe('ready');
+    expect(timelapseContent(whole).kind).toBe('partial');
+  });
+
+  test('nothing touched yet is empty, not a map of nothing', () => {
+    expect(mapContent(sample('empty')).kind).toBe('empty');
+    expect(timelapseContent(sample('empty')).kind).toBe('empty');
+  });
+
+  test('the samples draw', () => {
+    for (const v of ['map', 'circling', 'names', 'cut'] as const) {
+      expect(mapContent(sample(v)).kind).toBe('ready');
+      expect(timelapseContent(sample(v)).kind).toBe('ready');
+    }
+  });
+
+  test('a link\'s variant: none is the default sample, a known one is ours, any other is the session screen\'s', () => {
+    expect(mapSampleVariant(undefined)).toBe('map');
+    expect(mapSampleVariant('Circling')).toBe('circling');
+    expect(mapSampleVariant(['names'])).toBe('names');
+    expect(mapSampleVariant('live')).toBeNull();
+    expect(mapSampleVariant('stale')).toBeNull();
+  });
+});
+
+describe('refusals are sentences from the data', () => {
+  const kinds: Refusal[] = ['notSent', 'finished', 'notComputed', 'noMap', 'partial', 'empty'];
+
+  test('every refusal on both screens: a title and a line, full stops, no dash, no zero, no "--"', () => {
+    for (const kind of kinds) {
+      for (const screen of ['map', 'timelapse'] as const) {
+        const r = refusalCopy(kind, screen, base, NOW);
+        for (const s of [r.title, r.text]) {
+          expect({ kind, screen, s, dash: hasDash(s), stop: /\.$/.test(s), zero: /\b0\b|--/.test(s) }).toEqual({
+            kind,
+            screen,
+            s,
+            dash: false,
+            stop: true,
+            zero: false,
+          });
+        }
+      }
+    }
+  });
+
+  test('a finished session says when it finished', () => {
+    const r = refusalCopy('finished', 'timelapse', base, NOW);
+    expect(r.text).toMatch(/^This session finished (at \d{1,2}:\d{2}[ap]m|on [A-Z][a-z]{2} \d{1,2})\./);
+    expect(r.action).toBe('session');
+  });
+
+  test('the one action: the session, the command that sends the state, or trying again', () => {
+    expect(refusalCopy('notComputed', 'map', base, NOW).action).toBe('copy');
+    expect(refusalCopy('partial', 'map', base, NOW).action).toBe('retry');
+    expect(refusalCopy('empty', 'timelapse', base, NOW).action).toBe('session');
+  });
+});
+
+describe('every sentence on both screens', () => {
+  for (const v of ['map', 'circling', 'names', 'cut'] as const) {
+    test(`${v}: no dash anywhere, and none empty`, () => {
+      const lines = allCopy(sample(v));
+      expect(lines.length).toBeGreaterThan(10);
+      expect(lines.filter(hasDash)).toEqual([]);
+    });
+  }
+
+  test('numbers carry their units', () => {
+    const s = sample('map');
+    const state = s.live_state!;
+    expect(mapMeta(s, state, NOW)).toMatch(/^gt-transit · \d+ files touched, \d+ changed · updated just now$/);
+    const frames = cleanFrames(state.timelapse)!;
+    const knot = findKnot(frames)!;
+    expect(knotSentence(knot, state.map!.files, null)).toMatch(/^Stuck from \d+m \d{2}s to \d+m \d{2}s on three files: \d+ changes and \d+ failed calls\.$/);
+    const burst = findBurst(frames, knot)!;
+    expect(burstSentence(burst, frames[frames.length - 1]!.t, true)).toMatch(/^Then [a-z]+ files changed in its last \d+ minutes\.$/);
+    expect(timelapseTitle(frames)).toBe('1h 04m of work so far, replayed in fifteen seconds.');
+    expect(timelapseMeta(s, state, frames, NOW)).toMatch(/^gt-transit · \d+ reads, changes and failures · updated just now$/);
+  });
+
+  test('a cut map says how much it keeps; a whole one says nothing', () => {
+    expect(cutNote(sample('cut').live_state!)).toMatch(/^This session touched [\d,]+ files\. The map keeps the 400 it touched most recently\.$/);
+    expect(cutNote(sample('map').live_state!)).toBeNull();
+    const cut = sample('cut');
+    expect(mapMeta(cut, cut.live_state!, NOW)).not.toContain('changed');
+  });
+
+  test('a thinned replay says how much it kept, counted against the map; an unthinned one says nothing', () => {
+    const cut = sample('cut').live_state!;
+    const map = sample('map').live_state!;
+    const cutFrames = cleanFrames(cut.timelapse)!;
+    // Thinning leaves empty stretches out, so the cap is not the signal: 283 frames here.
+    expect(cutFrames.length).toBeLessThan(600);
+    expect(thinnedNote(cutFrames, cut.map!.files)).toMatch(/^A long session: the replay keeps [\d,]+ of its [\d,]+ reads and changes, /);
+    expect(thinnedNote(cleanFrames(map.timelapse)!, map.map!.files)).toBeNull();
+    expect(thinnedNote(cleanFrames(sample('circling').live_state!.timelapse)!, sample('circling').live_state!.map!.files)).toBeNull();
+  });
+
+  test('the live sentence reads the verdict through the adapter, as the engine would say it', () => {
+    expect(renderLiveSentence(sentenceInput(sample('circling').live_state!))).toMatch(/^Going back and forth on a source file, \d+(st|nd|rd|th) pass$/);
+    expect(renderLiveSentence(sentenceInput(sample('empty').live_state!))).toBe('Thinking about the next step');
+  });
+});
+
+describe('the words for numbers', () => {
+  test("the time lapse's sentence and its clock land on the same whole minutes", () => {
+    // The figure counts up to the span and stops on `elapsedLabel(span)`; the sentence under it
+    // says the same span in words. Both floor: 3,871 s is "1h 04m" in both, where a rounded
+    // sentence said "1h 05m" over a clock that stopped at "1h 04m".
+    const framesTo = (t: number) => [
+      { t: 0, file_id: 'a', kind: 'read' },
+      { t, file_id: 'a', kind: 'edit' },
+    ] as unknown as Parameters<typeof timelapseTitle>[0];
+    for (const span of [45, 60, 89, 90, 2607, 2625, 2639, 3599, 3600, 3629, 3630, 3840, 3869, 3870, 3871, 7199, 11_130]) {
+      const title = timelapseTitle(framesTo(span));
+      const clock = elapsedLabel(span);
+      if (span < 60) expect(title.startsWith('Under a minute of work')).toBe(true);
+      else if (span < 3600) expect(title).toBe(`${Math.floor(span / 60)} minute${Math.floor(span / 60) === 1 ? '' : 's'} of work so far, replayed in fifteen seconds.`.replace(/^./, (c) => c.toUpperCase()));
+      else expect(title.startsWith(`${clock} of work so far`)).toBe(true);
+      if (span >= 60 && span < 3600) expect(clock.startsWith(`${Math.floor(span / 60)}m `)).toBe(true);
+    }
+  });
+
+  test('a moment in the session', () => {
+    expect([0, 59, 60, 725, 3599, 3840, -4, 12.9].map(elapsedLabel)).toEqual(['0s', '59s', '1m 00s', '12m 05s', '59m 59s', '1h 04m', '0s', '12s']);
+  });
+
+  test('once, twice, then times', () => {
+    expect([1, 2, 3, 14].map(times)).toEqual(['once', 'twice', '3 times', '14 times']);
+  });
+
+  test('when: the clock on the same Builda day, the date otherwise, nothing for a bad time', () => {
+    const today = new Date(NOW - 3_600_000).toISOString();
+    expect(whenOf(today, NOW)).toMatch(/^at \d{1,2}:\d{2}[ap]m$/);
+    expect(whenOf('2026-08-29T15:00:00Z', NOW)).toMatch(/^on Aug (28|29|30)$/);
+    expect(whenOf('not a time', NOW)).toBeNull();
+    expect(whenOf(null, NOW)).toBeNull();
+  });
+
+  test('updated just now, then minutes', () => {
+    expect(updatedLine(new Date(NOW - 20_000).toISOString(), NOW)).toBe('updated just now');
+    expect(updatedLine(new Date(NOW - 240_000).toISOString(), NOW)).toBe('updated 4 minutes ago');
+    expect(updatedLine('garbage', NOW)).toBeNull();
+  });
+});
+
+describe('names are the opt in basenames, and only for files on the map', () => {
+  const f = (id: string, edits: number, reads: number): LiveFile => ({
+    id,
+    dir_id: null,
+    role: 'test',
+    depth: 0,
+    reads,
+    edits,
+    last_read_ts: reads ? 1_757_000_000 : null,
+    last_edit_ts: edits ? 1_757_000_060 : null,
+  });
+
+  test('a name for a file the map does not hold is dropped; no names is null, not an empty map', () => {
+    const files = [f('a'.repeat(16), 2, 1)];
+    const s = { ...base, live_names: { files: [{ id: 'a'.repeat(16), name: 'store.test.ts' }, { id: 'b'.repeat(16), name: 'x.py' }] } } as SessionDetail;
+    expect(namesOf(s, files)).toEqual({ ['a'.repeat(16)]: 'store.test.ts' });
+    expect(namesOf({ ...base, live_names: null } as SessionDetail, files)).toBeNull();
+    expect(namesOf({ ...base, live_names: { files: [] } } as SessionDetail, files)).toBeNull();
+  });
+
+  test('a picked cell: its name when opted in, else its role; what happened, and when', () => {
+    expect(cellCaption(f('a'.repeat(16), 6, 3), 'store.test.ts', NOW)).toMatch(/^store\.test\.ts, a test file\. Changed 6 times, read 3 times\. Last touched on /);
+    expect(cellCaption(f('a'.repeat(16), 0, 1), null, NOW)).toMatch(/^A test file\. Read once, never changed\./);
+    expect(cellCaption(f('a'.repeat(16), 0, 0), null, NOW)).toBe('A test file. Named by a call that neither read nor changed it.');
+  });
+
+  test('the list under the map: most changed first; with names, the name leads and the role follows', () => {
+    const files = [f('a'.repeat(16), 1, 1), f('b'.repeat(16), 5, 0), f('c'.repeat(16), 0, 4)];
+    const plain = hotRows(files, null, NOW);
+    expect(plain.label).toBe('most changed');
+    expect(plain.rows.map((r) => r.title)).toEqual(['A test file', 'A test file']);
+    expect(plain.rows[0]!.meta).toBe('changed 5 times');
+    const named = hotRows(files, { ['b'.repeat(16)]: 'store.test.ts' }, NOW);
+    expect(named.rows[0]).toMatchObject({ title: 'store.test.ts', meta: 'a test file, changed 5 times' });
+    expect(hotRows([f('c'.repeat(16), 0, 4)], null, NOW).label).toBe('most read');
+  });
+});
+
+describe('the band, the legend and the ledger say what the map draws', () => {
+  const s = sample('map');
+  const state = s.live_state!;
+  const files = state.map!.files;
+
+  test('the figure counts files touched and hot ones; a zero hot drops the clause rather than shouting "0 hot"', () => {
+    expect(mapHeadline(state, 3)).toEqual({ files: files.length, hot: 3, said: `${files.length} files touched, 3 of them hot.` });
+    expect(mapHeadline(state, 0).said).toBe(`${files.length} files touched.`);
+    // A cut map counts what the session touched, not the 400 it keeps; the note under it says so.
+    const cut = sample('cut').live_state!;
+    expect(mapHeadline(cut, 1).files).toBe(cut.map!.files_total);
+    expect(mapHeadline(cut, 1).files).toBeGreaterThan(cut.map!.files.length);
+  });
+
+  test('the legend: the knot only when there is one, still under Reduce Motion, the path only when drawn, red only on the replay', () => {
+    const none = legend('map', { knot: false, reduceMotion: false, path: false, stuck: 'pink' }).map((i) => i.swatch);
+    expect(none).toEqual(['changed', 'read', 'hot', 'cursor']);
+    const all = legend('timelapse', { knot: true, reduceMotion: false, path: true, stuck: 'pink' });
+    expect(all.map((i) => i.swatch)).toEqual(['changed', 'read', 'hot', 'path', 'cursor', 'fail', 'knot']);
+    // The stuck files are named by their own colour, never "your colour": the builder's is the band's.
+    expect(all.find((i) => i.swatch === 'knot')!.text).toMatch(/^Pulsing in pink: /);
+    expect(legend('map', { knot: true, reduceMotion: true, path: true, stuck: 'pink' }).find((i) => i.swatch === 'knot')!.text).toMatch(/^Outlined in pink: /);
+    for (const it of all) expect(it.text).toMatch(/\.$/);
+  });
+
+  test('the colour key: the kinds of file on the map, most files first, each a word', () => {
+    const roles = rolesOnMap(files);
+    expect(roles[0]).toBe('source');
+    expect(new Set(roles).size).toBe(roles.length);
+    expect(roleWord('test')).toBe('test suite');
+    expect(roleWord('source')).toBe('source code');
+  });
+
+  test('the ledger: the count as a figure, what it counts in words; names only when opted in', () => {
+    const plain = hotLedger(files, null, NOW);
+    expect(plain.label).toBe('most changed');
+    expect(plain.rows[0]!.what).toMatch(/^changes? to (a|an|the) /);
+    expect(plain.rows.every((r) => r.count > 0)).toBe(true);
+    for (const r of plain.rows) expect(r.note ?? '').not.toMatch(/\.ts|\.py|\.md/);
+    const named = sample('names');
+    const withNames = hotLedger(named.live_state!.map!.files, namesOf(named, named.live_state!.map!.files), NOW);
+    expect(withNames.rows.some((r) => /\.(ts|tsx|py|md|json|sql|yml)$/.test(r.what))).toBe(true);
+  });
+
+  test('sentences end once', () => {
+    expect(asSentence('Going back and forth on a source file, 4th pass')).toBe('Going back and forth on a source file, 4th pass.');
+    expect(asSentence('Done.')).toBe('Done.');
+    expect(updatedSentence(new Date(NOW - 20_000).toISOString(), NOW)).toBe('Updated just now.');
+    expect(updatedSentence('garbage', NOW)).toBeNull();
+    const frames = cleanFrames(state.timelapse)!;
+    expect(replayNote(state, frames, NOW)).toMatch(/^\d+ reads, changes and failures\. Updated just now\.$/);
+  });
+});

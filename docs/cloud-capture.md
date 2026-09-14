@@ -280,3 +280,62 @@ All seven uploadable payloads validated against the server's `SessionUpload` mod
 passed `sanity_gate`; the strip's non-idle seconds agreed with `active_seconds` to within
 five seconds on each. Two of the root transcripts were open sessions of concurrent agents
 working in this repository — the session that wrote this document among them.
+
+## Local end to end stack
+
+`scripts/overnight_stack.sh` runs the whole path on one Mac: a migrated Postgres, the API
+under uvicorn, a phone device, capture credentials, and a real corpus uploaded through
+`python -m capture`. It is what to reach for when you want to see the phone's endpoints
+answer with your own sessions rather than a fixture.
+
+```
+scripts/overnight_stack.sh up       # create builder_overnight{,_test} if missing, alembic upgrade head, start the API on 127.0.0.1:8787, wait for /health
+scripts/overnight_stack.sh pair     # mint the phone device (ios, handle vedant) -> device.json, and capture's credentials
+scripts/overnight_stack.sh sync     # capture sync --live + capture report over the corpus root, --no-other-harnesses
+scripts/overnight_stack.sh status   # API up?, migration head per DB, users / sessions final+live / builder_report rows
+scripts/overnight_stack.sh phone    # GET /v1/sessions?limit=5, /sessions/live, /profile, /profile/builder with device.json's token
+scripts/overnight_stack.sh test     # the server pytest suite against builder_overnight_test
+scripts/overnight_stack.sh down     # stop the API (also: restart, token, logs, reset)
+```
+
+Everything outside the repository lives in `~/.builder-overnight` (0700; the signing key,
+tokens, log and pid file are 0600): `jwt_ed25519.pem`, `device.json`,
+`capture/credentials.json` plus capture's state file, `api.log`, `api.pid`. The corpus root
+defaults to `~/.builder-overnight/corpus`, a directory of symlinks to Claude Code project
+directories (`OVERNIGHT_CORPUS` overrides it).
+
+The rules the script keeps:
+
+- **Two roles.** Migrations run as the owner (the local superuser); the API connects as
+  `builder_app`, so `boot.py`'s RLS checks run for real and the log says
+  `RLS enforced: connected as builder_app`. The script refuses any database whose name does
+  not start with `builder_overnight`, so `builder` and `builder_test` are never touched.
+- **Nothing inherited.** Every child runs under `env -i` with only what the script sets. A
+  `DATABASE_URL`, APNs key or `BUILDER_CAPTURE_KEY` exported in your shell for other work
+  cannot leak into this stack. Capture is pointed at its own credentials with
+  `BUILDER_CREDENTIALS`, so `~/.builder/credentials.json` is never read or written.
+- **Two devices, not one token pair in two files.** Refresh tokens rotate, and a spent one
+  presented again revokes the whole device. The same pair copied into `device.json` and
+  capture's credentials dies the second time either one refreshes. So `pair` mints an
+  `ios` device for the phone routes and a separate `macos` device for capture, both under
+  one user. The phone routes read by user, so the phone sees every upload. `token` refreshes
+  `device.json` in place when the access token is within a minute of expiry.
+
+The server suite, against a database of your choosing (it reads only `BUILDER_TEST_DB`;
+there is no conftest, and every DB test is skipped without it):
+
+```
+cd server && env -i PATH="$PATH" HOME="$HOME" \
+  BUILDER_TEST_DB='postgresql+psycopg://'"$(id -un)"'@/builder_overnight_test?host=/tmp&port=5432' \
+  .venv/bin/pytest -q
+```
+
+MEASURED on the first run, 2026-09-13, over 57 root transcripts from two repositories:
+181 sessions, 153 final and 1 live uploadable, 149 accepted. `sanity_gate` rejected 5 with
+`human_prompt_count N exceeds tool_calls M`. All five are short conversational sittings (6 to
+14 minutes, 2 to 6 typed prompts), and the prompt counts match the raw transcripts. The
+wire's `tool_calls` counts only Read/Edit/Write/Bash, while these sittings also used
+WebSearch, ToolSearch and an MCP tool. A rejected session is never in `/v1/sync/known`, so
+every later `sync` re-sends the five and exits 1. The builder report is computed on the
+machine over all 153, so its `coverage.sessions` says 153 while `/v1/profile` counts 148.
+The suite: 163 passed.

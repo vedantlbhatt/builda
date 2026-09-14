@@ -44,6 +44,7 @@ import type {
 import { lockScreenWithoutDetails } from '../copy/live';
 import { PRIVATE_REPO, repoLabel, type RepoNames } from '../copy/repoLabel';
 import type { SessionDetail } from '../data/api';
+import { needsYouTitle } from '../push/localCopy';
 import { ANIMALS } from '../pixel/animals';
 import { DAY_BOUNDARY_HOUR, graphLevel } from '../theme';
 import { crewCreatures, crewHashed } from './crew';
@@ -508,9 +509,14 @@ function contentOptions(state: SessionState, live: LiveStateWire | null | undefi
   return { staleInSeconds: staleIn, relevance: relevanceOf(state, live) };
 }
 
-/** The alert on the move into needs you: the engine's sentence as it stands, duration and all. */
-export function alertFor(attrs: SessionAttrs, body: string): Pick<ContentOptions, 'alertTitle' | 'alertBody'> {
-  return { alertTitle: `${attrs.repo} needs you`, alertBody: body };
+/**
+ * The alert on the move into needs you: the one needs you title (`push/localCopy.needsYouTitle`,
+ * the server's `live_push.alert_for`), over the engine's sentence as it stands, duration and all.
+ * From the ROW, not the card's attributes: the card may say "Private project 2", which the
+ * server's alert for the same moment cannot.
+ */
+export function alertFor(s: Pick<SessionDetail, 'repo_name'>, body: string): Pick<ContentOptions, 'alertTitle' | 'alertBody'> {
+  return { alertTitle: needsYouTitle(s.repo_name), alertBody: body };
 }
 
 /**
@@ -612,9 +618,19 @@ export function planSync(input: PlanInput): Plan {
     // launch (state null) is a first sighting: it was not watched, so it does not alert.
     const intoNeedsYou = phase === 'needsYou' && prev?.state != null && prev.phase !== 'needsYou';
     const spoken = clampSentence(sentenceOf(s, live, phase, nowMs));
+    if (prev?.activityId && prev.attrs && prev.attrs.repo !== attrs.repo && input.activitiesEnabled) {
+      // A card's repository is an attribute, fixed for its life (ActivityKit), so a card that
+      // started before this phone had numbered its project ("private repo") would say so until
+      // it ended. FOUND IN REVIEW (2026-09-14). When the name it would start with now differs,
+      // the card comes down and starts again under it, in the same sync; no alert on either.
+      actions.push({ kind: 'end', sessionId: s.id, activityId: prev.activityId, state: null, opts: { dismissAfterSeconds: 0 } });
+      actions.push({ kind: 'start', sessionId: s.id, attrs, state, opts: contentOptions(state, live, staleIn) });
+      next.set(s.id, { sessionId: s.id, activityId: null, phase, key, state, attrs });
+      continue;
+    }
     if (prev?.activityId) {
       if (prev.key !== key) {
-        const alert = intoNeedsYou && details ? alertFor(attrs, spoken) : {};
+        const alert = intoNeedsYou && details ? alertFor(s, spoken) : {};
         const opts = { ...contentOptions(state, live, staleIn), ...alert };
         actions.push({ kind: 'update', sessionId: s.id, activityId: prev.activityId, state, opts });
       }

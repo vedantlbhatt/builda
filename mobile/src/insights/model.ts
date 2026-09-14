@@ -1083,6 +1083,16 @@ export function moneyOf(b: BuilderProfileResponse, now: number): MoneyModel {
 }
 
 /**
+ * A cause's share of the barren tokens, from the token counts the wire carries, rounded once when
+ * it is said. The `share` beside them was rounded to three places on the Mac, and a percent of
+ * that is a second rounding (FOUND IN REVIEW, 2026-09-14). The shipped share stands only when the
+ * counts do not.
+ */
+export function causeShare(c: { tokens: number; share: number }, barrenTokens: number | null | undefined): number {
+  return isNum(barrenTokens) && barrenTokens > 0 && isNum(c.tokens) ? c.tokens / barrenTokens : c.share;
+}
+
+/**
  * A burn block (the Mac's, or the server's mapped into its shape by `you/money.ts corpusBurn`)
  * as the page draws it: the floor as shares, what the stretches were doing, or why there is no
  * floor. Null when there is no block, or a refusal this build has no words for.
@@ -1104,12 +1114,13 @@ export function burnOf(B: ReportBurn | null): MoneyModel['burn'] {
           : null,
       causes: (B.causes ?? [])
         .filter((c) => c.tokens > 0)
+        .map((c) => ({ c, share: causeShare(c, B.barren_tokens) }))
         .sort((x, y) => y.share - x.share)
-        .map((c) => ({
+        .map(({ c, share }) => ({
           key: c.cause,
           label: CAUSE_LABEL[c.cause] ?? c.cause.replace(/_/g, ' '),
-          share: c.share,
-          text: shareWords(c.share),
+          share,
+          text: shareWords(share),
           stretches: `${human(c.tokens)} tokens, in ${commas(c.segments)} ${c.segments === 1 ? 'stretch' : 'stretches'}`,
         })),
     };
@@ -1217,9 +1228,10 @@ function spokenRuns(k: number): string {
  * The server's ranked facts this page already says from the Mac's report, by fact id
  * (`analysis/profile.headline_facts`), each with the test for the Mac's number being on the
  * page. ONE FIGURE PER FACT: FOUND IN THE CAPTURE (2026-09-14), What stands out said "12.7 tool
- * calls per prompt", "16% of your build time runs without you", "92% of output tokens" and
- * "712.6 lines an hour", each two chapters from the Mac's 11.7, 14%, about 94% and 647.8 for the
- * same fact, because the server reads every session it holds and the Mac its report's window.
+ * calls per prompt", "16% of your build time runs without you" and "712.6 lines an hour", each
+ * two chapters from the Mac's 11.7, 14% and 647.8 for the same fact, because the server reads
+ * every session it holds and the Mac its report's window. A fact is dropped only when a chapter
+ * above says THAT fact: the model ring is dollars, so the output token share stays.
  * A fact the Mac does not say (the tool you call most, the hours in all, the server's own peak
  * hour, its streak of days with a session) stays.
  */
@@ -1232,7 +1244,10 @@ const MAC_SAYS: Record<string, (r: BuilderReport) => boolean> = {
   planning_ratio: (r) => macTrendNow(r, 'planning_ratio') !== null,
   short_prompt_share: (r) => macTrendNow(r, 'short_prompt_share') !== null,
   tool_diversity: (r) => macTrendNow(r, 'tool_diversity') !== null,
-  model_mix: (r) => (r.money?.by_model?.length ?? 0) > 0,
+  // Not `model_mix`: the server's fact is a share of OUTPUT TOKENS ("Opus 92% of output
+  // tokens"), and the Money chapter's ring is a share of DOLLARS, with each model's output
+  // tokens as a count. Nothing above says the share, so the fact stays and the note under the
+  // list does not claim it (FOUND IN REVIEW, 2026-09-14).
   barren_token_share: (r) => r.burn?.share != null,
 };
 

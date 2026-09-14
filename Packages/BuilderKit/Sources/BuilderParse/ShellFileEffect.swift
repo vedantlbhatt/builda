@@ -40,7 +40,7 @@ public enum ShellFileEffect {
     /// `cat > path <<'EOF'` INSIDE the prose, and attributed 134 lines to a file literally
     /// named `path` — a file that has never existed, on a corpus of 10,487 attributable
     /// lines. Mirrors `analysis/digest.py._command_lines`.
-    private static func commandLines(_ lines: [String]) -> [Int] {
+    static func commandLines(_ lines: [String]) -> [Int] {
         var out: [Int] = []
         var i = 0
         while i < lines.count {

@@ -435,6 +435,12 @@ def _could_have_changed_something(e) -> bool:
     call that could have changed a file the digest cannot see (`burn._could_write_unseen`,
     the rule that makes burn's stretches unreadable rather than barren: a `python3 - <<PY`
     script, a build, a helper agent). Proven nothing, or not said.
+
+    A shell call is judged on its WHOLE command, which its loader read (`Ev.reads_only`),
+    never on the 160 characters the digest keeps: FOUND IN REVIEW (2026-09-14), judging the
+    kept text refused every cut command, 10,313 of the 14,100 shell calls under
+    ~/.claude/projects, so one read only `cd … && grep … | head -40 && git log …` with an
+    absolute path ended any stretch it sat in and the note fired on 0 of 368 sittings.
     """
     from . import burn
 

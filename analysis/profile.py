@@ -366,7 +366,7 @@ def tool_calls_per_prompt(sessions: Iterable[SessionFact]) -> dict:
     tools = sum(sum(s.tool_calls.values()) for s in attended)
     known = [s for s in attended if s.tool_basis != TOOLS_ABSENT]
     if prompts >= MIN_PROMPTS and known:
-        return _metric(plain.rounded(tools / prompts, 1), "tool calls per prompt", prompts, known[0].tool_basis)
+        return _metric(plain.measured(tools / prompts, 1), "tool calls per prompt", prompts, known[0].tool_basis)
     return _metric(
         None,
         "tool calls per prompt",
@@ -736,7 +736,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         )
         m["median_prompt_chars"] = _metric(_median(chars), "chars", len(chars), "prompt_text")
         m["short_prompt_share"] = _metric(
-            plain.rounded(short / len(words), 3),
+            plain.measured(short / len(words), 3),
             "share",
             len(words),
             "prompt_text",
@@ -758,7 +758,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     tool_first = len(classified) - prose_first
     if len(classified) >= MIN_PROMPTS_FOR_RATIO and tool_first > 0:
         m["planning_ratio"] = _metric(
-            plain.rounded(prose_first / tool_first, 2),
+            plain.measured(prose_first / tool_first, 2),
             "ratio",
             len(classified),
             "prose_before_first_tool",
@@ -788,7 +788,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     # ---- autonomy
     if active >= MIN_ACTIVE_SEC_FOR_AUTONOMY and (attended + autonomous) > 0:
         m["autonomy_score"] = _metric(
-            plain.rounded(autonomous / (attended + autonomous), 3), "share", n_sessions, "two_clocks"
+            plain.measured(autonomous / (attended + autonomous), 3), "share", n_sessions, "two_clocks"
         )
     else:
         m["autonomy_score"] = _metric(
@@ -809,7 +809,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
             1 for p in all_prompts if p.text and is_corrective(p.text) and not p.after_interrupt
         )
         m["steer_rate"] = _metric(
-            plain.rounded((interrupts + corrective) / len(all_prompts), 3),
+            plain.measured((interrupts + corrective) / len(all_prompts), 3),
             "share",
             len(all_prompts),
             "interrupts_and_correction_markers",
@@ -838,7 +838,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     ) or lines_total >= MIN_LINES_FOR_VELOCITY
     if lines_known and lines_total > 0 and active >= MIN_ACTIVE_SEC_FOR_VELOCITY and enough_writes:
         m["code_velocity"] = _metric(
-            plain.rounded(lines_total / active_hours, 1),
+            plain.measured(lines_total / active_hours, 1),
             "lines per active hour",
             n_sessions,
             lines_basis,
@@ -873,7 +873,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     basis = tool_known[0].tool_basis if tool_known else TOOLS_ABSENT
     if len(diverse) >= MIN_SESSIONS_FOR_DIVERSITY and basis == TOOLS_ALL:
         m["tool_diversity"] = _metric(
-            plain.rounded(sum(len(s.tool_calls) for s in diverse) / len(diverse), 1),
+            plain.measured(sum(len(s.tool_calls) for s in diverse) / len(diverse), 1),
             "distinct tools per session",
             len(diverse),
             basis,
@@ -912,7 +912,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     tests_total = sum(s.test_runs or 0 for s in tests_known)
     if tests_known and active >= MIN_ACTIVE_SEC_FOR_VELOCITY:
         m["test_runs_per_hour"] = _metric(
-            plain.rounded(tests_total / active_hours, 2),
+            plain.measured(tests_total / active_hours, 2),
             "test runs per active hour",
             tests_total,
             TEST_RUNS_LOWER_BOUND,
@@ -940,7 +940,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     if len(committed_known) >= MIN_SESSIONS_FOR_SHARE:
         shipped = sum(1 for s in committed_known if ended_with_a_commit(s))
         m["ships_rate"] = _metric(
-            plain.rounded(shipped / len(committed_known), 3),
+            plain.measured(shipped / len(committed_known), 3),
             "share of sessions that ended with a commit",
             len(committed_known),
             COMMITS_GIT_LOG,
@@ -1029,7 +1029,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
         priced_hours = sum(f.active_seconds for f, _ in priced) / 3600.0
         m["spend_per_hour_usd"] = (
             _metric(
-                plain.rounded(spend / priced_hours, 2),
+                plain.measured(spend / priced_hours, 2),
                 "US dollars per active hour at list prices",
                 len(priced),
                 price_basis,
@@ -1155,7 +1155,7 @@ def corpus_profile(sessions: Iterable[SessionFact], *, now: float | None = None)
     night = sum(v for h, v in by_hour.items() if h >= NIGHT_START_HOUR or h < NIGHT_END_HOUR)
     if active >= MIN_ACTIVE_SEC_FOR_SHARES:
         m["night_share"] = _metric(
-            plain.rounded(night / active, 3),
+            plain.measured(night / active, 3),
             "share",
             n_sessions,
             "active_seconds_by_local_hour",

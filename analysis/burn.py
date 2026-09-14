@@ -555,71 +555,29 @@ def failed_calls(events: Sequence[digest.Ev]) -> set[int]:
 # once across a resumed sitting's files (`turns_for_window`) and each event once: 4,144,956,746
 # segment tokens where 4,170,485,618 were counted (25,528,872 were copies), 119,827,180
 # barren (2.9%) and 1,187,421,132 unreadable (28.6%).
+#
+# CHANGED SINCE, NOT RE-MEASURED (2026-09-14): a shell call is now judged read only on its
+# WHOLE command, by the loader that has it (`Ev.reads_only`, `digest.shell_reads_only`). The
+# 2,122 cut calls above made their segments unreadable however little they did; a cut call
+# that only reads no longer does, so some of the unreadable share above is barren now.
 
-#: Programs that cannot change a file when nothing is redirected into one. An ALLOWLIST,
-#: for the reason CLAUDE.md gives for sidecar discovery: a denylist of writers waves
-#: through the next one (`make`, a formatter, a build, a script nobody listed). A program
-#: missing from here only makes a segment unreadable, never barren, which is the safe way
-#: to be wrong. UNMEASURED JUDGEMENT CALL on the membership; the effect is measured above.
-_READ_ONLY_PROGRAMS = frozenset(
-    {
-        "[", "[[", "ack", "ag", "awk", "base64", "basename", "cat", "cd", "cmp", "column",
-        "comm", "cut", "date", "df", "diff", "dig", "dirname", "du", "echo", "egrep", "exit",
-        "export", "false", "fd", "fgrep", "file", "find", "fold", "git", "grep", "head",
-        "hexdump", "host", "hostname", "id", "ifconfig", "jq", "kill", "less", "ls", "lsof",
-        "md5", "md5sum", "more", "netstat", "nl", "nslookup", "od", "pgrep", "ping", "pkill",
-        "printenv", "printf", "ps", "pwd", "read", "readlink", "realpath", "rev", "rg", "sed",
-        "seq", "sha256sum", "shasum", "sleep", "sort", "stat", "strings", "sw_vers", "tail",
-        "test", "tr", "tree", "true", "type", "uname", "uniq", "unset", "uptime", "vm_stat",
-        "wait", "wc", "which", "whereis", "whoami", "xxd", "curl",
-    }
+#: The rule for what a shell command can change lives in `digest` (`shell_reads_only`), beside
+#: the parser that decides it on the FULL command at parse time (`Ev.reads_only`); the names
+#: are kept here because this measurement, and its tests, grew up with them.
+from .digest import (  # noqa: E402
+    _ASSIGNMENT,
+    _GIT_LISTING,
+    _GIT_LISTS_BARE,
+    _HARMLESS_REDIRECT,
+    _READ_ONLY_GIT,
+    _READ_ONLY_PROGRAMS,
+    _SHELL_KEYWORDS,
+    _SHELL_NOOPS,
+    _WRITES_INSIDE,
+    _WRITING_FLAGS,
+    _simple_reads,
+    _split_commands,
 )
-
-#: git subcommands that only read, and the listing forms of the ones that can also write
-#: (`git branch` lists; `git branch -D x` does not). `git commit` is work the digest sees.
-_READ_ONLY_GIT = frozenset(
-    {
-        "blame", "cat-file", "check-ignore", "count-objects", "describe", "diff", "fetch",
-        "for-each-ref", "grep", "help", "log", "ls-files", "ls-remote", "ls-tree",
-        "merge-base", "name-rev", "rev-list", "rev-parse", "shortlog", "show", "status",
-        "version",
-    }
-)
-_GIT_LISTING = {
-    "branch": frozenset({"-a", "-r", "-v", "-vv", "--all", "--remotes", "--list", "--show-current"}),
-    "remote": frozenset({"-v", "show", "get-url"}),
-    "stash": frozenset({"list", "show"}),
-    "tag": frozenset({"-l", "--list"}),
-    "worktree": frozenset({"list"}),
-    "config": frozenset({"--get", "--get-all", "--get-regexp", "--list", "-l"}),
-}
-#: The ones that only list when run bare. A bare `git stash` PUSHES: it rewrites the
-#: working tree.
-_GIT_LISTS_BARE = frozenset({"branch", "remote", "tag"})
-
-#: Flags that turn a reading program into a writing one.
-_WRITING_FLAGS = {
-    "sed": re.compile(r"^(-i|--in-place)"),
-    "find": re.compile(r"^-(exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$"),
-    "curl": re.compile(r"^(-\w*[oO]|--output|--remote-name\S*|-J)$"),
-    "sort": re.compile(r"^(-o|--output)"),
-}
-
-#: Writes a program can make from INSIDE its own script: awk's `print > "f"`, a pipe out
-#: or `system()`, and sed's `w file` command.
-_WRITES_INSIDE = {
-    "awk": re.compile(r">|system\s*\(|\|\s*[\"']"),
-    "sed": re.compile(r"(^|[\s;{}/'\"])[wW]\s+\S"),
-}
-
-#: Shell words that are not the program: a keyword before it, an assignment, a wrapper.
-_SHELL_KEYWORDS = frozenset({"do", "then", "else", "elif", "if", "while", "until", "!", "time", "{", "}"})
-_SHELL_NOOPS = frozenset({"done", "fi", "for"})
-_ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
-
-#: Redirections that write no file: into /dev/null, one descriptor onto another, and the
-#: here string and heredoc openers (the body is skipped by `digest._command_lines`).
-_HARMLESS_REDIRECT = re.compile(r"[&\d]?>{1,2}\s*/dev/null\b|\d?>&\d|&>\s*/dev/null\b|<<<|<<-?\s*['\"]?\w+['\"]?")
 
 #: Tools that are not a shell and cannot change a file. Everything outside this set and
 #: the edit tools could have: a helper agent (its edits are in a sidecar this module never
@@ -636,111 +594,11 @@ _NON_WRITING_TOOLS = digest.READ_TOOLS | frozenset(
 )
 
 
-def _split_commands(line: str) -> list[str] | None:
-    """One command line cut into the simple commands it RUNS, or None when it writes a
-    file through a redirection.
-
-    Quote aware: a separator or a `>` inside quotes is data. A command substitution (`$(`,
-    a backtick) runs even inside double quotes, so it is cut out there too; what follows
-    its close is the outer command's argument (`cat $(ls)/x`, `"a $(b) c"`), which is data
-    and not a program, up to the next separator.
-    """
-    line = _HARMLESS_REDIRECT.sub(" ", line)
-    out: list[str] = []
-    buf: list[str] = []
-    data = False  # the buffer continues an argument after a substitution closed
-    quote: str | None = None
-    tick = False  # inside a backtick substitution
-    i, n = 0, len(line)
-
-    def cut(next_is_data: bool) -> None:
-        nonlocal buf, data
-        if not data:
-            out.append("".join(buf))
-        buf, data = [], next_is_data
-
-    while i < n:
-        c = line[i]
-        if quote == "'":
-            # Kept in the command, so a flag or a program text (`awk '{print > "f"}'`) can
-            # still be read; never a separator.
-            quote = None if c == "'" else quote
-            buf.append(c)
-            i += 1
-            continue
-        if c == "\\" and i + 1 < n:
-            buf.append(line[i : i + 2])
-            i += 2
-            continue
-        if c == "$" and i + 1 < n and line[i + 1] == "(":
-            cut(False)
-            i += 2
-            continue
-        if c == "`":
-            tick = not tick
-            cut(not tick)
-            i += 1
-            continue
-        if c == ")":
-            cut(True)
-            i += 1
-            continue
-        if quote == '"':
-            quote = None if c == '"' else quote
-            buf.append(c)
-            i += 1
-            continue
-        if c in "'\"":
-            quote = c
-            buf.append(c)
-            i += 1
-            continue
-        if c == ">":
-            return None  # a file is written: the harmless forms were removed above
-        if c in ";|&(":
-            cut(False)
-            i += 2 if (i + 1 < n and line[i + 1] == c and c in "|&") else 1
-            continue
-        buf.append(c)
-        i += 1
-    cut(False)
-    return [s.strip() for s in out if s.strip()]
-
-
-def _simple_reads(command: str) -> bool:
-    """Whether one simple command can only read."""
-    words = command.split()
-    while words and (words[0] in _SHELL_KEYWORDS or _ASSIGNMENT.match(words[0])):
-        words = words[1:]
-    if words and words[0] == "env":
-        words = [w for w in words[1:] if not _ASSIGNMENT.match(w)]
-    if words and words[0] == "timeout":
-        words = words[2:]
-    if not words or words[0] in _SHELL_NOOPS or words[0].startswith("#"):
-        return True
-    prog = words[0].rsplit("/", 1)[-1]
-    if prog not in _READ_ONLY_PROGRAMS:
-        return False
-    flags = _WRITING_FLAGS.get(prog)
-    if flags is not None and any(flags.match(w.strip("'\"")) for w in words[1:]):
-        return False
-    inside = _WRITES_INSIDE.get(prog)
-    if inside is not None and inside.search(" ".join(words[1:])):
-        return False
-    if prog != "git":
-        return True
-    rest = words[1:]
-    while rest and rest[0].startswith("-"):
-        rest = rest[2:] if rest[0] in ("-C", "-c") else rest[1:]
-    if not rest:
-        return True
-    sub, args = rest[0], rest[1:]
-    if sub in _READ_ONLY_GIT:
-        return True
-    listing = _GIT_LISTING.get(sub)
-    if listing is None or (not args and sub not in _GIT_LISTS_BARE):
-        return False
-    return all(a in listing for a in args)
+def _reads_only(e: digest.Ev) -> bool:
+    """Whether a shell call can only have read: the loader's answer from the FULL command
+    (`Ev.reads_only`), or, from a loader that gave none, the kept text's (which refuses a cut
+    command, `_shell_reads_only`)."""
+    return e.reads_only if e.reads_only is not None else _shell_reads_only(e.text)
 
 
 def _shell_reads_only(text: str) -> bool:
@@ -775,7 +633,7 @@ def _could_write_unseen(e: digest.Ev) -> bool:
     if e.tool in digest.EDIT_TOOLS:
         return not _is_write(e)
     if e.tool in digest.SHELL_TOOLS:
-        return not _is_write(e) and not _shell_reads_only(e.text)
+        return not _is_write(e) and not _reads_only(e)
     return e.tool not in _NON_WRITING_TOOLS
 
 

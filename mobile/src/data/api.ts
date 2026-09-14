@@ -1046,7 +1046,7 @@ export class Api {
     return resolveMediaUrl(url, this.baseUrl, this.access);
   }
 
-  sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean } = {}): Promise<{
+  sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean; include_live?: boolean } = {}): Promise<{
     sessions: SessionDetail[];
     next_before: string | null;
   }> {
@@ -1054,6 +1054,8 @@ export class Api {
     if (opts.limit !== undefined) q.set('limit', String(opts.limit));
     if (opts.before) q.set('before', opts.before);
     if (opts.notable_only !== undefined) q.set('notable_only', String(opts.notable_only));
+    // Finished sessions only unless asked: a running one is a moving target to page over.
+    if (opts.include_live) q.set('include_live', 'true');
     const qs = q.toString();
     return this.request('GET', `/v1/sessions${qs ? `?${qs}` : ''}`);
   }

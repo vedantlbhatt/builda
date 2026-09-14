@@ -94,9 +94,11 @@ class Trend:
 
 
 def _value(profile: Mapping, metric: str) -> float | None:
+    """A metric's MEASUREMENT (`plain.exact`), not the copy of it rounded to be read: a move
+    worked out between two rounded values, and then rounded again, is rounded three times."""
     m = (profile.get("metrics") or {}).get(metric) or {}
     v = m.get("value")
-    return float(v) if isinstance(v, (int, float)) else None
+    return plain.exact(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
 def compare(before: Mapping, now: Mapping, *, metrics: Sequence[str] | None = None) -> list[Trend]:
@@ -128,9 +130,11 @@ def compare(before: Mapping, now: Mapping, *, metrics: Sequence[str] | None = No
             Trend(
                 metric=metric,
                 label=LABEL.get(metric, metric.replace("_", " ")),
-                before=plain.rounded(a, 3),
-                now=plain.rounded(b, 3),
-                move=plain.rounded(move, 3),
+                # Rounded to be read (the CLI, the narrative), carrying the measurement for
+                # the wire and the headline, which round once from it (`plain.Measured`).
+                before=plain.measured(a, 3),
+                now=plain.measured(b, 3),
+                move=plain.measured(move, 3),
                 direction=direction,
                 good=good,
                 sessions_before=n_before,
@@ -167,7 +171,7 @@ def headline(trends: Sequence[Trend], window_days: int = 30) -> str | None:
     pick = judged[0] if judged else next((t for t in trends if not t.steady), None)
     if pick is None:
         return None
-    pct = int(plain.half_up(abs(pick.move), scale=2))
+    pct = int(plain.half_up(abs(plain.exact(pick.move)), scale=2))
     verb = "up" if pick.direction == "up" else "down"
     tail = "" if pick.good is None else (", which is the way you want it" if pick.good else "")
     return f"{pick.label.capitalize()} is {verb} {pct}% {window_words(window_days)}{tail}."

@@ -41,6 +41,22 @@ NOTABLE_REWRITES = 5
 #: Below this the session is too short for any of it to mean anything.
 MIN_TOOL_CALLS = 15
 
+#: The version of the rules in this module AND the patterns they read, mixed into every upload's
+#: `content_hash` (`capture.sessions.content_hash`), so a change here re-uploads every sitting
+#: even when its transcript did not move. Without it a sitting's hash moves only when the new
+#: rules happen to say something different about it, and a rule that is not in the hash never
+#: reaches the server. FOUND IN REVIEW (2026-09-14): session 8a4fc6ea kept an old rule's
+#: `went_nowhere` (1,029 s of a 2,612 s sitting that landed 5 commits and 737 lines) after the
+#: re-upload that followed the fix, which touched 29 other sessions and not this one. Bump it
+#: with every change that can move a note for an unchanged transcript.
+#:
+#:   1  the notes as contract v3 shipped them
+#:   2  2026-09-14  a stretch ends at any call that could have changed a file unseen, `git -c …
+#:                  commit` is a commit, and a stretch is measured on the active clock
+#:   3  2026-09-14  a shell call is read only on its WHOLE command (`Ev.reads_only`), and the
+#:                  wire's seconds are floored, so the phone's minutes are Python's
+RULES_VERSION = 3
+
 
 @dataclasses.dataclass(frozen=True)
 class Note:
@@ -161,10 +177,20 @@ def wire(session) -> list[dict] | None:
     None, never `[]`: a sitting with nothing worth saying and a sitting the parser could
     not read must not look the same on the card, and only one of them has a row.
     """
-    out = [
-        {"id": n.id, "seconds": int(plain.rounded(n.seconds)), "count": _count(n)} for n in notes(session)
-    ]
+    out = [{"id": n.id, "seconds": wire_seconds(n.seconds), "count": _count(n)} for n in notes(session)]
     return out or None
+
+
+def wire_seconds(seconds: float) -> int:
+    """A note's seconds as the wire carries them: WHOLE seconds, FLOORED, never rounded.
+
+    The phone says them in minutes, rounding the minutes once (`_mins`' rule). Rounding the
+    seconds first rounded twice: FOUND IN REVIEW (2026-09-14), 3,929.6 s went up to 3,930, the
+    phone read 65.5 minutes and said "1h 06m" where this machine says "1h 05m". A minute's
+    half is a whole second (30 s past it), so the floor can never cross it: every whole minute
+    the phone rounds to from the floor is the one `_mins` rounds to from the seconds as measured.
+    """
+    return int(max(0.0, seconds))
 
 
 def _count(n: Note) -> int:
@@ -240,6 +266,7 @@ def _mins(seconds: float) -> str:
 
 __all__ = [
     "MIN_TOOL_CALLS",
+    "RULES_VERSION",
     "NOTABLE_FAILURES",
     "NOTABLE_REWRITES",
     "NOTABLE_SPIN_CALLS",
@@ -247,4 +274,5 @@ __all__ = [
     "Note",
     "notes",
     "wire",
+    "wire_seconds",
 ]

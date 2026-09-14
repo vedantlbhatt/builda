@@ -650,6 +650,7 @@ def _tool_event(ts: float, name: str, call_id, desc_src: str, model: str | None)
             if approx is not None:
                 ev.added, ev.removed = approx, 0
         ev.text = dg.clip(desc_src.replace("\n", " ⏎ "), dg.COMMAND_MAX)
+        ev.reads_only = dg.shell_reads_only(desc_src)
     elif name == APPLY_PATCH:
         path, added, removed = _patch_effect(desc_src)
         ev.path, ev.added, ev.removed = path, added, removed

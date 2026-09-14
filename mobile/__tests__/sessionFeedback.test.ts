@@ -169,3 +169,11 @@ describe('a note never contradicts its own page (shots/now2/61-session-binned-03
     expect(renderable(binned.feedback, pageFactsOf({ active_seconds: 11567, stats: null }))).toHaveLength(1);
   });
 });
+
+describe('a note\'s seconds are rounded once (review, 2026-09-14)', () => {
+  test('the wire floors them, so the phone\'s minutes are the Mac\'s: 3,929.6 s is "1h 05m" on both', () => {
+    // `analysis/feedback.wire_seconds(3929.6)` is 3929; it used to round to 3930, which is 65.5 minutes here.
+    expect(minutes(3929)).toBe('1h 05m');
+    expect(minutes(3930)).toBe('1h 06m');
+  });
+});

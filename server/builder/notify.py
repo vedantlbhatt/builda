@@ -140,14 +140,27 @@ def is_news(age_seconds: float) -> bool:
     return age_seconds <= NOTIFY_HORIZON_SEC
 
 
+#: The most of a public repository's name a needs you title carries (`live_push.REPO_MAX`).
+NEEDS_YOU_REPO_MAX = 60
+
+
+def needs_you_title(repo_name: str | None) -> str:
+    """THE TITLE OF EVERY NEEDS YOU ALERT, the banner here and the Live Activity's
+    (`live_push.alert_for`), and the phone's `localCopy.needsYouTitle` word for word: the
+    repository by its PUBLIC name, cut to 60, else "A session needs you". A private one is
+    never named: the phone calls it by a number only the phone knows ("Private project 2"),
+    and FOUND IN REVIEW (2026-09-14) the activity's alert said "private repo needs you" where
+    the phone's for the same moment said "Private project 2 needs you"."""
+    who = repo_name[:NEEDS_YOU_REPO_MAX] if repo_name is not None else NEEDS_YOU_NO_REPO
+    return f"{who} needs you"
+
+
 def compose_needs_you(repo_name: str | None, sentence: str | None) -> tuple[str, str]:
-    """The banner: `{repo} needs you` over the engine's sentence as it stands ("Waiting on
+    """The banner: `needs_you_title` over the engine's sentence as it stands ("Waiting on
     you for four minutes"). The phone's `needsYouNotification`, word for word, so a banner
-    the server sends reads like one the phone posts. The repo is named only when the row
-    names it."""
-    who = repo_name if repo_name is not None else NEEDS_YOU_NO_REPO
+    the server sends reads like one the phone posts."""
     body = (sentence or "").strip() or NEEDS_YOU_FALLBACK_BODY
-    return f"{who} needs you", body
+    return needs_you_title(repo_name), body
 
 
 def needs_you_collapse_id(session_id: str) -> str:

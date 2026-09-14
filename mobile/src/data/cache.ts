@@ -167,7 +167,51 @@ export async function readPage(
 ): Promise<{ rows: SessionDetail[]; next_before: string | null }> {
   const page = await api.sessions({ limit: opts.limit, before: opts.before, notable_only: opts.notableOnly });
   for (const s of page.sessions) await upsert(s, false);
-  return { rows: page.sessions, next_before: page.next_before ?? null };
+  const next = page.next_before ?? null;
+  await pruneCovered({ notableOnly: opts.notableOnly, before: opts.before, rows: page.sessions, last: next === null });
+  return { rows: page.sessions, next_before: next };
+}
+
+/**
+ * The saved rows a page of the list route has just answered for, that it did not return.
+ *
+ * The phone never dropped a finished session it had saved, while the server deletes one when its
+ * repository is excluded (`routes/privacy.py`) and a sitting's `notable` can change when it is
+ * re-cut; so "That is every session on your account: N", counted off the saved rows, could say
+ * more than the account holds (FOUND IN REVIEW, 2026-09-14). A page covers the stretch of time
+ * from just after its oldest row up to `before` (to the end, on the last page; from the newest,
+ * on the first), and within it the server's answer is the whole answer: a row of every kind it
+ * did not return is gone and is deleted; a row it did not return as one you were there for is
+ * not one now, and keeps its place in every session. The page's oldest instant itself is left
+ * alone, since `before` is exclusive and a second row at that instant is the next page's.
+ */
+export async function pruneCovered(opts: { notableOnly: boolean; before: string | null; rows: readonly { id: string; started_at: string }[]; last: boolean }): Promise<number> {
+  const { notableOnly, before, rows, last } = opts;
+  const oldest = rows.length ? rows[rows.length - 1]!.started_at : null;
+  if (!last && oldest === null) return 0; // a page with more to come always has rows; nothing to answer for
+  return guarded('pruneCovered', 0, async (d) => {
+    const where = ['live = 0'];
+    const params: (string | number | null)[] = [];
+    if (notableOnly) where.push("json_extract(json, '$.notable') = 1");
+    if (before) {
+      where.push('julianday(started_at) < julianday(?)');
+      params.push(before);
+    }
+    if (!last && oldest !== null) {
+      where.push('julianday(started_at) > julianday(?)');
+      params.push(oldest);
+    }
+    if (rows.length) {
+      where.push(`id NOT IN (${rows.map(() => '?').join(', ')})`);
+      params.push(...rows.map((r) => r.id));
+    }
+    const stale = await d.getAllAsync<{ id: string }>(`SELECT id FROM sessions WHERE ${where.join(' AND ')}`, ...params);
+    for (const { id } of stale) {
+      if (notableOnly) await d.runAsync("UPDATE sessions SET json = json_set(json, '$.notable', json('false')) WHERE id = ?", id);
+      else await d.runAsync('DELETE FROM sessions WHERE id = ?', id);
+    }
+    return stale.length;
+  });
 }
 
 /**
@@ -386,8 +430,10 @@ async function runSync(api: Api): Promise<void> {
     await upsert(s, false);
     if (wasLiveSet.has(s.id) && (s.state ?? 'final') === 'final') staleLive.push(s.id);
   }
-  // The Sessions list's top, and whether it goes further back (`session/listReach.ts`).
+  // The Sessions list's top, and whether it goes further back (`session/listReach.ts`); and the
+  // saved rows in the stretch it covers that it no longer lists as ones you were there for.
   firstPage = { startedAt: page.sessions.map((s) => s.started_at), nextBefore: page.next_before ?? null };
+  await pruneCovered({ notableOnly: true, before: null, rows: page.sessions, last: (page.next_before ?? null) === null });
   let liveNow: SessionDetail[] | null = null;
   try {
     liveNow = (await api.liveSessions()).sessions;

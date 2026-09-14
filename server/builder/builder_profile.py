@@ -245,12 +245,25 @@ def _rounded(x: float, digits: int | None = None) -> float | int:
     it is written (`analysis.plain.rounded`, which the phone's `copy/numbers.ts` mirrors), so
     a dimension mean of 72.25 reads 72.3 here and on the phone alike. Python's own `round`
     sends a tie to the even digit. The server only build (`server/Dockerfile`) ships without
-    `analysis/`, and there the one rule is not available, so it falls back to `round`."""
+    `analysis/`; there it is `_half_up`, the same arithmetic, which
+    `test_the_server_only_rounding_is_the_one_rule` holds to `plain.rounded`."""
     try:
         plain = _profile_module().plain
     except MetricsUnavailable:  # pragma: no cover - deployment shape, not logic
-        return round(x, digits)
+        return _half_up(x, digits)
     return plain.rounded(x, digits)
+
+
+def _half_up(x: float, digits: int | None = None) -> float | int:
+    """`analysis.plain.rounded` where `analysis/` is not shipped. FOUND IN REVIEW (2026-09-14):
+    this fell back to Python's `round`, which sends a tie to the even digit, so the server
+    only image would say 72.2 where every other surface says 72.3."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    if isinstance(x, int) and not isinstance(x, bool):
+        return x
+    q = Decimal(repr(float(x))).quantize(Decimal(1).scaleb(-(digits or 0)), rounding=ROUND_HALF_UP)
+    return int(q) if digits is None else float(q)
 
 
 def _final_rows(db, user_id: str, days: int | None, *, repo_hash: str | None = None) -> list:

@@ -486,6 +486,7 @@ def _tool_event(ts: float, name: str, call_id, args, model: str | None) -> dg.Ev
         if approx is not None:
             ev.added, ev.removed = approx, 0
         ev.text = dg.clip(cmd.replace("\n", " ⏎ "), dg.COMMAND_MAX)
+        ev.reads_only = dg.shell_reads_only(cmd)
     elif name in FILE_TOOLS:
         ev.path = _file_path(args)
         ev.text = dg.mask(ev.path or "")

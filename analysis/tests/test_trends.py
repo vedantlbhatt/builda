@@ -133,3 +133,40 @@ class Headline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RoundedOnce(unittest.TestCase):
+    """FOUND IN REVIEW (2026-09-14): a share rounded to three places on the Mac, a move worked
+    out between two of those and rounded again, and the phone rounding each to a whole percent.
+    The trend reads the measurement behind each metric and ships it whole; the one rounding is
+    the reader's."""
+
+    def test_the_move_and_the_values_come_from_the_measurements(self):
+        from analysis import plain
+        from analysis import report as rp
+
+        before = prof(12, night_share=plain.measured(0.1, 3))
+        now = prof(12, night_share=plain.measured(0.2245, 3))
+        # The value rounded to be read is 0.225 (a tie, up), which a phone would say as 23%.
+        self.assertEqual(float(now["metrics"]["night_share"]["value"]), 0.225)
+        (t,) = [x for x in tr.compare(before, now) if x.metric == "night_share"]
+        self.assertEqual(plain.exact(t.now), 0.2245)
+        self.assertAlmostEqual(plain.exact(t.move), 1.245)
+        wire = rp._trend(t)
+        self.assertEqual(wire["now"], 0.2245)
+        self.assertEqual(plain.pct(wire["now"]), "22%")
+        self.assertAlmostEqual(wire["move"], 1.245)
+        # And what a person reads on this machine is still the rounded copy.
+        self.assertEqual(f"{t.now:g}", "0.225")
+
+    def test_the_headline_rounds_the_measured_move_once(self):
+        from analysis import plain
+
+        # 0.2 to 0.26899: rounded to be read that is 0.2 to 0.269, a move of 0.345 that a
+        # second rounding says as 35%; the measurements move 34.495%, which is 34%.
+        before = prof(12, steer_rate=plain.measured(0.2, 3))
+        now = prof(12, steer_rate=plain.measured(0.26899, 3))
+        (t,) = tr.compare(before, now)
+        self.assertAlmostEqual(plain.exact(t.move), 0.34495)
+        self.assertIn("34%", tr.headline([t]))
+        self.assertNotIn("35%", tr.headline([t]))

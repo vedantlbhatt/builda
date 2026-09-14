@@ -81,6 +81,11 @@ public enum SessionDigest {
         public var ok: Bool = true
         public var toolID: String? = nil
         public var model: String? = nil
+        /// On a shell tool event: whether the WHOLE command can only read
+        /// (`ShellFileEffect.readsOnly`), decided here from the full command because `text`
+        /// keeps `commandMax` characters of it. `digest.Ev.reads_only`; not rendered, so the
+        /// digest text is byte identical with or without it.
+        public var readsOnly: Bool? = nil
 
         public init(
             n: Int = 0, ts: Double, kind: Kind, text: String = "", tool: String? = nil,
@@ -447,11 +452,13 @@ public enum SessionDigest {
                             ts: ts, kind: .tool, text: mask(desc), tool: name, path: path,
                             toolID: b.id.string, model: model)
                         if name == "Bash" {
-                            let approx = bashFileEffect(b.input.command.string ?? "").approx
+                            let full = b.input.command.string ?? ""
+                            let approx = bashFileEffect(full).approx
                             if let approx {
                                 ev.added = approx
                                 ev.removed = 0
                             }
+                            ev.readsOnly = ShellFileEffect.readsOnly(full)
                         }
                         out.append(ev)
                     }

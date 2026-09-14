@@ -877,6 +877,7 @@ def _tool_event(ts: float, part: dict, model: str | None, counters: Counter) -> 
         if approx is not None and applied:
             ev.added, ev.removed = approx, 0
         ev.text = dg.clip(cmd.replace("\n", " ⏎ "), dg.COMMAND_MAX)
+        ev.reads_only = dg.shell_reads_only(cmd)
     elif name in (EDIT_TOOL, WRITE_TOOL, READ_TOOL):
         p = inp.get("filePath")
         ev.path = p if isinstance(p, str) and p else None

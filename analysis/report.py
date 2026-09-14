@@ -238,9 +238,11 @@ def _trend(t) -> dict:
     return {
         "metric": t.metric,
         "label": t.label,
-        "before": plain.rounded(float(t.before), 4),
-        "now": plain.rounded(float(t.now), 4),
-        "move": plain.rounded(float(t.move), 4),
+        # The measurements, unrounded: the phone says each once, as a percent or a figure,
+        # and a copy rounded here first would be rounded twice (`plain.Measured`).
+        "before": plain.exact(t.before),
+        "now": plain.exact(t.now),
+        "move": plain.exact(t.move),
         "direction": t.direction,
         "good": t.good,
         "sessions_before": t.sessions_before,

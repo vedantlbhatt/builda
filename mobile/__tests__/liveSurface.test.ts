@@ -1054,7 +1054,7 @@ describe('content_state.json: the phone\'s card equals the server\'s, case by ca
       expect(relevanceOf(st, live)).toBe(c.relevance);
       if (st.phase === 'needsYou') {
         expect(c.alert).not.toBeNull();
-        expect(alertFor(toAttrs(c.row), c.spoken)).toEqual({ alertTitle: c.alert!.title, alertBody: c.alert!.body });
+        expect(alertFor(c.row, c.spoken)).toEqual({ alertTitle: c.alert!.title, alertBody: c.alert!.body });
       } else {
         expect(c.alert).toBeNull();
       }

@@ -240,6 +240,23 @@ class ContractConformance(unittest.TestCase):
         r = dict(p, active_seconds=p["active_seconds"] + 1)
         self.assertNotEqual(sessions.content_hash(r), h)
 
+    def test_a_change_to_the_rules_moves_every_hash(self):
+        """FOUND IN REVIEW (2026-09-14): a sitting kept an old rule's note after the re-upload
+        that followed the fix, because nothing about it moved its hash and `/v1/sync/known`
+        skipped it. The feedback rules' version is in the hash, so a change to them re-uploads
+        every sitting, the ones with nothing to say included; and it is never on the wire."""
+        from unittest import mock
+
+        from analysis import feedback as fb
+
+        p = dict(self.payloads[0])
+        h = sessions.content_hash(p)
+        self.assertEqual(sessions.content_hash(dict(p)), h, "stable while the rules stand still")
+        with mock.patch.object(fb, "RULES_VERSION", fb.RULES_VERSION + 1):
+            self.assertNotEqual(sessions.content_hash(p), h)
+        self.assertNotIn("rules", p)
+        self.assertEqual(sessions._derived_rules(), {"feedback": fb.RULES_VERSION})
+
 
 def _ts(iso: str) -> float:
     import datetime as dt

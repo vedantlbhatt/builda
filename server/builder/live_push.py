@@ -454,10 +454,17 @@ def repo_of(row: Mapping) -> str:
 
 
 def alert_for(row: Mapping, spoken: str) -> dict:
-    """`surface.alertFor`: "{repo} needs you" over the engine's sentence as it stands. The
-    sound is the one the phone's own activity alert plays (`AlertConfiguration(sound:
-    .default)` in BuilderLiveModule.swift)."""
-    return {"title": f"{repo_of(row)} needs you", "body": spoken, "sound": "default"}
+    """`surface.alertFor` and the phone's `localCopy.needsYouTitle`, word for word: "{repo}
+    needs you" when the repository has a PUBLIC name, else "A session needs you", over the
+    engine's sentence as it stands. A private repository is never named here: the phone calls
+    it by a number only the phone knows ("Private project 2"), and FOUND IN REVIEW
+    (2026-09-14) this alert said "private repo needs you" where the phone's for the same moment
+    said "Private project 2 needs you". The sound is the one the phone's own activity alert
+    plays (`AlertConfiguration(sound: .default)` in BuilderLiveModule.swift)."""
+    from . import notify
+
+    title = notify.needs_you_title(row.get("repo_name"))
+    return {"title": title, "body": spoken, "sound": "default"}
 
 
 def update_payload(state: Mapping, *, now: float, relevance: int, alert: Mapping | None) -> dict:

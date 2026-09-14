@@ -39,16 +39,31 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
+/** The most of a public repository's name a needs you title carries (`live_push.REPO_MAX`). */
+export const TITLE_REPO_MAX = 60;
+
+/**
+ * THE TITLE OF EVERY NEEDS YOU ALERT: the phone's notification, the Live Activity's own alert
+ * (`surface.alertFor`) and the server's push (`live_push.alert_for`), word for word. The
+ * repository by its PUBLIC name, else no repository at all: "A session needs you". A private
+ * one is never named, not even by the number this phone gave it ("Private project 2"), because
+ * the server cannot know that number and two alerts for one moment must read the same. FOUND
+ * IN REVIEW (2026-09-14): the server's alert said "private repo needs you" and the phone's
+ * "Private project 2 needs you" for one session on one Lock Screen.
+ */
+export function needsYouTitle(repoName: string | null | undefined): string {
+  return repoName != null ? `${repoName.slice(0, TITLE_REPO_MAX)} needs you` : 'A session needs you';
+}
+
 /**
  * "builder needs you" / the engine's sentence ("Waiting on you for four minutes"). The
  * sentence is the one the Lock Screen would have shown; without one it is the engine's own
  * words for a turn that has just been handed back.
  */
 export function needsYouNotification(s: Pick<SessionDetail, 'id' | 'repo_name'>, sentence?: string | null): LocalNotification {
-  const repo = s.repo_name ?? 'A session';
   return {
     identifier: `needs-you-${s.id}`.slice(0, 63),
-    title: `${repo} needs you`,
+    title: needsYouTitle(s.repo_name),
     body: sentence?.trim() || renderLiveSentence({ activity: { kind: 'waiting_on_you', since_s: 0 } }),
     data: { kind: KIND_NEEDS_YOU, session_id: s.id, url: `builder://session/${s.id}` },
   };

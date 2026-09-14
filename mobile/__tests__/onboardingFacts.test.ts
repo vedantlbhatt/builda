@@ -14,14 +14,21 @@ mock.module('expo-constants', () => ({ default: { expoConfig: { version: '0.1.0-
 const { countSessions } = await import('../src/onboarding/facts');
 const { DONE, doneName, sessionsArrived, sessionsCaption, toolsFound } = await import('../src/onboarding/copy');
 
-/** A server holding 183 sessions, 81 of them ones you were there for, paged 200 at a time. */
-function server(total: number, notable: number) {
-  const rows = Array.from({ length: total }, (_, i) => ({ id: `s${i}`, harness: 'claude_code', started_at: new Date(Date.UTC(2026, 7, 11) + i * 3_600_000).toISOString(), notable: i < notable })).reverse();
-  const asked: { notable_only?: boolean; before?: string | null }[] = [];
-  const sessions = async (o: { limit?: number; before?: string | null; notable_only?: boolean } = {}) => {
-    asked.push({ notable_only: o.notable_only, before: o.before });
-    // The route's default is the notable ones only.
-    const pool = o.notable_only === false ? rows : rows.filter((r) => r.notable);
+/** A server holding `total` finished sessions (`notable` of them ones you were there for) and `live` running, paged 200 at a time. */
+function server(total: number, notable: number, live = 0) {
+  const rows = Array.from({ length: total + live }, (_, i) => ({
+    id: `s${i}`,
+    harness: 'claude_code',
+    started_at: new Date(Date.UTC(2026, 7, 11) + i * 3_600_000).toISOString(),
+    notable: i < notable,
+    state: i >= total ? 'live' : 'final',
+  })).reverse();
+  const asked: { notable_only?: boolean; before?: string | null; include_live?: boolean }[] = [];
+  const sessions = async (o: { limit?: number; before?: string | null; notable_only?: boolean; include_live?: boolean } = {}) => {
+    asked.push({ notable_only: o.notable_only, before: o.before, include_live: o.include_live });
+    // The route's defaults: finished ones only, and the notable ones only.
+    const finished = o.include_live ? rows : rows.filter((r) => r.state === 'final');
+    const pool = o.notable_only === false ? finished : finished.filter((r) => r.notable);
     const after = o.before ? pool.filter((r) => Date.parse(r.started_at) < Date.parse(o.before!)) : pool;
     const page = after.slice(0, o.limit ?? 50);
     return { sessions: page, next_before: page.length === (o.limit ?? 50) ? page[page.length - 1]!.started_at : null } as never;
@@ -36,7 +43,12 @@ describe('the onboarding count', () => {
     expect(r.total).toBe(183);
     expect(r.partial).toBe(false);
     expect(r.counts).toEqual({ claude_code: 183 } as never);
-    expect(s.asked.every((a) => a.notable_only === false)).toBe(true);
+    expect(s.asked.every((a) => a.notable_only === false && a.include_live === true)).toBe(true);
+  });
+
+  test('a running session was uploaded too, and is counted (review: 185 said of 186, one running)', async () => {
+    const s = server(185, 81, 1);
+    expect((await countSessions({ sessions: s.sessions as never })).total).toBe(186);
   });
 
   test('pages past 200, and past 1,000 says the count is a lower bound', async () => {

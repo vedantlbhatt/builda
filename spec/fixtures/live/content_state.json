@@ -1084,7 +1084,7 @@
    },
    "relevance": 100,
    "alert": {
-    "title": "private repo needs you",
+    "title": "A session needs you",
     "body": "Waiting on you for two minutes",
     "sound": "default"
    }

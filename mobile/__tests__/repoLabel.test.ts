@@ -18,7 +18,8 @@ import type { SessionDetail } from '../src/data/api';
 import { reportProjectsOf } from '../src/data/listedProjects';
 import { debugSessions, DEBUG_STATES } from '../src/live/fixtures';
 import { lastFinishedLine, missionSample, SAMPLE_KINDS, SAMPLE_REPOS, tileModel } from '../src/live/mission';
-import { buildWidgetSnapshot, planSync, toAttrs } from '../src/live/surface';
+import { alertFor, buildWidgetSnapshot, planSync, toAttrs } from '../src/live/surface';
+import { needsYouNotification } from '../src/push/localCopy';
 import { EMPTY_REGISTRY, projectLabel, registerProjects } from '../src/projects/model';
 import { heroOf, rowOf } from '../src/session/page';
 
@@ -206,5 +207,40 @@ describe('a sample names no real repository and says it is a sample (item 14)', 
       expect(swift).not.toContain(`"${r}"`);
       expect(renderer).not.toContain(`"${r}"`);
     }
+  });
+});
+
+describe('one needs you alert for one moment, and a card named again when its name arrives (review, 2026-09-14)', () => {
+  test('a private project is never named in an alert, not even by the phone\'s own number, as the server\'s says it', () => {
+    const s = row('a');
+    expect(toAttrs(s, true, names()).repo).toBe(`Private project${NBSP}2`);
+    // server/builder/live_push.alert_for: "A session needs you" for a repository with no public name.
+    expect(alertFor(s, 'Waiting on you').alertTitle).toBe('A session needs you');
+    expect(needsYouNotification(s, 'Waiting on you').title).toBe('A session needs you');
+    const pub = row('b', { repo_name: 'tramline' });
+    expect(alertFor(pub, 'Waiting on you').alertTitle).toBe('tramline needs you');
+    expect(needsYouNotification(pub).title).toBe('tramline needs you');
+  });
+
+  test('a card started as "private repo" comes down and starts again under the number once the phone has it', () => {
+    const s = row('a');
+    const started = planSync({ sessions: [s], tracked: new Map(), activitiesEnabled: true, names: null, nowMs: NOW });
+    const start = started.actions.find((x) => x.kind === 'start') as Extract<(typeof started.actions)[number], { kind: 'start' }>;
+    expect(start.attrs.repo).toBe(PRIVATE_REPO);
+    const tracked = new Map(started.tracked);
+    tracked.set('a', { ...tracked.get('a')!, activityId: 'act-a' });
+
+    const renamed = planSync({ sessions: [s], tracked, activitiesEnabled: true, names: names(), nowMs: NOW + MIN });
+    expect(renamed.actions.map((x) => `${x.kind}:${x.sessionId}`)).toEqual(['end:a', 'start:a']);
+    const end = renamed.actions[0] as Extract<(typeof renamed.actions)[number], { kind: 'end' }>;
+    expect(end.opts.dismissAfterSeconds).toBe(0);
+    const again = renamed.actions[1] as Extract<(typeof renamed.actions)[number], { kind: 'start' }>;
+    expect(again.attrs.repo).toBe(`Private project${NBSP}2`);
+
+    // And once it has that name, it keeps its card.
+    const now = new Map(renamed.tracked);
+    now.set('a', { ...now.get('a')!, activityId: 'act-a2' });
+    const steady = planSync({ sessions: [s], tracked: now, activitiesEnabled: true, names: names(), nowMs: NOW + 2 * MIN });
+    expect(steady.actions.some((x) => x.kind === 'start' || x.kind === 'end')).toBe(false);
   });
 });

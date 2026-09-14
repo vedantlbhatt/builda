@@ -235,6 +235,32 @@ def rounded(x: float, digits: int | None = None) -> float | int:
     return float(half_up(x, digits))
 
 
+class Measured(float):
+    """A number rounded to be read that remembers the measurement it was rounded from.
+
+    It IS the rounded float wherever it is read, printed, compared or serialised (`json`
+    writes the rounded digits); `exact` is for the reader that must round ONCE, from the
+    measurement, and not a second time from a rounded copy of it. FOUND IN REVIEW (2026-09-14):
+    a share rounded to three places on the Mac and then to a whole percent on the phone moves
+    a value like 0.2245 to 0.225 and then to 23%, where the measurement says 22%. Made by
+    `measured`; read back by `exact`.
+    """
+
+    exact: float
+
+
+def measured(x: float, digits: int) -> float:
+    """`rounded(x, digits)`, carrying `x` itself for `exact`."""
+    m = Measured(rounded(float(x), digits))
+    m.exact = float(x)
+    return m
+
+
+def exact(x: float) -> float:
+    """The measurement behind a number `measured` rounded, or the number itself."""
+    return float(getattr(x, "exact", x))
+
+
 def pct(share: float) -> str:
     """A share as a whole percent, "19%": `half_up` of the share times a hundred."""
     return f"{int(half_up(share, scale=2))}%"
@@ -243,6 +269,9 @@ def pct(share: float) -> str:
 __all__ = [
     "DASH",
     "DASH_CHARS",
+    "Measured",
+    "exact",
+    "measured",
     "ROLES",
     "ROLE_NOUN",
     "half_up",

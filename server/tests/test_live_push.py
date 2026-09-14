@@ -201,7 +201,7 @@ def test_the_card_never_speaks_a_duration_but_the_alert_does():
     assert cs["phase"] == "needsYou" and cs["sentence"] == "Waiting on you"
     assert case["spoken"] == "Waiting on you for two minutes"
     assert case["alert"] == {
-        "title": "private repo needs you",
+        "title": "A session needs you",
         "body": "Waiting on you for two minutes",
         "sound": "default",
     }
@@ -346,7 +346,11 @@ def test_notify_grows_a_needs_you_kind_that_opens_the_session():
     # The phone's own words for the same banner, read out of its source.
     local = (ROOT / "mobile/src/push/localCopy.ts").read_text()
     assert "export const KIND_NEEDS_YOU = 'needs_you';" in local
-    assert "s.repo_name ?? 'A session'" in local
+    # The one title (`notify.needs_you_title`), the same rule in the phone's words.
+    title = "repoName != null ? `${repoName.slice(0, TITLE_REPO_MAX)} needs you`"
+    assert f"{title} : 'A session needs you'" in local
+    assert "export const TITLE_REPO_MAX = 60;" in local
+    assert notify.NEEDS_YOU_REPO_MAX == live_push.REPO_MAX == 60
     assert "`needs-you-${s.id}`.slice(0, 63)" in local
     assert notify.is_news(notify.NOTIFY_HORIZON_SEC) and not notify.is_news(
         notify.NOTIFY_HORIZON_SEC + 1
@@ -751,7 +755,7 @@ def test_needs_you_is_priority_10_with_an_alert_and_everything_else_5(client, pa
         alerts[0]
         == alerts[2]
         == {
-            "title": "private repo needs you",
+            "title": "A session needs you",
             "body": "Waiting on you for two minutes",
             "sound": "default",
         }
@@ -957,7 +961,7 @@ def test_needs_you_banner_only_without_an_activity_and_only_once(client, paired,
     _register(client, headers, carded.id)
     carded.waiting()
     assert len(apns.banners()) == 2
-    assert apns.live()[-1]["body"]["aps"]["alert"]["title"] == "private repo needs you"
+    assert apns.live()[-1]["body"]["aps"]["alert"]["title"] == "A session needs you"
     # Its activity ends while it still needs you: that entry was already said, once.
     act = _tokens(uid)[0].activity_id
     client.delete(f"/v1/push/live-activity/{act}", headers=headers)
@@ -1067,7 +1071,7 @@ def test_a_hook_tail_that_hands_the_turn_back_alerts_the_lock_screen(
     assert p["headers"]["apns-priority"] == "10"
     assert aps["content-state"]["phase"] == "needsYou"
     assert aps["content-state"]["sentence"] == "Waiting on you"
-    assert aps["alert"]["title"] == "private repo needs you"
+    assert aps["alert"]["title"] == "A session needs you"
     assert aps["alert"]["body"] == "Waiting on you for one minute"
     for s in ("zqx", "sentinel", "secret"):
         assert s not in json.dumps(p["body"])
@@ -1093,3 +1097,15 @@ def test_a_plan_that_fails_never_fails_the_upload(client, paired, apns, monkeypa
             text("SELECT body FROM session_live WHERE session_id = :s"), {"s": s.id}
         ).scalar()
     assert body["verdict"]["state"] == "circling", "the upload itself landed"
+
+
+def test_a_needs_you_alert_names_only_a_public_repository():
+    """FOUND IN REVIEW (2026-09-14): this alert said "private repo needs you" while the phone's
+    for the same moment said "Private project 2 needs you", a number only the phone knows. A
+    private repository is never named, here or there (`localCopy.needsYouTitle`)."""
+    private = live_push.alert_for({"repo_name": None}, "Waiting on you")
+    assert private["title"] == "A session needs you"
+    public = live_push.alert_for({"repo_name": "tramline"}, "Waiting on you")
+    assert public["title"] == "tramline needs you"
+    cut = live_push.alert_for({"repo_name": "x" * 80}, "s")["title"]
+    assert cut == "x" * live_push.REPO_MAX + " needs you"

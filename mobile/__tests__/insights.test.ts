@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { SECTION_CLOCK_MS } from '../src/insights/motion';
 import {
   analysisModel,
+  causeShare,
   everyNum,
   gapsOf,
   gridMonths,
@@ -417,14 +418,22 @@ describe('one figure per fact on one page (FOUND IN THE CAPTURE, 2026-09-14)', (
 
   test('What stands out never repeats a number a chapter above says from the Mac', () => {
     const ids = model.standsOut.facts.map((f) => f.key);
-    for (const id of ['autonomy_score', 'code_velocity', 'iteration_depth', 'model_mix', 'night_share']) expect(ids).not.toContain(id);
-    // What only the server says stays: the tool you call most, its streak, its peak hour, the hours in all.
-    expect(ids).toEqual(['longest_streak_days', 'top_tool', 'peak_hour', 'totals']);
+    for (const id of ['autonomy_score', 'code_velocity', 'iteration_depth', 'night_share']) expect(ids).not.toContain(id);
+    // What only the server says stays: its streak, the output token share
+    // (the Money ring is dollars: review, 2026-09-14), the tool you call most, its peak hour, the hours in all.
+    expect(ids).toEqual(['longest_streak_days', 'model_mix', 'top_tool', 'peak_hour', 'totals']);
     expect(model.standsOut.factsSource).toBe(
-      "Ranked by the server, most unusual first, over all 171 sessions it holds. 5 more it ranked are left out, because the chapters above say them from your Mac's report, over the 158 sessions it read.",
+      "Ranked by the server, most unusual first, over all 171 sessions it holds. 4 more it ranked are left out, because the chapters above say them from your Mac's report, over the 158 sessions it read.",
     );
     const text = strings(model.standsOut).join(' ');
-    expect(text).not.toMatch(/tool calls per prompt|runs without you|of output tokens|lines an hour/);
+    expect(text).not.toMatch(/tool calls per prompt|runs without you|lines an hour/);
+    expect(text).toMatch(/of output tokens/);
+  });
+
+  test('the output token share is said nowhere above, so it is not claimed as said', () => {
+    // The Money chapter's ring and its rows: dollars, and each model's output tokens as a count.
+    const money = strings(model.money).join(' ');
+    expect(money).not.toMatch(/\d+% of (the )?output tokens/);
   });
 
   test('with no report, every fact the server ranked is shown', () => {
@@ -474,6 +483,12 @@ describe('tool calls a prompt: one rule, and an old report says what differs', (
     const t = analysisModel(same, P, NOW).trends.trends.find((x) => x.key === 'iteration_depth')!;
     expect(t.nowText).toBe(n(depth));
     expect(t.note).toBeNull();
+    // A report now ships each trend's measurement unrounded (analysis/report.py `_trend`): 11.83
+    // beside a card's 11.8 is one number said once, and no note.
+    const exact = { ...B, report: { ...r, trends: r.trends.map((x) => (x.metric === 'iteration_depth' ? { ...x, now: depth + 0.03 } : x)) } } as BuilderProfileResponse;
+    const u = analysisModel(exact, P, NOW).trends.trends.find((x) => x.key === 'iteration_depth')!;
+    expect(u.nowText).toBe(n(depth));
+    expect(u.note).toBeNull();
   });
 
   test('a move is said by the one rounding rule, as trends.headline says it', () => {
@@ -481,5 +496,22 @@ describe('tool calls a prompt: one rule, and an old report says what differs', (
     const m = analysisModel({ ...B, report: { ...B.report!, trends: [t] } } as BuilderProfileResponse, P, NOW);
     expect(m.trends.trends[0]!.words).toBe('up 15%');
     expect(m.trends.trends[0]!.move?.final).toBe('up 15%');
+  });
+});
+
+describe('a share is rounded once, from what was counted (review, 2026-09-14)', () => {
+  test('a burn cause is its tokens over the barren tokens, not a percent of a share rounded to three places', () => {
+    // 1,245 of 10,000 barren tokens is 12.45%: shipped as 0.125 (a tie, up), a percent of that is 13%.
+    const c = { tokens: 1245, share: 0.125 };
+    expect(pct(causeShare(c, 10_000))).toBe('12%');
+    expect(pct(c.share)).toBe('13%');
+    // With no counts, the shipped share is all there is.
+    expect(causeShare(c, null)).toBe(0.125);
+    expect(causeShare(c, 0)).toBe(0.125);
+  });
+
+  test('a trend says its measurements once: 0.2245 is 22%', () => {
+    expect(trendValue('night_share', 0.2245)).toBe('22%');
+    expect(trendValue('night_share', 0.225)).toBe('23%');
   });
 });

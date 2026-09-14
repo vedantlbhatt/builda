@@ -453,3 +453,122 @@ class TheWire(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+#: A read only command the length of most of the corpus's: an absolute path, a search, a page
+#: of it and the file's history. FOUND IN REVIEW (2026-09-14): 10,313 of 14,100 shell calls under
+#: ~/.claude/projects are longer than the 160 characters the digest keeps, and deciding "read
+#: only" on the kept text refused every one of them.
+_LONG_READ = (
+    "cd /Users/someone/Downloads/projects/tramline/backend && grep -rn \"shadow_walk\" --include=*.py "
+    "services/ routes/ | head -40 && git log --oneline -20 -- services/route_service.py"
+)
+#: The same command, then a write the kept 160 characters do not reach: a redirection into a file.
+_LONG_WRITE = _LONG_READ + " && ./scripts/regen_routes.sh > services/route_table.py"
+
+
+def _sitting_of(commands: list[str]):
+    """A sitting read back through the REAL parser: eight edits the parser can see, then one
+    Bash call every 30 seconds for each of `commands`."""
+    from analysis import digest as dg
+    from analysis.tests import transcripts as tr
+
+    b = tr.Builder()
+    t = 0.0
+    b.prompt(t, "find where the shadow walk is decided")
+    for i in range(8):
+        t += 20
+        b.edit(t, f"/nonexistent/repo/backend/f{i}.py", added=4, removed=1)
+    for cmd in commands:
+        t += 30
+        b.bash(t, cmd)
+    path = tr.write_transcript(b.records)
+    events = dg.load_claude_code_events(path)
+    return events, pt.SessionEvents(
+        session_id="long-commands",
+        started_at=events[0].ts,
+        ended_at=events[-1].ts,
+        active_seconds=events[-1].ts - events[0].ts,
+        attended_seconds=events[-1].ts - events[0].ts,
+        tz_offset_minutes=0,
+        events=events,
+    )
+
+
+class LongCommandsAreJudgedWhole(unittest.TestCase):
+    """Whether a shell call could have changed a file is decided on the WHOLE command, by the
+    loader that has it (`digest.shell_reads_only`, stored as `Ev.reads_only`), never on the 160
+    characters the digest keeps."""
+
+    def test_both_commands_are_cut_in_the_digest_and_look_the_same_in_what_it_kept(self):
+        from analysis import digest as dg
+
+        self.assertGreater(len(_LONG_READ), dg.COMMAND_MAX)
+        self.assertGreater(len(_LONG_WRITE), dg.COMMAND_MAX)
+        # What the digest keeps of the two is the same, so no rule reading it could tell them apart.
+        kept = [dg.clip(c, dg.COMMAND_MAX) for c in (_LONG_READ, _LONG_WRITE)]
+        self.assertTrue(all(dg.is_cut(k) for k in kept))
+        self.assertEqual(kept[0].split("…")[0], kept[1].split("…")[0])
+        self.assertTrue(dg.shell_reads_only(_LONG_READ))
+        self.assertFalse(dg.shell_reads_only(_LONG_WRITE))
+
+    def test_a_long_read_only_stretch_is_said(self):
+        events, s = _sitting_of([_LONG_READ] * 45)
+        shells = [e for e in events if e.tool == "Bash"]
+        self.assertEqual(len(shells), 45)
+        from analysis import digest as dg
+
+        self.assertTrue(all(dg.is_cut(e.text) and e.reads_only is True for e in shells))
+        got = by(fb.notes(s), "went_nowhere")
+        self.assertIsNotNone(got)
+        self.assertEqual((got.numbers["runs"], got.numbers["worst_calls"]), (1, 45))
+
+    def test_a_long_command_that_writes_ends_the_stretch_it_is_in(self):
+        commands = [_LONG_WRITE if i % 5 == 4 else _LONG_READ for i in range(45)]
+        events, s = _sitting_of(commands)
+        self.assertEqual([e.reads_only for e in events if e.tool == "Bash"].count(False), 9)
+        self.assertEqual([c for c, _ in pt._runs_with_nothing_to_show(s)], [4] * 9)
+        self.assertIsNone(by(fb.notes(s), "went_nowhere"))
+
+    def test_an_event_no_loader_decided_falls_back_to_the_kept_text_and_refuses_a_cut_one(self):
+        from analysis import burn
+        from analysis import digest as dg
+
+        cut = dg.clip(_LONG_READ, dg.COMMAND_MAX)
+        self.assertTrue(burn._could_write_unseen(Ev(1, T0, "tool", cut, tool="Bash")))
+        self.assertFalse(burn._could_write_unseen(Ev(1, T0, "tool", cut, tool="Bash", reads_only=True)))
+        self.assertTrue(burn._could_write_unseen(Ev(1, T0, "tool", "ls", tool="Bash", reads_only=False)))
+
+
+class TheReadOnlyRuleIsOneRule(unittest.TestCase):
+    """`digest.shell_reads_only` gives the expected answer on every case the Swift twin is held
+    to, and the fixture the Swift tests read is what Python says today (`make gen` writes it)."""
+
+    def test_python_gives_the_expected_answer_on_every_case(self):
+        from analysis import digest as dg
+        from analysis.tests import reads_only_fixture as fx
+
+        for command, expected in fx.CASES:
+            self.assertEqual(dg.shell_reads_only(command), expected, command)
+
+    def test_the_fixture_the_swift_twin_reads_is_current(self):
+        from analysis.tests import reads_only_fixture as fx
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "spec" / "fixtures" / "digest" / "reads_only.json"
+        self.assertEqual(json.loads(path.read_text()), fx.entries())
+
+
+class TheWireSecondsAreRoundedOnce(unittest.TestCase):
+    """FOUND IN REVIEW (2026-09-14): 3,929.6 s rounded to 3,930 on the wire and then to minutes
+    on the phone, "1h 06m" there and "1h 05m" here. The wire floors, so the one rounding is the
+    minutes', and it lands where this machine's does for every second of an hour."""
+
+    def test_the_example(self):
+        self.assertEqual(fb.wire_seconds(3929.6), 3929)
+        self.assertEqual(fb._mins(3929.6), "1h 05m")
+        self.assertEqual(fb._mins(fb.wire_seconds(3929.6)), "1h 05m")
+
+    def test_the_floor_never_moves_the_minutes(self):
+        for tenth in range(0, 2 * 3600 * 10):
+            x = tenth / 10
+            self.assertEqual(fb._mins(fb.wire_seconds(x)), fb._mins(x), x)

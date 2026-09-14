@@ -876,4 +876,22 @@ def content_hash(payload: dict) -> str:
     import json
 
     body = {k: v for k, v in payload.items() if k not in _VOLATILE}
+    rules = _derived_rules()
+    if rules:
+        # What this machine DERIVES into the payload (the feedback notes) moves when its rules
+        # do, not only when the transcript does, and a sitting whose hash did not move is
+        # skipped by `/v1/sync/known`: the rules' version is in the hash, never on the wire
+        # (the contract has no field for it; the server compares hashes and nothing else).
+        body = {"payload": body, "rules": rules}
     return identity.sha256_hex(json.dumps(body, sort_keys=True, separators=(",", ":")))
+
+
+def _derived_rules() -> dict[str, int]:
+    """The versions of the rules that derive a payload's fields on this machine
+    (`analysis.feedback.RULES_VERSION`), or nothing in a deployment without `analysis`,
+    which derives none of them."""
+    try:
+        from analysis import feedback as fb
+    except ImportError:  # pragma: no cover - deployment shape, not logic
+        return {}
+    return {"feedback": fb.RULES_VERSION}

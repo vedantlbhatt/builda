@@ -424,3 +424,53 @@ describe('the Sessions list reads further back (session/listReach.ts)', () => {
     expect(cache.syncedFirstPage()).toBeNull();
   });
 });
+
+describe('the saved rows answer to the server over the stretch a page covered (review, 2026-09-14)', () => {
+  const at = (d: string) => `2026-08-${d}T10:00:00-04:00`;
+  function pageApi(rowsFor: (o: { before?: string | null; notable_only?: boolean }) => { sessions: SessionDetail[]; next_before: string | null }) {
+    return {
+      sessions: async (o: { before?: string | null; notable_only?: boolean }) => rowsFor(o),
+      liveSessions: async () => ({ sessions: [] }),
+      session: async (id: string) => session(id, { strip: null, stats: null }),
+    } as unknown as Api;
+  }
+
+  test('a session the server deleted (an excluded repository) leaves the saved list, and one outside the page stays', async () => {
+    await cache.clear();
+    // Saved earlier: five finished sessions, Aug 10 to Aug 14; the server has since deleted Aug 12's.
+    for (const d of ['10', '11', '12', '13', '14']) await cache.putDetail(session(`s${d}`, { started_at: at(d), strip: null, notable: false }));
+    const server = ['s14', 's13', 's11', 's10'].map((id) => session(id, { started_at: at(id.slice(1)), notable: false }));
+    // One page before Aug 15, the last: it answers for everything before then.
+    const api = pageApi(() => ({ sessions: server, next_before: null }));
+    await cache.readPage(api, { before: at('15'), notableOnly: false, limit: 50 });
+    expect((await cache.listFinished('every', null, 100)).map((s) => s.id)).toEqual(['s14', 's13', 's11', 's10']);
+  });
+
+  test('a page with more to come answers only for the stretch after its oldest row', async () => {
+    await cache.clear();
+    for (const d of ['10', '11', '12', '13', '14']) await cache.putDetail(session(`s${d}`, { started_at: at(d), strip: null, notable: false }));
+    // The page returns Aug 14 and 13 and says there is more: Aug 12, 11 and 10 are the next page's.
+    const api = pageApi(() => ({ sessions: [session('s14', { started_at: at('14'), notable: false }), session('s13', { started_at: at('13'), notable: false })], next_before: at('13') }));
+    await cache.readPage(api, { before: null, notableOnly: false, limit: 2 });
+    expect((await cache.listFinished('every', null, 100)).map((s) => s.id)).toEqual(['s14', 's13', 's12', 's11', 's10']);
+  });
+
+  test('one no longer listed as a session you were there for keeps its place in every session, and leaves the other list', async () => {
+    await cache.clear();
+    for (const d of ['10', '11', '12']) await cache.putDetail(session(`s${d}`, { started_at: at(d), strip: null, notable: true }));
+    // The sync's first page: Aug 12 and 10 are still ones you were there for; Aug 11 is not, any more.
+    const api = pageApi(() => ({ sessions: [session('s12', { started_at: at('12') }), session('s10', { started_at: at('10') })], next_before: null }));
+    await cache.sync(api);
+    expect((await cache.listFinished('notable', null, 100)).map((s) => s.id)).toEqual(['s12', 's10']);
+    expect((await cache.listFinished('every', null, 100)).map((s) => s.id)).toEqual(['s12', 's11', 's10']);
+    expect((await cache.getDetail('s11'))?.notable).toBe(false);
+  });
+
+  test('a running session is never touched by a page of finished ones', async () => {
+    await cache.clear();
+    await cache.putDetail(session('running', { started_at: at('12'), state: 'live', notable: true }));
+    const api = pageApi(() => ({ sessions: [], next_before: null }));
+    await cache.readPage(api, { before: null, notableOnly: false, limit: 50 });
+    expect((await cache.listLive()).map((s) => s.id)).toEqual(['running']);
+  });
+});

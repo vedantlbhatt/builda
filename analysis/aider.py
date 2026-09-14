@@ -996,6 +996,7 @@ def _derive(s: Scan, start: float | None = None, end: float | None = None):
         if approx is not None:
             ev.added, ev.removed = approx, 0
         ev.text = dg.clip(command.replace("\n", " ⏎ "), dg.COMMAND_MAX)
+        ev.reads_only = dg.shell_reads_only(command)
         last_shell = source
         return ev
 

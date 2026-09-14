@@ -610,3 +610,23 @@ def test_quotes_are_served_to_their_owner_only_while_the_switch_is_on(client, cr
     assert client.get("/v1/profile/builder", headers=headers_b).json()["quotes"] is None
     # The profile tab's own request never carries them.
     assert "run the tests again" not in client.get("/v1/profile", headers=headers_a).text
+
+
+def test_the_server_only_rounding_is_the_one_rule():
+    """The server only image has no `analysis/`, and its fallback used Python's `round`, a tie
+    to the even digit: 72.25 said 72.2 there and 72.3 everywhere else (FOUND IN REVIEW,
+    2026-09-14). The fallback is the one rule's arithmetic, held to it here."""
+    import random
+
+    from builder import builder_profile as bp
+
+    plain = bp._profile_module().plain
+    rng = random.Random(20260914)
+    values = [72.25, 0.185, 2.675, 1.005, 0.5, 1.5, 2.5, -0.5, 3929.6, 0.0, 12.345]
+    values += [rng.uniform(-1000, 1000) for _ in range(2000)]
+    values += [round(rng.uniform(0, 100), 3) for _ in range(2000)]
+    for x in values:
+        for digits in (None, 0, 1, 2, 3):
+            assert bp._half_up(x, digits) == plain.rounded(x, digits), (x, digits)
+    assert bp._half_up(72.25, 1) == 72.3
+    assert bp._half_up(7, 2) == 7

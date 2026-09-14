@@ -39,7 +39,7 @@ import { archetypeView, sourceLine, type ArchetypeView } from './archetype';
 import { dimensionsBasis, dimensionsPending, dimensionViews, modalArchetypeLine, topDimension } from './dimensions';
 import { glossaryView, type GlossaryMonth } from './glossary';
 import { everyPricedSessionCounted } from '../money/counted';
-import { apportion, dollarsOf, dollarUnit, shownUnits } from '../money/round';
+import { columnUnits, dollarsOf, dollarUnit, shownUnits } from '../money/round';
 import { corpusBurn, corpusMoney, moneyView } from './money';
 import { stackView } from './stack';
 
@@ -196,14 +196,16 @@ export function moneyPage(b: BuilderProfileResponse, now: number = Date.now()): 
     };
   });
   models.sort((x, y) => y.usd - x.usd);
-  // Parts of the hero total add up to it as it is shown (`money/round.apportion`): FOUND IN REVIEW
-  // (2026-09-13) the ring read $2,263 + $241 + $10.98 under $2,516. The page hands the flow's own
-  // rounding to the ring when the flow is drawn, so the two never read one model two ways.
+  // Parts of the hero total add up to it as it is shown: each model its own nearest dollar when
+  // those add up, the largest remainder method only when they cannot (`money/round.columnUnits`,
+  // the chart's rule for every column). FOUND IN REVIEW (2026-09-13) the ring read $2,263 + $241 +
+  // $10.98 under $2,516. The page hands the flow's figures to the ring when the flow is drawn.
   if (view.usd !== null && models.length) {
     const unit = dollarUnit(view.usd);
-    const shown = apportion(
-      models.map((x) => Math.max(0, x.usd) / unit),
+    const shown = columnUnits(
+      models.map((x) => Math.max(0, x.usd)),
       shownUnits(view.usd, unit),
+      unit,
     );
     models.forEach((x, i) => {
       x.num = numSpec(shown[i]! * unit, dollarsOf(shown[i]!, unit, x.usd));

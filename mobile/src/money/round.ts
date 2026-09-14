@@ -7,19 +7,23 @@
  * which is $2,264. Each figure was rounded alone (`copy/money.dollars`), which is right for a figure
  * standing alone and wrong for parts of a whole shown beside it.
  *
- * TWO RULES, ONE IDEA. Every part is the floor or the ceiling of its true value, so no figure is off
+ * THE RULES, ONE IDEA. Every part is the floor or the ceiling of its true value, so no figure is off
  * by a dollar or more, and the parts sum to the whole as it is shown:
  *
- *   `apportion`  one sum: the largest remainder method (Hamilton's). The whole's shortfall from the
- *                parts' floors goes a unit at a time to the parts with the largest remainders.
- *   `roundFlow`  a whole flow at once: every stream, and so every node, a floor or a ceiling, every
- *                node passing on exactly what it takes in, and the total the page's total. Rounding
- *                each column alone cannot promise that: a stream that is a project's only one could
- *                read $162 in its model's sentence and $161 as the project. A flow can always be
- *                rounded this way (the integrality of network flows); among the roundings, the one
- *                with the least total error is found as a min cost flow in which rounding a stream up
- *                costs 1 - 2r for its remainder r, which is exactly the largest remainder method when
- *                there is one sum.
+ *   `columnUnits`  a column of a chart: each part its own nearest unit, as every other page rounds
+ *                  it, when those add up to the whole; the largest remainder method only when they
+ *                  cannot, and then in that column alone. So a project reads the same here and on
+ *                  its own page (review, 2026-09-13: "two counters for one number").
+ *   `apportion`    one sum: the largest remainder method (Hamilton's). The whole's shortfall from the
+ *                  parts' floors goes a unit at a time to the parts with the largest remainders.
+ *   `roundTable`   the streams between two columns, fitted to the columns' figures: controlled
+ *                  rounding of a two way table to whole number margins, every row and every column
+ *                  exact, so each tap's sentence adds up to the node it opens with and a project's
+ *                  only stream reads as the project.
+ *   `roundFlow`    the engine under `roundTable`: a flow rounded at once, every edge a floor or a
+ *                  ceiling, every node passing on exactly what it takes in, some edges pinned; the
+ *                  rounding with the least total error is a min cost flow in which rounding an edge
+ *                  up costs 1 - 2r for its remainder r (the largest remainder method, for one sum).
  *
  * THE UNIT is the shown whole's: whole dollars from $100, cents below (`copy/money.dollars`), so a
  * $10.98 part of a $2,516 whole reads $11. A part that is a positive amount and rounds to nothing
@@ -66,6 +70,101 @@ export function apportion(parts: readonly number[], whole: number): number[] {
     if (out[i]! > 0) {
       out[i]! -= 1;
       left += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * One column of a chart, each part as it is shown everywhere else: its own nearest unit (the
+ * rounding `dollars` does, half even), so a project reads here exactly as on its own page. Only
+ * when those cannot add up to the column's `whole` does the column fall back to the largest
+ * remainder method, and then that column alone. FOUND IN REVIEW (2026-09-13): rounding the whole
+ * flow around a pinned first column put a project at $161 in the chart and $162 on its own page,
+ * two counters for one number.
+ */
+export function columnUnits(parts: readonly number[], whole: number, unit: number): number[] {
+  const own = parts.map((p) => shownUnits(p, unit));
+  if (own.reduce((s, u) => s + u, 0) === whole) return own;
+  return apportion(
+    parts.map((p) => p / unit),
+    whole,
+  );
+}
+
+export interface TableCell {
+  id: string;
+  row: string;
+  col: string;
+  /** In units, not rounded. */
+  value: number;
+}
+
+/**
+ * Controlled rounding of a two way table to whole number margins already chosen for its rows and
+ * its columns: every cell the floor or the ceiling of its value, every row and every column adding
+ * up to its margin exactly, and of all such tables the one with the least total error (the min cost
+ * flow `roundFlow` finds, with the margins pinned). Null when the margins leave no way to do it,
+ * which a margin that is the floor or the ceiling of its own row or column never does in practice;
+ * `roundRows` is then the fallback, every row still exact.
+ */
+export function roundTable(cells: readonly TableCell[], rows: ReadonlyMap<string, number>, cols: ReadonlyMap<string, number>): Map<string, number> | null {
+  const rowsTotal = [...rows.values()].reduce((s, u) => s + u, 0);
+  const colsTotal = [...cols.values()].reduce((s, u) => s + u, 0);
+  if (rowsTotal !== colsTotal) return null;
+  const rowReal = new Map<string, number>();
+  const colReal = new Map<string, number>();
+  for (const c of cells) {
+    rowReal.set(c.row, (rowReal.get(c.row) ?? 0) + c.value);
+    colReal.set(c.col, (colReal.get(c.col) ?? 0) + c.value);
+  }
+  const S = 'table:rows';
+  const T = 'table:cols';
+  const edges: FlowEdge[] = [];
+  const pins = new Map<string, number>();
+  for (const [r, u] of rows) {
+    edges.push({ id: `row:${r}`, from: S, to: `row:${r}`, value: rowReal.get(r) ?? 0 });
+    pins.set(`row:${r}`, u);
+  }
+  for (const c of cells) edges.push({ id: `cell:${c.id}`, from: `row:${c.row}`, to: `col:${c.col}`, value: c.value });
+  for (const [col, u] of cols) {
+    edges.push({ id: `col:${col}`, from: `col:${col}`, to: T, value: colReal.get(col) ?? 0 });
+    pins.set(`col:${col}`, u);
+  }
+  const r = roundFlow(edges, S, T, rowsTotal, pins);
+  if (!r) return null;
+  return new Map(cells.map((c) => [c.id, r.get(`cell:${c.id}`)!]));
+}
+
+/**
+ * Each row's cells apportioned to its margin alone (the largest remainder method), for margins no
+ * table can meet (the rows and the columns add up to different wholes). Every row stays exact; a
+ * column with ONE cell is then made to read as its own margin when its row can trade the unit with
+ * a cell that stays within its floor and ceiling, so a project's only stream still reads as the
+ * project.
+ */
+export function roundRows(cells: readonly TableCell[], rows: ReadonlyMap<string, number>, cols?: ReadonlyMap<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [r, u] of rows) {
+    const mine = cells.filter((c) => c.row === r);
+    apportion(
+      mine.map((c) => c.value),
+      u,
+    ).forEach((v, i) => out.set(mine[i]!.id, v));
+  }
+  if (!cols) return out;
+  const inCol = (col: string) => cells.filter((c) => c.col === col);
+  const within = (c: TableCell, v: number) => v >= Math.floor(c.value + EPS) && v <= Math.ceil(c.value - EPS);
+  for (const [col, want] of cols) {
+    const only = inCol(col);
+    if (only.length !== 1) continue;
+    const c = only[0]!;
+    const d = want - out.get(c.id)!;
+    if (d === 0 || Math.abs(d) !== 1 || !within(c, want)) continue;
+    const trade = cells.find((o) => o.row === c.row && o.id !== c.id && inCol(o.col).length > 1 && within(o, out.get(o.id)! - d));
+    if (trade) {
+      out.set(c.id, want);
+      out.set(trade.id, out.get(trade.id)! - d);
     }
   }
   return out;

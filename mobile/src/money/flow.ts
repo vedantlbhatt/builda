@@ -22,9 +22,11 @@
  *               report sends is checked against it (`counted.ts`), and a project where it does not
  *               hold keeps the rest as "not known".
  *
- * EVERY FIGURE IS ROUNDED WITH THE REST (`round.ts roundFlow`): every stream a floor or a ceiling,
- * every node passing on what it takes in, the total the page's total, so the parts a person reads
- * add up to the whole they read, in every column and every sentence.
+ * EVERY FIGURE ADDS UP, AND READS AS IT DOES ELSEWHERE (`round.ts`): each node is its own nearest
+ * dollar, as its own page rounds it, unless its column's nearest dollars cannot add up to the
+ * total, when that column alone takes the largest remainder method; the streams, which only tap
+ * sentences show, are fitted to the nodes as a two way table, so every sentence adds up to the node
+ * it opens with.
  *
  * WHERE THE REPORT HAS NO JOIN, NOTHING IS SPLIT. Three joins are missing and each is a sentence
  * saying what it would need, never an invented split:
@@ -58,7 +60,7 @@ import { GROUND, type Hue } from '../insights/palette';
 import { projectLabels, type ProjectRegistry } from '../projects/model';
 import { listOf } from '../stack/model';
 import { everyPricedSessionCounted } from './counted';
-import { apportion, dollarsOf, dollarUnit, roundFlow, shownUnits, type FlowEdge } from './round';
+import { apportion, columnUnits, dollarsOf, dollarUnit, roundRows, roundTable, shownUnits, type TableCell } from './round';
 
 // ------------------------------------------------------------------ what the flow is made of
 
@@ -343,34 +345,68 @@ export function moneyFlow(
   const ended: Record<OutcomeKey, number> = { commit: 0, none: 0, unsplit: 0 };
   for (const p of projects) for (const k of OUTCOMES) ended[k] += p.ending[k];
 
-  // ---- every figure rounded at once, so the parts a person reads add up to the whole they read
+  // ---- every figure rounded so a person can add them up, and reads as it does everywhere else
+  //
+  // NODES FIRST, EACH AS ITSELF. A node shows its own nearest dollar, the rounding every other page
+  // gives the same figure (`dollars`): a model its `by_model` row, a project its own money block's
+  // total, an ending its sum. A column whose nearest dollars cannot add up to its whole falls back
+  // to the largest remainder method in that column alone (`round.columnUnits`), EXCEPT the
+  // projects: each project has its own page, and FOUND IN REVIEW (2026-09-13) Private project 2
+  // read $161 here and $162 there, from $161.53 ("two counters for one number is the same bug as
+  // a wrong number"). When the projects' own dollars cannot make the total (live, the same day:
+  // $2,324.90 and $161.53 are $2,325 and $162, $2,487 against $2,486), NO rounding of that column
+  // can agree with both pages and the total, so each project keeps its page's figure and a line
+  // under the chart says what the column comes to. The endings are rounded to the projects'
+  // column, so the right half of the flow still adds up across.
+  //
+  // THE STREAMS FIT THE NODES. A stream appears only in a tap's sentence, and every such sentence
+  // lists one node's streams, so the streams between two columns are rounded as a two way table to
+  // the nodes' own figures (`round.roundTable`): each a floor or a ceiling, every row and column
+  // exact. Each sentence then adds up to the node it opens with, and a project's only stream reads
+  // as the project. When the two columns come to different wholes, each row is still apportioned to
+  // its own node, a lone stream still made to read as its node (`round.roundRows`).
   const unit = dollarUnit(total);
-  const edges: FlowEdge[] = [];
-  for (const mo of flowing) edges.push({ id: `in>model:${mo.key}`, from: 'in', to: `model:${mo.key}`, value: modelFlow.get(mo.key)! / unit });
-  for (const p of projects) {
-    for (const mo of flowing) {
-      const usd = p.byModel.get(mo.key) ?? 0;
-      if (usd > 0) edges.push({ id: `model:${mo.key}>${p.id}`, from: `model:${mo.key}`, to: p.id, value: usd / unit });
-    }
-    for (const k of OUTCOMES) if (p.ending[k] > 0) edges.push({ id: `${p.id}>outcome:${k}`, from: p.id, to: `outcome:${k}`, value: p.ending[k] / unit });
-  }
-  for (const k of OUTCOMES) if (ended[k] > 0) edges.push({ id: `outcome:${k}>out`, from: `outcome:${k}`, to: 'out', value: ended[k] / unit });
   const flowTotal = [...modelFlow.values()].reduce((s, v) => s + v, 0);
   let target = shownUnits(total, unit);
   if (Math.abs(target - flowTotal / unit) >= 1) target = Math.round(flowTotal / unit);
-  // The models, the column a person sets beside the total and the ring above, by the largest
-  // remainder method; everything after them rounded around that. Should the pins leave the rest no
-  // way to balance, the whole flow is rounded freely (still every sum exact), then naively.
-  const pins = new Map(apportion(flowing.map((mo) => modelFlow.get(mo.key)! / unit), target).map((u, i) => [`in>model:${flowing[i]!.key}`, u]));
-  const rounded = roundFlow(edges, 'in', 'out', target, pins) ?? roundFlow(edges, 'in', 'out', target) ?? new Map(edges.map((e) => [e.id, Math.round(e.value)]));
-  const unitsOf = (id: string) => rounded.get(id) ?? 0;
+  const ownOf = (keys: readonly string[], reals: readonly number[], whole: number) => {
+    const u = columnUnits(reals, whole, unit);
+    return new Map(keys.map((k, i) => [k, u[i]!]));
+  };
+  const modelU = ownOf(
+    flowing.map((mo) => `model:${mo.key}`),
+    flowing.map((mo) => mo.usd),
+    target,
+  );
+  const projectU = new Map(projects.map((p) => [p.id, shownUnits(p.usd, unit)]));
+  const projectsWhole = [...projectU.values()].reduce((s, u) => s + u, 0);
+  const endKeys = OUTCOMES.filter((k) => ended[k] > 0);
+  const outcomeU = ownOf(
+    endKeys.map((k) => `outcome:${k}`),
+    endKeys.map((k) => ended[k]),
+    projectsWhole,
+  );
+  const intoProjects: TableCell[] = [];
+  const intoEndings: TableCell[] = [];
+  for (const p of projects) {
+    for (const mo of flowing) {
+      const usd = p.byModel.get(mo.key) ?? 0;
+      if (usd > 0) intoProjects.push({ id: `model:${mo.key}>${p.id}`, row: `model:${mo.key}`, col: p.id, value: usd / unit });
+    }
+    for (const k of endKeys) if (p.ending[k] > 0) intoEndings.push({ id: `${p.id}>outcome:${k}`, row: p.id, col: `outcome:${k}`, value: p.ending[k] / unit });
+  }
+  const rounded = new Map<string, number>([
+    ...(roundTable(intoProjects, modelU, projectU) ?? roundRows(intoProjects, modelU, projectU)),
+    ...(roundTable(intoEndings, projectU, outcomeU) ?? roundRows(intoEndings, projectU, outcomeU)),
+  ]);
+  const unitsOf = (id: string) => rounded.get(id) ?? modelU.get(id) ?? projectU.get(id) ?? outcomeU.get(id) ?? 0;
   const shownOf = (id: string, real: number) => dollarsOf(unitsOf(id), unit, real);
   const figureOf = (units: number, real: number) => {
     const text = dollarsOf(units, unit, real);
     return numSpec(units * unit, text);
   };
   const totalText = dollarsOf(target, unit, total);
-  const projectUnits = (p: ProjectIn) => flowing.reduce((s, mo) => s + unitsOf(`model:${mo.key}>${p.id}`), 0);
+  const projectUnits = (p: ProjectIn) => projectU.get(p.id) ?? 0;
 
   // ---- 0: the token buckets, in tokens
   const buckets = page.buckets.filter((x) => x.tokens > 0);
@@ -423,7 +459,7 @@ export function moneyFlow(
   // ---- 1: the models, in dollars
   for (const mo of flowing) {
     const hue = modelHue.get(mo.key)!;
-    const own = unitsOf(`in>model:${mo.key}`);
+    const own = modelU.get(`model:${mo.key}`) ?? 0;
     const into = projects
       .filter((p) => (p.byModel.get(mo.key) ?? 0) > 0)
       .map((p) => `${shownOf(`model:${mo.key}>${p.id}`, p.byModel.get(mo.key)!)} into ${p.label}`);
@@ -509,7 +545,7 @@ export function moneyFlow(
   const inWhich = (from: string[]) => (from.length === 1 ? `in ${from[0]}` : `across ${listOf(from)}`);
   for (const k of OUTCOMES) {
     if (ended[k] <= 0) continue;
-    const own = unitsOf(`outcome:${k}>out`);
+    const own = outcomeU.get(`outcome:${k}`) ?? 0;
     const said = dollarsOf(own, unit, ended[k]);
     nodes.push({
       id: `outcome:${k}`,
@@ -556,6 +592,13 @@ export function moneyFlow(
   const floorProjects = projects.filter((p) => p.ending.unsplit > 0 && p.members === 1 && p.ending.none === 0 && p.id !== 'project:elsewhere');
   if (floorProjects.length) {
     notes.push(`${floorProjects.map((p) => unsplitWords(p, 'long')).join(' ')} This chart splits only the projects with enough sessions to split; Where it went, further down, counts every priced session together.`);
+  }
+  if (projectsWhole !== target) {
+    // Said, never hidden: each project keeps its own page's figure, and the column is a rounding
+    // dollar (or more) off the total.
+    const off = projectsWhole - target;
+    const by = unit === 1 && Math.abs(off) === 1 ? 'a dollar' : dollarsOf(Math.abs(off), unit, Math.abs(off) * unit);
+    notes.push(`Each project here reads as its own page rounds it, so together they come to ${dollarsOf(projectsWhole, unit, projectsWhole * unit)}, ${by} ${off > 0 ? 'over' : 'under'} the ${totalText} total.`);
   }
   if (elsewhereUsd > tolerance) {
     const said = dollarsOf(projectUnits(projects.find((p) => p.id === 'project:elsewhere')!), unit, elsewhereUsd);

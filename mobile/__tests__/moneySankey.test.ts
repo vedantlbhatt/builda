@@ -37,7 +37,7 @@ import {
   type MoneyFlow,
   type Ribbon,
 } from '../src/money/flow';
-import { apportion, dollarsOf, dollarUnit, roundFlow, shownUnits } from '../src/money/round';
+import { apportion, columnUnits, dollarsOf, dollarUnit, roundFlow, roundRows, roundTable, shownUnits } from '../src/money/round';
 import { moneyPage } from '../src/you/chapters';
 
 const NOW = Date.parse('2026-09-13T20:00:00Z');
@@ -446,9 +446,9 @@ describe('the curve a tap is tested against is the curve that is drawn', () => {
     expect(sentenceOf(f, null)).toBe(f.summary);
     expect(sentenceOf(f, 'grey')).toBe(f.grey!.sentence);
     expect(sentenceOf(f, 'fan:model:claude-fable-5')).toBe(f.nodes.find((x) => x.id === 'model:claude-fable-5')!.sentence);
-    // $2,136 for 2,135.35: rounded with the rest of the flow, so this stream and the project's other
-    // two add up to the project, and Opus 5's two add up to Opus 5 (`round.roundFlow`).
-    expect(sentenceOf(f, `model:claude-opus-5>project:${KEY_A}`)).toBe("Opus 5 into Private project\u00a01: $2,136 at list prices, 93% of Opus 5's dollars and 89% of the project's.");
+    // The streams are fitted to the nodes (`round.roundTable`, else row by row): Opus 5's two add up
+    // to Opus 5, and this one keeps its own nearest dollar.
+    expect(sentenceOf(f, `model:claude-opus-5>project:${KEY_A}`)).toBe("Opus 5 into Private project\u00a01: $2,135 at list prices, 93% of Opus 5's dollars and 89% of the project's.");
   });
 });
 
@@ -629,5 +629,87 @@ describe('words a person would say', () => {
     expect(counted && !isRefused(counted) ? counted.rest : null).toBe('on sessions that ended with no commit, 7% of every dollar at API list prices');
     const partly = moneyPage(builder({ money: { ...MONEY, share_without_a_commit: 0.2 } }), NOW)!.without;
     expect(partly && !isRefused(partly) ? partly.rest : null).toBe('on sessions that ended with no commit, 20% of the dollars on sessions with a commit count');
+  });
+});
+
+// ------------------------------------------------------------------ one project, one figure, on every page
+
+describe('a project reads the same dollars here as on its own page (review, 2026-09-13)', () => {
+  const r = (model: PricedModel, usd: number) => ({ model, usd, output_tokens: 1, sessions: 1, sessions_dominated: 1, commits: 1, usd_per_commit: null });
+  /** The live shape: a big project on three models and a small one under the floor, on Opus 5 alone. */
+  function live(total: number, opus: number, a: number, aOpus: number) {
+    const money: ReportMoney = { ...MONEY, usd: total, by_model: [{ ...MONEY.by_model[0]!, usd: opus }, { ...MONEY.by_model[1]!, usd: 241.41 }, { ...MONEY.by_model[2]!, usd: 10.98 }] };
+    const projects = projectsBlock({}, [
+      { key: KEY_A, rank: 1, history: { first_at: '2026-08-12T00:44:30Z' }, window: { sessions: 135, harnesses: [], money: projectMoney({ usd: a, priced_sessions: 134, usd_without_a_commit: 149.03, share_without_a_commit: Math.round((149.03 / a) * 1000) / 1000, by_model: [r('claude-opus-5', aOpus), r('claude-fable-5', 241.41), r('claude-fable-5-1', 10.98)] }) } },
+      { key: KEY_B, rank: 2, history: { first_at: '2026-08-16T01:07:09Z' }, window: { sessions: 5, harnesses: [], money: projectMoney({ usd: 161.53, priced_sessions: 5, usd_without_a_commit: null, share_without_a_commit: null, by_model: [r('claude-opus-5', 161.53)] }) } },
+    ]);
+    return { b: builder({ money, projects }), f: flowOf(builder({ money, projects })) };
+  }
+  const shown = (x: { figure: { final: string } }) => Number(x.figure.final.replace(/[$,]/g, ''));
+  const node = (f: MoneyFlow, id: string) => f.nodes.find((x) => x.id === id)!;
+  const amounts = (s: string) => [...s.matchAll(/\$([\d,]+)/g)].map((m) => Number(m[1]!.replace(/,/g, '')));
+  const everyProjectAsItsPage = (b: BuilderProfileResponse, f: MoneyFlow) => {
+    for (const p of b.report!.projects!.projects) {
+      const usd = p.window?.money.usd;
+      if (typeof usd !== 'number') continue;
+      expect({ key: p.key.slice(0, 6), chart: node(f, `project:${p.key}`).figure.final }).toEqual({ key: p.key.slice(0, 6), chart: dollars(usd) });
+    }
+  };
+
+  test('the case reported: $161.53 read $161 in the chart and $162 on its page; now $162 in both', () => {
+    // 2,324.47 + 161.53: the projects' own dollars, 2,324 + 162, make the $2,486 total.
+    const { b, f } = live(2486.0, 2233.61, 2324.47, 2072.08);
+    expect(node(f, `project:${KEY_B}`).figure.final).toBe('$162');
+    everyProjectAsItsPage(b, f);
+    expect(f.notes.join(' ')).not.toContain('own page rounds it');
+    expect(f.nodes.filter((x) => x.kind === 'project').reduce((s, x) => s + shown(x), 0)).toBe(2486);
+  });
+
+  test('the live report of 17:50: the projects\' own dollars cannot make the total, so each keeps its page\'s and the chart says what they come to', () => {
+    // 2,324.90 + 161.53 = 2,486.43, shown $2,486; their own dollars are 2,325 + 162 = 2,487. No
+    // rounding of that column agrees with both pages and the total: the pages win, said in words.
+    const { b, f } = live(2486.43, 2234.05, 2324.9, 2072.52);
+    expect(f.nodes.filter((x) => x.kind === 'project').map((x) => x.figure.final)).toEqual(['$2,325', '$162']);
+    everyProjectAsItsPage(b, f);
+    expect(f.notes).toContain('Each project here reads as its own page rounds it, so together they come to $2,487, a dollar over the $2,486 total.');
+    // The models still make the total; the endings are rounded to the projects' column.
+    expect(f.nodes.filter((x) => x.kind === 'model').reduce((s, x) => s + shown(x), 0)).toBe(2486);
+    expect(f.nodes.filter((x) => x.kind === 'outcome').map((x) => x.figure.final)).toEqual(['$2,176', '$149', '$162']);
+    // Every tap sentence adds up to the node it opens with, and the lone stream reads as its project.
+    for (const x of f.nodes.filter((y) => y.kind === 'model' || y.id === `project:${KEY_A}`)) {
+      const [whole, ...parts] = amounts(x.sentence);
+      expect({ id: x.id, sum: parts.reduce((s, v) => s + v, 0) }).toEqual({ id: x.id, sum: whole! });
+    }
+    expect(amounts(f.links.find((l) => l.id === `model:claude-opus-5>project:${KEY_B}`)!.sentence)[0]).toBe(162);
+  });
+
+  test('every project in every report here reads as its own page', () => {
+    everyProjectAsItsPage(builder(), flowOf());
+    const { b, f } = live(2515.61, 2263.23, 2354.08, 2101.7);
+    everyProjectAsItsPage(b, f);
+  });
+});
+
+describe('controlled rounding of the streams', () => {
+  test('a two way table fitted to whole margins, every row and column exact', () => {
+    const cells = [
+      { id: 'a1', row: 'a', col: '1', value: 2101.7 },
+      { id: 'a2', row: 'a', col: '2', value: 161.53 },
+      { id: 'b1', row: 'b', col: '1', value: 241.41 },
+      { id: 'c1', row: 'c', col: '1', value: 10.98 },
+    ];
+    const t = roundTable(cells, new Map([['a', 2263], ['b', 242], ['c', 11]]), new Map([['1', 2354], ['2', 162]]))!;
+    expect(Object.fromEntries(t)).toEqual({ a1: 2101, a2: 162, b1: 242, c1: 11 });
+    // Margins that add up to different wholes: no table, rows still exact, the lone cell its margin.
+    expect(roundTable(cells, new Map([['a', 2263], ['b', 241], ['c', 11]]), new Map([['1', 2354], ['2', 162]]))).toBeNull();
+    const rows = roundRows(cells, new Map([['a', 2263], ['b', 241], ['c', 11]]), new Map([['1', 2354], ['2', 162]]));
+    expect(rows.get('a1')! + rows.get('a2')!).toBe(2263);
+    expect(rows.get('a2')).toBe(162);
+  });
+
+  test('a column\'s own nearest dollars when they make the whole, the largest remainder when they cannot', () => {
+    expect(columnUnits([2324.47, 161.53], 2486, 1)).toEqual([2324, 162]);
+    expect(columnUnits([2263.23, 241.41, 10.98], 2516, 1)).toEqual([2263, 242, 11]);
+    expect(columnUnits([2234.05, 241.41, 10.98], 2486, 1)).toEqual([2234, 241, 11]);
   });
 });

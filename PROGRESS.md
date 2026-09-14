@@ -164,7 +164,11 @@ section.
   spent token, and presenting it again was reuse: every token revoked, the person signed out by
   their own app. Now a spent token inside 60 s whose successor was never redeemed is a retry: the
   unused successor is revoked and a new one issued. Server 463 passed, lint clean, API restarted.
-  An adversarial review of the change is running.
+  An adversarial review broke it once (a thief refreshing during the revoke all kept a live chain,
+  a READ COMMITTED gap that predates the grace): FIXED in 3905eaa, one refresh at a time per device
+  (advisory lock), 0027 indexes device_tokens(device_id, prev_id), a test that fails without the lock.
+  Not done, a choice for later: reuse could also revoke the device, ending its 15 minute access
+  tokens at once. Re-review of the fix running.
 - Owner, 12:40: "we show the same analysis every single time: every session, the profile, each project";
   wants it pruned. PLAN, NOT BUILT, waiting for the owner's go (artifact "Builda, pruned",
   https://claude.ai/code/artifact/3a60d1dc-691d-4028-9516-ca5bdfe70fa4): one home per question. Projects

@@ -335,6 +335,15 @@ widget string scan passed because it read the Swift escape `\u{2212}` as six let
 rule on the phone now (`src/copy/plain.ts`, which the others import), the scan decodes
 escapes, and a removed count is `-88` on every surface.
 
+**A paragraph measured at exactly N lines can lose its last line, with no error.** React Native
+0.79 measures text and ceils it to the pixel, but Yoga then rounds a frame's two edges to the grid
+separately, so four lines of 23 points were framed 91.99975 tall, and `RCTTextLayoutManager` built
+its text container from that frame; NSLayoutManager lays out only lines that fit whole, so the
+sentence ended "and 118,884 toke" with nothing after it. Where a paragraph lands on screen decides
+whether it happens, so it is app wide and sporadic. `mobile/patches/react-native@0.79.6.patch`
+(bun's `patchedDependencies`) gives the container half a point of slack each way; checked on the
+simulator with the chapter's own JS workaround switched off: cut before, whole after.
+
 **A debug build's API address is baked in at build time, not served by Metro.** The
 simulator ran JavaScript from a Metro started with `BUILDER_API_URL=http://127.0.0.1:8787`
 and still called `localhost:8000` for everything: this is not a dev client build, and

@@ -120,6 +120,14 @@ section.
   the run with its log) and a storyboard scroll aimed at the chart's own words. A first try
   at build 5 and the re-shoot in parallel ran the Mac out of memory: heavy jobs run one at a
   time now, and idle simulators are shut down.
+- SECURITY, demos review (06:00), being fixed: `--repo` runs a stranger's code as the person with
+  no yes, only the dev server ever sandboxed, HOME and the network open (it could read ~/.ssh and
+  credentials); a repo's app.json scheme could pull any shell variable into a link its app sees;
+  production would serve demos from the public posts bucket; symlinks reach outside the clone; the
+  Vision check fails open on an unreadable image; secrets under other names reach the clone. Until
+  fixed, do not point `--repo` at anyone else's repository. The two published demos are the
+  owner's own code, their files carry no metadata, and nothing left this Mac. The phone showed one
+  project's pictures under another's name after switching; also being fixed.
 - The owner's phone: a Release build over a Cloudflare tunnel, installed over the air from
   a second tunnel serving an itms-services manifest (the device is in the development
   profile, so no App Store Connect). Build 3 (22:20) carries every fix above, the token chart

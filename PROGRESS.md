@@ -126,8 +126,10 @@ section.
   production would serve demos from the public posts bucket; symlinks reach outside the clone; the
   Vision check fails open on an unreadable image; secrets under other names reach the clone. Until
   fixed, do not point `--repo` at anyone else's repository. The two published demos are the
-  owner's own code, their files carry no metadata, and nothing left this Mac. The phone showed one
-  project's pictures under another's name after switching; also being fixed.
+  owner's own code, their files carry no metadata, and nothing left this Mac. Fixed so far: the
+  storage (e07f008: a private MEDIA_STORE bucket, boot refusing a shared or public one, R2 safe
+  signed deletes, short upload links, sweeps) and the phone (65f1de8: each project's own
+  pictures, marked sources, true counts, a delete). Still running: the generator's sandboxing.
 - Numbers review of the defect fixes (06:20), being fixed: the "nothing written" note cannot fire
   (shell commands are cut at 160 characters and a cut command counted as a possible write: 10,313
   of 14,100 calls, so 0 of 368 sittings instead of the true handful); an old rule note survives

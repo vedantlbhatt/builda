@@ -74,6 +74,14 @@ export interface SyncOptions {
    */
   details?: boolean;
   /**
+   * Settings > Live Activities (`cache.getLiveActivities`). Default on. Off: every card comes
+   * down on the first sync that hears it (a card from before this launch included, which is the
+   * one a person swiped out of the app to get rid of), none starts while it stays off, and the
+   * server forgets their push tokens. The widget and the fallback notifications carry on: with
+   * no card up, the plan already notifies needs you and a finish that is news.
+   */
+  activities?: boolean;
+  /**
    * Hand the server each activity's push token, so it can move the card while the app is in
    * the background. Only for a signed in account with details on; the debug route never does.
    */
@@ -96,6 +104,8 @@ let adopted = false;
 let queue: Promise<unknown> = Promise.resolve();
 /** The details switch as the last sync saw it; a move ends every card (attributes are fixed). */
 let lastDetails: boolean | null = null;
+/** Settings > Live Activities as the last sync heard it: null before the first sync. */
+let lastActivities: boolean | null = null;
 
 /**
  * The environment an ActivityKit token was issued for: a debug build is signed with the
@@ -198,6 +208,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   const mod = native();
   const enabled = liveActivitiesAvailable();
   const details = opts.details !== false;
+  const activities = opts.activities !== false;
 
   if (mod) listen(mod);
   // Every session's own creature (DESIGN-V2 2.2): the one its tile wears, remembered.
@@ -206,7 +217,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   // anything else, so no push can land on the card after the person turned details off. Each
   // token carries its session's creature, so a card the server moves keeps its colour.
   await tokens.update({
-    enabled: Boolean(opts.pushTokens) && details,
+    enabled: Boolean(opts.pushTokens) && details && activities,
     environment: ENVIRONMENT,
     creature: normalizeCreature(opts.creature),
     crew: Object.fromEntries([...crew].map(([id, c]) => [id, normalizeCreature(c)])),
@@ -225,7 +236,20 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   }
   lastDetails = details;
 
-  if (mod && !adopted) {
+  if (mod && !activities && lastActivities !== false) {
+    // Settings > Live Activities is off, heard for the first time this process: every card
+    // comes down, the ones adopted from before this launch too, and the plan below starts none.
+    try {
+      await mod.endAll();
+    } catch (e) {
+      result.errors.push(`endAll: ${String(e)}`);
+    }
+    for (const t of tracked.values()) if (t.activityId) void tokens.onEnded(t.activityId);
+    tracked.clear();
+  }
+  lastActivities = activities;
+
+  if (mod && !adopted && activities) {
     adopted = true;
     try {
       for (const a of mod.list()) {
@@ -250,7 +274,7 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
     liveStates,
     finished: opts.finished,
     tracked,
-    activitiesEnabled: Boolean(mod) && enabled,
+    activitiesEnabled: Boolean(mod) && enabled && activities,
     crew,
     staleInSeconds: opts.staleInSeconds,
     details,

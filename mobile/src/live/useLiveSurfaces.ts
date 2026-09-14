@@ -71,9 +71,10 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   const finished = (await Promise.all(gone.map((id) => cache.getDetail(id)))).filter(
     (s): s is SessionDetail => s !== null && s.state === 'final'
   );
-  const [animal, details, profile, saved] = await Promise.all([
+  const [animal, details, activities, profile, saved] = await Promise.all([
     cache.getKv(ANIMAL_KEY).catch(() => null),
     cache.getLockScreenDetails(),
+    cache.getLiveActivities(),
     cache.getProfile(),
     // The rows the Sessions list steps each session's creature against, so a card's creature
     // is the one its row and its tile wear.
@@ -85,6 +86,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
     finished,
     today: todayFromProfile(profile?.graph, nowMs),
     details,
+    activities,
     pushTokens: true,
     nowMs,
   });

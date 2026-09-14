@@ -59,6 +59,16 @@ export function lockScreenDetail(on: boolean): string {
   return on ? LOCK_SCREEN_ON : LOCK_SCREEN_OFF;
 }
 
+/** Settings > Privacy, this phone's Live Activities row (`cache.getLiveActivities`). */
+export const LIVE_ACTIVITIES_TITLE = 'Live Activities';
+export const LIVE_ACTIVITIES_ON =
+  'A card on your Lock Screen and in the Dynamic Island for each running session. Turning this off takes down any card showing now.';
+export const LIVE_ACTIVITIES_OFF = 'No cards on your Lock Screen or in the Dynamic Island.';
+
+export function liveActivitiesDetail(on: boolean): string {
+  return on ? LIVE_ACTIVITIES_ON : LIVE_ACTIVITIES_OFF;
+}
+
 /**
  * The line Settings shows after a switch moved. Turning quotes off says how many the
  * server deleted, and says nothing about a count the server did not send: an older server

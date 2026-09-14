@@ -472,6 +472,23 @@ export async function setLockScreenDetails(on: boolean): Promise<void> {
 }
 
 /**
+ * Settings > Live Activities, this phone's too (a device key, so it outlives a sign out). On
+ * unless turned off: the only other way to stop the cards was iOS Settings, and a card left up
+ * after the app is swiped away stays there until the system retires it hours later.
+ */
+export const LIVE_ACTIVITIES_KEY = `${DEVICE_KEY_PREFIX}live_activities`;
+export const LIVE_ACTIVITIES_DEFAULT = true;
+
+export async function getLiveActivities(): Promise<boolean> {
+  const v = await getKv(LIVE_ACTIVITIES_KEY);
+  return v === null ? LIVE_ACTIVITIES_DEFAULT : v === '1';
+}
+
+export async function setLiveActivities(on: boolean): Promise<void> {
+  await setKv(LIVE_ACTIVITIES_KEY, on ? '1' : '0');
+}
+
+/**
  * Settings > File names went off: the server clears every stored name in the same request,
  * and this clears the phone's copy of them, so turning it off deletes them everywhere they
  * were. Returns how many cached sessions carried names.

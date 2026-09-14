@@ -13,6 +13,8 @@ import * as cache from '../src/data/cache';
 import {
   FILE_NAMES_DETAIL,
   FILE_NAMES_TITLE,
+  LIVE_ACTIVITIES_TITLE,
+  liveActivitiesDetail,
   loadPrivacyPrefs,
   LOCK_SCREEN_TITLE,
   lockScreenDetail,
@@ -38,6 +40,7 @@ import {
 } from '../src/data/captureKeys';
 import { api, API_BASE_URL } from '../src/data/client';
 import { getMachineId } from '../src/data/machine';
+import { refreshLiveSurfaces } from '../src/live/useLiveSurfaces';
 import { Band, BandWords } from '../src/insights/Band';
 import { CreaturePrint } from '../src/insights/Creature';
 import { fitSize, numSpec } from '../src/insights/format';
@@ -625,9 +628,11 @@ function PrivacySwitches({ signedIn, accent }: { signedIn: boolean; accent: Acce
   const [busy, setBusy] = useState<PrivacySwitch | null>(null);
   const [line, setLine] = useState<string | null>(null);
   const [lockDetails, setLockDetails] = useState<boolean | null>(null);
+  const [activities, setActivities] = useState<boolean | null>(null);
 
   useEffect(() => {
     void cache.getLockScreenDetails().then(setLockDetails);
+    void cache.getLiveActivities().then(setActivities);
   }, []);
 
   useEffect(() => {
@@ -665,6 +670,14 @@ function PrivacySwitches({ signedIn, accent }: { signedIn: boolean; accent: Acce
   const flipLock = useCallback(async (on: boolean) => {
     setLockDetails(on);
     await cache.setLockScreenDetails(on);
+  }, []);
+
+  // Takes effect now, not on the next poll: off takes every card down while the switch is
+  // still under the thumb, on starts one for each running session.
+  const flipActivities = useCallback(async (on: boolean) => {
+    setActivities(on);
+    await cache.setLiveActivities(on);
+    await refreshLiveSurfaces().catch(() => null);
   }, []);
 
   const accountSwitches = signedIn && prefs;
@@ -716,6 +729,14 @@ function PrivacySwitches({ signedIn, accent }: { signedIn: boolean; accent: Acce
         value={lockDetails ?? cache.LOCK_SCREEN_DETAILS_DEFAULT}
         disabled={lockDetails === null}
         onChange={(v) => void flipLock(v)}
+        accent={accent}
+      />
+      <SwitchLine
+        title={LIVE_ACTIVITIES_TITLE}
+        sentence={liveActivitiesDetail(activities ?? cache.LIVE_ACTIVITIES_DEFAULT)}
+        value={activities ?? cache.LIVE_ACTIVITIES_DEFAULT}
+        disabled={activities === null}
+        onChange={(v) => void flipActivities(v)}
         accent={accent}
       />
       <Outcome line={line} />

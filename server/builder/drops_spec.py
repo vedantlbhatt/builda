@@ -128,6 +128,7 @@ class Recipe(BaseModel):
     ingredients: list[RecipeIngredient] = Field(max_length=40)
     steps: list[RecipeStep] = Field(max_length=30)
     equipment: list[Annotated[str, Field(max_length=80)]] = Field(max_length=8)
+    found_url: str | None = Field(default=None, max_length=500)
 
 
 class Move(BaseModel):

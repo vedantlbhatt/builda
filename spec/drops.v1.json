@@ -47,9 +47,28 @@
       "table so the phone and the API read one list rather than two that drift (server/builder/routes/drops.py imports them,",
       "mobile/src/drops/status.ts iterates them)."
     ],
-    "drop_kind": ["skill", "technique", "project", "tool", "recipe", "unknown"],
-    "move_kind": ["install", "apply", "scaffold", "evaluate", "card", "keep"],
-    "move_target": ["new_project", "existing_repo", "this_machine", "none"],
+    "drop_kind": [
+      "skill",
+      "technique",
+      "project",
+      "tool",
+      "recipe",
+      "unknown"
+    ],
+    "move_kind": [
+      "install",
+      "apply",
+      "scaffold",
+      "evaluate",
+      "card",
+      "keep"
+    ],
+    "move_target": [
+      "new_project",
+      "existing_repo",
+      "this_machine",
+      "none"
+    ],
     "source_kind": [
       "github",
       "npm",
@@ -60,11 +79,35 @@
       "plugin_marketplace",
       "docs_url"
     ],
-    "effort": ["minutes", "an_hour", "a_session"],
-    "platform": ["instagram", "tiktok", "youtube", "x", "reddit", "threads", "web"],
-    "resolver": ["oembed", "yt_dlp", "opengraph", "shared_text"],
-    "verify_state": ["verified", "unverified", "unchecked"],
-    "found_by": ["caption", "search"],
+    "effort": [
+      "minutes",
+      "an_hour",
+      "a_session"
+    ],
+    "platform": [
+      "instagram",
+      "tiktok",
+      "youtube",
+      "x",
+      "reddit",
+      "threads",
+      "web"
+    ],
+    "resolver": [
+      "oembed",
+      "yt_dlp",
+      "opengraph",
+      "shared_text"
+    ],
+    "verify_state": [
+      "verified",
+      "unverified",
+      "unchecked"
+    ],
+    "found_by": [
+      "caption",
+      "search"
+    ],
     "drop_refusal": [
       "url_unsupported",
       "no_text",
@@ -73,9 +116,26 @@
       "planner_unavailable",
       "planner_refused"
     ],
-    "move_refusal": ["source_unverified", "evidence_not_found", "no_repo_match"],
-    "drop_status": ["waiting", "resolving", "planned", "refused", "archived"],
-    "move_status": ["offered", "queued", "running", "done", "failed", "declined"]
+    "move_refusal": [
+      "source_unverified",
+      "evidence_not_found",
+      "no_repo_match"
+    ],
+    "drop_status": [
+      "waiting",
+      "resolving",
+      "planned",
+      "refused",
+      "archived"
+    ],
+    "move_status": [
+      "offered",
+      "queued",
+      "running",
+      "done",
+      "failed",
+      "declined"
+    ]
   },
   "objects": {
     "MoveSource": [
@@ -205,6 +265,14 @@
         "max": "name",
         "max_items": 8,
         "doc": "Only what the reel showed or named."
+      },
+      {
+        "name": "found_url",
+        "type": "string",
+        "max": "url",
+        "nullable": true,
+        "stamped": true,
+        "doc": "The page this method was taken from, when the video named a dish and gave none. Null when the video published the method itself, and the card says which."
       }
     ],
     "Move": [

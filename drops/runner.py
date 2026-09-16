@@ -64,6 +64,12 @@ class Runner:
             raise HTTPFailure(status, json.dumps(parsed))
         return parsed
 
+    def _get(self, path: str) -> dict:
+        status, parsed = self.client._authorized("GET", path, None)
+        if not 200 <= status < 300:
+            raise HTTPFailure(status, json.dumps(parsed))
+        return parsed
+
     def _put(self, path: str, body: dict) -> dict:
         status, parsed = self.client._authorized("PUT", path, body)
         if not 200 <= status < 300:
@@ -145,14 +151,37 @@ class Runner:
         return self._run_claude(move)
 
     def _run_card(self, move: dict) -> tuple[str, str | None, str | None]:
-        """A `card` move on a recipe drop: go and find the method (drops/recipe.py)."""
-        dish = move.get("intent") or move.get("title") or ""
+        """A `card` move on a recipe drop: go and find the method (drops/recipe.py).
+
+        The DISH is the drop's title, not the move's intent. MEASURED on the stack: a move whose
+        intent is "Find the full ingredients list and step by step method for this one pan garlic
+        butter shrimp pasta" searched for that whole sentence and came back with nothing, while
+        the title "1-Pan Garlic Butter Pasta with Shrimp" finds a published recipe in one search.
+        A move says what to do; the drop says what it is about.
+        """
+        dish = move.get("drop_title") or move.get("title") or ""
         recipe, url = drecipe.find_recipe(dish, model=self.model)
         if not recipe:
-            return "failed", "no published recipe found for that dish", None
-        out = {"recipe": recipe, "found_url": url}
-        path = ws.scratch(move["drop_id"]) / "recipe.json"
-        path.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
+            return "failed", f"no published recipe found for {dish[:120]}", None
+        recipe["found_url"] = url
+
+        # BACK ONTO THE CARD, not just onto the disk. The first version wrote the recipe to
+        # ~/.builder/drops/work and stopped, which meant the move said "done" on a phone that had
+        # nothing new to show: the whole ask was a screen you can cook from. The resolution is
+        # read, its plan grows the recipe, and it goes back through the same validated door every
+        # other resolution goes through.
+        drop_id = move["drop_id"]
+        current = self._get(f"/v1/drops/{drop_id}")["drop"].get("resolution")
+        if not isinstance(current, dict) or not isinstance(current.get("plan"), dict):
+            return "failed", "the drop has no plan to put a recipe on", None
+        current["plan"]["recipe"] = recipe
+        # `kind` may have been `unknown` if the planner refused the recipe for want of a method.
+        current["plan"]["kind"] = "recipe"
+        current["plan"]["refusal"] = None
+        self._put(f"/v1/drops/{drop_id}/resolution", current)
+
+        path = ws.scratch(drop_id) / "recipe.json"
+        path.write_text(json.dumps(recipe, indent=1, ensure_ascii=False) + "\n")
         n_i, n_s = len(recipe.get("ingredients") or []), len(recipe.get("steps") or [])
         return "done", f"{n_i} ingredients and {n_s} steps, from {url or 'a page'}"[:300], None
 

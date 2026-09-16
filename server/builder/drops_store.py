@@ -293,9 +293,16 @@ def claim_queued(db: Session, user_id: str, *, limit: int = 2) -> list[dict]:
               FOR UPDATE SKIP LOCKED
             )
             UPDATE drop_moves m SET status = 'running', started_at = now()
-            FROM claimable c WHERE m.id = c.id
+            FROM claimable c, drops d
+            WHERE m.id = c.id AND d.id = m.drop_id
+            -- The DROP's own title and kind travel with the move. The runner needs the thing
+            -- the post was ABOUT (a dish, a skill) and a move carries only what to do about it:
+            -- MEASURED, a `card` move handed its own `intent` as the dish searched for "Find the
+            -- full ingredients list and step by step method for this one pan garlic butter
+            -- shrimp pasta" and came back with nothing, where the title alone finds it.
             RETURNING m.id, m.drop_id, m.move_kind, m.title, m.intent, m.evidence, m.target,
-                      m.effort, m.source, m.adjustment, m.repo_key
+                      m.effort, m.source, m.adjustment, m.repo_key,
+                      d.title AS drop_title, d.kind AS drop_kind, d.url AS drop_url
             """
         ),
         {"uid": user_id, "lim": limit},

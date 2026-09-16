@@ -164,8 +164,50 @@ export function cluster(drops: Clusterable[], floor: number = MERGE_FLOOR): numb
   return groups;
 }
 
-/** What to call a cluster: the strongest term at least half of it shares. */
-export function label(group: number[], vecs: Map<string, number>[]): string {
+/**
+ * stem -> {the word as it was written: how many drops wrote it that way}.
+ *
+ * A LABEL IS A WORD SOMEBODY WROTE, NOT A STEM. MEASURED on the real corpus: the cluster for
+ * "Indie Hacker? Startup or SAAS?" was labelled `saa`, because `stem` takes a trailing `s` off
+ * anything longer than three letters that does not end in `ss`. The stem is the right thing to
+ * cluster on and the wrong thing to print.
+ */
+export function surfaces(drops: Clusterable[]): Map<string, Map<string, number>> {
+  const out = new Map<string, Map<string, number>>();
+  for (const d of drops) {
+    const seen = new Set<string>();
+    for (const text of [d.title ?? '', d.summary ?? '', ...(d.tags ?? [])]) {
+      for (const raw of String(text).toLowerCase().match(TOKEN) ?? []) {
+        const t = stem(raw);
+        if (t.length < 2 || STOPWORDS.has(t) || /^\d+$/.test(t) || seen.has(`${t}.${raw}`)) continue;
+        seen.add(`${t}.${raw}`);
+        const forms = out.get(t) ?? new Map<string, number>();
+        forms.set(raw, (forms.get(raw) ?? 0) + 1);
+        out.set(t, forms);
+      }
+    }
+  }
+  return out;
+}
+
+/** The stem as a word somebody wrote. Most common, then longest, then alphabetical. */
+export function wordFor(term: string, surf: Map<string, Map<string, number>>): string {
+  const forms = surf.get(term);
+  if (!forms || forms.size === 0) return term;
+  return [...forms.keys()].sort(
+    (a, b) =>
+      (forms.get(b) ?? 0) - (forms.get(a) ?? 0) ||
+      b.length - a.length ||
+      (a < b ? -1 : a > b ? 1 : 0),
+  )[0] as string;
+}
+
+/** What to call a cluster: the strongest term at least half of it shares, as a word. */
+export function label(
+  group: number[],
+  vecs: Map<string, number>[],
+  surf: Map<string, Map<string, number>>,
+): string {
   const need = Math.max(1, Math.ceil(group.length * LABEL_MIN_SHARE));
   const totals = new Map<string, number>();
   const shared = new Map<string, number>();
@@ -187,13 +229,14 @@ export function label(group: number[], vecs: Map<string, number>[]): string {
       (shared.get(b) ?? 0) - (shared.get(a) ?? 0) ||
       (a < b ? -1 : a > b ? 1 : 0),
   );
-  return eligible[0] ?? '';
+  return wordFor(eligible[0] ?? '', surf);
 }
 
 /** The clustered board: largest first. */
 export function board(drops: Clusterable[], floor: number = MERGE_FLOOR): Cluster[] {
   const { vecs } = vectors(drops);
-  return cluster(drops, floor).map((g) => ({ label: label(g, vecs), members: g, size: g.length }));
+  const surf = surfaces(drops);
+  return cluster(drops, floor).map((g) => ({ label: label(g, vecs, surf), members: g, size: g.length }));
 }
 
 /** Every pairwise similarity, for the parity test and for the map's edge weights. */

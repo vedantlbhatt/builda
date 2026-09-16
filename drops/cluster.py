@@ -24,7 +24,8 @@ THE ALGORITHM, all of it:
      average pairwise similarity, while that similarity is at or above MERGE_FLOOR.
   5. Labels. The term with the greatest summed weight across the cluster that appears in at
      least half its members. Ties broken by document frequency and then alphabetically, so the
-     label never depends on dictionary order.
+     label never depends on dictionary order. The WORD shown is the most common form the drops
+     actually used, never the stem: see `surfaces`.
 
 EVERY TIE IS BROKEN EXPLICITLY. Two pairs at the same similarity, two terms with the same
 weight, two clusters of the same size: each one has a stated rule. Without them the Python and
@@ -114,6 +115,28 @@ def terms_of(drop: dict) -> dict[str, int]:
     return counts
 
 
+def surfaces(drops: list[dict]) -> dict[str, dict[str, int]]:
+    """stem -> {the word as it was written: how many drops wrote it that way}.
+
+    A LABEL IS A WORD SOMEBODY WROTE, NOT A STEM. MEASURED on the real corpus: the cluster for
+    "Indie Hacker? Startup or SAAS?" was labelled `saa`, because `stem` takes a trailing `s` off
+    anything longer than three letters that does not end in `ss`. The stem is the right thing to
+    CLUSTER on and the wrong thing to print, and the two had been the same function. This is the
+    lookup back.
+    """
+    out: dict[str, dict[str, int]] = {}
+    for d in drops:
+        seen: set[tuple[str, str]] = set()
+        for text in [d.get("title") or "", d.get("summary") or "", *(d.get("tags") or [])]:
+            for raw in TOKEN.findall(str(text).lower()):
+                t = stem(raw)
+                if len(t) < 2 or t in STOPWORDS or t.isdigit() or (t, raw) in seen:
+                    continue
+                seen.add((t, raw))
+                out.setdefault(t, {})[raw] = out.setdefault(t, {}).get(raw, 0) + 1
+    return out
+
+
 def vectors(drops: list[dict]) -> tuple[list[dict[str, float]], dict[str, int]]:
     """L2 normalised TF-IDF vectors, and the document frequency table."""
     docs = [terms_of(d) for d in drops]
@@ -184,8 +207,17 @@ def cluster(drops: list[dict], *, floor: float = MERGE_FLOOR) -> list[list[int]]
     return groups
 
 
+def word_for(term: str, surf: dict[str, dict[str, int]]) -> str:
+    """The stem as a word somebody wrote. Most common first, then longest, then alphabetical,
+    so the answer is the same in both languages and does not depend on dictionary order."""
+    forms = surf.get(term)
+    if not forms:
+        return term
+    return sorted(forms, key=lambda w: (-forms[w], -len(w), w))[0]
+
+
 def label(group: list[int], drops: list[dict], vecs: list[dict[str, float]],
-          df: dict[str, int]) -> str:
+          df: dict[str, int], surf: dict[str, dict[str, int]] | None = None) -> str:
     """What to call a cluster: the strongest term at least half of it shares.
 
     A singleton is labelled by its own strongest term, which is how a board of unrelated drops
@@ -206,14 +238,15 @@ def label(group: list[int], drops: list[dict], vecs: list[dict[str, float]],
     # Weight, then how many documents hold the term, then alphabetical. Three keys, so the
     # answer never depends on which order a dictionary happened to be built in.
     eligible.sort(key=lambda t: (-_round(totals[t]), -shared[t], t))
-    return eligible[0]
+    return word_for(eligible[0], surf if surf is not None else surfaces(drops))
 
 
 def board(drops: list[dict], *, floor: float = MERGE_FLOOR) -> list[dict]:
     """The clustered board: [{label, members: [index], size}], largest first."""
     vecs, df = vectors(drops)
+    surf = surfaces(drops)
     return [
-        {"label": label(g, drops, vecs, df), "members": g, "size": len(g)}
+        {"label": label(g, drops, vecs, df, surf), "members": g, "size": len(g)}
         for g in cluster(drops, floor=floor)
     ]
 

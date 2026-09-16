@@ -34,7 +34,8 @@ import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
 import type { Recipe } from '../generated/drops';
 
-export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: string | null }) {
+export function RecipeSteps({ recipe }: { recipe: Recipe }) {
+  const foundUrl = recipe.found_url ?? null;
   const c = useColors();
   const hue = dropHue('recipe')!;
   const [step, setStep] = useState(0);

@@ -96,6 +96,8 @@ export interface Recipe {
   steps: RecipeStep[];
   /** Only what the reel showed or named. (each max 80 chars, max 8 items) */
   equipment: string[];
+  /** The page this method was taken from, when the video named a dish and gave none. Null when the video published the method itself, and the card says which. (max 500 chars) */
+  found_url?: string | null;
 }
 
 export interface Move {

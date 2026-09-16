@@ -3,6 +3,7 @@
 
     python3 scripts/sim_tap.py 794 1408          one tap
     python3 scripts/sim_tap.py 794 1408 --drag 400 1400   a drag, for the board's pan
+    python3 scripts/sim_tap.py 200 700 --drag 600 1600 --hold 0.4   a drag behind a long press
 
 `xcrun simctl` can screenshot and it cannot touch, and `System Events`' `click at` is not
 supported on this macOS (error -25204). So this synthesizes the events with Quartz and converts
@@ -64,9 +65,18 @@ def click(x: float, y: float, *, down_ms: int = 60) -> None:
         time.sleep(down_ms / 1000)
 
 
-def drag(x1: float, y1: float, x2: float, y2: float, *, steps: int = 24) -> None:
+def drag(x1: float, y1: float, x2: float, y2: float, *, steps: int = 24, hold: float = 0.0) -> None:
+    """`hold` seconds pressed and still before the move, for a gesture behind a long press.
+
+    The board's piles are dragged with `Gesture.Pan().activateAfterLongPress(220)`, and a drag that
+    starts moving on the same tick it went down never activates one: the recogniser sees a flick.
+    """
     down = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, Quartz.CGPointMake(x1, y1), Quartz.kCGMouseButtonLeft)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
+    if hold:
+        # Still, and silent. A repeated `LeftMouseDragged` at the same point still counts as
+        # movement to a recogniser watching for it, and cancels the long press it is waiting on.
+        time.sleep(hold)
     for i in range(1, steps + 1):
         pt = Quartz.CGPointMake(x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * i / steps)
         ev = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDragged, pt, Quartz.kCGMouseButtonLeft)
@@ -82,6 +92,7 @@ def main() -> None:
     ap.add_argument("y", type=float)
     ap.add_argument("--drag", nargs=2, type=float, metavar=("X2", "Y2"))
     ap.add_argument("--device", nargs=2, type=int, default=DEVICE)
+    ap.add_argument("--hold", type=float, default=0.0, help="seconds pressed before the drag moves")
     args = ap.parse_args()
 
     subprocess.run(["osascript", "-e", 'tell application "Simulator" to activate'], check=False)
@@ -89,7 +100,7 @@ def main() -> None:
     sx, sy = to_screen(args.x, args.y, tuple(args.device))
     if args.drag:
         ex, ey = to_screen(args.drag[0], args.drag[1], tuple(args.device))
-        drag(sx, sy, ex, ey)
+        drag(sx, sy, ex, ey, hold=args.hold)
         print(f"dragged ({args.x:.0f},{args.y:.0f}) -> ({args.drag[0]:.0f},{args.drag[1]:.0f})")
     else:
         click(sx, sy)

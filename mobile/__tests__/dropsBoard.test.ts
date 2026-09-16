@@ -26,13 +26,16 @@ import {
 } from '../src/drops/copy';
 import { CARD_H, CARD_W, fan, OPEN_GAP, spread, spreadSize, STACK_SHOWN, stackSize } from '../src/drops/card';
 import {
+  applyOrder,
   board as layoutBoard,
   cardScaleFor,
   extentOf,
   fit,
   LABEL_H,
   MIN_FIT,
+  reorder,
   seats,
+  slotAt,
 } from '../src/drops/layout';
 import { projectChoices } from '../src/drops/repos';
 
@@ -234,6 +237,67 @@ describe('a pile', () => {
 
   test('the same drop always leans the same way', () => {
     expect(fan([0, 1], ['a', 'b'])).toEqual(fan([0, 1], ['a', 'b']));
+  });
+});
+
+describe('arranging the wall yourself', () => {
+  const clusters = [
+    { label: 'pasta', size: 6, members: [0] },
+    { label: 'vscode', size: 5, members: [1] },
+    { label: 'skills', size: 1, members: [2] },
+    { label: 'saas', size: 1, members: [3] },
+  ];
+  const spots = layoutBoard(clusters, 393);
+
+  test('a pile lands in the slot it was dropped nearest', () => {
+    for (const s of spots) expect(slotAt({ x: s.x, y: s.y }, spots)).toBe(s.index);
+    // And a point between two is the nearer of the two, never a third.
+    const a = spots[0]!;
+    const b = spots[1]!;
+    const between = { x: (a.x + b.x) / 2 + (b.x - a.x) * 0.1, y: (a.y + b.y) / 2 + (b.y - a.y) * 0.1 };
+    expect([a.index, b.index]).toContain(slotAt(between, spots));
+  });
+
+  test('moving one shuffles the rest by one and loses nothing', () => {
+    const list = ['a', 'b', 'c', 'd'];
+    expect(reorder(list, 0, 2)).toEqual(['b', 'c', 'a', 'd']);
+    expect(reorder(list, 3, 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(reorder(list, 1, 1)).toEqual(list);
+    for (const [from, to] of [[0, 3], [2, 1], [3, 2]] as const) {
+      expect([...reorder(list, from, to)].sort()).toEqual([...list].sort());
+    }
+  });
+
+  test('a saved arrangement survives the clustering running again', () => {
+    const order = ['saas', 'pasta', 'vscode', 'skills'];
+    expect(applyOrder(clusters, order).map((c) => c.label)).toEqual(order);
+  });
+
+  test('a label the arrangement never knew keeps its own place', () => {
+    // The regression this guards: share one reel, the vocabulary shifts, a cluster is renamed or
+    // a new one appears, and a wall somebody spent time arranging is swept into a new shape.
+    const withNew = [...clusters, { label: 'pets', size: 1, members: [4] }];
+    const out = applyOrder(withNew, ['saas', 'pasta', 'vscode', 'skills']);
+    expect(out.map((c) => c.label)).toEqual(['saas', 'pasta', 'vscode', 'skills', 'pets']);
+
+    const front = applyOrder(
+      [{ label: 'pets', size: 1, members: [4] }, ...clusters],
+      ['saas', 'pasta'],
+    );
+    expect(front[0]!.label).toBe('pets');
+  });
+
+  test('an arrangement naming piles that are gone is simply skipped', () => {
+    // `saas` and `pasta` are the only two the arrangement knows, so they take the slots the two
+    // it does not know are not holding (1 and 2), in the order it put them in. Nothing is dropped
+    // and nothing is duplicated, which is the part that matters.
+    const out = applyOrder(clusters, ['gone', 'saas', 'also-gone', 'pasta']);
+    expect(out.map((c) => c.label)).toEqual(['saas', 'vscode', 'skills', 'pasta']);
+    expect(out.map((c) => c.label).sort()).toEqual(clusters.map((c) => c.label).sort());
+  });
+
+  test('no arrangement is the clustering\'s own order', () => {
+    expect(applyOrder(clusters, [])).toBe(clusters);
   });
 });
 

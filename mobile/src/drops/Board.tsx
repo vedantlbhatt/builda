@@ -21,7 +21,8 @@
  */
 import { BlurView } from 'expo-blur';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -32,14 +33,25 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getKv, setKv } from '../data/cache';
 import { T } from '../ui/Text';
-import { select } from '../ui/haptics';
+import { commit, select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
 import { board as clusterBoard, type Cluster } from './cluster';
 import { CARD_H, CARD_W, OPEN_GAP, spread, spreadSize } from './card';
 import { DropCard } from './CardView';
 import { FlyIn } from './FlyIn';
-import { board as layoutBoard, cardScaleFor, extentOf, GUTTER, seats, type StackSpot } from './layout';
+import {
+  applyOrder,
+  board as layoutBoard,
+  cardScaleFor,
+  extentOf,
+  GUTTER,
+  reorder,
+  seats,
+  slotAt,
+  type StackSpot,
+} from './layout';
 import { arrivalMs, portalPoint, schedule } from './portal';
 import { PortalPill } from './PortalPill';
 import { StackView } from './StackView';
@@ -47,6 +59,9 @@ import type { DropRow, MoveRow } from './types';
 
 /** A cluster, plus where on the wall it insists on being (`layout.Box.band`). */
 type Pile = Cluster & { band?: -1 | 0 | 1 };
+
+/** Where the wall's arrangement lives on this device. */
+const ORDER_KEY = 'drops.wall.order.v1';
 
 export interface BoardProps {
   drops: DropRow[];
@@ -62,6 +77,8 @@ export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [openCluster, setOpenCluster] = useState<number | null>(null);
+  /** A pile is in somebody's hand, so the wall underneath it holds still. */
+  const [holding, setHolding] = useState(false);
 
   const shown = useMemo(
     () => (only ? drops.filter((d) => only.has(d.id)) : drops),
@@ -116,8 +133,49 @@ export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps
     return out;
   }, [shown]);
 
-  const spots = useMemo(() => layoutBoard(clusters, width), [clusters, width]);
-  const cardScale = useMemo(() => cardScaleFor(clusters, width), [clusters, width]);
+  /**
+   * The wall, in the order somebody dragged it into (`layout.applyOrder`).
+   *
+   * Kept per device rather than on the server, on purpose: where a pile sits is about this screen
+   * and this thumb, and a wall that rearranges itself because you moved something on a different
+   * phone is a wall you stop trusting.
+   */
+  const [order, setOrder] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    void getKv(ORDER_KEY).then((raw: string | null) => {
+      if (!live || !raw) return;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) setOrder(parsed.filter((v) => typeof v === 'string'));
+      } catch {
+        // A wall arrangement is not worth a crash. It goes back to the clustering's order.
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const walled = useMemo(() => applyOrder(clusters, order), [clusters, order]);
+  const spots = useMemo(
+    () => layoutBoard(walled, width, order.length > 0),
+    [walled, width, order.length],
+  );
+
+  const move = useCallback(
+    (cluster: number, to: { x: number; y: number }) => {
+      const from = spots.findIndex((s) => s.cluster === cluster);
+      const into = slotAt(to, spots);
+      if (from < 0 || from === into) return;
+      const next = reorder(walled, from, into).map((c) => c.label);
+      commit();
+      setOrder(next);
+      void setKv(ORDER_KEY, JSON.stringify(next));
+    },
+    [spots, walled],
+  );
+  const cardScale = useMemo(() => cardScaleFor(walled, width), [walled, width]);
   const extent = useMemo(() => extentOf(spots, width), [spots, width]);
 
   const busy = useMemo(() => {
@@ -167,10 +225,10 @@ export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps
 
   /** Whose turn it is to leave, top pile first, so the board fills the way you read it. */
   const delays = useMemo(() => {
-    const order = spots.flatMap((s) => s.members);
-    const times = schedule(order.length);
+    const leaving = spots.flatMap((s) => s.members);
+    const times = schedule(leaving.length);
     const out: Record<string, number> = {};
-    order.forEach((index, i) => {
+    leaving.forEach((index, i) => {
       const id = shown[index]?.id;
       if (id) out[id] = times[i] ?? 0;
     });
@@ -221,6 +279,8 @@ export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps
               dim={open !== null && open.cluster !== s.cluster}
               cardScale={cardScale}
               arriving={flying}
+              onMove={move}
+              onHold={setHolding}
               onOpen={setOpenCluster}
             />
           ))}

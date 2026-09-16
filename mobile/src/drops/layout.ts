@@ -73,17 +73,32 @@ function seed(s: string): number {
  * reading as ruled lines. Tallest first, because a wall whose biggest pile is at the bottom reads
  * as a list that ran out.
  */
-export function flow(boxes: Box[], width: number, keys: string[] = []): Spot[] {
+export function flow(
+  boxes: Box[],
+  width: number,
+  keys: string[] = [],
+  keepOrder = false,
+): Spot[] {
   const usable = Math.max(120, width - GUTTER * 2);
   const colWidth = (usable - GAP * (COLUMNS - 1)) / COLUMNS;
   const heights = new Array(COLUMNS).fill(0);
   const out: Spot[] = [];
 
+  /**
+   * Tallest first, UNLESS somebody has arranged this wall themselves.
+   *
+   * Packing biggest-first is the right default and it is also the reason dragging a pile did
+   * nothing for a while: the list came back in a new order and the layout immediately sorted it
+   * back by height. Once a person has moved one pile, the wall stops having opinions about where
+   * things go and places them in the order they are given. Bands still win, because JUST IN and
+   * NO WAY IN are about what a pile IS, not about where somebody put it.
+   */
   const order = boxes
     .map((b, index) => ({ b, index }))
-    .sort(
-      (p, q) =>
-        (p.b.band ?? 0) - (q.b.band ?? 0) || q.b.height - p.b.height || p.index - q.index,
+    .sort((p, q) =>
+      keepOrder
+        ? (p.b.band ?? 0) - (q.b.band ?? 0) || p.index - q.index
+        : (p.b.band ?? 0) - (q.b.band ?? 0) || q.b.height - p.b.height || p.index - q.index,
     );
 
   for (const { b, index } of order) {
@@ -134,6 +149,8 @@ export function cardScaleFor(
 export function board(
   clusters: { label: string; size: number; members: number[]; band?: -1 | 0 | 1 }[],
   width: number,
+  /** The wall has been arranged by hand, so place the piles in the order they came in. */
+  keepOrder = false,
 ): StackSpot[] {
   const k = cardScaleFor(clusters, width);
   const boxes = clusters.map((c) => {
@@ -141,7 +158,7 @@ export function board(
     // Room above each stack for its word.
     return { width: s.width * k, height: s.height * k + LABEL_ROOM, band: c.band };
   });
-  const spots = flow(boxes, width, clusters.map((c) => `${c.label}.${c.size}`));
+  const spots = flow(boxes, width, clusters.map((c) => `${c.label}.${c.size}`), keepOrder);
   return clusters.map((c, i) => ({
     ...(spots[i] as Spot),
     cluster: i,
@@ -264,4 +281,66 @@ export function seats(
       height: h,
     };
   });
+}
+
+/**
+ * Which slot a pile has been dragged into.
+ *
+ * The wall is a flow, not a grid, so "where you dropped it" cannot be read off a row and a column.
+ * It is the spot whose CENTRE is nearest the middle of the pile in your hand — the same rule your
+ * eye is using while you drag, which is why it never feels like it guessed. Returns the index in
+ * the layout's own order; the caller turns that into a new order and lays the wall out again.
+ */
+export function slotAt(point: { x: number; y: number }, spots: Spot[]): number {
+  let best = 0;
+  let near = Infinity;
+  spots.forEach((s, i) => {
+    const d = (s.x - point.x) ** 2 + (s.y - point.y) ** 2;
+    if (d < near) {
+      near = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/**
+ * `list` with the item at `from` moved to `to`. Everything between shuffles up or down by one,
+ * which is what a wall does when you put something in the middle of it.
+ */
+export function reorder<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+  const next = list.slice();
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item as T);
+  return next;
+}
+
+/**
+ * Clusters in the order somebody dragged them into, with anything they have never seen left where
+ * the clustering put it.
+ *
+ * A saved order is a list of LABELS, not of indexes: the clustering runs again every time the
+ * board loads and a cluster can gain a drop, lose one, or be renamed by the vocabulary that a new
+ * drop brought with it. A label that is no longer on the board is skipped, and a cluster the saved
+ * order has never heard of keeps its natural place rather than being swept to the end, so sharing
+ * one reel does not rearrange a wall somebody has already arranged.
+ */
+export function applyOrder<T extends { label: string }>(clusters: T[], order: string[]): T[] {
+  if (!order.length) return clusters;
+  const rank = new Map(order.map((label, i) => [label, i]));
+  const held = new Map<number, T>();
+  const moving: T[] = [];
+  clusters.forEach((c, i) => {
+    if (rank.has(c.label)) moving.push(c);
+    else held.set(i, c);
+  });
+  moving.sort((a, b) => (rank.get(a.label) as number) - (rank.get(b.label) as number));
+  const out: T[] = [];
+  let next = 0;
+  for (let i = 0; i < clusters.length; i++) {
+    const stay = held.get(i);
+    out.push(stay ?? (moving[next++] as T));
+  }
+  return out;
 }

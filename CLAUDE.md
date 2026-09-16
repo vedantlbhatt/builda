@@ -461,6 +461,19 @@ the gate pins it (`drops/plan._TARGET_FOR`) and the prompt stops asking. `evalua
 whose target is genuinely free: trying something out can mean a throwaway clone or the repository
 you would actually use it in, and only the person knows which.
 
+**A daemon may not have a tool that does not outlive the shell that installed it.** `python -m
+drops agent` writes a launch agent, because everything else in the feature is finished and none of
+it happens unless `drops watch` is running: you share a reel from the sofa and the card says
+"waiting for your Mac" until you sit down and start a process. Two traps, both found installing
+it. launchd gives a job `/usr/bin:/bin:/usr/sbin:/sbin` and nothing else, so a job installed
+without carrying the PATH over finds no `claude` and answers `planner_unavailable` on every drop
+forever, which reads exactly like a model outage. And on the machine this was written on, `claude`
+resolves to `$TMPDIR/cmux-cli-shims/<uuid>/claude`, a per session shim: an agent installed with
+that PATH works perfectly until the next reboot and then refuses everything. The installer
+REFUSES a tool under `/tmp`, `/private/tmp` or `/var/folders` unless told `--anyway`, and `doctor`
+prints what the installed job would find rather than what the shell it is run in finds, because a
+doctor that checks the wrong process tells you nothing.
+
 **A move says what to DO and a drop says what it is ABOUT, and three different things asked the
 wrong one.** The recipe finder was handed a move's intent as the dish and searched for "Find the
 full ingredients list and step by step method for this one pan garlic butter shrimp pasta",

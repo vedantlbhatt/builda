@@ -33,7 +33,11 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
   intake (share extension, deep link, paste).
 - **The share extension** (`mobile/targets/share/`): its own Builda sheet, written directly
   rather than through `expo-share-intent`, which cannot be installed on Expo 53.
-- **The CLI**: `python -m drops resolve|plan|find|recipe|cluster|watch|doctor`.
+- **The CLI**: `python -m drops resolve|plan|find|recipe|cluster|watch|agent|doctor`.
+- **The launch agent** (`drops/agent.py`): `python -m drops agent` installs a job that runs
+  `watch` with no terminal open, which is what makes a share from the sofa work at all. It
+  carries the PATH it was installed with, refuses to install pointed at a tool in a temporary
+  directory, and `doctor` prints what the JOB would find rather than what this shell finds.
 - **The libraries the owner supplied, where they fit and nowhere else**: react-bits' ClickSpark in
   its `pixel` variant throws squares where you tapped a drop, in that drop's hue, so the one moment
   of delight on the board is made of the board's own material; and DecryptedText scrambles and

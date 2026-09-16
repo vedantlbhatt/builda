@@ -10,6 +10,7 @@ platform published anything.
   recipe DISH          the ingredients and steps for a dish, from a published page.
   cluster              the board the cached corpus makes, and `--sweep` for the floor.
   watch                the loop: claim drops from the server, resolve them, run what was tapped.
+  agent                install the launch agent that runs `watch` with no terminal open.
   doctor               what this machine can do: yt-dlp, claude, the cookie door, the server.
 """
 
@@ -118,6 +119,45 @@ def cmd_watch(args) -> int:
     return 0
 
 
+def cmd_agent(args) -> int:
+    from . import agent as ag
+
+    server = args.server or os.environ.get("BUILDER_SERVER") or "http://127.0.0.1:8000"
+    if args.print_only:
+        import plistlib
+
+        sys.stdout.buffer.write(plistlib.dumps(ag.current(server)))
+        return 0
+    if args.uninstall:
+        print("removed" if ag.uninstall() else "there was no agent installed")
+        return 0
+
+    found = ag.what_the_job_would_find(dict(os.environ))
+    gone = ag.fleeting(found)
+    if gone and not args.anyway:
+        print("These are in a temporary directory and will not be there after a reboot:")
+        for tool, where in gone.items():
+            print(f"  {tool:<8} {where}")
+        print("\nAn agent installed with this PATH works today and answers `planner_unavailable`")
+        print("on every drop after the next restart, which reads like a model outage and is not")
+        print("one. Install the tool somewhere permanent, or pass --anyway if you know better.")
+        return 1
+    if not found["claude"]:
+        # Refuse rather than install something that will answer `planner_unavailable` forever.
+        print("claude is not on this PATH, so the agent would refuse every drop. Install it, or")
+        print("run `python -m drops agent --print` and install the job by hand with a PATH that has it.")
+        return 1
+    path = ag.install(server)
+    print(f"installed {path}")
+    print(f"  server   {server}")
+    for tool, where in found.items():
+        print(f"  {tool:<8} {where or 'NOT on the PATH the job will have'}")
+    print(f"  log      {ag.LOG_DIR / 'agent.log'}")
+    print("\nIt reads the links you share and runs the moves you tap. Nothing else.")
+    print("`python -m drops agent --uninstall` removes it.")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     import shutil
 
@@ -131,6 +171,17 @@ def cmd_doctor(args) -> int:
     from .tests import corpus_read
 
     print(f"corpus          {len(corpus_read.rows())} links cached")
+    from . import agent as ag
+
+    print(f"agent           {'installed and running' if ag.running() else ('installed, not running' if ag.PLIST.exists() else 'not installed (python -m drops agent)')}")
+    if ag.PLIST.exists():
+        import plistlib
+
+        job = plistlib.loads(ag.PLIST.read_bytes())
+        found = ag.what_the_job_would_find(job.get("EnvironmentVariables") or {})
+        for tool, where in found.items():
+            mark = " (TEMPORARY: gone after a reboot)" if ag.is_temporary(where) else ""
+            print(f"  the job sees  {tool:<8} {where or 'NOT on its PATH'}{mark}")
     repos = ws.known_repos()
     extra = ws.extra_roots()
     print(f"repos           {len(repos)} this machine's transcripts resolved to"
@@ -169,6 +220,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("watch", help="claim drops, resolve them, run what was tapped")
     p.add_argument("--once", action="store_true", help="one pass, then stop")
     p.set_defaults(fn=cmd_watch)
+
+    p = sub.add_parser("agent", help="the launch agent that runs `watch` with no terminal open")
+    p.add_argument("--uninstall", action="store_true", help="unload and delete it")
+    p.add_argument("--print", dest="print_only", action="store_true",
+                   help="write the job to stdout and touch nothing")
+    p.add_argument("--anyway", action="store_true",
+                   help="install even though a tool is in a temporary directory")
+    p.set_defaults(fn=cmd_agent)
 
     p = sub.add_parser("doctor", help="what this machine can do")
     p.set_defaults(fn=cmd_doctor)

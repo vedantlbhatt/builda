@@ -26,48 +26,74 @@ import type { Cluster } from './cluster';
 
 /** The golden angle, in radians. */
 export const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-/**
- * The closest two hubs may ever be, whatever else is true. A board of singletons has no rings at
- * all, and this is what keeps it from becoming a pile.
- */
-export const MIN_HUB_SPACING = 2.2;
-/** Clear air between the outermost members of two neighbouring constellations, in node widths. */
-export const HUB_AIR = 0.6;
-
-/**
- * Board units between the centres of two adjacent hubs, DERIVED from the rings on this board.
- *
- * It was a constant, 4.2. A board of five clusters looked sparse on the simulator so it was
- * tightened to 3.4, and `dropsBoard.test.ts` immediately failed: two nodes 0.55 units apart, half
- * a node, which is an overlap. The constant had been right and the reason was not written down.
- *
- * It is written down now, as the arithmetic: a sunflower spiral puts consecutive points about
- * `spacing` apart, two neighbouring constellations reach `r1 + r2` towards each other, so the
- * clearance is `spacing - r1 - r2` and it has to stay above a node's width. Taking the LARGEST
- * ring on the board makes that true for every pair on it. The pay off is the case a constant
- * cannot serve: a board of singletons has no rings, so it packs at MIN_HUB_SPACING and reads as
- * one map rather than as specks with a lot of ground around them.
- */
-export function hubSpacing(clusters: { size: number }[]): number {
-  const widest = clusters.reduce((m, c) => Math.max(m, ringRadius(c.size)), 0);
-  return Math.max(MIN_HUB_SPACING, 2 * widest + NODE * (1 + HUB_AIR));
-}
 /** A node's diameter, in board units. One, by definition; named so the maths reads. */
 export const NODE = 1;
-/** The gap a ring keeps from its hub, so a hub's own label is never under a member. */
-export const RING_MIN = 1.6;
+/**
+ * The gap a ring keeps from its hub.
+ *
+ * 1.25, not the 1.6 it started at: the ring used to have to clear the hub's own WORD, and the
+ * word now sits above the constellation's highest member instead, so the only thing left to
+ * clear is the members' own width.
+ */
+export const RING_MIN = 1.25;
+/**
+ * The step the spiral takes. Constellations are PACKED against each other from here, so this is
+ * the distance between two hubs that have no rings at all, not the distance between any two.
+ */
+export const MIN_HUB_SPACING = 2.2;
+/** Clear air between the outermost members of two constellations, in node widths. */
+export const HUB_AIR = 0.45;
 /**
  * The floor and the ceiling on the opening view.
  *
- * FOUND ON THE SIMULATOR: fitting the whole board is the right instinct and the wrong result
- * past about five clusters. The spiral is 4.2 units between hubs, so five clusters span sixteen
- * units, which on a 393 point wide phone fits at 0.5 and draws every sigil at 23 points: a map
- * of specks with a lot of black around it. A board is a thing you pan, so the opening view stops
- * shrinking at a scale that keeps a node legible (46 * 0.62 = 29 points, the tap floor's own
- * ballpark) and the rest is one drag away.
+ * FOUND ON THE SIMULATOR: fitting the whole board is the right instinct and the wrong result once
+ * there are enough clusters, because every sigil ends up at 23 points, a map of specks with a lot
+ * of ground around it. A board is a thing you pan, so the opening view stops shrinking at a scale
+ * that keeps a node legible (46 * 0.62 = 29 points) and the rest is one drag away.
  */
 export const MIN_FIT = 0.62;
 export const MAX_FIT = 1.4;
+
+/** The reach of a constellation from its hub: its ring, plus half a node for the node itself. */
+export function reach(size: number): number {
+  return ringRadius(size) + NODE / 2;
+}
+
+/**
+ * Where each cluster's hub goes: a phyllotaxis spiral, PACKED.
+ *
+ * It was one spacing for every pair, derived from the widest ring on the board. That is correct
+ * and it is wasteful: MEASURED on a real board of eight drops in six clusters, one two member
+ * ring set the spacing for all of them and the map ran off both edges of the phone with four
+ * nodes on screen. A constellation's reach is its own, so the spiral is walked one step at a
+ * time and a cluster takes the first step whose circle clears every circle already placed.
+ *
+ * It terminates: the spiral's radius grows without bound, so a step far enough out always clears.
+ * It is deterministic: same clusters, same order, same steps, on both devices and in the review
+ * sheet. And it packs a board of singletons, which have no rings, at MIN_HUB_SPACING.
+ */
+export function place(clusters: { size: number }[]): { x: number; y: number }[] {
+  const out: { x: number; y: number; r: number }[] = [];
+  let t = 0;
+  for (const c of clusters) {
+    const r = reach(c.size);
+    for (;;) {
+      const angle = t * GOLDEN;
+      const radius = MIN_HUB_SPACING * Math.sqrt(t);
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      const clear = out.every(
+        (o) => Math.hypot(o.x - x, o.y - y) >= o.r + r + NODE * HUB_AIR,
+      );
+      t += 1;
+      if (clear) {
+        out.push({ x, y, r });
+        break;
+      }
+    }
+  }
+  return out.map(({ x, y }) => ({ x, y }));
+}
 
 export interface Placed {
   /** Index into the drops array the cluster came from. */
@@ -118,15 +144,17 @@ export function ringRadius(n: number): number {
 export function layout(clusters: Cluster[]): Board {
   const hubs: Hub[] = [];
   const nodes: Placed[] = [];
-  const spacing = hubSpacing(clusters);
+  const spots = place(clusters);
 
   clusters.forEach((c, i) => {
     // sqrt(i) spacing keeps the density of hubs constant as the board grows: the alternative,
     // a linear radius, leaves the middle crowded and the edge empty.
-    const angle = i * GOLDEN;
-    const radius = spacing * Math.sqrt(i);
-    const hx = Math.cos(angle) * radius;
-    const hy = Math.sin(angle) * radius;
+    const spot = spots[i] as { x: number; y: number };
+    const hx = spot.x;
+    const hy = spot.y;
+    // The ring starts at the hub's own direction from the centre, so a constellation leans
+    // away from the middle of the board rather than all of them pointing the same way.
+    const angle = Math.atan2(hy, hx);
     const r = ringRadius(c.size);
     const hub: Hub = { cluster: i, label: c.label, size: c.size, x: hx, y: hy, radius: r, top: hy };
     hubs.push(hub);

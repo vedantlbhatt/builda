@@ -23,7 +23,7 @@ import {
   STATUS_LINE,
   readLine,
 } from '../src/drops/copy';
-import { fit, focus, hubSpacing, layout, MIN_HUB_SPACING, NODE, ringRadius } from '../src/drops/layout';
+import { fit, focus, layout, MIN_HUB_SPACING, NODE, place, reach, ringRadius } from '../src/drops/layout';
 
 const DROPS = [
   { kind: 'recipe', title: 'Garlic butter pasta', summary: 'one pan', tags: ['pasta', 'garlic'] },
@@ -80,17 +80,29 @@ describe('the map', () => {
     }
   });
 
-  test('the spacing is derived from the widest ring, never picked', () => {
-    // The regression this replaces: HUB_SPACING was tightened from 4.2 to 3.4 because a board
-    // looked sparse, and two nodes landed 0.55 units apart. Clearance is
-    // `spacing - r1 - r2` and it has to stay above a node's width for the widest pair.
-    for (const sizes of [[1, 1, 1], [2, 2], [9, 9], [1, 9, 3], [5, 4, 3, 2, 1]]) {
+  test('constellations are packed, and never inside one another', () => {
+    // Two regressions in one test. HUB_SPACING was tightened from 4.2 to 3.4 because a board
+    // looked sparse, and two nodes landed 0.55 units apart; deriving one spacing from the widest
+    // ring fixed that and made a board of eight drops run off both edges of the phone, because
+    // one two member ring set the distance for every pair. Packing gives each constellation its
+    // own reach.
+    for (const sizes of [[1, 1, 1], [2, 2], [9, 9], [1, 9, 3], [5, 4, 3, 2, 1], [1, 1, 2, 1, 1, 1]]) {
       const clusters = sizes.map((size) => ({ size }));
-      const widest = Math.max(...sizes.map(ringRadius));
-      expect(hubSpacing(clusters) - 2 * widest).toBeGreaterThanOrEqual(NODE);
+      const spots = place(clusters);
+      for (let i = 0; i < spots.length; i++) {
+        for (let j = i + 1; j < spots.length; j++) {
+          const a = spots[i] as { x: number; y: number };
+          const b = spots[j] as { x: number; y: number };
+          const need = reach(sizes[i] as number) + reach(sizes[j] as number);
+          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(need);
+        }
+      }
     }
-    // And a board with no rings at all packs.
-    expect(hubSpacing([{ size: 1 }, { size: 1 }])).toBe(MIN_HUB_SPACING);
+    // A board with no rings packs at the floor rather than at somebody else's ring.
+    const singles = place([{ size: 1 }, { size: 1 }]);
+    const a = singles[0] as { x: number; y: number };
+    const b = singles[1] as { x: number; y: number };
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(MIN_HUB_SPACING * 1.5);
   });
 
   test('no two nodes overlap on any shape of board', () => {

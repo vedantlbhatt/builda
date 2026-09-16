@@ -1,0 +1,420 @@
+{
+  "_comment": [
+    "THE ONLY definition of a drop: a reel or a TikTok somebody shared into Builda, what was legitimately readable from it, and",
+    "the moves that could be made on it. scripts/gen_drops.py emits, all committed:",
+    "  server/builder/drops_spec.py     (Pydantic, extra='forbid', the door the resolution comes in through)",
+    "  mobile/src/generated/drops.ts    (TypeScript types + every enum table the phone iterates)",
+    "  drops/schema.json                (the JSON Schema handed to `claude -p --json-schema`, rooted at DropPlan)",
+    "",
+    "WHAT THIS IS. Two documents in one spec, because they are one round trip. `DropPlan` is written BY A MODEL on the person's",
+    "own machine from the text a public link published. `DropResolution` is what the Mac uploads: the facts about the link that",
+    "were measured rather than read (which platform, who posted it, how many characters of caption and transcript there were),",
+    "the plan if there is one, and the refusal if there is not.",
+    "",
+    "STAMPED FIELDS. A field marked `\"stamped\": true` is written by the RUNNER, never by the model, and gen_drops.py leaves it",
+    "out of the JSON Schema entirely. `Move.verification` is the only one: whether a source URL actually resolves is a fact",
+    "about the network, and a model asked to fill in a field called `verified` will fill it in. Every stamped field is nullable,",
+    "which the generator asserts, so a document that has not been stamped yet still validates.",
+    "",
+    "THE HONESTY RULE, which is this feature's whole reason to be careful. Every move carries `evidence`: a VERBATIM span of the",
+    "resolved text. drops/plan.py drops any move whose evidence is not a substring of what was actually read, the way",
+    "analysis/run.py drops a decision pattern whose excerpt it cannot find. A move that names something to install carries a",
+    "`source`, and drops/verify.py FETCHES it before the move is ever shown; a source that does not resolve downgrades the move",
+    "rather than decorating it. `unknown` and a refusal code are real answers and are the ones to give.",
+    "",
+    "NO FREE PROSE ON THE SERVER'S SIDE OF THE DOOR THAT IS NOT BOUNDED. Every string here names a cap in `max_lengths`. The",
+    "three that carry a stranger's words (`title`, `summary`, `evidence`) are the widest, and they are the reason the runner",
+    "passes a caption to Claude Code as quoted material rather than as instructions (docs/drops.md, the security notes).",
+    "",
+    "NO DASHES, as everywhere else: no string a person reads may carry an em dash, an en dash, a horizontal bar or a minus",
+    "sign. The rule is one function, `analysis/plain.py`, and drops/plan.py calls it rather than restating it."
+  ],
+  "version": 1,
+  "max_lengths": {
+    "name": 80,
+    "line": 200,
+    "quote": 300,
+    "ref": 140,
+    "url": 500,
+    "tag": 24,
+    "step": 240,
+    "qty": 40,
+    "ingredient": 80
+  },
+  "enums": {
+    "_comment_enums": [
+      "drop_status and move_status are not carried by any field here. They are the SERVER ROW's states, and they are in this",
+      "table so the phone and the API read one list rather than two that drift (server/builder/routes/drops.py imports them,",
+      "mobile/src/drops/status.ts iterates them)."
+    ],
+    "drop_kind": ["skill", "technique", "project", "tool", "recipe", "unknown"],
+    "move_kind": ["install", "apply", "scaffold", "evaluate", "card", "keep"],
+    "move_target": ["new_project", "existing_repo", "this_machine", "none"],
+    "source_kind": [
+      "github",
+      "npm",
+      "pypi",
+      "cargo",
+      "homebrew",
+      "mcp",
+      "plugin_marketplace",
+      "docs_url"
+    ],
+    "effort": ["minutes", "an_hour", "a_session"],
+    "platform": ["instagram", "tiktok", "youtube", "x", "reddit", "threads", "web"],
+    "resolver": ["oembed", "yt_dlp", "opengraph", "shared_text"],
+    "verify_state": ["verified", "unverified", "unchecked"],
+    "found_by": ["caption", "search"],
+    "drop_refusal": [
+      "url_unsupported",
+      "no_text",
+      "private_or_gone",
+      "not_about_building",
+      "planner_unavailable",
+      "planner_refused"
+    ],
+    "move_refusal": ["source_unverified", "evidence_not_found", "no_repo_match"],
+    "drop_status": ["waiting", "resolving", "planned", "refused", "archived"],
+    "move_status": ["offered", "queued", "running", "done", "failed", "declined"]
+  },
+  "objects": {
+    "MoveSource": [
+      {
+        "name": "source_kind",
+        "type": "enum",
+        "values": "source_kind",
+        "doc": "Where the thing lives. `docs_url` is the honest answer for a technique whose only home is a page."
+      },
+      {
+        "name": "ref",
+        "type": "string",
+        "max": "ref",
+        "doc": "How the ecosystem names it: owner/repo, a package name, a formula. Never a sentence."
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "max": "url",
+        "doc": "The one URL that is fetched before this move is shown. https only."
+      }
+    ],
+    "MoveVerification": [
+      {
+        "name": "state",
+        "type": "enum",
+        "values": "verify_state",
+        "doc": "verified once the URL was fetched and answered; unchecked before the verifier ran."
+      },
+      {
+        "name": "found_by",
+        "type": "enum",
+        "values": "found_by",
+        "nullable": true,
+        "doc": "caption when the link was in the reel's own words, search when the find pass went looking."
+      },
+      {
+        "name": "http_status",
+        "type": "int",
+        "nullable": true,
+        "doc": "What the fetch answered. Null when nothing was fetched."
+      },
+      {
+        "name": "checked_at",
+        "type": "datetime",
+        "nullable": true,
+        "doc": "When the fetch happened."
+      },
+      {
+        "name": "refusal",
+        "type": "enum",
+        "values": "move_refusal",
+        "nullable": true,
+        "doc": "Why this move is not offered as it was written. A code, never prose."
+      }
+    ],
+    "RecipeIngredient": [
+      {
+        "name": "item",
+        "type": "string",
+        "max": "ingredient",
+        "doc": "The ingredient, as the reel said it."
+      },
+      {
+        "name": "quantity",
+        "type": "string",
+        "max": "qty",
+        "nullable": true,
+        "doc": "VERBATIM from the reel: '3 cloves', '1 1/2 cups'. Null when it never said one, which is not zero."
+      },
+      {
+        "name": "note",
+        "type": "string",
+        "max": "qty",
+        "nullable": true,
+        "doc": "What is done to it before it goes in: 'minced', 'room temperature'."
+      }
+    ],
+    "RecipeStep": [
+      {
+        "name": "text",
+        "type": "string",
+        "max": "step",
+        "doc": "One step, one thing to do, in the order it happens."
+      },
+      {
+        "name": "minutes",
+        "type": "int",
+        "nullable": true,
+        "doc": "A timer, ONLY when the reel gave one. Null is 'it did not say', and the screen shows no timer."
+      }
+    ],
+    "Recipe": [
+      {
+        "name": "serves",
+        "type": "string",
+        "max": "qty",
+        "nullable": true,
+        "doc": "'4', 'two as a main'. Verbatim, and null when unsaid."
+      },
+      {
+        "name": "total_minutes",
+        "type": "int",
+        "nullable": true,
+        "doc": "Only when stated. Never the sum of the steps: the reel's own claim or nothing."
+      },
+      {
+        "name": "ingredients",
+        "type": "list",
+        "item": "RecipeIngredient",
+        "max_items": 40,
+        "min_items": 1,
+        "doc": "Every ingredient the reel named, in the order it named them."
+      },
+      {
+        "name": "steps",
+        "type": "list",
+        "item": "RecipeStep",
+        "max_items": 30,
+        "min_items": 1,
+        "doc": "The method, one step per entry. The step by step screen is one of these per card."
+      },
+      {
+        "name": "equipment",
+        "type": "list",
+        "item": "string",
+        "max": "name",
+        "max_items": 8,
+        "doc": "Only what the reel showed or named."
+      }
+    ],
+    "Move": [
+      {
+        "name": "move_kind",
+        "type": "enum",
+        "values": "move_kind",
+        "doc": "What the runner would do. `keep` is a real move for something worth remembering and not worth doing."
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "max": "name",
+        "doc": "The button's words, in the imperative: 'Install it', 'Add it to RideGT'."
+      },
+      {
+        "name": "intent",
+        "type": "string",
+        "max": "line",
+        "doc": "One sentence saying what done looks like. This becomes the runner's task, so it is specific."
+      },
+      {
+        "name": "evidence",
+        "type": "string",
+        "max": "quote",
+        "doc": "VERBATIM from the caption or the transcript. A move whose evidence is not found there is dropped."
+      },
+      {
+        "name": "target",
+        "type": "enum",
+        "values": "move_target",
+        "doc": "Where it happens. `existing_repo` means the person picks which one; the model never names a repository."
+      },
+      {
+        "name": "effort",
+        "type": "enum",
+        "values": "effort",
+        "doc": "How long it would take, at the coarsest useful grain. Three values, so nobody reads it as an estimate."
+      },
+      {
+        "name": "source",
+        "type": "object",
+        "item": "MoveSource",
+        "nullable": true,
+        "doc": "What to install and where it lives. Required in spirit for `install`, and the verifier enforces it."
+      },
+      {
+        "name": "verification",
+        "type": "object",
+        "item": "MoveVerification",
+        "nullable": true,
+        "stamped": true,
+        "doc": "Written by drops/verify.py after fetching `source.url`. Not in the schema the model is given."
+      }
+    ],
+    "DropPlan": [
+      {
+        "name": "kind",
+        "type": "enum",
+        "values": "drop_kind",
+        "doc": "Exactly one. `unknown` is a real answer and is better than a kind that nearly fits."
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "max": "name",
+        "doc": "What this is, in the reel's own terms. Not a description of the video."
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "max": "line",
+        "doc": "One sentence a builder could act on. No dashes."
+      },
+      {
+        "name": "confidence",
+        "type": "int",
+        "doc": "0-100: how sure the kind and the moves are, given how much text there actually was."
+      },
+      {
+        "name": "refusal",
+        "type": "enum",
+        "values": "drop_refusal",
+        "nullable": true,
+        "doc": "Set with kind `unknown` when there is nothing here to act on. Null when there is."
+      },
+      {
+        "name": "moves",
+        "type": "list",
+        "item": "Move",
+        "max_items": 5,
+        "doc": "Ordered, best first. Zero is correct for a refusal. Five is a ceiling, not a target."
+      },
+      {
+        "name": "recipe",
+        "type": "object",
+        "item": "Recipe",
+        "nullable": true,
+        "doc": "Only when kind is `recipe`, and only from what the reel actually said."
+      },
+      {
+        "name": "tags",
+        "type": "list",
+        "item": "string",
+        "max": "tag",
+        "max_items": 6,
+        "doc": "Lowercase, one word or two, for filtering the board. Never a sentence."
+      }
+    ],
+    "DropSource": [
+      {
+        "name": "platform",
+        "type": "enum",
+        "values": "platform",
+        "doc": "Which site the link is on. `web` is anything else that published OpenGraph tags."
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "max": "url",
+        "doc": "The link as shared, after the tracking parameters were stripped."
+      },
+      {
+        "name": "author",
+        "type": "string",
+        "max": "name",
+        "nullable": true,
+        "doc": "The handle the platform published. Null when it published none."
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "max": "line",
+        "nullable": true,
+        "doc": "The post's own title or first caption line, as the platform published it."
+      },
+      {
+        "name": "thumbnail_url",
+        "type": "string",
+        "max": "url",
+        "nullable": true,
+        "doc": "The poster frame the platform published. Never a frame Builda extracted."
+      },
+      {
+        "name": "duration_s",
+        "type": "int",
+        "nullable": true,
+        "doc": "How long the video is, when the platform said."
+      },
+      {
+        "name": "caption_chars",
+        "type": "int",
+        "doc": "How many characters of caption there were to read. The card shows this when it refuses."
+      },
+      {
+        "name": "transcript_chars",
+        "type": "int",
+        "doc": "How many characters of PUBLISHED subtitles there were. Builda transcribes no audio, so 0 is common."
+      },
+      {
+        "name": "resolver",
+        "type": "enum",
+        "values": "resolver",
+        "doc": "Which reader got the text. `shared_text` means the link gave nothing and the share sheet's text is all there is."
+      },
+      {
+        "name": "resolved_at",
+        "type": "datetime",
+        "doc": "When the link was read."
+      }
+    ]
+  },
+  "fields": [
+    {
+      "name": "drops_version",
+      "type": "int",
+      "doc": "== spec version. A stored resolution that cannot say which rules produced it cannot be compared with the next one."
+    },
+    {
+      "name": "source",
+      "type": "object",
+      "item": "DropSource",
+      "doc": "What was read, and by which reader. Measured, never written by a model."
+    },
+    {
+      "name": "plan",
+      "type": "object",
+      "item": "DropPlan",
+      "nullable": true,
+      "doc": "The model's reading. Null when resolution itself refused, and then `refusal` says why."
+    },
+    {
+      "name": "refusal",
+      "type": "enum",
+      "values": "drop_refusal",
+      "nullable": true,
+      "doc": "Why there is no plan. Null when there is one. Both null is a bug and the door rejects it."
+    },
+    {
+      "name": "planner_model",
+      "type": "string",
+      "max": "name",
+      "nullable": true,
+      "doc": "Which model wrote the plan, so two plans a month apart can be told apart."
+    },
+    {
+      "name": "planned_at",
+      "type": "datetime",
+      "nullable": true,
+      "doc": "When the plan was written. Null when there is no plan."
+    }
+  ]
+}

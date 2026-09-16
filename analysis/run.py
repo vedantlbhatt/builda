@@ -43,9 +43,23 @@ def load_schema() -> dict:
 
 
 def call_claude(
-    system: str, user: str, schema: dict, model: str = DEFAULT_MODEL
+    system: str,
+    user: str,
+    schema: dict,
+    model: str = DEFAULT_MODEL,
+    *,
+    tools: str = "",
+    timeout_s: int = TIMEOUT_S,
 ) -> tuple[dict, dict]:
-    """Returns (structured_output, envelope)."""
+    """Returns (structured_output, envelope).
+
+    `tools` is the CLI's `--tools` value and defaults to the empty string, which is what the
+    analyst needs: it reads a digest of the person's transcript, and a model that could run a
+    tool while holding that is a different product. `drops/plan.py` takes the same default for
+    the same reason. The ONE caller that passes anything else is `drops/find.py`, which is
+    handed a package name and a claim and nothing of the person's, and needs the web to answer
+    whether the thing named actually exists (docs/drops.md, "Two model calls").
+    """
     exe = shutil.which("claude")
     if not exe:
         raise AnalysisError("claude CLI not found on PATH")
@@ -65,7 +79,7 @@ def call_claude(
         "--system-prompt",
         system,
         "--tools",
-        "",
+        tools,
         "--model",
         model,
         "--session-id",
@@ -78,13 +92,13 @@ def call_claude(
             cmd,
             capture_output=True,
             text=True,
-            timeout=TIMEOUT_S,
+            timeout=timeout_s,
             env=env,
             stdin=subprocess.DEVNULL,
             check=False,
         )
     except subprocess.TimeoutExpired as e:
-        raise AnalysisError(f"claude -p timed out after {TIMEOUT_S}s") from e
+        raise AnalysisError(f"claude -p timed out after {timeout_s}s") from e
     if proc.returncode != 0:
         raise AnalysisError(f"claude -p exit {proc.returncode}: {proc.stderr[-800:]}")
     try:

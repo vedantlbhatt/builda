@@ -9,7 +9,7 @@
  *
  * No dashes, like everywhere else (`src/copy/plain.ts` holds the one rule and the test scans).
  */
-import { DROPS_ENUMS, type DropKind, type DropRefusal, type Effort, type MoveKind, type MoveRefusal, type MoveStatus, type Platform } from '../generated/drops';
+import { DROPS_ENUMS, type DropKind, type DropRefusal, type Effort, type MoveKind, type MoveRefusal, type MoveStatus, type MoveTarget, type Platform } from '../generated/drops';
 
 /** Why there is nothing to do with this one. Said in the second person, without apology. */
 export const REFUSAL: Record<DropRefusal, string> = {
@@ -71,6 +71,20 @@ export const EFFORT_WORD: Record<Effort, string> = {
   a_session: 'a session',
 };
 
+/**
+ * Where a move lands, in the second person.
+ *
+ * Said over the Start button, so it is the last thing read before work begins on somebody's
+ * machine: `this_machine` is "on your Mac" and not "local", because the person is holding a
+ * phone and the distinction they care about is whose computer this is.
+ */
+export const MOVE_TARGET_WORD: Record<MoveTarget, string> = {
+  new_project: 'as a new project',
+  existing_repo: 'in one of your repos',
+  this_machine: 'on your Mac',
+  none: 'onto this card',
+};
+
 export const PLATFORM_WORD: Record<Platform, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
@@ -105,4 +119,5 @@ export const CATALOG = {
   efforts: DROPS_ENUMS.effort,
   platforms: DROPS_ENUMS.platform,
   dropStatuses: DROPS_ENUMS.drop_status,
+  moveTargets: DROPS_ENUMS.move_target,
 } as const;

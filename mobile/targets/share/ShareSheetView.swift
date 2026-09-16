@@ -28,18 +28,24 @@ struct ShareSheetView: View {
       ground.ignoresSafeArea()
       VStack(spacing: 0) {
         Spacer(minLength: 0)
-        SigilView(seed: seed, ink: hue, partner: hue.opacity(0.55), side: 78)
-          .frame(width: 78, height: 78)
+        // Type, and one rule. The first version drew a generated pixel glyph here, and a mark
+        // grown from a URL says nothing about the post it stands for: on a sheet whose whole job
+        // is to confirm THIS link went somewhere, a picture of nothing is worse than no picture.
         Text(headline)
-          .font(.system(size: 22, weight: .bold))
+          .font(.system(size: 34, weight: .bold))
           .foregroundColor(ink)
-          .padding(.top, 22)
+          .multilineTextAlignment(.center)
+          .padding(.horizontal, 28)
+        Rectangle()
+          .fill(hue)
+          .frame(width: 44, height: 3)
+          .padding(.top, 20)
         Text(detail)
           .font(.system(size: 15))
           .foregroundColor(dim)
           .multilineTextAlignment(.center)
-          .padding(.top, 8)
-          .padding(.horizontal, 32)
+          .padding(.top, 20)
+          .padding(.horizontal, 34)
         Spacer(minLength: 0)
         Button(action: onDone) {
           Text("Done")
@@ -62,11 +68,6 @@ struct ShareSheetView: View {
     }
   }
 
-  private var seed: String {
-    if case let .kept(url) = state { return url }
-    return "refused"
-  }
-
   private var headline: String {
     switch state {
     case .kept: return "On your board"
@@ -80,29 +81,6 @@ struct ShareSheetView: View {
       return "Your Mac reads it and works out what you could do with it. Nothing runs until you tap it."
     case .refused:
       return "Builda takes a link. Share the post itself rather than a screenshot of it."
-    }
-  }
-}
-
-/// The drop's sigil, grown from its link. A Swift port of `mobile/src/drops/sigil.ts`, kept to
-/// the same three constants so the glyph on this sheet is the glyph that appears on the board.
-/// `mobile/__tests__/dropsSigilParity.test.ts` holds the two equal over the real corpus's links.
-struct SigilView: View {
-  let seed: String
-  let ink: Color
-  let partner: Color
-  let side: CGFloat
-
-  var body: some View {
-    let grid = Sigil.grow(seed: seed)
-    let unit = side / CGFloat(Sigil.size)
-    Canvas { context, _ in
-      for r in 0..<Sigil.size {
-        for c in 0..<Sigil.size where grid[r][c] != 0 {
-          let rect = CGRect(x: CGFloat(c) * unit, y: CGFloat(r) * unit, width: unit, height: unit)
-          context.fill(Path(rect), with: .color(grid[r][c] == 1 ? ink : partner))
-        }
-      }
     }
   }
 }

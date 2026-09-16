@@ -1,430 +1,439 @@
 /**
- * The board: every drop you have shared, laid out by what it is about, on a dotted field you
- * pan and zoom. The owner asked for "a mind map kinda thing" with "auto clustering", and this is
- * it: `cluster.ts` decides what belongs together, `layout.ts` decides where, and this draws it.
+ * The board: every drop you have shared, as its own frame, piled by what it is about.
  *
- * WHAT IS DRAWN, bottom up:
+ * WHAT THIS REPLACED, and why. The first board was one generated pixel glyph per drop on a dotted
+ * field. A glyph grown from a URL says nothing about the post, a field of identical little marks
+ * is the exact look this app has a rule against, and forty of them is a starfield rather than a
+ * map. A drop is a video somebody made: the card is its frame, and a cluster is a pile of them.
  *
- *   the field    dots on a 24 unit lattice, in the ground's border grey, PART OF THE MAP: they
- *                pan and scale with it, so the dots are paper rather than wallpaper and the
- *                distance between two drops is always legible against them.
- *   the threads  each member tied to its cluster's hub, in the cluster's hue at a hairline. Drawn
- *                under the nodes, so a sigil always sits on top of its own thread.
- *   the sigils   each drop's generated pixel glyph (`sigil.ts`), in its kind's hue. An unread
- *                drop is drawn in the warm grey: colour on this board always means something was
- *                understood.
- *   the words    hub labels, and each drop's title once you are zoomed in past `TITLE_SCALE`.
- *                React Native text over the canvas, sharing the same transform.
+ * A PHONE IS A COLUMN, so the board is a wall that flows down one (`layout.flow`). Panning in two
+ * directions to read something is how a map stops being read; here the only gesture is the one the
+ * device already is. Pinch still works, and a pile still sits where it sat.
  *
- * ONE PICTURE, ONE TRANSFORM. The whole board is recorded once, in board coordinates, and the
- * pan and the pinch move a Skia `Group` around it on the UI thread. Nothing re-renders while you
- * move, so a hundred drops pan at the same cost as three.
+ * THREE DEPTHS, and each one is a tap:
  *
- * TAPPING A DROP ZOOMS THE MAP TO IT rather than pushing a screen (the owner: "it zooms in on
- * the reel"). The same shared values the gesture writes are the ones the zoom animates, so the
- * two can never fight over the transform, and the detail opens anchored on the node that is now
- * in the middle of the screen.
+ *   the wall     piles, each with its cluster's own word above it.
+ *   a pile open  its cards spread over the dimmed wall, which is where you pick one.
+ *   a card open  the post fills the screen and the sheet comes up over it (`DropSheet.tsx`).
  *
- * NO GRADIENTS ANYWHERE, and no box whose fill, border and text are three tints of one hue: the
- * hue is the ink of the mark, the ground is the ground, and the words are the warm greys.
+ * Nothing here draws a gradient, a chip, or a box whose fill, border and text are three tints of
+ * one hue.
  */
-import { Canvas, createPicture, Group, PaintStyle, Picture, Skia, StrokeCap } from '@shopify/react-native-skia';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { BlurView } from 'expo-blur';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
-  runOnJS,
+  FadeIn,
+  FadeOut,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { dropHue, type Hue } from '../theme';
-import { SparkBurst } from '../ui/bits/effects';
 import { T } from '../ui/Text';
+import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
 import { board as clusterBoard, type Cluster } from './cluster';
-import { fit, focus, layout, type Board as BoardShape, type Placed } from './layout';
-import { cells as sigilCells, grow, SIZE as SIGIL_SIZE } from './sigil';
+import { CARD_H, CARD_W, OPEN_GAP, spread, spreadSize } from './card';
+import { DropCard } from './CardView';
+import { FlyIn } from './FlyIn';
+import { board as layoutBoard, cardScaleFor, extentOf, GUTTER, seats, type StackSpot } from './layout';
+import { arrivalMs, portalPoint, schedule } from './portal';
+import { PortalPill } from './PortalPill';
+import { StackView } from './StackView';
 import type { DropRow, MoveRow } from './types';
 
-/** Points per board unit at scale 1. A node is one unit, so this is a sigil's side. */
-export const UNIT = 46;
-/** Board units between dots on the field. */
-const DOT_PITCH = 0.5;
-const DOT_R = 0.028;
-/** Past this scale, every drop shows its title. Below it, the hub words carry the map. */
-export const TITLE_SCALE = 1.15;
-/** Where a tap lands you. Far enough in that the drop fills the eye, not so far that its
- * neighbours vanish and you lose where you were. */
-export const ZOOM_SCALE = 2.1;
-const MIN_SCALE = 0.35;
-const MAX_SCALE = 3.5;
-/** A tap has to land within this many units of a node's centre to count as that node. A thumb
- * is wider than a sigil, so this is generous and the nearest one wins. */
-const TAP_RADIUS = 0.9;
+/** A cluster, plus where on the wall it insists on being (`layout.Box.band`). */
+type Pile = Cluster & { band?: -1 | 0 | 1 };
 
 export interface BoardProps {
   drops: DropRow[];
   moves: MoveRow[];
-  /** Which drop is open, or null. The board zooms to it and dims everything else. */
-  selected: string | null;
-  onSelect: (id: string | null) => void;
+  /** A card the person opened, or null. The sheet lives above this component. */
+  onOpenCard: (id: string) => void;
+  /** Rows the search box has narrowed to, or null for all of them. */
+  only?: Set<string> | null;
 }
 
-export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
+export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps) {
   const c = useColors();
-  const { width, height } = useWindowDimensions();
-  const viewport = useMemo(() => ({ width, height }), [width, height]);
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const [openCluster, setOpenCluster] = useState<number | null>(null);
 
-  const clusters: Cluster[] = useMemo(
-    () =>
-      clusterBoard(
-        drops.map((d) => ({
+  const shown = useMemo(
+    () => (only ? drops.filter((d) => only.has(d.id)) : drops),
+    [drops, only],
+  );
+
+  /**
+   * The piles.
+   *
+   * A DROP WITH NO WORDS IN IT IS NOT CLUSTERED. It has no title, no summary and no tags, so its
+   * vector is empty, and an empty vector is similar to nothing: it lands in a pile of one under a
+   * label made of no words at all. The first version shipped that, and a reel you had just shared
+   * arrived into a blank space with no word over it, which reads as the board breaking at the
+   * exact moment you are watching it.
+   *
+   * Two piles take them, by the only thing known about each: the ones still being read, and the
+   * ones nobody could read. Both are held at the top, because both are the board asking for your
+   * attention rather than holding a thing you asked for. A drop leaves JUST IN on the same poll
+   * that fills in its title, and joins whichever cluster its words put it in.
+   */
+  const clusters: Pile[] = useMemo(() => {
+    const landing: number[] = [];
+    const closed: number[] = [];
+    const read: number[] = [];
+    shown.forEach((d, i) => {
+      if (d.status === 'waiting' || d.status === 'resolving') landing.push(i);
+      else if (!d.title) closed.push(i);
+      else read.push(i);
+    });
+    const groups = clusterBoard(
+      read.map((i) => {
+        const d = shown[i] as DropRow;
+        return {
           kind: d.kind,
           title: d.title,
           summary: d.summary,
           tags: d.resolution?.plan?.tags ?? [],
-        })),
-      ),
-    [drops],
-  );
-  const shape: BoardShape = useMemo(() => layout(clusters), [clusters]);
+        };
+      }),
+    ).map((g) => ({
+      label: g.label,
+      members: g.members.map((j) => read[j] as number),
+      size: g.size,
+    }));
+    const out: Pile[] = [...groups];
+    if (landing.length) {
+      out.unshift({ label: 'JUST IN', members: landing, size: landing.length, band: -1 });
+    }
+    if (closed.length) {
+      out.push({ label: 'NO WAY IN', members: closed, size: closed.length, band: 1 });
+    }
+    return out;
+  }, [shown]);
 
-  const start = useMemo(() => fit(shape.extent, viewport, UNIT), [shape.extent, viewport]);
-  const scale = useSharedValue(start.scale);
-  const tx = useSharedValue(start.x);
-  const ty = useSharedValue(start.y);
-  const savedScale = useSharedValue(start.scale);
-  const savedX = useSharedValue(start.x);
-  const savedY = useSharedValue(start.y);
-  const [zoomed, setZoomed] = useState(start.scale >= TITLE_SCALE);
-  /**
-   * Where the last tap landed, and a counter that plays one burst there.
-   *
-   * react-bits' ClickSpark, in the `pixel` variant (`src/ui/bits/effects`), which throws squares
-   * rather than rays, so the one moment of delight on this screen is made of the same material
-   * the whole board is. DESIGN-V2's rule for sparks is commitments only; opening a drop is the
-   * one commitment on this screen, and it is also the one place a tap can land on nothing, so
-   * the burst doubles as the answer to "did that register".
-   */
-  const [spark, setSpark] = useState<{ x: number; y: number; hue: Hue | null; n: number }>({
-    x: 0, y: 0, hue: null, n: 0,
-  });
-  /** Has a finger moved the map yet. Until it has, the view FOLLOWS the board. */
-  const touched = useSharedValue(false);
+  const spots = useMemo(() => layoutBoard(clusters, width), [clusters, width]);
+  const cardScale = useMemo(() => cardScaleFor(clusters, width), [clusters, width]);
+  const extent = useMemo(() => extentOf(spots, width), [spots, width]);
 
-  /**
-   * Re fit when the board changes shape, until somebody moves it themselves.
-   *
-   * FOUND ON THE SIMULATOR, first run: the transform was seeded from `fit` at first render, and
-   * at first render the board is EMPTY, because the drops arrive from the API a moment later. An
-   * empty board's extent is the padding alone, so the fit came out at the 1.4 ceiling and stayed
-   * there: the map opened zoomed most of the way in on whatever happened to be at the origin,
-   * and the only way to see it was to pinch out. A shared value's initial argument is read once,
-   * which is exactly the trap.
-   *
-   * It stops following the moment a finger moves the map, so a person who has panned somewhere
-   * does not get yanked back when a drop they shared lands.
-   */
-  useEffect(() => {
-    if (touched.value) return;
-    const next = fit(shape.extent, viewport, UNIT);
-    scale.value = withTiming(next.scale, { duration: 300 });
-    tx.value = withTiming(next.x, { duration: 300 });
-    ty.value = withTiming(next.y, { duration: 300 });
-    savedScale.value = next.scale;
-    savedX.value = next.x;
-    savedY.value = next.y;
-    setZoomed(next.scale >= TITLE_SCALE);
-  }, [shape.extent, viewport, savedScale, savedX, savedY, scale, touched, tx, ty]);
-
-  /** Which drops are running something: the one motion allowed on the board. */
-  const running = useMemo(() => {
+  const busy = useMemo(() => {
     const ids = new Set<string>();
     for (const m of moves) if (m.status === 'running' || m.status === 'queued') ids.add(m.drop_id);
     return ids;
   }, [moves]);
 
-  const picture = useMemo(
-    () => record(shape, drops, running, c, selected),
-    [shape, drops, running, c, selected],
-  );
+  /**
+   * The arrival.
+   *
+   * Cards fly out of the Dynamic Island the first time the board is seen, and again whenever a
+   * drop lands that was not there before: a drop came from somewhere else, and it should arrive
+   * rather than appear. The key changes only when the SET of drops changes, so a poll that
+   * refreshes the same eight does not throw them all back out of the island.
+   */
+  const [wallTop, setWallTop] = useState(0);
+  const key = useMemo(() => shown.map((d) => d.id).sort().join(','), [shown]);
+  const [play, setPlay] = useState(0);
+  const lastKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+    if (key) setPlay((n) => n + 1);
+  }, [key]);
 
-  const tap = useCallback(
-    (px: number, py: number) => {
-      // Screen back to board units, then the nearest node inside the thumb's reach.
-      const bx = (px - tx.value) / (UNIT * scale.value);
-      const by = (py - ty.value) / (UNIT * scale.value);
-      let best: Placed | null = null;
-      let bestD = TAP_RADIUS;
-      for (const n of shape.nodes) {
-        const d = Math.hypot(n.x - bx, n.y - by);
-        if (d < bestD) {
-          bestD = d;
-          best = n;
-        }
-      }
-      if (!best) {
-        onSelect(null);
-        return;
-      }
-      const hit = drops[best.index];
-      setSpark((was) => ({ x: px, y: py, hue: hit?.kind ? dropHue(hit.kind) : null, n: was.n + 1 }));
-      touched.value = true;
-      const target = focus(best, viewport, UNIT, ZOOM_SCALE);
-      scale.value = withTiming(target.scale, { duration: 420 });
-      tx.value = withTiming(target.x, { duration: 420 });
-      ty.value = withTiming(target.y, { duration: 420 });
-      savedScale.value = target.scale;
-      savedX.value = target.x;
-      savedY.value = target.y;
-      setZoomed(true);
-      onSelect(drops[best.index]?.id ?? null);
-    },
-    [drops, onSelect, savedScale, savedX, savedY, scale, shape.nodes, tx, ty, viewport],
-  );
-
-  const pan = Gesture.Pan()
-    .averageTouches(true)
-    .onBegin(() => {
-      touched.value = true;
-    })
-    .onUpdate((e) => {
-      tx.value = savedX.value + e.translationX;
-      ty.value = savedY.value + e.translationY;
-    })
-    .onEnd(() => {
-      savedX.value = tx.value;
-      savedY.value = ty.value;
-    });
-
-  const pinch = Gesture.Pinch()
-    .onBegin(() => {
-      touched.value = true;
-    })
-    .onUpdate((e) => {
-      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
-      // Zoom about the fingers, not the origin, or the board slides out from under the pinch.
-      const k = next / scale.value;
-      tx.value = e.focalX - (e.focalX - tx.value) * k;
-      ty.value = e.focalY - (e.focalY - ty.value) * k;
-      scale.value = next;
-    })
-    .onEnd(() => {
-      savedScale.value = scale.value;
-      savedX.value = tx.value;
-      savedY.value = ty.value;
-      runOnJS(setZoomed)(scale.value >= TITLE_SCALE);
-    });
-
-  const single = Gesture.Tap()
-    .maxDuration(300)
-    .onEnd((e) => {
-      runOnJS(tap)(e.x, e.y);
-    });
-
-  const gesture = Gesture.Simultaneous(Gesture.Race(single, pan), pinch);
-
-  const groupTransform = useDerivedValue(() => [
-    { translateX: tx.value },
-    { translateY: ty.value },
-    { scale: scale.value },
-  ]);
+  /** The island, in the board's own coordinates: negative, because it is above the board. */
+  const portal = useMemo(() => {
+    const p = portalPoint(width, insets.top);
+    return { x: p.x, y: p.y - wallTop };
+  }, [width, insets.top, wallTop]);
 
   /**
-   * The words ride the same transform as the canvas, ABOUT THE SAME ORIGIN.
+   * While the cards are in the air.
    *
-   * FOUND ON THE SIMULATOR: Skia's `Group` scales about (0, 0) and React Native's `scale` scales
-   * about the view's CENTRE, so the two layers agreed at scale 1 and drifted apart everywhere
-   * else. On the first real board a cluster's word sat two hundred points away from the cluster
-   * it named, which reads as a layout bug in the map rather than as two different definitions of
-   * where the middle is. `transformOrigin` top left makes the text layer use Skia's.
+   * The wall does not scroll during it, because the overlay draws in the screen's coordinates and
+   * the wall in the scroller's: a flick mid flight would slide one out from under the other. It
+   * lasts exactly as long as the schedule says the arrival does.
    */
-  const wordsStyle = useAnimatedStyle(() => ({
-    transformOrigin: '0% 0%',
-    transform: [
-      { translateX: tx.value },
-      { translateY: ty.value },
-      { scale: scale.value },
-    ],
-  }));
+  const [flying, setFlying] = useState(false);
+  useEffect(() => {
+    if (!play || !shown.length || !wallTop) return;
+    setFlying(true);
+    const id = setTimeout(() => setFlying(false), arrivalMs(shown.length) + 60);
+    return () => clearTimeout(id);
+  }, [play, shown.length, wallTop]);
+
+  /** Whose turn it is to leave, top pile first, so the board fills the way you read it. */
+  const delays = useMemo(() => {
+    const order = spots.flatMap((s) => s.members);
+    const times = schedule(order.length);
+    const out: Record<string, number> = {};
+    order.forEach((index, i) => {
+      const id = shown[index]?.id;
+      if (id) out[id] = times[i] ?? 0;
+    });
+    return out;
+  }, [spots, shown]);
+
+  const open = openCluster === null ? null : spots.find((s) => s.cluster === openCluster) ?? null;
+
+  // The wall dims and pulls back a little while a pile is open, so the pile reads as being in
+  // front of it rather than beside it.
+  const back = useSharedValue(1);
+  useEffect(() => {
+    back.value = withSpring(open ? 0.94 : 1, { damping: 18, stiffness: 160 });
+  }, [open, back]);
+  const wallStyle = useAnimatedStyle(() => ({ transform: [{ scale: back.value }] }));
+
+  const close = useCallback(() => {
+    select();
+    setOpenCluster(null);
+  }, []);
 
   return (
-    <GestureDetector gesture={gesture}>
-      <View style={[styles.fill, { backgroundColor: c.bg }]}>
-        <Canvas style={styles.fill}>
-          <Group transform={groupTransform}>
-            <Picture picture={picture} />
-          </Group>
-        </Canvas>
-        {spark.n > 0 ? (
-          <SparkBurst
-            x={spark.x}
-            y={spark.y}
-            playKey={spark.n}
-            variant="pixel"
-            hue={spark.hue ?? undefined}
-            size={4}
-            count={10}
-            radius={34}
-          />
-        ) : null}
-        {/* Words ride the same transform. `pointerEvents none`: the canvas underneath owns
-            every touch, so a label can never swallow a tap meant for the node it names. */}
-        <Animated.View style={[styles.words, wordsStyle]} pointerEvents="none">
-          {shape.hubs.map((h) => (
-            <T
-              key={`hub.${h.cluster}`}
-              role="label"
-              style={[
-                styles.hubWord,
-                {
-                  left: h.x * UNIT - 60,
-                  top: (h.top - 0.86) * UNIT,
-                  color: c.textDim,
-                },
-              ]}
-            >
-              {h.label.toUpperCase()}
-            </T>
+    /**
+     * `onLayout` HERE, on the board's own root, and not on the scroller inside it.
+     *
+     * It was on the scroller, whose y within this component is 0, so `wallTop` was always zero
+     * and everything measured from the island — the portal's mouth and the pill drawn at it —
+     * came out one header lower than the island itself. The board is a sibling of the header, so
+     * its own y in the screen IS the header's height, which is exactly the offset both need.
+     */
+    <View style={styles.fill} onLayout={(e) => setWallTop(e.nativeEvent.layout.y)}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={{
+          height: extent.maxY + insets.bottom + 92,
+          paddingTop: 0,
+        }}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={open === null}
+      >
+        <Animated.View style={[styles.wall, wallStyle]}>
+          {spots.map((s) => (
+            <StackView
+              key={`${s.cluster}.${s.label}`}
+              spot={s}
+              drops={shown}
+              busy={busy}
+              dim={open !== null && open.cluster !== s.cluster}
+              cardScale={cardScale}
+              arriving={flying}
+              onOpen={setOpenCluster}
+            />
           ))}
-          {zoomed
-            ? shape.nodes.map((n) => {
-                const d = drops[n.index];
-                if (!d) return null;
-                return (
-                  <T
-                    key={`title.${d.id}`}
-                    role="meta"
-                    numberOfLines={2}
-                    style={[
-                      styles.nodeWord,
-                      {
-                        left: n.x * UNIT - 56,
-                        top: n.y * UNIT + UNIT * 0.56,
-                        color: selected === d.id ? c.text : c.textDim,
-                      },
-                    ]}
-                  >
-                    {d.title ?? hostOf(d.url)}
-                  </T>
-                );
-              })
-            : null}
         </Animated.View>
-      </View>
-    </GestureDetector>
-  );
-}
+      </ScrollView>
 
-/** The host, for a drop nobody has read yet: something true to print before the title exists. */
-export function hostOf(url: string): string {
-  const m = /^https:\/\/([^/]+)/.exec(url);
-  return (m?.[1] ?? url).replace(/^www\./, '');
+      {/* THE ARRIVAL, over the scroller rather than inside it.
+          A UIScrollView clips to its own bounds, and the island is ABOVE the board's frame, so a
+          card that flew from the island was invisible for the whole first half of its flight and
+          appeared to be born a third of the way down the wall. Drawn here it is not clipped by
+          anything, and the seats it lands in were held open by the piles underneath. */}
+      {flying ? (
+        <Arrival
+          spots={spots}
+          drops={shown}
+          busy={busy}
+          cardScale={cardScale}
+          portal={portal}
+          delays={delays}
+          playKey={play}
+        />
+      ) : null}
+
+      {/* The island, opening. Over everything, because it is the top of the phone. */}
+      <PortalPill width={width} topInset={insets.top} offsetY={-wallTop} playKey={play} />
+
+      {open ? (
+        <OpenPile
+          spot={open}
+          drops={shown}
+          busy={busy}
+          onPick={(id) => {
+            setOpenCluster(null);
+            onOpenCard(id);
+          }}
+          onClose={close}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 /**
- * Record the whole board once, in board units multiplied up by UNIT.
+ * The cards, in the air.
  *
- * Everything that moves is the Group's transform, so this runs when the DROPS change and never
- * while a finger is down.
+ * One layer over the whole board, outside the scroller, holding a copy of every card mid flight.
+ * Each one starts at the island the size of a stamp, spinning, and lands in the seat its pile is
+ * holding open; when the last one is down this unmounts and the wall's own cards take over, in
+ * the same place, at the same size, so the handover is not a frame anybody can see.
+ *
+ * It draws in the SCREEN's coordinates: a seat's place on the wall plus how far down the screen
+ * the wall starts. That is the whole reason it exists — the island is above the wall, and the
+ * wall clips.
  */
-function record(
-  shape: BoardShape,
-  drops: DropRow[],
-  running: Set<string>,
-  c: ReturnType<typeof useColors>,
-  selected: string | null,
-) {
-  const { minX, minY, maxX, maxY } = shape.extent;
-  return createPicture((canvas) => {
-    const dot = Skia.Paint();
-    dot.setAntiAlias(true);
-    dot.setColor(Skia.Color(c.border));
+function Arrival({
+  spots,
+  drops,
+  busy,
+  cardScale,
+  portal,
+  delays,
+  playKey,
+}: {
+  spots: StackSpot[];
+  drops: DropRow[];
+  busy: Set<string>;
+  cardScale: number;
+  /** The island, in the BOARD's coordinates: this layer fills the board, not the screen. */
+  portal: { x: number; y: number };
+  delays: Record<string, number>;
+  playKey: number;
+}) {
+  const ids = useMemo(() => drops.map((d) => d.id), [drops]);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {spots.flatMap((spot) =>
+        seats(spot, ids, cardScale).map((seat) => {
+          const drop = drops[seat.index];
+          if (!drop) return null;
+          const x = seat.homeX - seat.width / 2;
+          const y = seat.homeY - seat.height / 2;
+          return (
+            <View
+              key={drop.id}
+              style={[
+                styles.flier,
+                {
+                  left: x,
+                  top: y,
+                  width: seat.width,
+                  height: seat.height,
+                  transform: [{ rotate: `${seat.rotate}deg` }],
+                  zIndex: 10 - seat.depth,
+                },
+              ]}
+            >
+              <FlyIn
+                dx={portal.x - seat.homeX}
+                dy={portal.y - seat.homeY}
+                delay={delays[drop.id] ?? 0}
+                playKey={playKey}
+              >
+                <DropCard
+                  drop={drop}
+                  busy={busy.has(drop.id)}
+                  dim={seat.depth === 0 ? 1 : 0.9 - seat.depth * 0.12}
+                  words={seat.depth === 0}
+                  scale={cardScale}
+                />
+              </FlyIn>
+            </View>
+          );
+        }),
+      )}
+    </View>
+  );
+}
 
-    // The field. One extra pitch each way so the dots run under everything rather than stopping
-    // at the bounding box of the drops, which would draw the box.
-    for (let x = Math.floor(minX) - 2; x <= Math.ceil(maxX) + 2; x += DOT_PITCH) {
-      for (let y = Math.floor(minY) - 2; y <= Math.ceil(maxY) + 2; y += DOT_PITCH) {
-        canvas.drawCircle(x * UNIT, y * UNIT, DOT_R * UNIT, dot);
-      }
-    }
+/**
+ * A pile, opened: its cards spread over the wall, two across, scrollable when there are many.
+ *
+ * Over the wall rather than in it. Reflowing the wall to make room would move every other pile,
+ * and a board that rearranges itself when you tap something is a board you lose your place in.
+ */
+function OpenPile({
+  spot,
+  drops,
+  busy,
+  onPick,
+  onClose,
+}: {
+  spot: { label: string; size: number; members: number[] };
+  drops: DropRow[];
+  busy: Set<string>;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const cards = spread(spot.members);
+  const size = spreadSize(spot.members.length);
+  const left = Math.max(GUTTER, (width - size.width) / 2);
 
-    // Threads, under the sigils.
-    const thread = Skia.Paint();
-    thread.setStyle(PaintStyle.Stroke);
-    thread.setStrokeWidth(1);
-    thread.setStrokeCap(StrokeCap.Round);
-    thread.setAntiAlias(true);
-    for (const n of shape.nodes) {
-      if (n.isHub) continue;
-      const hub = shape.hubs[n.cluster];
-      if (!hub) continue;
-      const d = drops[n.index];
-      const hue = d?.kind ? dropHue(d.kind) : null;
-      thread.setColor(Skia.Color(hue?.partner ?? c.border));
-      canvas.drawLine(hub.x * UNIT, hub.y * UNIT, n.x * UNIT, n.y * UNIT, thread);
-    }
-
-    // Sigils.
-    const cell = Skia.Paint();
-    cell.setAntiAlias(false);
-    const ring = Skia.Paint();
-    ring.setStyle(PaintStyle.Stroke);
-    ring.setStrokeWidth(1.5);
-    ring.setAntiAlias(true);
-
-    for (const n of shape.nodes) {
-      const d = drops[n.index];
-      if (!d) continue;
-      const hue: Hue | null = d.kind ? dropHue(d.kind) : null;
-      const ink = hue?.ink ?? c.textFaint;
-      const partner = hue?.partner ?? c.border;
-      const grid = grow(d.url);
-      const unit = UNIT / SIGIL_SIZE;
-      const ox = n.x * UNIT - UNIT / 2;
-      const oy = n.y * UNIT - UNIT / 2;
-      // A drop whose Mac has not read it yet is drawn at half its cells, so a waiting board
-      // looks like a board that is still filling in rather than a board of grey squares.
-      const partial = d.status === 'waiting' || d.status === 'resolving';
-      const list = sigilCells(grid);
-      const upto = partial ? Math.ceil(list.length * 0.55) : list.length;
-      for (let i = 0; i < upto; i++) {
-        const s = list[i];
-        if (!s) continue;
-        cell.setColor(Skia.Color(s.tone === 1 ? ink : partner));
-        canvas.drawRect(
-          Skia.XYWHRect(ox + s.c * unit, oy + s.r * unit, unit + 0.5, unit + 0.5),
-          cell,
-        );
-      }
-      // The two states worth marking on the map itself: the one you have open, and the ones
-      // with work in flight. Both are a ring, which is the only shape here that is not a pixel.
-      if (selected === d.id) {
-        ring.setColor(Skia.Color(ink));
-        canvas.drawCircle(n.x * UNIT, n.y * UNIT, UNIT * 0.78, ring);
-      } else if (running.has(d.id)) {
-        ring.setColor(Skia.Color(c.accent));
-        canvas.drawCircle(n.x * UNIT, n.y * UNIT, UNIT * 0.68, ring);
-      }
-    }
-  });
+  return (
+    <Animated.View
+      entering={FadeIn.duration(160)}
+      exiting={FadeOut.duration(120)}
+      style={styles.sheetBack}
+    >
+      {/* Over the wall, not instead of it: the pile you opened is in front of the board you were
+          looking at, and the board stays visible behind so you do not lose where you were. */}
+      <BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(16,14,12,0.80)' }]} />
+      <Pressable style={StyleSheet.absoluteFill} accessibilityLabel="Close" onPress={onClose} />
+      <View style={[styles.openHead, { paddingTop: insets.top + 10 }]}>
+        <T role="display" numberOfLines={1} style={{ color: c.text, flex: 1 }}>
+          {spot.label ? spot.label : 'Drops'}
+        </T>
+        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={14}>
+          <T role="label" style={{ color: c.textFaint, letterSpacing: 1.4 }}>
+            CLOSE
+          </T>
+        </Pressable>
+      </View>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          paddingBottom: insets.bottom + 80,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ height: size.height, marginLeft: left }}>
+          {cards.map((p, i) => {
+            const drop = drops[p.index];
+            if (!drop) return null;
+            return (
+              <Animated.View
+                key={drop.id}
+                entering={FadeIn.duration(220).delay(i * 34)}
+                style={{ position: 'absolute', left: p.x, top: p.y, width: CARD_W, height: CARD_H }}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={drop.title ?? drop.url}
+                  onPress={() => {
+                    select();
+                    onPick(drop.id);
+                  }}
+                >
+                  <DropCard drop={drop} busy={busy.has(drop.id)} />
+                </Pressable>
+              </Animated.View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  words: { ...StyleSheet.absoluteFillObject },
-  hubWord: {
-    position: 'absolute',
-    width: 120,
-    textAlign: 'center',
-    letterSpacing: 1.4,
-  },
-  nodeWord: {
-    position: 'absolute',
-    width: 112,
-    textAlign: 'center',
+  flier: { position: 'absolute' },
+  wall: { flex: 1 },
+  sheetBack: { ...StyleSheet.absoluteFillObject },
+  openHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: GUTTER,
+    paddingBottom: 16,
   },
 });

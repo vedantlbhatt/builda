@@ -1,76 +1,110 @@
 /**
- * Drops: everything you have shared into Builda, as a map you can start work from.
+ * Drops: everything you have shared into Builda, as its own frame, piled by what it is about.
  *
- * The fifth tab, and the only one that is not a reading of what you already did. Share a reel or
- * a TikTok from the OS share sheet, and it lands here as a node; the Mac reads it and proposes
- * moves; you tap one and Claude Code does it, which makes the reel a Builda session like any
- * other. `docs/drops.md` is the design.
+ * The fifth tab, and the only one you arrive at from outside the app: you share a reel in
+ * Instagram, Builda opens, and the thumb is already in the middle of the bar.
  *
- * The screen is three things and nothing else: the board (`Board.tsx`), the drop you have open
- * (`DropDetail.tsx`), and an empty state that tells you how to put the first one on it. The tab
- * has no header of its own: the board IS the screen, edge to edge, and a large title over a map
- * would take a fifth of it to say a word that is already in the tab bar.
+ * Three things on it and nothing else: the search box, the wall (`Board.tsx`), and the drop you
+ * opened (`DropSheet.tsx`). Two ways to see the wall, because the right one depends on how many
+ * you have: PILES, which groups them by what they are about, and a GRID, which is every card in
+ * order with nothing decided for you. The toggle is two words, not an icon nobody can read.
  */
 import { useIsFocused } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DropsBoard } from '../../src/drops/Board';
+import { DropCard } from '../../src/drops/CardView';
+import { search } from '../../src/drops/cluster';
+import { SearchLine } from '../../src/drops/SearchLine';
 import { drainPending, landShared, pendingCount } from '../../src/drops/intake';
-import { DropDetail } from '../../src/drops/DropDetail';
-import { Sigil } from '../../src/drops/SigilView';
+import { GUTTER } from '../../src/drops/layout';
 import { useBoard } from '../../src/drops/useBoard';
-import { dropHue } from '../../src/theme';
+import { WordToggle } from '../../src/drops/WordToggle';
 import { T } from '../../src/ui/Text';
 import { TextField } from '../../src/ui/TextField';
-import { commit } from '../../src/ui/haptics';
+import { commit, select } from '../../src/ui/haptics';
 import { useColors } from '../../src/ui/scheme';
+
+type Shape = 'piles' | 'grid';
 
 export default function DropsScreen() {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const { drops, moves, loading, refresh, start, archive } = useBoard();
-  const [open, setOpen] = useState<string | null>(null);
+  const { drops, moves, loading, refresh } = useBoard();
+  const [shape, setShape] = useState<Shape>('piles');
+  const [query, setQuery] = useState('');
   const focused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; open?: string }>();
   const consumed = useRef<string | null>(null);
-  /**
-   * How many shares the extension has queued that this app has not sent.
-   *
-   * On screen, not in a log. A share that reaches the App Group and stops there is invisible
-   * otherwise: the person hit share, the sheet said "on your board", and the board does not have
-   * it. Null means there is no native module here at all (Expo Go, Android, web), and then the
-   * line says nothing rather than "0".
-   */
   const [waiting, setWaiting] = useState<number | null>(null);
 
-  // The share extension's queue, drained every time the tab comes forward. A share that happened
-  // while the app was closed lands the first time you open it, and one that happened while it
-  // was in the background lands when you come back to this tab.
-  useEffect(() => {
-    if (!focused) return;
+  const openDrop = useCallback((id: string) => router.push(`/drop/${id}`), [router]);
+
+  /** What the search box narrowed to, or null for all of them (`cluster.search`). */
+  const only = useMemo(() => {
+    const hits = search(
+      query,
+      drops.map((d) => ({
+        kind: d.kind,
+        title: d.title,
+        summary: d.summary,
+        tags: d.resolution?.plan?.tags ?? [],
+      })),
+    );
+    return hits ? new Set(hits.map((i) => drops[i]?.id).filter(Boolean) as string[]) : null;
+  }, [query, drops]);
+
+  const shown = useMemo(() => (only ? drops.filter((d) => only.has(d.id)) : drops), [drops, only]);
+  const todo = useMemo(() => moves.filter((m) => m.status === 'offered').length, [moves]);
+  const going = useMemo(
+    () => moves.filter((m) => m.status === 'queued' || m.status === 'running').length,
+    [moves],
+  );
+  const busy = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of moves) if (m.status === 'running' || m.status === 'queued') ids.add(m.drop_id);
+    return ids;
+  }, [moves]);
+
+  /**
+   * The queue the share extension writes into, emptied.
+   *
+   * ON FOCUS **AND ON FOREGROUND**, because those are two different events and only one of them
+   * used to be handled. Share a reel from Safari while Builda is already sitting on this tab,
+   * come back, and `useIsFocused` never changes: the screen was focused the whole time. The drop
+   * would then sit in the App Group until the person tabbed away and back, which is the one thing
+   * nobody does when they have just shared something and are waiting to see it land.
+   */
+  const drain = useCallback(() => {
     setWaiting(pendingCount());
     void drainPending().then((n) => {
       setWaiting(pendingCount());
       if (n > 0) void refresh();
     });
-  }, [focused, refresh]);
+  }, [refresh]);
 
-  // A tapped banner: `builder://drops?open=<id>` (`server/builder/drops_notify.py`). Opening a
-  // drop that is not on this board does nothing rather than showing an empty panel, which is what
-  // a banner for a drop deleted on another device would otherwise do.
+  useEffect(() => {
+    if (!focused) return;
+    drain();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') drain();
+    });
+    return () => sub.remove();
+  }, [focused, drain]);
+
+  // A tapped banner: `builder://drops?open=<id>`. It opens the drop's own screen.
   useEffect(() => {
     const id = params.open;
     if (!id) return;
-    if (drops.some((d) => d.id === id)) setOpen(id);
     router.setParams({ open: undefined });
-  }, [params.open, drops, router]);
+    if (drops.some((d) => d.id === id)) openDrop(id);
+  }, [params.open, drops, router, openDrop]);
 
-  // A link that arrived as `builder://drop?url=...`. Consumed once, by value, and the query is
-  // cleared: without that, every re render of a focused tab would send the same link again.
   useEffect(() => {
     const url = params.url;
     if (!url || consumed.current === url) return;
@@ -80,90 +114,103 @@ export default function DropsScreen() {
       .finally(() => router.setParams({ url: undefined }));
   }, [params.url, refresh, router]);
 
-  const drop = useMemo(() => drops.find((d) => d.id === open) ?? null, [drops, open]);
-
-  /**
-   * How many moves are sitting there waiting to be tapped, and how many are going.
-   *
-   * On the title line rather than on the nodes. A count per node is clutter on a map whose whole
-   * job is shape, and the number a person wants when they open this tab is "is there anything to
-   * do", which is one number.
-   */
-  const todo = useMemo(() => moves.filter((m) => m.status === 'offered').length, [moves]);
-  const going = useMemo(
-    () => moves.filter((m) => m.status === 'queued' || m.status === 'running').length,
-    [moves],
-  );
-
-  const onStart = useCallback(
-    (ids: string[], adjustment: string | null, repoKeys: Record<string, string>) => {
-      if (drop) void start(drop.id, ids, adjustment, repoKeys);
-    },
-    [drop, start],
-  );
-
   return (
     <View style={[styles.fill, { backgroundColor: c.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      {drops.length === 0 && !loading ? (
-        <Empty onRefresh={refresh} onPaste={async (link) => { await landShared(link); await refresh(); }} />
-      ) : (
-        <DropsBoard drops={drops} moves={moves} selected={open} onSelect={setOpen} />
-      )}
 
-      {/* The word, top left, over the map. The tab has no header, so this is the only chrome:
-          one label, on the ground, with nothing behind it. */}
-      <View style={[styles.title, { top: insets.top + 8 }]} pointerEvents="none">
-        <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
-          {`DROPS  ·  ${drops.length}`}
-          {todo ? (
-            <T role="label" style={{ color: c.textFaint, letterSpacing: 1.6 }}>{`   ${todo} TO DO`}</T>
-          ) : null}
-          {/* Amber is "needs you" and "in flight" everywhere else in this app, and these are the
-              two states where something is actually moving. */}
-          {going ? (
-            <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${going} GOING`}</T>
-          ) : null}
-          {waiting ? (
-            <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T>
-          ) : null}
-        </T>
+      <View style={[styles.head, { paddingTop: insets.top + 6 }]}>
+        <View style={styles.headRow}>
+          <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
+            {`DROPS  ·  ${drops.length}`}
+            {todo ? (
+              <T role="label" style={{ color: c.textFaint, letterSpacing: 1.6 }}>{`   ${todo} TO DO`}</T>
+            ) : null}
+            {going ? (
+              <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${going} GOING`}</T>
+            ) : null}
+            {waiting ? (
+              <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T>
+            ) : null}
+          </T>
+          <View style={styles.shape}>
+            <WordToggle word="PILES" on={shape === 'piles'} onPress={() => setShape('piles')} />
+            <WordToggle word="GRID" on={shape === 'grid'} onPress={() => setShape('grid')} />
+          </View>
+        </View>
+
+        <View style={styles.search}>
+          <SearchLine
+            value={query}
+            onChangeText={setQuery}
+            hits={only ? { shown: only.size, total: drops.length } : null}
+          />
+        </View>
       </View>
 
-      {drop ? (
-        <DropDetail
-          drop={drop}
-          moves={moves}
-          onStart={onStart}
-          onArchive={() => {
-            void archive(drop.id);
-            setOpen(null);
+      {drops.length === 0 && !loading ? (
+        <Empty
+          onRefresh={refresh}
+          onPaste={async (link) => {
+            await landShared(link);
+            await refresh();
           }}
-          onClose={() => setOpen(null)}
         />
-      ) : null}
+      ) : shape === 'piles' ? (
+        <DropsBoard drops={drops} moves={moves} onOpenCard={openDrop} only={only} />
+      ) : (
+        <GridWall drops={shown} busy={busy} onOpenCard={openDrop} />
+      )}
     </View>
   );
 }
 
 /**
- * Nothing shared yet.
- *
- * It shows three sigils grown from three example links rather than an illustration: the empty
- * state is made of the same thing the full one is, so what you are being promised is what you
- * will get. Pull to refresh, because a person who has just shared from another app comes back
- * here expecting it to be there.
+ * Every card, in order, two across. The alternative to the piles for anybody who would rather
+ * decide for themselves what goes with what.
  */
-function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste: (link: string) => Promise<void> }) {
+function GridWall({
+  drops,
+  busy,
+  onOpenCard,
+}: {
+  drops: ReturnType<typeof useBoard>['drops'];
+  busy: Set<string>;
+  onOpenCard: (id: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 96 }]}
+      showsVerticalScrollIndicator={false}
+    >
+      {drops.map((d, i) => (
+        <Animated.View key={d.id} entering={FadeIn.duration(200).delay(Math.min(i, 8) * 28)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={d.title ?? d.url}
+            onPress={() => {
+              select();
+              onOpenCard(d.id);
+            }}
+          >
+            <DropCard drop={d} busy={busy.has(d.id)} scale={1.42} />
+          </Pressable>
+        </Animated.View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function Empty({
+  onRefresh,
+  onPaste,
+}: {
+  onRefresh: () => Promise<void>;
+  onPaste: (link: string) => Promise<void>;
+}) {
   const c = useColors();
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState('');
-  const seeds = [
-    'https://www.tiktok.com/@a/video/1',
-    'https://www.instagram.com/reel/b',
-    'https://www.youtube.com/shorts/c',
-  ];
-  const kinds = ['skill', 'technique', 'recipe'];
   return (
     <ScrollView
       contentContainerStyle={styles.empty}
@@ -178,14 +225,7 @@ function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste
         />
       }
     >
-      <View style={styles.seeds}>
-        {seeds.map((s, i) => {
-          const hue = dropHue(kinds[i] ?? 'skill');
-          if (!hue) return null;
-          return <Sigil key={s} seed={s} size={52} ink={hue.ink} partner={hue.partner} motion="still" />;
-        })}
-      </View>
-      <T role="title" style={{ color: c.text, marginTop: 28, textAlign: 'center' }}>
+      <T role="title" style={{ color: c.text, textAlign: 'center' }}>
         Send yourself something to build
       </T>
       <T role="body" style={{ color: c.textDim, marginTop: 10, textAlign: 'center' }}>
@@ -195,10 +235,6 @@ function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste
       <T role="mono" style={{ color: c.textFaint, marginTop: 22, textAlign: 'center' }}>
         nothing runs until you tap it
       </T>
-
-      {/* The door that works everywhere, including Expo Go, where there is no share extension
-          in the binary at all. A feature you cannot try without a native build is a feature
-          nobody tries. */}
       <View style={styles.paste}>
         <TextField
           value={link}
@@ -223,8 +259,18 @@ function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  title: { position: 'absolute', left: 16 },
+  head: { paddingHorizontal: GUTTER, paddingBottom: 10 },
+  headRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  shape: { flexDirection: 'row', gap: 14 },
+  search: { marginTop: 12 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingHorizontal: GUTTER,
+    paddingTop: 4,
+  },
   empty: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32 },
-  seeds: { flexDirection: 'row', justifyContent: 'center', gap: 18 },
   paste: { marginTop: 26 },
 });

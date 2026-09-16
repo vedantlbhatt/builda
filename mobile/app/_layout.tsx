@@ -119,6 +119,13 @@ export default function RootLayout() {
                   })}
                 />
                 <Stack.Screen name="session/[id]" options={{ title: '' }} />
+                {/* A drop takes the whole screen: the post is the screen and the sheet is over
+                    it, so a tab bar sitting on top would make a full bleed frame not full
+                    bleed. Fades in, because the card it came from is already on screen. */}
+                <Stack.Screen
+                  name="drop/[id]"
+                  options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }}
+                />
                 <Stack.Screen name="live" options={{ title: 'Mission control' }} />
                 {/* Every piece of analysis on one page. It sets its own large title bar
                     (src/insights/AnalysisScreen.tsx); listed here so it does not exist before

@@ -17,13 +17,23 @@ import {
   KIND_WORD,
   MOVE_REFUSAL,
   MOVE_STATUS_LINE,
+  MOVE_TARGET_WORD,
   MOVE_VERB,
   PLATFORM_WORD,
   REFUSAL,
   STATUS_LINE,
   readLine,
 } from '../src/drops/copy';
-import { fit, focus, layout, MIN_HUB_SPACING, NODE, place, reach, ringRadius } from '../src/drops/layout';
+import { CARD_H, CARD_W, fan, OPEN_GAP, spread, spreadSize, STACK_SHOWN, stackSize } from '../src/drops/card';
+import {
+  board as layoutBoard,
+  cardScaleFor,
+  extentOf,
+  fit,
+  LABEL_H,
+  MIN_FIT,
+  seats,
+} from '../src/drops/layout';
 import { projectChoices } from '../src/drops/repos';
 
 const DROPS = [
@@ -39,124 +49,191 @@ const DROPS = [
 const PHONE = { width: 390, height: 780 };
 const UNIT = 46;
 
-describe('the map', () => {
-  const shape = layout(clusterBoard(DROPS));
+describe('the wall', () => {
+  const clusters = [
+    { label: 'pasta', size: 6, members: [0, 1, 2, 3, 4, 5] },
+    { label: 'vscode', size: 5, members: [6, 7, 8, 9, 10] },
+    { label: 'skills', size: 1, members: [11] },
+    { label: 'saas', size: 1, members: [12] },
+    { label: 'pets', size: 1, members: [13] },
+  ];
+  const W = 393;
+  const spots = layoutBoard(clusters, W);
 
-  test('every drop is on it exactly once', () => {
-    expect(shape.nodes).toHaveLength(DROPS.length);
-    expect(new Set(shape.nodes.map((n) => n.index)).size).toBe(DROPS.length);
+  test('every cluster gets a spot, in the order it came', () => {
+    expect(spots).toHaveLength(clusters.length);
+    expect(spots.map((s) => s.label)).toEqual(clusters.map((c) => c.label));
+    expect(spots.map((s) => s.cluster)).toEqual([0, 1, 2, 3, 4]);
   });
 
-  test('no two nodes sit on top of each other', () => {
-    for (let i = 0; i < shape.nodes.length; i++) {
-      for (let j = i + 1; j < shape.nodes.length; j++) {
-        const a = shape.nodes[i];
-        const b = shape.nodes[j];
-        if (!a || !b) continue;
-        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(NODE * 0.9);
+  test('a banded pile skips the queue, whatever it weighs', () => {
+    // The regression: a reel shared ten seconds ago is a pile of one, and tallest-first filed it
+    // halfway down the wall under four piles nobody was looking for — at the exact moment the
+    // person opened the app to watch it land. A dead end sorts the other way, under the board.
+    const banded = layoutBoard(
+      [
+        ...clusters,
+        { label: 'JUST IN', size: 1, members: [14], band: -1 as const },
+        { label: 'NO WAY IN', size: 1, members: [15], band: 1 as const },
+      ],
+      W,
+    );
+    const top = banded.find((s) => s.label === 'JUST IN')!;
+    const sunk = banded.find((s) => s.label === 'NO WAY IN')!;
+    const ordinary = banded.filter((s) => s.label !== 'JUST IN' && s.label !== 'NO WAY IN');
+
+    // Above every ordinary pile's top edge, and below every ordinary pile's bottom edge.
+    for (const s of ordinary) {
+      expect(top.y - top.height / 2).toBeLessThanOrEqual(s.y - s.height / 2);
+      expect(sunk.y + sunk.height / 2).toBeGreaterThanOrEqual(s.y + s.height / 2);
+    }
+    // And it is still a wall: nothing it pinned overlaps anything it flowed.
+    for (let i = 0; i < banded.length; i++) {
+      for (let j = i + 1; j < banded.length; j++) {
+        const a = banded[i]!;
+        const b = banded[j]!;
+        expect(
+          Math.abs(a.x - b.x) >= (a.width + b.width) / 2 ||
+            Math.abs(a.y - b.y) >= (a.height + b.height) / 2,
+        ).toBe(true);
       }
     }
   });
 
-  test("a cluster's members are nearer their own hub than any other", () => {
-    for (const n of shape.nodes) {
-      const own = shape.hubs[n.cluster];
-      if (!own || shape.hubs.length < 2) continue;
-      const mine = Math.hypot(n.x - own.x, n.y - own.y);
-      for (const other of shape.hubs) {
-        if (other.cluster === n.cluster) continue;
-        expect(mine).toBeLessThanOrEqual(Math.hypot(n.x - other.x, n.y - other.y) + 1e-9);
+  test('no stack overlaps another', () => {
+    // The regression this replaces: the first board packed rectangles around an origin and came
+    // out 657 points wide on a 393 point phone, which either overflows sideways or shrinks every
+    // card to a smudge.
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const a = spots[i]!;
+        const b = spots[j]!;
+        const apart =
+          Math.abs(a.x - b.x) >= (a.width + b.width) / 2 ||
+          Math.abs(a.y - b.y) >= (a.height + b.height) / 2;
+        expect(apart).toBe(true);
       }
     }
   });
 
-  test('a singleton is one node, not a node orbiting nothing', () => {
-    for (const h of shape.hubs) {
-      if (h.size !== 1) continue;
-      expect(h.radius).toBe(0);
-      const node = shape.nodes.find((n) => n.cluster === h.cluster);
-      expect(node?.x).toBe(h.x);
-      expect(node?.y).toBe(h.y);
-      expect(node?.isHub).toBe(true);
-    }
-  });
-
-  test('constellations are packed, and never inside one another', () => {
-    // Two regressions in one test. HUB_SPACING was tightened from 4.2 to 3.4 because a board
-    // looked sparse, and two nodes landed 0.55 units apart; deriving one spacing from the widest
-    // ring fixed that and made a board of eight drops run off both edges of the phone, because
-    // one two member ring set the distance for every pair. Packing gives each constellation its
-    // own reach.
-    for (const sizes of [[1, 1, 1], [2, 2], [9, 9], [1, 9, 3], [5, 4, 3, 2, 1], [1, 1, 2, 1, 1, 1]]) {
-      const clusters = sizes.map((size) => ({ size }));
-      const spots = place(clusters);
-      for (let i = 0; i < spots.length; i++) {
-        for (let j = i + 1; j < spots.length; j++) {
-          const a = spots[i] as { x: number; y: number };
-          const b = spots[j] as { x: number; y: number };
-          const need = reach(sizes[i] as number) + reach(sizes[j] as number);
-          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(need);
-        }
-      }
-    }
-    // A board with no rings packs at the floor rather than at somebody else's ring.
-    const singles = place([{ size: 1 }, { size: 1 }]);
-    const a = singles[0] as { x: number; y: number };
-    const b = singles[1] as { x: number; y: number };
-    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(MIN_HUB_SPACING * 1.5);
-  });
-
-  test('no two nodes overlap on any shape of board', () => {
-    for (const sizes of [[9, 9, 9], [1, 1, 1, 1, 1, 1, 1, 1], [5, 1, 4, 1, 3], [2, 2, 2, 2]]) {
-      const shape = layout(sizes.map((size, i) => ({
-        label: `c${i}`,
-        size,
-        members: Array.from({ length: size }, (_, j) => i * 100 + j),
-      })));
-      for (let i = 0; i < shape.nodes.length; i++) {
-        for (let j = i + 1; j < shape.nodes.length; j++) {
-          const a = shape.nodes[i];
-          const b = shape.nodes[j];
-          if (!a || !b) continue;
-          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(NODE * 0.9);
-        }
+  test('the wall fits the phone sideways, whatever is on it', () => {
+    for (const w of [360, 393, 430]) {
+      const out = layoutBoard(clusters, w);
+      for (const s of out) {
+        expect(s.x - s.width / 2).toBeGreaterThan(-1);
+        expect(s.x + s.width / 2).toBeLessThan(w + 1);
       }
     }
   });
 
-  test('a bigger ring holds a bigger cluster without its ends touching', () => {
-    for (let n = 2; n <= 9; n++) {
-      const r = ringRadius(n);
-      const step = (2 * Math.PI * r) / n;
-      expect(step).toBeGreaterThanOrEqual(NODE * 1.3);
-      expect(r).toBeGreaterThanOrEqual(ringRadius(n - 1));
+  test('the tallest pile is near the top, not stranded at the bottom', () => {
+    const tallest = spots.reduce((m, s) => (s.height > m.height ? s : m), spots[0]!);
+    const lowest = spots.reduce((m, s) => (s.y > m.y ? s : m), spots[0]!);
+    expect(tallest.y).toBeLessThanOrEqual(lowest.y);
+  });
+
+  test('it is a wall, not a table: the two columns do not line up exactly', () => {
+    const xs = new Set(spots.map((s) => Math.round(s.x)));
+    expect(xs.size).toBeGreaterThan(2);
+  });
+
+  test('the same board lays out the same way twice', () => {
+    expect(layoutBoard(clusters, W)).toEqual(spots);
+  });
+
+  test('an empty board has an extent and no spots', () => {
+    expect(layoutBoard([], W)).toEqual([]);
+    const e = extentOf([], W);
+    expect(Number.isFinite(e.minY)).toBe(true);
+    expect(Number.isFinite(e.maxY)).toBe(true);
+  });
+
+  test('the opening view fits the width and never shrinks a card to a smudge', () => {
+    const f = fit(extentOf(spots, W), { width: W, height: 760 });
+    expect(f.scale).toBeGreaterThanOrEqual(MIN_FIT);
+    expect(f.scale).toBeLessThanOrEqual(1.1);
+  });
+});
+
+describe('a seat', () => {
+  const only = [{ label: 'pasta', size: 4, members: [0, 1, 2, 3] }];
+  const spot = layoutBoard(only, 393)[0]!;
+  // The SAME scale the wall was laid out at. A seat computed at any other one lands outside the
+  // box its pile reserved, which is what this suite caught the first time it was written.
+  const k = cardScaleFor(only, 393);
+  const ids = ['a', 'b', 'c', 'd'];
+
+  test('the pile and the flight into it agree about where a card sits', () => {
+    // One function answers both, which is the point of it: they used to compute this separately,
+    // and a card drawn at one place with a flight aimed at another jumps on landing.
+    for (const seat of seats(spot, ids, k)) {
+      expect(seat.homeX).toBeCloseTo(spot.x - spot.width / 2 + seat.left + seat.width / 2, 6);
+      expect(seat.homeY).toBeCloseTo(
+        spot.y - spot.height / 2 + LABEL_H + seat.top + seat.height / 2,
+        6,
+      );
     }
   });
 
-  test('the whole board fits a phone, and one node fills it', () => {
-    const f = fit(shape.extent, PHONE, UNIT);
-    expect(f.scale).toBeGreaterThan(0);
-    expect(f.scale).toBeLessThanOrEqual(1.4);
-    const node = shape.nodes[0];
-    if (!node) throw new Error('no nodes');
-    const z = focus(node, PHONE, UNIT, 2.1);
-    expect(node.x * UNIT * z.scale + z.x).toBeCloseTo(PHONE.width / 2, 6);
-    expect(node.y * UNIT * z.scale + z.y).toBeCloseTo(PHONE.height / 2, 6);
+  test('every seat is inside the pile it belongs to', () => {
+    for (const seat of seats(spot, ids, k)) {
+      expect(seat.homeX - seat.width / 2).toBeGreaterThanOrEqual(spot.x - spot.width / 2 - 0.01);
+      expect(seat.homeX + seat.width / 2).toBeLessThanOrEqual(spot.x + spot.width / 2 + 0.01);
+      expect(seat.homeY + seat.height / 2).toBeLessThanOrEqual(spot.y + spot.height / 2 + 0.01);
+    }
   });
 
-  test('the first hub never moves as the board grows', () => {
-    // Phyllotaxis grows outward: the nth hub is placed from n alone, so a board that gains a
-    // cluster does not rearrange the ones you had already learned the position of.
-    const small = layout(clusterBoard(DROPS.slice(0, 3)));
-    expect(small.hubs[0]?.x).toBe(shape.hubs[0]?.x ?? NaN);
-    expect(small.hubs[0]?.y).toBe(shape.hubs[0]?.y ?? NaN);
+  test('shrinking the cards shrinks the seats with them', () => {
+    const full = seats(spot, ids, k);
+    const small = seats(spot, ids, k * 0.7);
+    expect(small[0]!.width).toBeCloseTo(full[0]!.width * 0.7, 6);
+    expect(small.map((p) => p.index)).toEqual(full.map((p) => p.index));
+  });
+});
+
+describe('a pile', () => {
+  test('the top card is square on and the ones behind it lean both ways', () => {
+    const cards = fan([0, 1, 2, 3, 4, 5], ['aa', 'bb', 'cc', 'dd', 'ee', 'ff']);
+    const top = cards[cards.length - 1]!;
+    expect(top.depth).toBe(0);
+    expect(top.rotate).toBe(0);
+    expect(top.x).toBe(0);
+    const sides = cards.filter((p) => p.depth > 0).map((p) => Math.sign(p.x));
+    expect(new Set(sides).size).toBe(2);
   });
 
-  test('an empty board has no nodes and still has an extent', () => {
-    const e = layout([]);
-    expect(e.nodes).toHaveLength(0);
-    expect(Number.isFinite(e.extent.minX)).toBe(true);
-    expect(Number.isFinite(e.extent.maxY)).toBe(true);
+  test('a pile never draws more than it can show, and says how many are left', () => {
+    const cards = fan([0, 1, 2, 3, 4, 5, 6, 7], Array.from({ length: 8 }, (_, i) => `x${i}`));
+    expect(cards.length).toBeLessThanOrEqual(STACK_SHOWN);
+  });
+
+  test('a pile of one is one card, square on', () => {
+    const cards = fan([3], ['only']);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ index: 3, x: 0, y: 0, rotate: 0, depth: 0 });
+  });
+
+  test('the box a pile occupies covers everything that peeks out of it', () => {
+    for (const n of [1, 2, 3, 4, 9]) {
+      const box = stackSize(n);
+      const cards = fan(Array.from({ length: n }, (_, i) => i), Array.from({ length: n }, (_, i) => `y${i}`));
+      for (const p of cards) {
+        expect(Math.abs(p.x) + CARD_W / 2).toBeLessThanOrEqual(box.width / 2 + 0.01);
+        expect(p.y + CARD_H).toBeLessThanOrEqual(box.height + 0.01);
+      }
+    }
+  });
+
+  test('an open pile is two across and grows down', () => {
+    const out = spread([0, 1, 2, 3, 4]);
+    expect(out.map((p) => p.x)).toEqual([0, CARD_W + OPEN_GAP, 0, CARD_W + OPEN_GAP, 0]);
+    expect(out[0]!.y).toBe(0);
+    expect(out[2]!.y).toBe(CARD_H + OPEN_GAP);
+    expect(spreadSize(5).height).toBe(3 * CARD_H + 2 * OPEN_GAP);
+  });
+
+  test('the same drop always leans the same way', () => {
+    expect(fan([0, 1], ['a', 'b'])).toEqual(fan([0, 1], ['a', 'b']));
   });
 });
 
@@ -170,6 +247,7 @@ describe('every code has a sentence', () => {
     ['effort', CATALOG.efforts, EFFORT_WORD],
     ['platform', CATALOG.platforms, PLATFORM_WORD],
     ['drop_status', CATALOG.dropStatuses, STATUS_LINE],
+    ['move_target', CATALOG.moveTargets, MOVE_TARGET_WORD],
   ];
 
   for (const [name, values, table] of tables) {
@@ -182,7 +260,7 @@ describe('every code has a sentence', () => {
   }
 
   test('no sentence carries a dash', () => {
-    const all = [REFUSAL, KIND_WORD, MOVE_VERB, MOVE_STATUS_LINE, MOVE_REFUSAL, EFFORT_WORD, PLATFORM_WORD, STATUS_LINE]
+    const all = [REFUSAL, KIND_WORD, MOVE_VERB, MOVE_STATUS_LINE, MOVE_REFUSAL, EFFORT_WORD, MOVE_TARGET_WORD, PLATFORM_WORD, STATUS_LINE]
       .flatMap((t) => Object.values(t))
       .concat(readLine(0, 0), readLine(238, 1200));
     for (const s of all) expect(s).not.toMatch(/[—–―−]|\s-{1,2}\s/);

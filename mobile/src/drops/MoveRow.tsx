@@ -3,9 +3,16 @@
  *
  * A ROW, NOT A CARD. Five cards stacked is card soup, and a card implies each move is a separate
  * thing; they are five ways of spending the same drop, so they are a list with hairlines between
- * them, the way every other list in this app is. The one that is armed takes a SOLID fill in the
- * kind's hue with `onFill` ink on it, never a pale tint of the hue with a border of the same hue
- * and text of the same hue, which is the shape the owner has asked twice not to see.
+ * them, the way every other list in this app is.
+ *
+ * ARMED IS A RAIL, NOT A SLAB. The first version filled the whole row with the kind's hue. On a
+ * sheet that is deliberately half transparent — the poster is meant to stay visible behind it —
+ * a full bleed block of purple is the one opaque thing on the screen, and it reads as a control
+ * borrowed from some other app rather than as this row being chosen. So: a 3pt rule of the hue
+ * down the row's left edge, the same rule the evidence quote already stands on and the same one
+ * the card wears along its bottom; the ground lifts by a hair of neutral white, which the poster
+ * still shows through; and the words go from dim to full ink. Nothing is tinted, nothing gets a
+ * border in its own hue, and the picture underneath survives.
  *
  * WHAT A ROW SAYS, in the order it says it:
  *
@@ -78,23 +85,24 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
         }}
         style={({ pressed }) => [
           styles.row,
-          armed && { backgroundColor: ink },
-          pressed && !armed && { backgroundColor: c.raised },
+          armed && styles.armed,
+          pressed && !armed && styles.pressed,
         ]}
       >
+        {armed ? <View style={[styles.rail, { backgroundColor: ink }]} /> : null}
         <View style={styles.head}>
-          <T role="label" style={{ color: armed ? hue?.onFill : ink, letterSpacing: 1.2 }}>
+          <T role="label" style={{ color: ink, letterSpacing: 1.2 }}>
             {verb.toUpperCase()}
           </T>
-          <T role="mono" style={{ color: armed ? hue?.onFill : c.textFaint }}>
-            {live ? MOVE_STATUS_LINE[move.status] : EFFORT_WORD[move.effort]}
+          <T role="mono" style={{ color: armed ? c.text : c.textFaint }}>
+            {live ? MOVE_STATUS_LINE[move.status] : armed ? 'armed' : EFFORT_WORD[move.effort]}
           </T>
         </View>
 
-        <T role="row" style={{ color: armed ? hue?.onFill : c.text }}>
+        <T role="row" style={{ color: c.text }}>
           {move.title}
         </T>
-        <T role="meta" style={{ color: armed ? hue?.onFill : c.textDim, marginTop: 2 }}>
+        <T role="meta" style={{ color: armed ? c.text : c.textDim, marginTop: 2 }}>
           {move.intent}
         </T>
 
@@ -102,26 +110,26 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
             is evidence, so it is set apart and never dressed up as a headline. */}
         <View style={styles.quote}>
           <View
-            style={[styles.quoteRule, { backgroundColor: armed ? hue?.onFill : hue?.partner ?? c.border }]}
+            style={[styles.quoteRule, { backgroundColor: hue?.partner ?? c.border }]}
           />
           <T
             role="meta"
             numberOfLines={3}
-            style={[styles.quoteText, { color: armed ? hue?.onFill : c.textDim }]}
+            style={[styles.quoteText, { color: c.textDim }]}
           >
             {move.evidence}
           </T>
         </View>
 
         {move.source ? (
-          <T role="mono" numberOfLines={1} style={{ color: armed ? hue?.onFill : c.textFaint, marginTop: 6 }}>
+          <T role="mono" numberOfLines={1} style={{ color: armed ? c.textDim : c.textFaint, marginTop: 6 }}>
             {move.source.source_kind} {move.source.ref}
             {move.verification?.state === 'verified' ? ' · checked' : ''}
           </T>
         ) : null}
 
         {unverified ? (
-          <T role="meta" style={{ color: armed ? hue?.onFill : c.textFaint, marginTop: 4 }}>
+          <T role="meta" style={{ color: c.textFaint, marginTop: 4 }}>
             {MOVE_REFUSAL.source_unverified}
           </T>
         ) : null}
@@ -133,7 +141,7 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
         ) : null}
 
         {move.target === 'existing_repo' && repoKey ? (
-          <T role="mono" style={{ color: armed ? hue?.onFill : c.textFaint, marginTop: 6 }}>
+          <T role="mono" style={{ color: armed ? c.textDim : c.textFaint, marginTop: 6 }}>
             {`in ${repoKey.slice(0, 7)}`}
           </T>
         ) : null}
@@ -164,6 +172,11 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
 
 const styles = StyleSheet.create({
   row: { paddingVertical: 14, paddingHorizontal: 16 },
+  // Neutral, and barely there: the sheet is translucent on purpose and an opaque lift here would
+  // punch an opaque hole in it. White at 6% reads as a lift on every frame behind it.
+  armed: { backgroundColor: 'rgba(245,241,234,0.06)' },
+  pressed: { backgroundColor: 'rgba(245,241,234,0.03)' },
+  rail: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 },
   quote: { flexDirection: 'row', marginTop: 10 },
   quoteRule: { width: 2, borderRadius: 1, borderCurve: 'continuous', marginRight: 10 },

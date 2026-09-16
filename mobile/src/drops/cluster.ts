@@ -244,3 +244,52 @@ export function similarityMatrix(drops: Clusterable[]): number[][] {
   const { vecs } = vectors(drops);
   return vecs.map((a) => vecs.map((b) => round9(cosine(a, b))));
 }
+
+// ─────────────────────────────────────────────────────────────────── search
+
+/**
+ * What you meant, against what the drops say. Same vectors the board is grouped by, so the search
+ * and the shape of the board agree about what a drop is about.
+ *
+ * It is not a substring match: "pasta" finds a drop whose title says "spaghetti" if the two sat
+ * in the same cluster's vocabulary, and a drop whose only tie is a word every drop uses is ranked
+ * down by the same IDF that keeps `code` from naming a cluster. It is also not an embedding, for
+ * the reason the clustering is not: no key, no download, works on a plane, and every hit can say
+ * which word matched.
+ *
+ * Returns the indices that matched, best first. An empty or unmatched query returns null, which
+ * the board reads as "show everything" rather than as "show nothing".
+ */
+export function search(query: string, drops: Clusterable[]): number[] | null {
+  const q = (query ?? '').trim().toLowerCase();
+  if (!q) return null;
+  const { vecs, df } = vectors(drops);
+  const n = drops.length;
+
+  const terms = new Map<string, number>();
+  for (const raw of q.match(TOKEN) ?? []) {
+    const t = stem(raw);
+    if (t.length < 2) continue;
+    terms.set(t, (terms.get(t) ?? 0) + 1);
+  }
+  if (terms.size === 0) return null;
+
+  const qv = new Map<string, number>();
+  for (const [t, count] of terms) {
+    const damp = WEAK.has(t) ? 0.25 : 1;
+    qv.set(t, (1 + Math.log(count)) * (Math.log((n + 1) / ((df.get(t) ?? 0) + 1)) + 1) * damp);
+  }
+  let sum = 0;
+  for (const v of qv.values()) sum += v * v;
+  const norm = Math.sqrt(sum) || 1;
+  for (const [t, v] of qv) qv.set(t, v / norm);
+
+  const scored = drops
+    .map((_, i) => ({ i, score: round9(cosine(qv, vecs[i] as Map<string, number>)) }))
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score || a.i - b.i);
+
+  // A query that matched nothing shows everything: a board that empties itself on a typo reads
+  // as broken, and the words are right there to fix.
+  return scored.length ? scored.map((s) => s.i) : null;
+}

@@ -1,226 +1,267 @@
 /**
- * Where every drop sits on the board. Pure: `__tests__/dropsLayout.test.ts` holds it.
+ * Where each cluster's STACK goes on the board. Pure: `__tests__/dropsBoard.test.ts` holds it.
  *
- * THE BOARD IS A MAP, NOT A LIST. Clusters (`cluster.ts`) become constellations: a hub with its
- * drops around it. Two drops near each other on screen are near each other in what they are
- * about, and that is the only thing position means here. Nothing is placed by recency, nothing
- * drifts, and the same board always draws the same way.
+ * The board used to be one dot per drop on a phyllotaxis spiral. It is stacks of real cards now
+ * (`card.ts` says why), which changes the problem: the things being placed are chunky rectangles
+ * of different sizes rather than points of one size, and a spiral of points packs nothing.
  *
- * HUBS GO ON A PHYLLOTAXIS SPIRAL. Sunflower packing: the nth hub at angle n * 137.5 degrees and
- * radius proportional to sqrt(n). It is the arrangement with no preferred direction and no two
- * points ever lining up, which is exactly what a map of unrelated groups wants, and it grows
- * outward so adding the twentieth cluster does not move the first. A grid was tried on paper and
- * rejected for the obvious reason: a grid is a list with extra steps, and the owner asked for a
- * mind map.
+ * SO IT PACKS RECTANGLES. Stacks are placed biggest first, each one taking the first spot on a
+ * spiral of candidate positions whose box clears every box already placed. Biggest first because
+ * a big stack dropped in late has to go a long way out, and a board with its largest pile on the
+ * rim reads as an accident.
  *
- * MEMBERS GO ON A RING, and the ring's radius comes from how many there are, so a cluster of
- * eight is a wider constellation rather than eight overlapping nodes. One member sits ON its hub
- * (a singleton is one node, not a node orbiting an invisible centre).
- *
- * UNITS ARE ABSTRACT. The canvas works in "board units", one unit being one node diameter, and
- * the view multiplies by whatever the current zoom is. Nothing here knows about pixels, which is
- * why the same function can lay out the board, the zoomed in view and a screenshot at 3x.
+ * It terminates (the spiral's radius grows without bound), it is deterministic (same clusters,
+ * same order, same spots, on the phone and in the review sheet), and it packs tight: the step is
+ * small and collisions are what push things apart, so a board of singletons is dense and a board
+ * with one huge pile still closes up around it.
  */
 
-import type { Cluster } from './cluster';
+import { CARD_H, CARD_W, fan, stackSize } from './card';
 
-/** The golden angle, in radians. */
-export const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-/** A node's diameter, in board units. One, by definition; named so the maths reads. */
-export const NODE = 1;
-/**
- * The gap a ring keeps from its hub.
- *
- * 1.25, not the 1.6 it started at: the ring used to have to clear the hub's own WORD, and the
- * word now sits above the constellation's highest member instead, so the only thing left to
- * clear is the members' own width.
- */
-export const RING_MIN = 1.25;
-/**
- * The step the spiral takes. Constellations are PACKED against each other from here, so this is
- * the distance between two hubs that have no rings at all, not the distance between any two.
- */
-export const MIN_HUB_SPACING = 2.2;
-/** Clear air between the outermost members of two constellations, in node widths. */
-export const HUB_AIR = 0.45;
-/**
- * The floor and the ceiling on the opening view.
- *
- * FOUND ON THE SIMULATOR: fitting the whole board is the right instinct and the wrong result once
- * there are enough clusters, because every sigil ends up at 23 points, a map of specks with a lot
- * of ground around it. A board is a thing you pan, so the opening view stops shrinking at a scale
- * that keeps a node legible (46 * 0.62 = 29 points) and the rest is one drag away.
- */
-export const MIN_FIT = 0.62;
-export const MAX_FIT = 1.4;
+/** Columns on a phone. Two: a 104 point card plus its fan is about half a phone's width. */
+export const COLUMNS = 2;
+/** Clear air between two stacks. */
+export const GAP = 22;
+/** The board's own side margin, so a stack never touches the edge. */
+export const GUTTER = 16;
 
-/** The reach of a constellation from its hub: its ring, plus half a node for the node itself. */
-export function reach(size: number): number {
-  return ringRadius(size) + NODE / 2;
+export interface Box {
+  width: number;
+  height: number;
+  /**
+   * Which band of the wall this box belongs in: -1 above everything, 0 with everything, 1 below.
+   *
+   * Tallest-first is the right order for a wall of libraries and the wrong one for the two piles
+   * that are not libraries. A reel you shared ten seconds ago is one card tall, so height alone
+   * files it halfway down the board — under four piles you were not looking for — at the exact
+   * moment you opened the app to see it. And the drops nobody could read are a dead end, so they
+   * sort under the board rather than into it. Default 0: an ordinary pile is placed by its size,
+   * which is what the rest of this file is about.
+   */
+  band?: -1 | 0 | 1;
 }
 
-/**
- * Where each cluster's hub goes: a phyllotaxis spiral, PACKED.
- *
- * It was one spacing for every pair, derived from the widest ring on the board. That is correct
- * and it is wasteful: MEASURED on a real board of eight drops in six clusters, one two member
- * ring set the spacing for all of them and the map ran off both edges of the phone with four
- * nodes on screen. A constellation's reach is its own, so the spiral is walked one step at a
- * time and a cluster takes the first step whose circle clears every circle already placed.
- *
- * It terminates: the spiral's radius grows without bound, so a step far enough out always clears.
- * It is deterministic: same clusters, same order, same steps, on both devices and in the review
- * sheet. And it packs a board of singletons, which have no rings, at MIN_HUB_SPACING.
- */
-export function place(clusters: { size: number }[]): { x: number; y: number }[] {
-  const out: { x: number; y: number; r: number }[] = [];
-  let t = 0;
-  for (const c of clusters) {
-    const r = reach(c.size);
-    for (;;) {
-      const angle = t * GOLDEN;
-      const radius = MIN_HUB_SPACING * Math.sqrt(t);
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-      const clear = out.every(
-        (o) => Math.hypot(o.x - x, o.y - y) >= o.r + r + NODE * HUB_AIR,
-      );
-      t += 1;
-      if (clear) {
-        out.push({ x, y, r });
-        break;
-      }
-    }
-  }
-  return out.map(({ x, y }) => ({ x, y }));
-}
-
-export interface Placed {
-  /** Index into the drops array the cluster came from. */
-  index: number;
+export interface Spot extends Box {
+  /** The box's CENTRE, in points. */
   x: number;
   y: number;
-  /** Which cluster, for the hue of the thread that ties it to its hub. */
-  cluster: number;
-  /** True for the drop drawn AT the hub: a singleton, or a cluster's first member. */
-  isHub: boolean;
+  /** Index into the input, so a caller can put the answer back where it came from. */
+  index: number;
 }
 
-export interface Hub {
+/** FNV-1a, for the per stack nudge. Deterministic: a board never rearranges itself. */
+function seed(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i) & 0xff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/**
+ * Flow the stacks down a two column wall, tallest first, each one into the shorter column.
+ *
+ * THE SPIRAL WAS THE WRONG SHAPE. Packing rectangles around an origin gives a board 657 points
+ * wide, which on a 393 point phone either overflows sideways or shrinks every card to a smudge,
+ * and a board you have to pan in two directions to read is a board nobody reads. A phone is a
+ * column. The wall flows down it, the width always fits, and the only gesture is the one a phone
+ * already is.
+ *
+ * It is not a table. Each stack is a fan of its own shape and height, and a small deterministic
+ * nudge (never more than a third of the gap, so columns never collide) keeps the two columns from
+ * reading as ruled lines. Tallest first, because a wall whose biggest pile is at the bottom reads
+ * as a list that ran out.
+ */
+export function flow(boxes: Box[], width: number, keys: string[] = []): Spot[] {
+  const usable = Math.max(120, width - GUTTER * 2);
+  const colWidth = (usable - GAP * (COLUMNS - 1)) / COLUMNS;
+  const heights = new Array(COLUMNS).fill(0);
+  const out: Spot[] = [];
+
+  const order = boxes
+    .map((b, index) => ({ b, index }))
+    .sort(
+      (p, q) =>
+        (p.b.band ?? 0) - (q.b.band ?? 0) || q.b.height - p.b.height || p.index - q.index,
+    );
+
+  for (const { b, index } of order) {
+    let col = 0;
+    for (let i = 1; i < COLUMNS; i++) if (heights[i] < heights[col]) col = i;
+    const nudge = (((seed(keys[index] ?? String(index)) % 1000) / 1000) - 0.5) * (GAP * 0.6);
+    const cx = GUTTER + col * (colWidth + GAP) + colWidth / 2 + nudge;
+    const cy = heights[col] + b.height / 2;
+    heights[col] += b.height + GAP;
+    out[index] = { x: cx, y: cy, width: b.width, height: b.height, index };
+  }
+  return out;
+}
+
+export interface StackSpot extends Spot {
+  /** Which cluster this is, in the clustering's own order. */
   cluster: number;
   label: string;
   size: number;
-  x: number;
-  y: number;
-  /** The ring the members sit on. 0 when there is only one member. */
-  radius: number;
-  /**
-   * The y of this cluster's HIGHEST member, which is where its word goes.
-   *
-   * Not `y - radius`: a ring starts at its hub's own angle, so the topmost member is wherever
-   * that rotation put it. FOUND ON THE SIMULATOR: with a two member ring rotated off vertical,
-   * the label sat at the hub's centre, which on a real board was on top of the thread belonging
-   * to the cluster above it.
-   */
-  top: number;
+  members: number[];
 }
 
-export interface Board {
-  hubs: Hub[];
-  nodes: Placed[];
-  /** The bounding box in board units, so the view can fit the whole map on first paint. */
-  extent: { minX: number; minY: number; maxX: number; maxY: number };
+/** The width of one column on a wall `width` points across. */
+export function columnWidth(width: number): number {
+  const usable = Math.max(120, width - GUTTER * 2);
+  return (usable - GAP * (COLUMNS - 1)) / COLUMNS;
 }
 
-/** The ring radius for a cluster of `n`, in board units. */
-export function ringRadius(n: number): number {
-  if (n <= 1) return 0;
-  // Circumference has to hold n nodes with a node's worth of air between them, so r grows with
-  // n rather than with sqrt(n): a ring of eight is nearly twice the ring of four, which is what
-  // keeps the eighth node from touching the first.
-  return Math.max(RING_MIN, (n * (NODE * 2)) / (2 * Math.PI));
+/**
+ * How much to shrink every card so the widest pile on this board fits a column.
+ *
+ * One number for the whole board, never per pile: cards of two different sizes on one wall reads
+ * as a bug. Capped at 1, so a board of singletons does not blow its cards up past their design
+ * size; floored well above nothing, because a card too small to recognise defeats the point, and
+ * a pile that still will not fit simply overlaps its neighbour's air rather than becoming a smudge.
+ */
+export const MIN_CARD_SCALE = 0.7;
+
+export function cardScaleFor(
+  clusters: { size: number }[],
+  width: number,
+): number {
+  const widest = clusters.reduce((m, c) => Math.max(m, stackSize(c.size).width), 1);
+  return Math.max(MIN_CARD_SCALE, Math.min(1, columnWidth(width) / widest));
 }
 
-export function layout(clusters: Cluster[]): Board {
-  const hubs: Hub[] = [];
-  const nodes: Placed[] = [];
-  const spots = place(clusters);
-
-  clusters.forEach((c, i) => {
-    // sqrt(i) spacing keeps the density of hubs constant as the board grows: the alternative,
-    // a linear radius, leaves the middle crowded and the edge empty.
-    const spot = spots[i] as { x: number; y: number };
-    const hx = spot.x;
-    const hy = spot.y;
-    // The ring starts at the hub's own direction from the centre, so a constellation leans
-    // away from the middle of the board rather than all of them pointing the same way.
-    const angle = Math.atan2(hy, hx);
-    const r = ringRadius(c.size);
-    const hub: Hub = { cluster: i, label: c.label, size: c.size, x: hx, y: hy, radius: r, top: hy };
-    hubs.push(hub);
-
-    if (c.size === 1) {
-      nodes.push({ index: c.members[0] as number, x: hx, y: hy, cluster: i, isHub: true });
-      return;
-    }
-    c.members.forEach((m, j) => {
-      // The ring starts at the hub's own angle, so a constellation leans away from the centre
-      // of the board rather than all of them pointing the same way.
-      const a = angle + (j / c.size) * Math.PI * 2;
-      const ny = hy + Math.sin(a) * r;
-      hub.top = Math.min(hub.top, ny);
-      nodes.push({ index: m, x: hx + Math.cos(a) * r, y: ny, cluster: i, isHub: false });
-    });
+/** Every cluster's stack, flowed down a wall `width` points across. */
+export function board(
+  clusters: { label: string; size: number; members: number[]; band?: -1 | 0 | 1 }[],
+  width: number,
+): StackSpot[] {
+  const k = cardScaleFor(clusters, width);
+  const boxes = clusters.map((c) => {
+    const s = stackSize(c.size);
+    // Room above each stack for its word.
+    return { width: s.width * k, height: s.height * k + LABEL_ROOM, band: c.band };
   });
+  const spots = flow(boxes, width, clusters.map((c) => `${c.label}.${c.size}`));
+  return clusters.map((c, i) => ({
+    ...(spots[i] as Spot),
+    cluster: i,
+    label: c.label,
+    size: c.size,
+    members: c.members,
+  }));
+}
 
-  const xs = nodes.map((n) => n.x);
-  const ys = nodes.map((n) => n.y);
-  const pad = NODE * 2;
+export interface Extent {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** Room above each stack for its word. */
+export const LABEL_ROOM = 26;
+
+export function extentOf(spots: Spot[], width: number): Extent {
+  if (spots.length === 0) return { minX: 0, minY: 0, maxX: width, maxY: width };
   return {
-    hubs,
-    nodes,
-    extent: {
-      minX: (xs.length ? Math.min(...xs) : 0) - pad,
-      minY: (ys.length ? Math.min(...ys) : 0) - pad,
-      maxX: (xs.length ? Math.max(...xs) : 0) + pad,
-      maxY: (ys.length ? Math.max(...ys) : 0) + pad,
-    },
+    minX: 0,
+    minY: Math.min(...spots.map((s) => s.y - s.height / 2)) - 8,
+    maxX: width,
+    maxY: Math.max(...spots.map((s) => s.y + s.height / 2)) + 24,
   };
 }
 
 /**
- * The scale and offset that fit a board into a viewport, and the scale that frames one node.
- *
- * Returned rather than applied so the zoom animation has both ends of the journey as plain
- * numbers: the map's transform is one shared value the gesture and the zoom both write, and a
- * component that computed its own target would fight the gesture for it.
+ * Never smaller than this. A 104 point card at 0.5 is a 52 point thumbnail, which is a smudge:
+ * the whole point of showing the post's own frame is that you recognise it.
  */
+export const MIN_FIT = 0.72;
+export const MAX_FIT = 1.1;
+
+/**
+ * The opening view: the board's WIDTH fits, and the top of it sits near the top of the screen.
+ *
+ * Not both dimensions. MEASURED on a real board of six clusters, the extent is 657 by 729 and
+ * fitting both gives 0.60, which draws every card at 62 points and is unreadable. Fitting the
+ * width alone gives a wall you scroll down, which is the shape a phone is, and the cards stay
+ * big enough to recognise. Vertical panning is the natural gesture here and horizontal is not.
+ */
+export const TOP_ROOM = 64;
+
 export function fit(
-  extent: Board['extent'],
+  extent: Extent,
   viewport: { width: number; height: number },
-  unit: number,
 ): { scale: number; x: number; y: number } {
-  const w = (extent.maxX - extent.minX) * unit;
-  const h = (extent.maxY - extent.minY) * unit;
-  const scale = Math.max(
-    MIN_FIT,
-    Math.min(viewport.width / Math.max(w, 1), viewport.height / Math.max(h, 1), MAX_FIT),
-  );
-  const cx = ((extent.minX + extent.maxX) / 2) * unit;
-  const cy = ((extent.minY + extent.maxY) / 2) * unit;
-  return { scale, x: viewport.width / 2 - cx * scale, y: viewport.height / 2 - cy * scale };
+  const w = extent.maxX - extent.minX;
+  const h = extent.maxY - extent.minY;
+  const scale = Math.max(MIN_FIT, Math.min(viewport.width / Math.max(w, 1), MAX_FIT));
+  const cx = (extent.minX + extent.maxX) / 2;
+  const tall = h * scale;
+  // A board shorter than the screen is centred; a taller one starts at its top.
+  const y =
+    tall < viewport.height - TOP_ROOM
+      ? viewport.height / 2 - ((extent.minY + extent.maxY) / 2) * scale
+      : TOP_ROOM - extent.minY * scale;
+  return { scale, x: viewport.width / 2 - cx * scale, y };
 }
 
-/** The transform that puts one node in the middle of the viewport at `scale`. */
+/** The transform that puts a point in the middle of the viewport at `scale`. */
 export function focus(
-  node: { x: number; y: number },
+  at: { x: number; y: number },
   viewport: { width: number; height: number },
-  unit: number,
   scale: number,
 ): { scale: number; x: number; y: number } {
-  return {
-    scale,
-    x: viewport.width / 2 - node.x * unit * scale,
-    y: viewport.height / 2 - node.y * unit * scale,
-  };
+  return { scale, x: viewport.width / 2 - at.x * scale, y: viewport.height / 2 - at.y * scale };
+}
+
+/** The word's row above every pile, which the cards sit under. */
+export const LABEL_H = 22;
+
+export interface Seat {
+  /** Index into the board's drops. */
+  index: number;
+  /** Where the card's top left corner sits INSIDE its pile. */
+  left: number;
+  top: number;
+  rotate: number;
+  depth: number;
+  /** The card's CENTRE on the wall, which is what a flight has to aim at. */
+  homeX: number;
+  homeY: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Every card of one pile, placed: once for the pile itself and once for the flight that arrives
+ * into it.
+ *
+ * It exists because those two used to compute it separately. The wall drew a card at one place
+ * and the arrival flew to another, and a discrepancy of a few points is invisible while both are
+ * wrong in the same direction and a jump the moment they are not. One function, one answer.
+ */
+export function seats(
+  spot: { x: number; y: number; width: number; height: number; size: number; members: number[] },
+  ids: string[],
+  cardScale: number,
+): Seat[] {
+  const raw = stackSize(spot.size);
+  const boxWidth = raw.width * cardScale;
+  const w = CARD_W * cardScale;
+  const h = CARD_H * cardScale;
+  return fan(spot.members, ids).map((p) => {
+    const left = boxWidth / 2 - w / 2 + p.x * cardScale;
+    const top = p.y * cardScale;
+    return {
+      index: p.index,
+      left,
+      top,
+      rotate: p.rotate,
+      depth: p.depth,
+      homeX: spot.x - spot.width / 2 + left + w / 2,
+      homeY: spot.y - spot.height / 2 + LABEL_H + top + h / 2,
+      width: w,
+      height: h,
+    };
+  });
 }

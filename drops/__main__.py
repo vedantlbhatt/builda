@@ -127,9 +127,16 @@ def cmd_doctor(args) -> int:
     print(f"cookie door     {cookies or 'shut (Instagram will refuse; set BUILDER_DROPS_COOKIES_FROM)'}")
     print(f"schema          {'there' if dp.SCHEMA_PATH.exists() else 'MISSING, run make gen'}")
     print(f"server          {args.server or os.environ.get('BUILDER_SERVER') or 'http://127.0.0.1:8000'}")
+    from . import workspace as ws
     from .tests import corpus_read
 
     print(f"corpus          {len(corpus_read.rows())} links cached")
+    repos = ws.known_repos()
+    extra = ws.extra_roots()
+    print(f"repos           {len(repos)} this machine's transcripts resolved to"
+          + (f", {len(extra)} named by {ws.REPO_ROOTS_ENV}" if extra else ""))
+    for r in repos[:8]:
+        print(f"                {r}")
     return 0
 
 

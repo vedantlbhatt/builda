@@ -21,7 +21,11 @@ can only remove:
   3. SOURCE. A source whose URL is not https, or whose `ref` looks like a sentence rather than
      a name, is removed from the move. The move survives with a null source and the finder
      goes looking; an install button pointing at a made up repository does not.
-  4. DASHES. `analysis/run.py`'s `dedash`, the one dash rule in this repository, over every
+  4. TARGET. Where a move happens is decided by what it IS. `move_kind` and `target` were two
+     answers to one question and they disagreed: MEASURED on the live board, six of six `apply`
+     moves came back `this_machine`, which would have run every repository change in a scratch
+     directory. `evaluate` is the one kind whose target is genuinely free.
+  5. DASHES. `analysis/run.py`'s `dedash`, the one dash rule in this repository, over every
      string except `evidence`, which is verbatim by definition and would fail rule 1 if it
      were rewritten.
 
@@ -42,7 +46,7 @@ from analysis.run import AnalysisError, call_claude, dedash
 
 from . import SCHEMA_PATH, prompt as pr
 from .resolve import Resolved
-from .tables import DROPS_VERSION, DROP_KIND, MOVE_KIND, SOURCE_KIND
+from .tables import DROPS_VERSION, DROP_KIND, MOVE_KIND, MOVE_TARGET, SOURCE_KIND
 
 #: Sonnet, like the analyst. A drop is a few hundred words and five short moves; the ceiling
 #: is the honesty of the gate, not the size of the model.
@@ -67,6 +71,24 @@ _DROPPED_CATEGORIES = frozenset({"So", "Sk", "Cf", "Cs", "Co"})
 #: A `ref` is a name: `owner/repo`, `@scope/pkg`, `some-package`. A space or a full stop in the
 #: middle means the model wrote a phrase into a field the installer will paste into a command.
 _REF_OK = re.compile(r"^[A-Za-z0-9@._/+-]{1,140}$")
+
+#: WHERE A MOVE HAPPENS IS DECIDED BY WHAT IT IS, not asked for twice.
+#:
+#: `move_kind` and `target` were two answers to one question and they disagreed. MEASURED on the
+#: live board: SIX of six `apply` moves came back with `target: this_machine`, so every "add this
+#: to one of your repos" would have run in a scratch directory, the repository picker on the phone
+#: would never have been reachable, and no change would ever have landed anywhere a person would
+#: look. The runner branches on `target`, so the wrong one is not a cosmetic field.
+#:
+#: `evaluate` is the one kind whose target is genuinely free: trying something out can mean a
+#: throwaway clone or the repository you would actually use it in, and only the person knows.
+_TARGET_FOR: dict[str, str] = {
+    "install": "this_machine",
+    "apply": "existing_repo",
+    "scaffold": "new_project",
+    "card": "none",
+    "keep": "none",
+}
 
 
 class PlanError(RuntimeError):
@@ -135,7 +157,7 @@ def gate(plan: dict, text: str) -> tuple[dict, dict]:
     survived" is the number that says whether the prompt is working. A gate whose losses
     nobody can see is a gate nobody can tune.
     """
-    counts = {"moves_in": 0, "evidence_dropped": 0, "source_dropped": 0, "dashes": 0}
+    counts = {"moves_in": 0, "evidence_dropped": 0, "source_dropped": 0, "target_fixed": 0, "dashes": 0}
     haystack = fold(text)
 
     kind = plan.get("kind")
@@ -156,6 +178,12 @@ def gate(plan: dict, text: str) -> tuple[dict, dict]:
         if m.get("source") is not None and src is None:
             counts["source_dropped"] += 1
         m["source"] = src
+        pinned = _TARGET_FOR.get(m["move_kind"])
+        if pinned and m.get("target") != pinned:
+            counts["target_fixed"] += 1
+            m["target"] = pinned
+        elif m.get("target") not in MOVE_TARGET:
+            m["target"] = "none"
         m.setdefault("verification", None)
         kept.append(m)
     plan["moves"] = kept[:5]

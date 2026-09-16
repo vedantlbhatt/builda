@@ -451,6 +451,22 @@ cells, three sigils in a row that were all the same square, because a random fie
 entirely thin parts and the pass cannot add anything back. Growing outward from a core places
 every cell next to one already there, so the glyph is connected by construction.
 
+**Two fields that answer one question will disagree, and one of them decides what runs.** A move
+carries `move_kind` (what to do) and `target` (where it happens), and the runner branches on
+`target`. MEASURED on the live board: SIX OF SIX `apply` moves came back with
+`target: this_machine`, so every "add this to one of your repos" would have run in a scratch
+directory, the repository picker on the phone would never have been reachable, and no change would
+ever have landed anywhere a person would look. Where a move happens follows from what it IS, so
+the gate pins it (`drops/plan._TARGET_FOR`) and the prompt stops asking. `evaluate` is the one kind
+whose target is genuinely free: trying something out can mean a throwaway clone or the repository
+you would actually use it in, and only the person knows which.
+
+**A command that ran is not a command that worked.** `branch_for` ran `git switch -c` and returned
+the branch name whatever git did, so a branch that already existed, a detached HEAD or a repository
+mid rebase would have run a move on whatever was checked out, having told the person it was on a
+branch of its own. It asks `git branch --show-current` now and returns None when the answer is not
+the branch it meant to make.
+
 **A foreign key to a row that does not exist YET is a 500 with the work already done.**
 `drop_moves.session_id` references `sessions(id)`, and the runner reported the id it launched
 `claude` with when a move finished. Those are not the same kind of identifier, and more to the

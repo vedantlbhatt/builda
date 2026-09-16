@@ -47,8 +47,23 @@ HEAD_BYTES = 262_144
 HEAD_LINES = 400
 
 
+#: Repositories to offer BESIDES the ones the transcripts already resolved to, colon separated.
+#:
+#: A checkout you made this morning has no Claude Code transcripts in it yet, so discovery cannot
+#: know about it, and "add this to that repo" is exactly the move you want on a repo you have just
+#: started. This is the door for that, and it is a door rather than a guess: CLAUDE.md records what
+#: guessing `~/src`, `~/code`, `~/projects` cost Aider discovery, so nothing here is inferred.
+REPO_ROOTS_ENV = "BUILDER_DROPS_REPO_ROOTS"
+
+
+def extra_roots() -> list[pathlib.Path]:
+    raw = os.environ.get(REPO_ROOTS_ENV) or ""
+    return [pathlib.Path(p).expanduser() for p in raw.split(":") if p.strip()]
+
+
 def known_repos(root: pathlib.Path | None = None) -> list[pathlib.Path]:
-    """Every repository this machine's own transcripts resolved to, deduped by common root.
+    """Every repository this machine's own transcripts resolved to, plus any named by
+    `BUILDER_DROPS_REPO_ROOTS`, deduped by common root.
 
     `--git-common-dir`, never `--show-toplevel`: CLAUDE.md measured that six of thirteen project
     directories on this machine are worktrees of one repository, and `--show-toplevel` fragments
@@ -65,7 +80,7 @@ def known_repos(root: pathlib.Path | None = None) -> list[pathlib.Path]:
 
     out: list[pathlib.Path] = []
     seen_root: set[str] = set()
-    for cwd in cwds:
+    for cwd in [str(p) for p in extra_roots()] + cwds:
         common = _git_common_root(cwd)
         if common and common not in seen_root:
             seen_root.add(common)
@@ -153,9 +168,12 @@ def new_project(title: str) -> pathlib.Path:
 
 
 def branch_for(path: pathlib.Path, slug: str) -> str | None:
-    """Put an `existing_repo` move on its own branch. Returns the branch, or None if the
-    checkout is dirty: a move that started by carrying somebody's uncommitted work onto a new
-    branch is a move they cannot undo, so it refuses instead."""
+    """Put an `existing_repo` move on its own branch. Returns the branch, or None.
+
+    None when the checkout is dirty (a move that started by carrying somebody's uncommitted work
+    onto a new branch is a move they cannot undo), and None when the switch did not take, which
+    is checked by asking git rather than by assuming the command worked.
+    """
     dirty = subprocess.run(
         ["git", "status", "--porcelain"], cwd=path, capture_output=True, text=True,
         check=False, stdin=subprocess.DEVNULL,
@@ -167,4 +185,9 @@ def branch_for(path: pathlib.Path, slug: str) -> str | None:
     name = f"drops/{slug}"
     subprocess.run(["git", "switch", "-c", name], cwd=path, capture_output=True,
                    check=False, stdin=subprocess.DEVNULL)
-    return name
+    # ASK, do not assume. The first version returned the name whatever `git switch` did, so a
+    # branch that already existed, a detached HEAD or a repository mid rebase would have run the
+    # move on whatever was checked out, having told the person it was on a branch of its own.
+    on = subprocess.run(["git", "branch", "--show-current"], cwd=path, capture_output=True,
+                        text=True, check=False, stdin=subprocess.DEVNULL)
+    return name if on.returncode == 0 and on.stdout.strip() == name else None

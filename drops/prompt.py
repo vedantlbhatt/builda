@@ -41,6 +41,17 @@ padding. Each one is a button a person taps, so `title` is imperative and short 
 "Add it to a repo", "Build the first screen"). `intent` is one sentence saying what DONE looks
 like, specific enough that somebody could start from it with no other context.
 
+Pick the `move_kind` by WHAT HAPPENS, and `target` follows from it and is corrected if it does not:
+
+  install    it ends with something on this machine that was not there before
+  apply      it ends with a change in one of the person's own repositories
+  scaffold   it ends with a new project that did not exist
+  evaluate   it ends with a verdict: worth it, or not
+  card       it ends with something to read, here, and no code anywhere
+  keep       it ends with nothing, on purpose
+
+An editor setting or a keyboard shortcut is not a change in a repository, so it is not `apply`.
+
 `evidence` IS THE RULE THAT MATTERS. It must be a span COPIED CHARACTER FOR CHARACTER out of
 the text you were given. Do not paraphrase it, do not tidy its punctuation, do not translate
 it. A move whose evidence is not found in the text is thrown away before the person sees it,

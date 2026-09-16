@@ -80,7 +80,11 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
     `transformOrigin` top left.
 16. **Fitting the whole board is the wrong result past five clusters:** every sigil at 23 points.
     The opening view stops shrinking where a node is still legible; the rest is one drag away.
-17. **`#282420` on `#141210` is not subtle, it is missing.** The step number set huge behind a
+17. **Two fields that answer one question disagree.** Six of six `apply` moves came back
+    `this_machine`, so every repository change would have run in a scratch directory.
+18. **A command that ran is not a command that worked.** `git switch -c` was trusted without asking
+    git what branch it was on.
+19. **`#282420` on `#141210` is not subtle, it is missing.** The step number set huge behind a
     recipe step measured 1.2:1 and did not appear at all.
 
 ## The artifact
@@ -105,4 +109,5 @@ The app is built with BOTH extensions in it (`Builda.app/PlugIns/BuilderShare.ap
   what is missing is an Android `ACTION_SEND` receiver, which needs a native module of its own.
 - A native iOS build with the share extension in it, and a pass on the simulator with real
   shares. The board, the panel and the recipe screen have not been seen on a device yet.
-- `drops/runner.py`'s `apply` path against a real repository end to end.
+- The `scaffold` path: a project idea, one button, a new project with a first slice in it. The
+  code is there and no drop on the board has proposed one yet.

@@ -45,6 +45,7 @@ import { hostOf } from './CardView';
 import { EFFORT_WORD, KIND_WORD, MOVE_TARGET_WORD, PLATFORM_WORD, REFUSAL, readLine, STATUS_LINE } from './copy';
 import { MoveRowView } from './MoveRow';
 import { RecipeSteps } from './RecipeSteps';
+import { StepBar, StepPager } from './StepPager';
 import { movesOf, type DropRow, type MoveRow } from './types';
 import { WordToggle } from './WordToggle';
 
@@ -78,6 +79,11 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
   const [repos, setRepos] = useState<Record<string, string>>({});
   const [saying, setSaying] = useState(false);
   const [adjustment, setAdjustment] = useState('');
+  /** Which step of the method is showing. Here and not in `RecipeSteps`, because the control that
+   *  changes it is pinned to the foot of this sheet rather than set in the scroll under it. */
+  const [step, setStep] = useState(0);
+  const stageY = React.useRef(0);
+  const steps = recipe?.steps ?? [];
 
   const scroller = React.useRef<ScrollView>(null);
   const restTop = height * (1 - REST);
@@ -220,7 +226,15 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
           <ScrollView
             ref={scroller}
             style={styles.body}
-            contentContainerStyle={{ paddingBottom: insets.bottom + (armed.length ? 142 : 28) }}
+            contentContainerStyle={{
+              paddingBottom:
+                insets.bottom +
+                (armed.length && (!recipe || tab === 'do')
+                  ? 142
+                  : recipe && tab === 'recipe' && steps.length > 1
+                    ? 78
+                    : 28),
+            }}
             showsVerticalScrollIndicator={false}
           >
             {drop.summary && (!recipe || tab === 'do') ? (
@@ -250,15 +264,7 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
 
             {recipe && tab === 'recipe' ? (
               <View style={styles.recipe}>
-                <RecipeSteps
-                  recipe={recipe}
-                  onStep={(stageY) => {
-                    // Full height, and the step at the top of the scroller. You asked for the
-                    // next instruction; the next instruction is what should be on the screen.
-                    top.value = withSpring(tallTop, { damping: 20, stiffness: 180 });
-                    scroller.current?.scrollTo({ y: Math.max(0, stageY - 12), animated: true });
-                  }}
-                />
+                <RecipeSteps recipe={recipe} step={step} onStageY={(y) => (stageY.current = y)} />
               </View>
             ) : null}
 
@@ -281,7 +287,25 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
               </View>
             ) : null}
 
-            {armed.length ? (
+            {/* The method's control, pinned. `paddingBottom` on the scroller above leaves it room. */}
+          {recipe && tab === 'recipe' && steps.length > 1 ? (
+            <StepBar bottom={insets.bottom}>
+              <StepPager
+                count={steps.length}
+                step={step}
+                ink={ink}
+                onStep={(next) => {
+                  setStep(next);
+                  // Full height, and that step at the top of the scroller. You asked for the next
+                  // instruction; the next instruction is what should be on the screen.
+                  top.value = withSpring(tallTop, { damping: 20, stiffness: 180 });
+                  scroller.current?.scrollTo({ y: Math.max(0, stageY.current - 12), animated: true });
+                }}
+              />
+            </StepBar>
+          ) : null}
+
+          {armed.length && (!recipe || tab === 'do') ? (
               <Animated.View entering={FadeIn.duration(150)} style={styles.say}>
                 {saying ? (
                   <TextField
@@ -314,7 +338,25 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
             </Pressable>
           </ScrollView>
 
-          {armed.length ? (
+          {/* The method's control, pinned. `paddingBottom` on the scroller above leaves it room. */}
+          {recipe && tab === 'recipe' && steps.length > 1 ? (
+            <StepBar bottom={insets.bottom}>
+              <StepPager
+                count={steps.length}
+                step={step}
+                ink={ink}
+                onStep={(next) => {
+                  setStep(next);
+                  // Full height, and that step at the top of the scroller. You asked for the next
+                  // instruction; the next instruction is what should be on the screen.
+                  top.value = withSpring(tallTop, { damping: 20, stiffness: 180 });
+                  scroller.current?.scrollTo({ y: Math.max(0, stageY.current - 12), animated: true });
+                }}
+              />
+            </StepBar>
+          ) : null}
+
+          {armed.length && (!recipe || tab === 'do') ? (
             <Animated.View
               entering={FadeIn.duration(160)}
               style={[styles.bar, { paddingBottom: 14 + insets.bottom }]}

@@ -90,12 +90,15 @@ export default function DropsScreen() {
 
   useEffect(() => {
     if (!focused) return;
+    // The board does not poll while nothing is in flight (`useBoard`), so arriving on this tab
+    // is the moment to ask: the Mac may have finished a run while you were on another screen.
+    void refresh();
     drain();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') drain();
     });
     return () => sub.remove();
-  }, [focused, drain]);
+  }, [focused, drain, refresh]);
 
   // A tapped banner: `builder://drops?open=<id>`. It opens the drop's own screen.
   useEffect(() => {

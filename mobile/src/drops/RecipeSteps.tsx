@@ -23,44 +23,30 @@
  * stranger's recipe passed off as the creator's is the same class of error as an invented
  * package name.
  */
-import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { dropHue } from '../theme';
 import { Hairline } from '../ui/Hairline';
 import { T } from '../ui/Text';
-import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
 import type { Recipe } from '../generated/drops';
 
 export interface RecipeStepsProps {
   recipe: Recipe;
-  /**
-   * Called with the METHOD stage's y inside the scroller whenever the step changes.
-   *
-   * Because the sheet scrolls and the stage does not know where it is. Cook from a ten step
-   * recipe and by step four the stage had scrolled half under the sheet's title, so the words you
-   * are meant to be reading were cut through the middle. The sheet takes this and brings the
-   * stage back to the top of the scroller, which is where the step you are on belongs.
-   */
-  onStep?: (stageY: number) => void;
+  /** Which step is showing. The sheet holds it, because the sheet draws the control. */
+  step: number;
+  /** Where the METHOD stage sits inside the scroller, so the sheet can bring it into view. */
+  onStageY?: (y: number) => void;
 }
 
-export function RecipeSteps({ recipe, onStep }: RecipeStepsProps) {
+export function RecipeSteps({ recipe, step, onStageY }: RecipeStepsProps) {
   const foundUrl = recipe.found_url ?? null;
   const c = useColors();
   const hue = dropHue('recipe')!;
-  const [step, setStep] = useState(0);
-  const stageY = React.useRef(0);
   const steps = recipe.steps ?? [];
-  const at = steps[step];
-
-  const go = (next: number) => {
-    select();
-    setStep(next);
-    onStep?.(stageY.current);
-  };
+  const at = steps[Math.min(step, Math.max(0, steps.length - 1))];
 
   return (
     <View>
@@ -115,7 +101,7 @@ export function RecipeSteps({ recipe, onStep }: RecipeStepsProps) {
 
           {/* One step, full width, with its number set huge behind it. Tap the right half to go
               on, the left half to go back: a thumb on a phone propped against a bag of flour. */}
-          <View style={styles.stage} onLayout={(e) => (stageY.current = e.nativeEvent.layout.y)}>
+          <View style={styles.stage} onLayout={(e) => onStageY?.(e.nativeEvent.layout.y)}>
             {/* The step's number, set huge beside it.
                 Two goes at this: `raised` (#282420) measured 1.2:1 on the ground and `border`
                 (#2F2B27) 1.5:1, and neither appeared at all on the simulator. `textFaint` is the
@@ -137,44 +123,6 @@ export function RecipeSteps({ recipe, onStep }: RecipeStepsProps) {
             </Animated.View>
           </View>
 
-          <View style={styles.steps}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Previous step"
-              disabled={step === 0}
-              onPress={() => go(Math.max(0, step - 1))}
-              style={styles.half}
-            >
-              <T role="label" style={{ color: step === 0 ? c.textFaint : c.textDim }}>
-                BACK
-              </T>
-            </Pressable>
-            <View style={styles.pips}>
-              {steps.map((_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.pip,
-                    { backgroundColor: i === step ? hue.ink : c.border },
-                  ]}
-                />
-              ))}
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Next step"
-              disabled={step >= steps.length - 1}
-              onPress={() => go(Math.min(steps.length - 1, step + 1))}
-              style={[styles.half, styles.right]}
-            >
-              <T
-                role="label"
-                style={{ color: step >= steps.length - 1 ? c.textFaint : hue.ink }}
-              >
-                NEXT
-              </T>
-            </Pressable>
-          </View>
         </>
       ) : null}
     </View>

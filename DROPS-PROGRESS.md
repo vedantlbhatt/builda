@@ -34,11 +34,16 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
 - **The share extension** (`mobile/targets/share/`): its own Builda sheet, written directly
   rather than through `expo-share-intent`, which cannot be installed on Expo 53.
 - **The CLI**: `python -m drops resolve|plan|find|recipe|cluster|watch|doctor`.
+- **The libraries the owner supplied, where they fit and nowhere else**: react-bits' ClickSpark in
+  its `pixel` variant throws squares where you tapped a drop, in that drop's hue, so the one moment
+  of delight on the board is made of the board's own material; and DecryptedText scrambles and
+  settles the host of a drop the Mac has not read yet, which is what is actually happening behind
+  it. Neither is used on a screen that is only being read.
 
 ## Green
 
-- `bun test` 2544 pass, `tsc --noEmit` clean.
-- `pytest` 492 pass (32 of them `server/tests/test_drops.py`).
+- `bun test` 2552 pass, `tsc --noEmit` clean.
+- `pytest` 494 pass (34 of them `server/tests/test_drops.py`).
 - `python3 -m unittest drops.tests.test_cluster` 6 pass, over the real corpus.
 - `make gen && git diff --exit-code` stable.
 - The corpus: 15 real public links resolved and planned, cached in `drops/tests/corpus/`.
@@ -77,6 +82,12 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
     The opening view stops shrinking where a node is still legible; the rest is one drag away.
 17. **`#282420` on `#141210` is not subtle, it is missing.** The step number set huge behind a
     recipe step measured 1.2:1 and did not appear at all.
+
+## The artifact
+
+`https://claude.ai/artifact/NFa9Lm8xjhESVNtKTo9ND7` — the whole feature end to end, with the
+screenshots and every measurement. Its header draws the drops' own sigils with the same rules the
+app uses, so the page is drawn by the thing it documents.
 
 ## Seen running
 

@@ -41,6 +41,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { dropHue, type Hue } from '../theme';
+import { SparkBurst } from '../ui/bits/effects';
 import { T } from '../ui/Text';
 import { useColors } from '../ui/scheme';
 import { board as clusterBoard, type Cluster } from './cluster';
@@ -99,6 +100,18 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
   const savedX = useSharedValue(start.x);
   const savedY = useSharedValue(start.y);
   const [zoomed, setZoomed] = useState(start.scale >= TITLE_SCALE);
+  /**
+   * Where the last tap landed, and a counter that plays one burst there.
+   *
+   * react-bits' ClickSpark, in the `pixel` variant (`src/ui/bits/effects`), which throws squares
+   * rather than rays, so the one moment of delight on this screen is made of the same material
+   * the whole board is. DESIGN-V2's rule for sparks is commitments only; opening a drop is the
+   * one commitment on this screen, and it is also the one place a tap can land on nothing, so
+   * the burst doubles as the answer to "did that register".
+   */
+  const [spark, setSpark] = useState<{ x: number; y: number; hue: Hue | null; n: number }>({
+    x: 0, y: 0, hue: null, n: 0,
+  });
   /** Has a finger moved the map yet. Until it has, the view FOLLOWS the board. */
   const touched = useSharedValue(false);
 
@@ -157,6 +170,8 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
         onSelect(null);
         return;
       }
+      const hit = drops[best.index];
+      setSpark((was) => ({ x: px, y: py, hue: hit?.kind ? dropHue(hit.kind) : null, n: was.n + 1 }));
       touched.value = true;
       const target = focus(best, viewport, UNIT, ZOOM_SCALE);
       scale.value = withTiming(target.scale, { duration: 420 });
@@ -244,6 +259,18 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
             <Picture picture={picture} />
           </Group>
         </Canvas>
+        {spark.n > 0 ? (
+          <SparkBurst
+            x={spark.x}
+            y={spark.y}
+            playKey={spark.n}
+            variant="pixel"
+            hue={spark.hue ?? undefined}
+            size={4}
+            count={10}
+            radius={34}
+          />
+        ) : null}
         {/* Words ride the same transform. `pointerEvents none`: the canvas underneath owns
             every touch, so a label can never swallow a tap meant for the node it names. */}
         <Animated.View style={[styles.words, wordsStyle]} pointerEvents="none">

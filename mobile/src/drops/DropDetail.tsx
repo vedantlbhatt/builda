@@ -37,6 +37,7 @@ import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 
 import { dropHue } from '../theme';
 import { Button } from '../ui/Button';
+import { DecryptedText } from '../ui/DecryptedText';
 import { Hairline } from '../ui/Hairline';
 import { T } from '../ui/Text';
 import { TextField } from '../ui/TextField';
@@ -47,6 +48,12 @@ import { MoveRowView } from './MoveRow';
 import { RecipeSteps } from './RecipeSteps';
 import { Sigil } from './SigilView';
 import { movesOf, type DropRow, type MoveRow } from './types';
+
+/** The host, for a drop nobody has read yet: something true to print before the title exists. */
+function hostOf(url: string): string {
+  const m = /^https:\/\/([^/]+)/.exec(url);
+  return (m?.[1] ?? url).replace(/^www\./, '');
+}
 
 export interface DropDetailProps {
   drop: DropRow;
@@ -108,9 +115,23 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
           </Pressable>
         </View>
 
-        <T role="title" style={{ color: c.text, marginTop: 14 }}>
-          {drop.title ?? 'Not read yet'}
-        </T>
+        {/* A drop the Mac has not read yet has no title, and the host is all there is. It
+            RESOLVES: react-bits' DecryptedText (`src/ui/DecryptedText.tsx`) scrambles and settles,
+            which is the one animation on this panel and is exactly what is happening behind it.
+            Once there is a real title it is set plainly, because a headline that scrambles every
+            time you open a card is a headline nobody can read. */}
+        {busy ? (
+          <DecryptedText
+            text={hostOf(drop.url)}
+            role="title"
+            tone="dim"
+            style={{ marginTop: 14 }}
+          />
+        ) : (
+          <T role="title" style={{ color: c.text, marginTop: 14 }}>
+            {drop.title ?? hostOf(drop.url)}
+          </T>
+        )}
 
         {drop.summary ? (
           <T role="body" style={{ color: c.textDim, marginTop: 8 }}>

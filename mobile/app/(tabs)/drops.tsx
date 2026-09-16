@@ -37,6 +37,15 @@ export default function DropsScreen() {
   const { drops, moves, loading, refresh } = useBoard();
   const [shape, setShape] = useState<Shape>('piles');
   const [query, setQuery] = useState('');
+  /**
+   * How to put a hand arranged wall back, or null when nobody has moved anything.
+   *
+   * Stored through an updater. `useState`'s setter treats a bare function as "compute the next
+   * state from the last one", so `setUnarrange(fn)` would CALL fn — which here means the board
+   * unarranges itself the instant it reports that it is arranged.
+   */
+  const [unarrange, setUnarrange] = useState<null | (() => void)>(null);
+  const takeUnarrange = useCallback((fn: null | (() => void)) => setUnarrange(() => fn), []);
   const focused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; open?: string }>();
@@ -136,6 +145,16 @@ export default function DropsScreen() {
             ) : null}
           </T>
           <View style={styles.shape}>
+            {/* Only while there is something to undo. A permanent "reset" on a wall nobody has
+                touched is a control that spends its life telling you about a state you are not
+                in. */}
+            {shape === 'piles' && unarrange ? (
+              <Pressable accessibilityRole="button" hitSlop={10} onPress={unarrange}>
+                <T role="mono" style={{ color: c.textFaint }}>
+                  arranged
+                </T>
+              </Pressable>
+            ) : null}
             <WordToggle word="PILES" on={shape === 'piles'} onPress={() => setShape('piles')} />
             <WordToggle word="GRID" on={shape === 'grid'} onPress={() => setShape('grid')} />
           </View>
@@ -159,7 +178,13 @@ export default function DropsScreen() {
           }}
         />
       ) : shape === 'piles' ? (
-        <DropsBoard drops={drops} moves={moves} onOpenCard={openDrop} only={only} />
+        <DropsBoard
+          drops={drops}
+          moves={moves}
+          onOpenCard={openDrop}
+          only={only}
+          onArranged={takeUnarrange}
+        />
       ) : (
         <GridWall drops={shown} busy={busy} onOpenCard={openDrop} />
       )}

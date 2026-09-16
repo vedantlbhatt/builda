@@ -70,9 +70,16 @@ export interface BoardProps {
   onOpenCard: (id: string) => void;
   /** Rows the search box has narrowed to, or null for all of them. */
   only?: Set<string> | null;
+  /**
+   * Whether this wall has been arranged by hand, and how to put it back.
+   *
+   * The screen draws the way out rather than the board, because the board is the thing being put
+   * back: a control for undoing an arrangement cannot live inside the arrangement.
+   */
+  onArranged?: (arranged: null | (() => void)) => void;
 }
 
-export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps) {
+export function DropsBoard({ drops, moves, onOpenCard, only = null, onArranged }: BoardProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -162,6 +169,17 @@ export function DropsBoard({ drops, moves, onOpenCard, only = null }: BoardProps
     () => layoutBoard(walled, width, order.length > 0),
     [walled, width, order.length],
   );
+
+  /** Back to the order the clustering would have chosen, which is what it was before you moved one. */
+  const unarrange = useCallback(() => {
+    select();
+    setOrder([]);
+    void setKv(ORDER_KEY, JSON.stringify([]));
+  }, []);
+
+  useEffect(() => {
+    onArranged?.(order.length ? unarrange : null);
+  }, [order.length, unarrange, onArranged]);
 
   const move = useCallback(
     (cluster: number, to: { x: number; y: number }) => {

@@ -72,11 +72,11 @@ export function SearchLine({ value, onChangeText, hits }: SearchLineProps) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  // The kit's field with its box taken off: no fill, no corners, no inset.
+  // The kit's field with its box taken off: no fill, no inset. Its corner radius is left alone
+  // rather than zeroed, because a radius on a transparent fill draws nothing.
   input: {
     flex: 1,
     backgroundColor: 'transparent',
-    borderRadius: 0,
     minHeight: 34,
     paddingHorizontal: 0,
     paddingVertical: 4,

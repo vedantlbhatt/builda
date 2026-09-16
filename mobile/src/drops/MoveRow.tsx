@@ -41,7 +41,7 @@ export interface MoveRowProps {
 export function MoveRowView({ move, kind, armed, onToggle }: MoveRowProps) {
   const c = useColors();
   const hue = kind ? dropHue(kind) : null;
-  const ink = hue?.ink ?? c.surface.text;
+  const ink = hue?.ink ?? c.text;
   const live = move.status !== 'offered' && move.status !== 'declined';
   const unverified = move.verification?.refusal === 'source_unverified';
   const verb = unverified && move.move_kind === 'install' ? 'Open it' : MOVE_VERB[move.move_kind];
@@ -61,22 +61,22 @@ export function MoveRowView({ move, kind, armed, onToggle }: MoveRowProps) {
         style={({ pressed }) => [
           styles.row,
           armed && { backgroundColor: ink },
-          pressed && !armed && { backgroundColor: c.surface.raised },
+          pressed && !armed && { backgroundColor: c.raised },
         ]}
       >
         <View style={styles.head}>
           <T role="label" style={{ color: armed ? hue?.onFill : ink, letterSpacing: 1.2 }}>
             {verb.toUpperCase()}
           </T>
-          <T role="mono" style={{ color: armed ? hue?.onFill : c.surface.textFaint }}>
+          <T role="mono" style={{ color: armed ? hue?.onFill : c.textFaint }}>
             {live ? MOVE_STATUS_LINE[move.status] : EFFORT_WORD[move.effort]}
           </T>
         </View>
 
-        <T role="row" style={{ color: armed ? hue?.onFill : c.surface.text }}>
+        <T role="row" style={{ color: armed ? hue?.onFill : c.text }}>
           {move.title}
         </T>
-        <T role="meta" style={{ color: armed ? hue?.onFill : c.surface.textDim, marginTop: 2 }}>
+        <T role="meta" style={{ color: armed ? hue?.onFill : c.textDim, marginTop: 2 }}>
           {move.intent}
         </T>
 
@@ -84,32 +84,32 @@ export function MoveRowView({ move, kind, armed, onToggle }: MoveRowProps) {
             is evidence, so it is set apart and never dressed up as a headline. */}
         <View style={styles.quote}>
           <View
-            style={[styles.quoteRule, { backgroundColor: armed ? hue?.onFill : hue?.partner ?? c.surface.border }]}
+            style={[styles.quoteRule, { backgroundColor: armed ? hue?.onFill : hue?.partner ?? c.border }]}
           />
           <T
             role="meta"
             numberOfLines={3}
-            style={[styles.quoteText, { color: armed ? hue?.onFill : c.surface.textDim }]}
+            style={[styles.quoteText, { color: armed ? hue?.onFill : c.textDim }]}
           >
             {move.evidence}
           </T>
         </View>
 
         {move.source ? (
-          <T role="mono" numberOfLines={1} style={{ color: armed ? hue?.onFill : c.surface.textFaint, marginTop: 6 }}>
+          <T role="mono" numberOfLines={1} style={{ color: armed ? hue?.onFill : c.textFaint, marginTop: 6 }}>
             {move.source.source_kind} {move.source.ref}
             {move.verification?.state === 'verified' ? ' · checked' : ''}
           </T>
         ) : null}
 
         {unverified ? (
-          <T role="meta" style={{ color: armed ? hue?.onFill : c.surface.textFaint, marginTop: 4 }}>
+          <T role="meta" style={{ color: armed ? hue?.onFill : c.textFaint, marginTop: 4 }}>
             {MOVE_REFUSAL.source_unverified}
           </T>
         ) : null}
 
         {move.outcome ? (
-          <T role="meta" style={{ color: c.surface.textDim, marginTop: 6 }}>
+          <T role="meta" style={{ color: c.textDim, marginTop: 6 }}>
             {move.outcome}
           </T>
         ) : null}
@@ -122,6 +122,6 @@ const styles = StyleSheet.create({
   row: { paddingVertical: 14, paddingHorizontal: 16 },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 },
   quote: { flexDirection: 'row', marginTop: 10 },
-  quoteRule: { width: 2, borderRadius: 1, marginRight: 10 },
+  quoteRule: { width: 2, borderRadius: 1, borderCurve: 'continuous', marginRight: 10 },
   quoteText: { flex: 1, fontStyle: 'italic' },
 });

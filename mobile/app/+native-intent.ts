@@ -14,6 +14,12 @@ import { pathWhileOnboarding } from '../src/nav/rules';
  * shapes people actually type or paste land on the same screen: the `/recap` suffix form,
  * a stray `session` without the leading slash, `builder:///` with three slashes.
  *
+ * `builder://drop?url=<link>` — a link sent in from outside: the Mac, a Shortcut, or a paste.
+ * It lands on the Drops tab with the link in the query, and the tab sends it. The iOS share
+ * extension does NOT use this route: it writes into the App Group and the app drains it on
+ * foreground (`src/drops/intake.ts`), because a link long enough to be a URL inside a URL is a
+ * link some host will truncate.
+ *
  * The root and two renamed routes are aliased (`aliasPath`): the app has no `/` route, its
  * first tab is `/now`, and on iOS a plain launch from the home screen arrives here as the root
  * URL (`builder:///`, expo-router's `getRootURL`), so that is where it lands.
@@ -26,7 +32,9 @@ import { pathWhileOnboarding } from '../src/nav/rules';
  * down to onboarding.
  */
 export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }): string {
-  const next = path.includes('auth/google') ? '/settings' : recapPath(path) ?? aliasPath(path) ?? path;
+  const next = path.includes('auth/google')
+    ? '/settings'
+    : dropPath(path) ?? recapPath(path) ?? aliasPath(path) ?? path;
   if (!initial && gateSnapshot() === false) return pathWhileOnboarding(next) ?? '';
   return next;
 }
@@ -46,6 +54,21 @@ export function aliasPath(path: string): string | null {
   const qs = m[2] && m[2] !== '?' ? m[2] : '';
   const target = ALIASES.get(route);
   return target ? `${target}${qs}` : null;
+}
+
+/**
+ * `/drops?url=<link>` when `path` is a drop link, else null. Pure, so bun can pin it.
+ *
+ * The link is NOT validated here beyond being present: `src/drops/urls.ts` decides what a link
+ * is, once, and a second opinion in the router would be a second rule about what a reel's URL
+ * is. What this refuses is an EMPTY `url`, which would otherwise open the tab with a query
+ * string that means nothing.
+ */
+export function dropPath(path: string): string | null {
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/{2,3})?\/*drops?\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(path.trim());
+  if (!m) return null;
+  const url = new URLSearchParams(m[1] ?? '').get('url')?.trim();
+  return url ? `/drops?url=${encodeURIComponent(url)}` : '/drops';
 }
 
 // A Map, not an object literal: `builder://constructor` must not find Object.prototype's.

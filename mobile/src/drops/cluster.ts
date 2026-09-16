@@ -138,10 +138,14 @@ export function cluster(drops: Clusterable[], floor: number = MERGE_FLOOR): numb
     let bestJ = -1;
     for (let i = 0; i < groups.length; i++) {
       for (let j = i + 1; j < groups.length; j++) {
-        if (groups[i].length + groups[j].length > MAX_CLUSTER) continue;
+        const gi = groups[i] as number[];
+        const gj = groups[j] as number[];
+        if (gi.length + gj.length > MAX_CLUSTER) continue;
         let total = 0;
-        for (const a of groups[i]) for (const b of groups[j]) total += cosine(vecs[a], vecs[b]);
-        const sim = round9(total / (groups[i].length * groups[j].length));
+        for (const a of gi) {
+          for (const b of gj) total += cosine(vecs[a] as Map<string, number>, vecs[b] as Map<string, number>);
+        }
+        const sim = round9(total / (gi.length * gj.length));
         // Strictly greater, walking in index order: the FIRST pair at a given similarity wins
         // in both languages.
         if (sim > bestSim) {
@@ -152,11 +156,11 @@ export function cluster(drops: Clusterable[], floor: number = MERGE_FLOOR): numb
       }
     }
     if (bestSim < floor) break;
-    groups[bestI] = [...groups[bestI], ...groups[bestJ]].sort((a, b) => a - b);
+    groups[bestI] = [...(groups[bestI] as number[]), ...(groups[bestJ] as number[])].sort((a, b) => a - b);
     groups.splice(bestJ, 1);
   }
 
-  groups = groups.sort((a, b) => b.length - a.length || a[0] - b[0]);
+  groups = groups.sort((a, b) => b.length - a.length || (a[0] as number) - (b[0] as number));
   return groups;
 }
 
@@ -166,7 +170,7 @@ export function label(group: number[], vecs: Map<string, number>[]): string {
   const totals = new Map<string, number>();
   const shared = new Map<string, number>();
   for (const i of group) {
-    for (const [t, v] of vecs[i]) {
+    for (const [t, v] of vecs[i] as Map<string, number>) {
       totals.set(t, (totals.get(t) ?? 0) + v);
       shared.set(t, (shared.get(t) ?? 0) + 1);
     }
@@ -183,7 +187,7 @@ export function label(group: number[], vecs: Map<string, number>[]): string {
       (shared.get(b) ?? 0) - (shared.get(a) ?? 0) ||
       (a < b ? -1 : a > b ? 1 : 0),
   );
-  return eligible[0];
+  return eligible[0] ?? '';
 }
 
 /** The clustered board: largest first. */

@@ -59,10 +59,18 @@ export function nameProblem(raw: string): 'empty' | 'too_long' | null {
 
 // ----------------------------------------------------------------------------- tabs
 
-/** The tabs, in bar order, with the one title each is known by (bar label and back label). */
+/**
+ * The tabs, in bar order, with the one title each is known by (bar label and back label).
+ *
+ * Drops sits in the MIDDLE, between what you did and where you did it, because it is the only
+ * tab you arrive at from outside the app: you share a reel in Instagram, Builda opens, and the
+ * thumb is already in the centre of the bar. Five is the ceiling; a sixth would push the labels
+ * to two lines at the Dynamic Type sizes this bar does not scale.
+ */
 export const TABS = [
   { name: 'now', title: 'Now' },
   { name: 'sessions', title: 'Sessions' },
+  { name: 'drops', title: 'Drops' },
   { name: 'projects', title: 'Projects' },
   { name: 'you', title: 'You' },
 ] as const;

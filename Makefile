@@ -41,6 +41,7 @@ gen:
 	@python3 scripts/gen_shipped.py
 	@python3 scripts/gen_report.py
 	@python3 scripts/gen_live.py
+	@python3 scripts/gen_drops.py
 	@if [ -f scripts/gen_copy.py ]; then python3 scripts/gen_copy.py; else echo "gen_copy.py: not written yet, nothing to generate"; fi
 	@python3 scripts/gen_stack_logos.py
 	@python3 scripts/gen_live_fixtures.py
@@ -66,6 +67,7 @@ check-gen: gen
 		Packages/BuilderKit/Sources/BuilderModel/Generated \
 		Packages/BuilderKit/Sources/BuilderSync/Generated \
 		mobile/src/generated server/builder/contract.py server/builder/strip.py \
+		drops/tables.py drops/schema.json \
 		server/builder/analysis_spec.py server/builder/report_spec.py \
 		server/builder/narrative_spec.py server/builder/shipped_spec.py \
 		server/builder/live_spec.py server/builder/quotes_spec.py server/builder/media_spec.py analysis \

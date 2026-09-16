@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
+import type { BoardResponse, DropRow, MoveRow } from '../drops/types';
+
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
 import type { ShippedPost } from '../generated/shipped';
@@ -1083,6 +1085,59 @@ export class Api {
     return this.request('POST', '/v1/repos/visibility', {
       body: { repo_hash: repoHash, visibility },
     });
+  }
+
+  // ------------------------------------------------------------------ drops
+
+  /**
+   * The whole board in one request: drops and moves as two flat lists.
+   *
+   * Two lists rather than nested, so the board can diff each independently: a move whose status
+   * changed must not redraw the card it belongs to, and on this screen "redraw the card" means
+   * re recording a Skia picture of a hundred sigils.
+   */
+  dropsBoard(opts: { archived?: boolean } = {}): Promise<BoardResponse> {
+    const q = opts.archived ? '?archived=true' : '';
+    return this.request('GET', `/v1/drops${q}`);
+  }
+
+  /** The share sheet's route. Idempotent on the link: the same reel twice is one card. */
+  shareDrop(url: string, platform: string, sharedText?: string | null): Promise<{ drop: DropRow; created: boolean }> {
+    return this.request('POST', '/v1/drops', {
+      body: { url, platform, shared_text: sharedText ?? null },
+    });
+  }
+
+  drop(id: string): Promise<{ drop: DropRow; moves: MoveRow[] }> {
+    return this.request('GET', `/v1/drops/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * A person tapped a move. THE ONLY WAY A MOVE IS EVER QUEUED.
+   *
+   * A 409 means it has already left `offered`, which is what a double tap looks like; callers
+   * treat that as "already going" rather than as an error, because it is.
+   */
+  startMove(
+    dropId: string,
+    moveId: string,
+    opts: { adjustment?: string | null; repo_key?: string | null } = {}
+  ): Promise<{ move: MoveRow }> {
+    return this.request('POST', `/v1/drops/${encodeURIComponent(dropId)}/moves/${encodeURIComponent(moveId)}:start`, {
+      body: { adjustment: opts.adjustment ?? null, repo_key: opts.repo_key ?? null },
+    });
+  }
+
+  declineMove(dropId: string, moveId: string): Promise<{ move: MoveRow }> {
+    return this.request('POST', `/v1/drops/${encodeURIComponent(dropId)}/moves/${encodeURIComponent(moveId)}:decline`);
+  }
+
+  archiveDrop(id: string, on = true): Promise<{ archived: boolean }> {
+    return this.request('POST', `/v1/drops/${encodeURIComponent(id)}:archive?on=${on ? 'true' : 'false'}`);
+  }
+
+  async deleteDrop(id: string): Promise<void> {
+    await this.request<unknown>('DELETE', `/v1/drops/${encodeURIComponent(id)}`);
   }
 
   // ---------------------------------------------------------------- privacy

@@ -47,7 +47,7 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
         <T role="label" style={{ color: hue.ink, letterSpacing: 1.2 }}>
           INGREDIENTS
         </T>
-        <T role="mono" style={{ color: c.surface.textFaint }}>
+        <T role="mono" style={{ color: c.textFaint }}>
           {[recipe.serves ? `serves ${recipe.serves}` : null, recipe.total_minutes ? `${recipe.total_minutes} min` : null]
             .filter(Boolean)
             .join('  ·  ')}
@@ -58,25 +58,25 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
         <View key={`${ing.item}.${i}`}>
           {i > 0 ? <Hairline /> : null}
           <View style={styles.ing}>
-            <T role="mono" style={[styles.qty, { color: ing.quantity ? c.surface.text : c.surface.textFaint }]}>
+            <T role="mono" style={[styles.qty, { color: ing.quantity ? c.text : c.textFaint }]}>
               {ing.quantity ?? 'as needed'}
             </T>
             <T role="row" style={styles.item}>
               {ing.item}
-              {ing.note ? <T role="meta" style={{ color: c.surface.textDim }}>{`, ${ing.note}`}</T> : null}
+              {ing.note ? <T role="meta" style={{ color: c.textDim }}>{`, ${ing.note}`}</T> : null}
             </T>
           </View>
         </View>
       ))}
 
       {(recipe.equipment ?? []).length ? (
-        <T role="meta" style={{ color: c.surface.textDim, marginTop: 12 }}>
+        <T role="meta" style={{ color: c.textDim, marginTop: 12 }}>
           {`You will need: ${(recipe.equipment ?? []).join(', ')}`}
         </T>
       ) : null}
 
       {foundUrl ? (
-        <T role="meta" style={{ color: c.surface.textFaint, marginTop: 10 }}>
+        <T role="meta" style={{ color: c.textFaint, marginTop: 10 }}>
           {`The video named the dish and gave no method. This is from ${hostOf(foundUrl)}.`}
         </T>
       ) : null}
@@ -87,7 +87,7 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
             <T role="label" style={{ color: hue.ink, letterSpacing: 1.2 }}>
               METHOD
             </T>
-            <T role="mono" style={{ color: c.surface.textFaint }}>
+            <T role="mono" style={{ color: c.textFaint }}>
               {`${step + 1} of ${steps.length}`}
             </T>
           </View>
@@ -95,11 +95,11 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
           {/* One step, full width, with its number set huge behind it. Tap the right half to go
               on, the left half to go back: a thumb on a phone propped against a bag of flour. */}
           <View style={styles.stage}>
-            <T role="hero" style={[styles.ghost, { color: c.surface.raised }]}>
+            <T role="hero" style={[styles.ghost, { color: c.raised }]}>
               {String(step + 1)}
             </T>
             <Animated.View key={step} entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
-              <T role="title" style={{ color: c.surface.text }}>
+              <T role="title" style={{ color: c.text }}>
                 {at?.text ?? ''}
               </T>
               {at?.minutes ? (
@@ -121,7 +121,7 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
               }}
               style={styles.half}
             >
-              <T role="label" style={{ color: step === 0 ? c.surface.textFaint : c.surface.textDim }}>
+              <T role="label" style={{ color: step === 0 ? c.textFaint : c.textDim }}>
                 BACK
               </T>
             </Pressable>
@@ -131,7 +131,7 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
                   key={i}
                   style={[
                     styles.pip,
-                    { backgroundColor: i === step ? hue.ink : c.surface.border },
+                    { backgroundColor: i === step ? hue.ink : c.border },
                   ]}
                 />
               ))}
@@ -148,7 +148,7 @@ export function RecipeSteps({ recipe, foundUrl }: { recipe: Recipe; foundUrl?: s
             >
               <T
                 role="label"
-                style={{ color: step >= steps.length - 1 ? c.surface.textFaint : hue.ink }}
+                style={{ color: step >= steps.length - 1 ? c.textFaint : hue.ink }}
               >
                 NEXT
               </T>
@@ -177,5 +177,5 @@ const styles = StyleSheet.create({
   half: { paddingVertical: 12, paddingRight: 24 },
   right: { paddingRight: 0, paddingLeft: 24 },
   pips: { flexDirection: 'row', flex: 1, justifyContent: 'center', gap: 6 },
-  pip: { width: 6, height: 6, borderRadius: 3 },
+  pip: { width: 6, height: 6, borderRadius: 3, borderCurve: 'continuous' },
 });

@@ -194,7 +194,7 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
 
   return (
     <GestureDetector gesture={gesture}>
-      <View style={[styles.fill, { backgroundColor: c.surface.bg }]}>
+      <View style={[styles.fill, { backgroundColor: c.bg }]}>
         <Canvas style={styles.fill}>
           <Group transform={groupTransform}>
             <Picture picture={picture} />
@@ -212,7 +212,7 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
                 {
                   left: h.x * UNIT - 60,
                   top: (h.y - (h.radius || 0.62) - 0.55) * UNIT,
-                  color: c.surface.textDim,
+                  color: c.textDim,
                 },
               ]}
             >
@@ -233,7 +233,7 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
                       {
                         left: n.x * UNIT - 56,
                         top: n.y * UNIT + UNIT * 0.56,
-                        color: selected === d.id ? c.surface.text : c.surface.textDim,
+                        color: selected === d.id ? c.text : c.textDim,
                       },
                     ]}
                   >
@@ -271,7 +271,7 @@ function record(
   return createPicture((canvas) => {
     const dot = Skia.Paint();
     dot.setAntiAlias(true);
-    dot.setColor(Skia.Color(c.surface.border));
+    dot.setColor(Skia.Color(c.border));
 
     // The field. One extra pitch each way so the dots run under everything rather than stopping
     // at the bounding box of the drops, which would draw the box.
@@ -293,7 +293,7 @@ function record(
       if (!hub) continue;
       const d = drops[n.index];
       const hue = d?.kind ? dropHue(d.kind) : null;
-      thread.setColor(Skia.Color(hue?.partner ?? c.surface.border));
+      thread.setColor(Skia.Color(hue?.partner ?? c.border));
       canvas.drawLine(hub.x * UNIT, hub.y * UNIT, n.x * UNIT, n.y * UNIT, thread);
     }
 
@@ -309,8 +309,8 @@ function record(
       const d = drops[n.index];
       if (!d) continue;
       const hue: Hue | null = d.kind ? dropHue(d.kind) : null;
-      const ink = hue?.ink ?? c.surface.textFaint;
-      const partner = hue?.partner ?? c.surface.border;
+      const ink = hue?.ink ?? c.textFaint;
+      const partner = hue?.partner ?? c.border;
       const grid = grow(d.url);
       const unit = UNIT / SIGIL_SIZE;
       const ox = n.x * UNIT - UNIT / 2;
@@ -322,6 +322,7 @@ function record(
       const upto = partial ? Math.ceil(list.length * 0.55) : list.length;
       for (let i = 0; i < upto; i++) {
         const s = list[i];
+        if (!s) continue;
         cell.setColor(Skia.Color(s.tone === 1 ? ink : partner));
         canvas.drawRect(
           Skia.XYWHRect(ox + s.c * unit, oy + s.r * unit, unit + 0.5, unit + 0.5),
@@ -334,7 +335,7 @@ function record(
         ring.setColor(Skia.Color(ink));
         canvas.drawCircle(n.x * UNIT, n.y * UNIT, UNIT * 0.78, ring);
       } else if (running.has(d.id)) {
-        ring.setColor(Skia.Color(c.surface.accent));
+        ring.setColor(Skia.Color(c.accent));
         canvas.drawCircle(n.x * UNIT, n.y * UNIT, UNIT * 0.68, ring);
       }
     }

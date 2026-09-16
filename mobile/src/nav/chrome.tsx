@@ -44,6 +44,10 @@ export const TAB_SYMBOLS = {
   // A folder, the one shape every file browser gives a project; solid at tab size beside the bolt
   // and the list, outlined at rest and filled when chosen like them.
   projects: { rest: 'folder', active: 'folder.fill' },
+  // Drops is a map of things somebody sent you, so it is the inbox tray, not a pin and not a
+  // brain: a pin says location, which this tab's map deliberately does not mean, and every
+  // "AI" product on the store is using the sparkle.
+  drops: { rest: 'tray', active: 'tray.fill' },
 } as const satisfies Record<Exclude<TabName, 'you'>, { rest: Symbol; active: Symbol }>;
 
 /** iOS 17's SF Symbol bounce, where the OS has it. Read once: the OS does not change under us. */

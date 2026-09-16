@@ -74,8 +74,10 @@ describe('the name', () => {
 });
 
 describe('tabs', () => {
-  test('bar order is Now, Sessions, Projects, You', () => {
-    expect(TABS.map((t) => t.name)).toEqual(['now', 'sessions', 'projects', 'you']);
+  test('bar order is Now, Sessions, Drops, Projects, You', () => {
+    // Drops is in the MIDDLE because it is the only tab you arrive at from outside the app:
+    // you share a reel in Instagram, Builda opens, and the thumb is already there.
+    expect(TABS.map((t) => t.name)).toEqual(['now', 'sessions', 'drops', 'projects', 'you']);
   });
   test('the back label over the tabs is the tab you came from, never "(tabs)"', () => {
     expect(tabTitle('sessions')).toBe('Sessions');

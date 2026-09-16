@@ -85,7 +85,7 @@ export function layout(clusters: Cluster[]): Board {
     hubs.push({ cluster: i, label: c.label, size: c.size, x: hx, y: hy, radius: r });
 
     if (c.size === 1) {
-      nodes.push({ index: c.members[0], x: hx, y: hy, cluster: i, isHub: true });
+      nodes.push({ index: c.members[0] as number, x: hx, y: hy, cluster: i, isHub: true });
       return;
     }
     c.members.forEach((m, j) => {

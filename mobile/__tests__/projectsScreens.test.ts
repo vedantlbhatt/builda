@@ -637,10 +637,10 @@ function code(src: string): string {
 }
 
 describe('the wiring', () => {
-  test('the tab sits between Sessions and You, with a glyph like the others', () => {
+  test('the tab sits between Drops and You, with a glyph like the others', () => {
     const layout = code(readFileSync(join(MOBILE, 'app/(tabs)/_layout.tsx'), 'utf8'));
     const order = [...layout.matchAll(/<Tabs\.Screen name="([^"]+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(['now', 'sessions', 'projects', 'you']);
+    expect(order).toEqual(['now', 'sessions', 'drops', 'projects', 'you']);
     const chrome = readFileSync(join(MOBILE, 'src/nav/chrome.tsx'), 'utf8');
     expect(chrome).toMatch(/projects: \{ rest: 'folder', active: 'folder\.fill' \}/);
   });

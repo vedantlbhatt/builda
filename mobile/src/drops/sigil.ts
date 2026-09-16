@@ -101,8 +101,10 @@ export function grow(seed: string): Grid {
   const target = Math.round(live * TARGET_FILL);
 
   const put = (r: number, c: number, tone: Cell) => {
-    g[r][c] = tone;
-    g[r][SIZE - 1 - c] = tone;
+    const row = g[r];
+    if (!row) return;
+    row[c] = tone;
+    row[SIZE - 1 - c] = tone;
   };
 
   // The core: a 2x2 of ink about the centre, so every sigil has a middle and none is empty.
@@ -118,12 +120,12 @@ export function grow(seed: string): Grid {
   let guard = target * 20;
   const frontier: [number, number][] = [[mid - 1, mid - 1], [mid, mid - 1]];
   while (filled < target && guard-- > 0 && frontier.length) {
-    const from = frontier[next() % frontier.length];
-    const [dr, dc] = DIRS[next() % 4];
+    const from = frontier[next() % frontier.length] as [number, number];
+    const [dr, dc] = DIRS[next() % 4] as [number, number];
     const r = from[0] + dr;
     const c = from[1] + dc;
     if (r < lo || r > hi || c < lo || c > mid) continue;
-    if (g[r][c]) continue;
+    if (g[r]?.[c]) continue;
     const tone: Cell = next() / 0xffffffff < PARTNER_SHARE ? 2 : 1;
     put(r, c, tone);
     frontier.push([r, c]);
@@ -152,14 +154,14 @@ export function thin(g: Grid): Grid {
     const before = g.map((row) => row.slice());
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
-        if (!before[r][c] || core(r, c)) continue;
+        if (!before[r]?.[c] || core(r, c)) continue;
         let n = 0;
-        if (r > 0 && before[r - 1][c]) n++;
-        if (r < SIZE - 1 && before[r + 1][c]) n++;
-        if (c > 0 && before[r][c - 1]) n++;
-        if (c < SIZE - 1 && before[r][c + 1]) n++;
+        if (r > 0 && before[r - 1]?.[c]) n++;
+        if (r < SIZE - 1 && before[r + 1]?.[c]) n++;
+        if (c > 0 && before[r]?.[c - 1]) n++;
+        if (c < SIZE - 1 && before[r]?.[c + 1]) n++;
         if (n < 1) {
-          g[r][c] = 0;
+          (g[r] as Cell[])[c] = 0;
           changed = true;
         }
       }
@@ -188,7 +190,8 @@ export function cells(g: Grid): SigilCell[] {
   const out: SigilCell[] = [];
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
-      if (g[r][c]) out.push({ r, c, tone: g[r][c], at: 0 });
+      const tone = g[r]?.[c];
+      if (tone) out.push({ r, c, tone, at: 0 });
     }
   }
   out.sort((a, b) => {
@@ -208,7 +211,7 @@ export function cells(g: Grid): SigilCell[] {
 export function spine(g: Grid): number[] {
   const mid = (SIZE - 1) / 2;
   const rows: number[] = [];
-  for (let r = 0; r < SIZE; r++) if (g[r][mid]) rows.push(r);
+  for (let r = 0; r < SIZE; r++) if (g[r]?.[mid]) rows.push(r);
   return rows;
 }
 

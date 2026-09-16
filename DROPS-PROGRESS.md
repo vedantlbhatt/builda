@@ -103,11 +103,21 @@ time. `shots/drops/board-corpus.png` is the review sheet
 The app is built with BOTH extensions in it (`Builda.app/PlugIns/BuilderShare.appex` and
 `BuilderWidgets.appex`) against the local stack on 127.0.0.1:8788.
 
+## Every run path, exercised for real
+
+| move | what it did |
+|---|---|
+| `card` | found a published recipe for a dish a Short only named, and put it back on the card |
+| `evaluate` | ran Claude Code and refused to name five skills the caption never named |
+| `apply` | made the branch `drops/extract-validation-into-a-decorator` in a real checkout and wrote notes that open by saying the repository has no Flask app in it |
+| `scaffold` | git initialised a new project and built a 156 line working skeleton plus a README |
+| `keep` | nothing, on purpose |
+
 ## Next
 
 - The Android half of the intake. The deep link (`builder://drop?url=`) works on both platforms;
   what is missing is an Android `ACTION_SEND` receiver, which needs a native module of its own.
 - A native iOS build with the share extension in it, and a pass on the simulator with real
   shares. The board, the panel and the recipe screen have not been seen on a device yet.
-- The `scaffold` path: a project idea, one button, a new project with a first slice in it. The
-  code is there and no drop on the board has proposed one yet.
+- Resolving a `run_uuid` to the Builda session it became. `link_session` takes one candidate or
+  none and has not been exercised against a real uploaded session yet.

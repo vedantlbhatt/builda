@@ -209,7 +209,12 @@ class Runner:
                 return "failed", "that checkout has uncommitted work; commit or stash it first", None
             where, note = path, f"on branch {branch}"
         elif target == "new_project":
-            where = ws.new_project(move["title"])
+            # The DROP's title, not the move's. A move says what to do and a drop says what it is
+            # ABOUT, and a directory is named after the thing: MEASURED, the first scaffold run
+            # made `~/.builder/drops/projects/scaffold-the-app/` for a drop called "Menu bar app
+            # that matches clipboard errors to past terminal fixes". Same mistake as handing the
+            # recipe finder a move's intent as the dish.
+            where = ws.new_project(move.get("drop_title") or move["title"])
             note = f"in a new project at {where}"
         else:
             where = ws.scratch(move["drop_id"])

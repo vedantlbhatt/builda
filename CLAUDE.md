@@ -461,6 +461,15 @@ the gate pins it (`drops/plan._TARGET_FOR`) and the prompt stops asking. `evalua
 whose target is genuinely free: trying something out can mean a throwaway clone or the repository
 you would actually use it in, and only the person knows which.
 
+**A move says what to DO and a drop says what it is ABOUT, and three different things asked the
+wrong one.** The recipe finder was handed a move's intent as the dish and searched for "Find the
+full ingredients list and step by step method for this one pan garlic butter shrimp pasta",
+finding nothing where the drop's title finds a published recipe in one search. The first scaffold
+run made `~/.builder/drops/projects/scaffold-the-app/` for a drop called "Menu bar app that
+matches clipboard errors to past terminal fixes". Both read the move. The claim route carries
+`drop_title` and `drop_kind` with every move now, and a directory is named after the thing rather
+than after the verb.
+
 **A command that ran is not a command that worked.** `branch_for` ran `git switch -c` and returned
 the branch name whatever git did, so a branch that already existed, a detached HEAD or a repository
 mid rebase would have run a move on whatever was checked out, having told the person it was on a

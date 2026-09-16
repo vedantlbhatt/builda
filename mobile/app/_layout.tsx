@@ -1,9 +1,12 @@
+// FIRST, and on its own line: it silences a warning that fires from another module's import.
+import '../src/ui/quietLogs';
+
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
-import { LogBox, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
@@ -23,11 +26,6 @@ import { refreshAccent, ThemeProvider, useAccent } from '../src/theme/accent';
  * pasted link goes to the app rather than nowhere (the skill's navigation law 5).
  */
 export const unstable_settings = { anchor: '(tabs)' };
-
-// expo-av's SDK 54 deprecation is known (it records the social voice note; the move is to
-// expo-audio). Its dev toast sat over the tab bar in every simulator screenshot. Only that one
-// message is hidden, only from the on-device toast: Metro still prints it.
-if (__DEV__) LogBox.ignoreLogs(['[expo-av]: Expo AV has been deprecated']);
 
 /**
  * Dark by default and not (yet) switchable.

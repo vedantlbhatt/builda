@@ -29,7 +29,8 @@ Links push onto whatever is on screen. For a clean stack, relaunch first:
 `xcrun simctl terminate $SIM com.vedantlbhatt.Builder && xcrun simctl launch $SIM com.vedantlbhatt.Builder`.
 A launch with no link lands on the first tab (`/now`), or on onboarding when the gate is closed.
 
-The known expo-av deprecation is kept out of the dev warning toast (`app/_layout.tsx`), so the tab
+The known expo-av deprecation is kept out of the dev warning toast (`src/ui/quietLogs.ts`, which
+`app/_layout.tsx` imports first because expo-av warns from module scope), so the tab
 bar is clear in dev shots. Any other warning still raises the yellow "Open debugger to view
 warnings" toast over the bar. For a screenshot run, open `builder://dev-auth?quiet=1` first (or add
 `&quiet=1` to the sign-in link): every toast stays off until the JavaScript reloads. That includes

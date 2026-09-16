@@ -3,6 +3,10 @@
 Strava for build sessions. Reads the logs your AI coding tools already write to disk,
 turns them into sessions with a shape and a story, and tells you when one finishes.
 
+Drops (`docs/drops.md`) come in the other door: share a reel or a TikTok into Builda, the Mac
+reads what the platform published, Claude proposes moves, and a move you tap runs as Claude Code
+on your own machine, which makes the reel a session like any other. The loop closes.
+
 Capture → sessionize → analyze → notify → present, then share. The single-player loop is
 the product; the social layer (`docs/social.md`: posts, kudos, comments, follows,
 factions, a reverse-chronological feed) is built server-side on top of it and is
@@ -26,6 +30,7 @@ scripts/gen_*.py               → Swift + TypeScript + Python. Never hand-edit 
 Packages/BuilderKit/           The engine. Zero external dependencies, on purpose.
 mobile/                        Expo / React Native, shipped via EAS
 server/                        FastAPI on Railway
+drops/                         A reel you shared, read and turned into work (docs/drops.md)
 ```
 
 `make gen && git diff --exit-code` is the first CI gate. If it fails, someone hand-edited a
@@ -378,6 +383,60 @@ session's push) and `refs/stash`. One constant, `GIT_LOG_REFS` / `Tuning.gitLogR
 `git log`. The 139 commits on this repository's overnight branch were made in sittings outside the
 overnight corpus, so its report counts them as written alone: the corpus's reach, not the rule's.
 
+**`www.` is not noise, and a normaliser that removes it can make a platform unreadable.** Two
+shares of one reel should be one card, so the URL is normalised to a natural key. The first
+version lowercased the host and dropped `www.`, which turns a working TikTok link into
+`https://tiktok.com/@user/video/123`: TikTok's OWN oEmbed endpoint answers 400 for that form and
+yt-dlp reports `unsupported url`. Every TikTok came back `no_text` with nothing to say why. The
+host canonicalises to the form the platform publishes (`drops/urls.py` CANONICAL_HOST), and a
+short link host (`vm.tiktok.com`, `youtu.be`) keeps its own, because those are different URLs
+rather than prettier ones.
+
+**A lazy quantifier either side of an alternation is not a parser, it is a hang.** The first
+OpenGraph reader matched `<meta[^>]+?(?:property|name)=...[^>]*?content=["'](.*?)["']` in one
+pass. On Instagram's 625 KB app shell it ran 100% of a core for over four minutes before it was
+killed. It scans for whole `<meta>` tags first and reads attributes inside each one: the same
+document in 40 ms. Measured beside it, and worth knowing: Instagram serves ZERO `og:` tags to
+facebookexternalhit, Googlebot, WhatsApp and Twitterbot, and yt-dlp answers "Instagram sent an
+empty media response ... use --cookies-from-browser". That is a closed platform, the card says
+so, and the cookie door is opt in, off by default, and refused outright server side.
+
+**A body the reader cut short is not a missing package.** `verify.py` checks a source through the
+registry's own API because github.com answers 200 with a "not found" page. PyPI's `yt-dlp`
+document carries every release and ran past a 200 KB read, so the truncated JSON failed to parse,
+`_registry_agrees` said no, and a package that plainly exists came back `source_unverified` with
+an HTTP 200 printed beside it. `_status` returns whether it truncated, and a truncated body falls
+through to the page check instead of counting as a denial.
+
+**An emoji is not evidence.** Every move carries a verbatim span of the post's text and the gate
+discards any move whose span is not found there, which is the rule that keeps the board from
+filling with plausible inventions. MEASURED: the caption "EASY 20-minute 1-PAN Garlic Butter
+Pasta w Shrimp 🍤" came back with every word copied exactly and 🦐 in place of 🍤, and a correct
+move was thrown away over a pictograph nobody was going to read. Symbol and format characters
+(`So`, `Sk`, `Cf`) fold out of both sides; the words are still compared exactly.
+
+**A schema and a tool loop do not compose in `claude -p`, and `--tools` is not a grant.** Two
+separate findings on the same call. `--json-schema` together with `--tools "WebSearch,WebFetch"`
+returns `stop_reason: "tool_use"`, no `structured_output` at all, and a bill for the turn; so
+anything needing both the web and a document is TWO calls (`drops/web.py`), which is also the
+safer shape, since the half that can reach the network cannot decide the document. And with the
+tools merely named, the model answered "I don't have permission to use web search or web fetch in
+this session" and honoured the instruction not to invent a recipe, which is the right behaviour
+and the wrong outcome: `--allowedTools` is the grant, and `analysis/run.py` derives it from the
+same `tools` string so the two can never name different sets.
+
+**Erosion is not how you draw a pixel glyph; accretion is.** Each drop grows a sigil from its own
+link. The first version filled a half grid at random and removed every cell with fewer than two
+orthogonal neighbours, to a fixed point. MEASURED: a 0.42 field came back at 0.05 mass, nine
+cells, three sigils in a row that were all the same square, because a random field is almost
+entirely thin parts and the pass cannot add anything back. Growing outward from a core places
+every cell next to one already there, so the glyph is connected by construction.
+
+**A test that skips when the fixture hands it one account is a test that checked nothing.** The
+drops RLS test asked `created_users` for a second account and skipped when there was not one,
+which reports green having exercised no policy at all. It makes the account. Same family as the
+write-isolation test above.
+
 ## Commands
 
 ```bash
@@ -419,6 +478,13 @@ python -m capture demo --project P [--app A.app]  stills + a 10 to 30 s video of
 python -m capture demo --publish   a project's demo to your account, after it prints every file and you say yes (--list shows it, --delete removes it)
 cd server && python -m builder.media_sweep [--dry-run]  delete demo objects no row keeps (uploads that outlived their row); hourly, as WORKER_DATABASE_URL
 curl $SERVER/v1/ingest/hook.sh   the Claude Code hook: nothing installed, sessions on the phone (docs/hooks-capture.md)
+python -m drops resolve URL        what the platform published about a link. No model, no server
+python -m drops plan URL [--find]  resolve, plan, and go looking for whatever it named
+python -m drops recipe DISH        the ingredients and steps, from a page that was actually opened
+python -m drops cluster [--sweep]  the board the cached corpus makes, and what the floor is fitted to
+python -m drops watch [--once]     claim shared links, resolve them, run the moves a person tapped
+python -m drops doctor             yt-dlp, claude, the cookie door, the schema, the corpus
+python3 scripts/drops_corpus.py    resolve and plan drops/tests/corpus/urls.txt, and cache it
 scripts/overnight_stack.sh up|sync|live T|token|phone|test|status   the local end to end stack, API on 127.0.0.1:8787
 ```
 
@@ -441,6 +507,8 @@ deviation), `docs/hooks-capture.md` (the hook channel and the live watcher).
 | `bun test` | 2052 | that the phone decodes the strip identically to the Mac; the Api refresh/retry rules; the cache's live→final rules; the social helpers and the upload flow; the notification-tap routing; the mascot's frames and motion tables; the pixel family's rules, Bit and the eight animals held to the same ones (one ink, the shared eye holes, the 12x12 live area and row-13 baseline, mass within 15% of the mean, no one-cell-thin parts, outlines 24 cells apart, all facing forward, idle as rest, a drawn breath and one gesture with no drift or scale); the profile screen's archetype wording and its closest-rule fallback; that no refused block of the report renders as a zero; that every feedback note the contract declares has a sentence on the phone, and that an id this build does not know renders nothing rather than a debug string; that a machine covering the whole window stays silent rather than caveating nothing; the Live Activity card `toState` builds equals the server's `live_push.content_state` key for key on every `content_state.json` case, and the live sentence equals `live.sentence` over 45,000 states; activity tokens go to the server only with Lock Screen details on and are forgotten when a card ends; details off says only "Builder · N running"; every Wrapped card and every session burn sentence renders exactly what Python renders; the one dash rule, U+2015 and U+2212 included; that "the last N days" is said only when the numbers sit inside that window, and the stretch read otherwise; one whole minutes rule for a session's figure and its sentence, one formatter for a token count; that the agents header never shows a count the card does not; every shipped route, derived from `app/`, held to the design law |
 | `pytest` | 309 | that undeclared fields cannot be stored, that RLS is real (as builder_app, through the routes), auth bootstrap, contract v2/v3, social, capture keys and their scope, the notification horizon, the hook channel's parity with capture, the corpus profile's server-side refusals, the report's door (nested extras, enums, string bounds) and that a null block survives the round trip; that a session's feedback round trips, is not wiped by a client that does not compute it, and cannot carry an undeclared note id or a word of prose; contract v4 (tool map keys, live, live names, burn, title ids, quotes) and its enums pinned to the engine's tables both ways; the live state's ingest, slim list body, RLS and deletion at finalise; ActivityKit pushes only on a phase or trajectory change, an end on every live to final move; quotes and file names off by default and deleted when turned off, a racing store included; report v2's five blocks; spend priced from the stored token buckets |
 | `unittest` (analysis/) | 1218 | the Codex, Gemini, Cline, opencode and Aider loaders against their synthetic fixtures AND the real writers' output; Claude Code stats unchanged; every corpus metric's refusal reasons and the archetype rules; that the report's keys ARE the spec's keys at every level and that no field in it can carry free text; that a session note refuses to call a parser blind spot "nothing happened", that neither the failing command nor the file name reaches the wire, that a heredoc body is never read as a command, and that a lockfile is never the language you chose, and that a report always says how much of the window it could actually answer; burn forensics (usage deduplicated on message.id, the refusal when a harness writes no counts, the refusal to name a spike below five segments, cause attribution, no dashes); the fifteen wrapped cards (one shape, refusals with reasons, attended time decides records, quotes only when asked, nothing LOCAL on the wire); live verdicts, ETA refusals, decisions and the needs you order; the vocab catalog, titles and stack; `plain`'s role rules and the one definition of a dash; that the digest text does not move with the two new `Ev` fields; and that the CLI printers print no dash and no zero nobody measured; report v2's blocks pinned to the spec and its tables; the one corpus cut; eleven scenario transcripts read back through the real parser, the capture cut and `live.session_state`; that every report block reads the window it names (`corpus.window`), commits and agents included; that an excluded repository's agents never reach the report and agent types travel as an enum; that the inner of two parallel sittings did not end with no commit; dollars an hour over the priced hours alone |
+| `pytest` (drops) | 32 | that a move is inert until a person taps it (no route, parameter or setting queues one, and `:start` moves a row only out of `offered`); that the same reel twice is one card and the second share does not re plan the first; that a second resolution replaces the offered moves and leaves a declined or running one exactly where it was; that the resolved CAPTION is never stored (the wire carries its length) and `shared_text` is NULL once used; that one person's board is theirs, through a second real account; and that every CHECK list in `0028_drops.py` is the spec's enum, read with `ast` because a regex that stopped at the end of a line passed on half of `DROP_REFUSAL` |
+| `unittest` (drops/) | 6 | the clustering over the real corpus: that the pasta posts land together, that no cluster is named a word true of every drop, that the dog post joins nothing, and that the similarity floor sits inside a plateau at least five steps wide rather than being fitted to noise |
 | `make capture-test` | 137 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth, and that every other harness discovers, dedupes and uploads; every tool call bucketed; burn and title ids on the wire; the live watcher sends only complete lines, resumes on a 409 and heartbeats, backs off to 300 s and remembers a tail too big to post; `report --quotes`; a worktree's commits counted over every local branch; a resumed sitting's payload counting each event and message once |
 | CI `reference` job | — | the boundary fixtures are what `scripts/measure_boundaries.py` produces |
 

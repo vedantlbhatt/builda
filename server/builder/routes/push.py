@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 from sqlalchemy import text
 
-from .. import live_push, notify
+from .. import drops_notify, live_push, notify
 from ..auth import CurrentDevice, current_device
 from ..db import db_session
 from ..settings import settings
@@ -340,6 +340,23 @@ def send_needs_you(user_id: str, title: str, body: str, session_id: str) -> int:
     delivery as a finish; a tap opens the session, not a recap."""
     payload = apns_payload(title, body, session_id, unattended=False, kind=notify.KIND_NEEDS_YOU)
     return _send_alert(user_id, payload, collapse_id=notify.needs_you_collapse_id(session_id))
+
+
+def send_drop(user_id: str, title: str, body: str, drop_id: str, kind: str) -> int:
+    """A drop banner: read, or a move finished (`drops_notify`).
+
+    Same delivery as a finish, and the same reason it lives here rather than in the drops routes:
+    `_send_alert` knows the one way tokens are read (viewer scoped, under RLS) and a second copy
+    of that would be a second chance to read zero rows with no error.
+
+    A tap opens the board with the drop open, not a session: a move's Claude Code session may not
+    exist yet, and often never will (0029).
+    """
+    payload = {
+        "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+        "data": drops_notify.push_data(drop_id, kind),
+    }
+    return _send_alert(user_id, payload, collapse_id=drops_notify.collapse_id(drop_id))
 
 
 def apns_payload(

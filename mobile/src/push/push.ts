@@ -48,7 +48,7 @@ Notifications.setNotificationHandler({
 // `route.ts` so bun can import them without expo; they are re-exported here.
 
 export { dataFromResponse, RECAP_KINDS, routeForNotification, sessionIdFromUrl } from './route';
-export type { SessionRoute } from './route';
+export type { TapRoute } from './route';
 
 /**
  * Open the session a tapped notification names. Mount once, at the root.

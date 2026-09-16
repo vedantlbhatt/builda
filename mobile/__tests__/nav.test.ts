@@ -292,3 +292,21 @@ describe('a link that carries a drop', () => {
     );
   });
 });
+
+describe('a tapped drop banner', () => {
+  test('opens the board with the drop open', () => {
+    expect(dropPath('builder://drops?open=abc-123')).toBe('/drops?open=abc-123');
+    expect(redirectSystemPath({ path: 'builder://drops?open=abc-123', initial: false })).toBe(
+      '/drops?open=abc-123',
+    );
+  });
+
+  test('a shared link still wins over an open, because a share is the newer intent', () => {
+    const link = 'https%3A%2F%2Fx.com%2Fa';
+    expect(dropPath(`builder://drops?open=abc&url=${link}`)).toBe(`/drops?url=${link}`);
+  });
+
+  test('an empty open is the board, not a query that means nothing', () => {
+    expect(dropPath('builder://drops?open=')).toBe('/drops');
+  });
+});

@@ -487,3 +487,85 @@ def test_every_check_list_in_the_migration_is_the_specs_enum(constant, enum):
     assert values == ANALYSIS_ENUM_VALUES[enum], (
         f"{constant} in the migration is {values}, the spec says {ANALYSIS_ENUM_VALUES[enum]}"
     )
+
+
+# ------------------------------------------------------------------------ banners
+def test_the_first_read_is_news_and_the_second_is_not(client, paired, monkeypatch):
+    """`notify.py`'s first rule, borrowed: only a TRANSITION is news.
+
+    A bulk re-read would otherwise fire a banner for every link somebody shared days ago, which
+    is the failure that module records as "backfill must be silent".
+    """
+    from builder.routes import drops as route
+
+    sent: list[tuple] = []
+    monkeypatch.setattr(route, "send_drop", lambda *a: sent.append(a) or 1)
+
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    assert len(sent) == 1
+    _user, title, body, drop_id, kind = sent[0]
+    assert kind == "drop_read"
+    assert drop_id == drop["id"]
+    assert "1 thing you could do" in body
+    assert title == "5 beginner Claude Skills to install"
+
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    assert len(sent) == 1
+
+
+def test_a_refusal_is_news_too(client, paired, monkeypatch):
+    """Silence after a share is indistinguishable from the Mac being asleep, and "Instagram is
+    closed" is something a person can act on by sharing a different link."""
+    from builder.routes import drops as route
+
+    sent: list[tuple] = []
+    monkeypatch.setattr(route, "send_drop", lambda *a: sent.append(a) or 1)
+
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(
+        f"/v1/drops/{drop['id']}/refusal", json={"refusal": "private_or_gone"}, headers=headers
+    )
+    assert len(sent) == 1
+    assert sent[0][4] == "drop_read"
+    assert "private or has been taken down" in sent[0][2]
+
+
+def test_a_finished_move_says_what_it_did(client, paired, monkeypatch):
+    from builder.routes import drops as route
+
+    sent: list[tuple] = []
+    monkeypatch.setattr(route, "send_drop", lambda *a: sent.append(a) or 1)
+
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    client.post("/v1/drops/moves:claim", headers=headers)
+    client.post(
+        f"/v1/drops/moves/{move['id']}:finish",
+        json={"status": "done", "outcome": "installed two skills", "run_uuid": None},
+        headers=headers,
+    )
+    assert sent[-1][4] == "drop_done"
+    assert sent[-1][2] == "installed two skills"
+    assert sent[-1][3] == drop["id"]
+
+
+def test_a_push_that_fails_does_not_lose_the_upload(client, paired, monkeypatch):
+    """The send happens after the transaction commits, so a dead APNs cannot roll back what was
+    read. `notify.py` states the same rule for a session finishing."""
+    from builder.routes import drops as route
+
+    def boom(*_a):
+        raise RuntimeError("apns is down")
+
+    monkeypatch.setattr(route, "send_drop", boom)
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    r = client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    assert r.status_code == 200
+    assert client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["drop"]["kind"] == "skill"

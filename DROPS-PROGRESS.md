@@ -34,6 +34,11 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
 - **The share extension** (`mobile/targets/share/`): its own Builda sheet, written directly
   rather than through `expo-share-intent`, which cannot be installed on Expo 53.
 - **The CLI**: `python -m drops resolve|plan|find|recipe|cluster|watch|agent|doctor`.
+- **Banners** (`server/builder/drops_notify.py`): one when a drop is READ, whatever the answer
+  was, including a refusal, because silence after a share cannot be told from the Mac being
+  asleep; and one when a move you tapped FINISHES, which is the payoff. Only a transition is news,
+  so a re-read is silent. A tap opens the board with the drop open, never a session, because a
+  move's Claude Code session may not exist yet and often never will.
 - **The launch agent** (`drops/agent.py`): `python -m drops agent` installs a job that runs
   `watch` with no terminal open, which is what makes a share from the sofa work at all. It
   carries the PATH it was installed with, refuses to install pointed at a tool in a temporary
@@ -46,9 +51,9 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
 
 ## Green
 
-- `bun test` 2552 pass, `tsc --noEmit` clean.
-- `pytest` 494 pass (34 of them `server/tests/test_drops.py`).
-- `python3 -m unittest drops.tests.test_cluster` 6 pass, over the real corpus.
+- `bun test` 2564 pass, `tsc --noEmit` clean.
+- `pytest` 498 pass (40 of them `server/tests/test_drops.py`), `make lint` clean.
+- `python3 -m unittest discover -s drops/tests -t .` 40 pass.
 - `make gen && git diff --exit-code` stable.
 - The corpus: 15 real public links resolved and planned, cached in `drops/tests/corpus/`.
 

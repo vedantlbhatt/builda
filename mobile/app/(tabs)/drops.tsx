@@ -35,7 +35,7 @@ export default function DropsScreen() {
   const [open, setOpen] = useState<string | null>(null);
   const focused = useIsFocused();
   const router = useRouter();
-  const params = useLocalSearchParams<{ url?: string }>();
+  const params = useLocalSearchParams<{ url?: string; open?: string }>();
   const consumed = useRef<string | null>(null);
   /**
    * How many shares the extension has queued that this app has not sent.
@@ -58,6 +58,16 @@ export default function DropsScreen() {
       if (n > 0) void refresh();
     });
   }, [focused, refresh]);
+
+  // A tapped banner: `builder://drops?open=<id>` (`server/builder/drops_notify.py`). Opening a
+  // drop that is not on this board does nothing rather than showing an empty panel, which is what
+  // a banner for a drop deleted on another device would otherwise do.
+  useEffect(() => {
+    const id = params.open;
+    if (!id) return;
+    if (drops.some((d) => d.id === id)) setOpen(id);
+    router.setParams({ open: undefined });
+  }, [params.open, drops, router]);
 
   // A link that arrived as `builder://drop?url=...`. Consumed once, by value, and the query is
   // cleared: without that, every re render of a focused tab would send the same link again.

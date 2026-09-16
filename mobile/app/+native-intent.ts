@@ -14,6 +14,10 @@ import { pathWhileOnboarding } from '../src/nav/rules';
  * shapes people actually type or paste land on the same screen: the `/recap` suffix form,
  * a stray `session` without the leading slash, `builder:///` with three slashes.
  *
+ * `builder://drops?open=<id>` — a tapped drop banner, which opens the board with that drop open.
+ * A drop banner never opens a session: a move's Claude Code session may not exist yet, and often
+ * never will (0029).
+ *
  * `builder://drop?url=<link>` — a link sent in from outside: the Mac, a Shortcut, or a paste.
  * It lands on the Drops tab with the link in the query, and the tab sends it. The iOS share
  * extension does NOT use this route: it writes into the App Group and the app drains it on
@@ -67,8 +71,14 @@ export function aliasPath(path: string): string | null {
 export function dropPath(path: string): string | null {
   const m = /^(?:[a-z][a-z0-9+.-]*:\/{2,3})?\/*drops?\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(path.trim());
   if (!m) return null;
-  const url = new URLSearchParams(m[1] ?? '').get('url')?.trim();
-  return url ? `/drops?url=${encodeURIComponent(url)}` : '/drops';
+  const q = new URLSearchParams(m[1] ?? '');
+  const url = q.get('url')?.trim();
+  if (url) return `/drops?url=${encodeURIComponent(url)}`;
+  // `builder://drops?open=<id>` is what a tapped drop banner carries
+  // (`server/builder/drops_notify.drop_url`). It opens the board with that drop open.
+  const open = q.get('open')?.trim();
+  if (open) return `/drops?open=${encodeURIComponent(open)}`;
+  return '/drops';
 }
 
 // A Map, not an object literal: `builder://constructor` must not find Object.prototype's.

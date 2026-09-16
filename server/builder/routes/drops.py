@@ -20,15 +20,18 @@ request forgery primitive with an authentication header attached.
 
 from __future__ import annotations
 
+import contextlib
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import drops_notify
 from .. import drops_store as store
 from ..auth import CurrentDevice, current_device
 from ..db import db_session
 from ..drops_spec import DropResolution
+from .push import send_drop
 
 router = APIRouter(prefix="/v1", tags=["drops"])
 
@@ -149,9 +152,31 @@ def put_resolution(
     uid = _uid(device)
     payload = body.model_dump(mode="json")
     with db_session(viewer_id=uid) as db:
-        if not store.get_drop(db, uid, drop_id):
+        before = store.get_drop(db, uid, drop_id)
+        if not before:
             raise HTTPException(404, "no such drop")
-        return store.apply_resolution(db, uid, drop_id, payload)
+        out = store.apply_resolution(db, uid, drop_id, payload)
+        after = store.get_drop(db, uid, drop_id)
+    # AFTER the transaction commits, for notify.py's reason: a push failure must never roll back
+    # what was stored, and a crash between the two loses a banner rather than doubling one.
+    _tell_them_it_was_read(uid, drop_id, before, after or {}, out["moves"])
+    return out
+
+
+def _tell_them_it_was_read(uid: str, drop_id: str, before: dict, after: dict, moves: int) -> None:
+    """One banner the first time a drop is read, and never again.
+
+    A re-resolution moved the content, not the fact that the link has been read
+    (`drops_notify.is_first_read`), and a bulk re-read would otherwise fire a burst of banners for
+    links somebody shared days ago.
+    """
+    if not drops_notify.is_first_read(bool(before.get("resolution")), bool(before.get("refusal"))):
+        return
+    title, body = drops_notify.compose_read(
+        title=after.get("title"), kind=after.get("kind"), refusal=after.get("refusal"), moves=moves
+    )
+    with contextlib.suppress(Exception):
+        send_drop(uid, title, body, drop_id, drops_notify.KIND_DROP_READ)
 
 
 @router.put("/drops/{drop_id}/refusal")
@@ -163,9 +188,12 @@ def put_refusal(drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(c
         raise HTTPException(422, "refusal must be one of the spec's codes")
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
-        if not store.get_drop(db, uid, drop_id):
+        before = store.get_drop(db, uid, drop_id)
+        if not before:
             raise HTTPException(404, "no such drop")
         store.mark_refused(db, uid, drop_id, body.refusal)
+        after = store.get_drop(db, uid, drop_id)
+    _tell_them_it_was_read(uid, drop_id, before, after or {}, 0)
     return {"status": "refused", "refusal": body.refusal}
 
 
@@ -234,7 +262,14 @@ def finish(move_id: str, body: FinishIn, device: CurrentDevice = Depends(current
             raise HTTPException(409, "no such move, or it was not running")
         # Cheap, and the only moment anything is likely to have changed.
         store.link_session(db, uid)
-        return {"move": move}
+    # The payoff, and the one banner worth interrupting somebody for. Outside the transaction,
+    # like the read banner.
+    title, body_text = drops_notify.compose_finished(
+        title=move["title"], outcome=move["outcome"], ok=body.status == "done"
+    )
+    with contextlib.suppress(Exception):
+        send_drop(uid, title, body_text, move["drop_id"], drops_notify.KIND_DROP_DONE)
+    return {"move": move}
 
 
 @router.post("/drops/{drop_id}:archive")

@@ -10,8 +10,17 @@
  */
 export const RECAP_KINDS: ReadonlySet<string> = new Set(['session_finished', 'agent_run_finished']);
 
+/**
+ * The drop kinds (`server/builder/drops_notify.py`). Both open the BOARD with the drop open, not
+ * a session: a move's Claude Code session may not exist yet and often never will (0029), so a
+ * banner that opened one would open nothing.
+ */
+export const DROP_KINDS: ReadonlySet<string> = new Set(['drop_read', 'drop_done']);
+
 /** The route a recap opens on. `[id].tsx` reads `recap=1` and raises the sheet. */
 export type SessionRoute = `/session/${string}` | `/session/${string}?recap=1`;
+export type DropRoute = `/drops?open=${string}`;
+export type TapRoute = SessionRoute | DropRoute;
 
 /**
  * Where a notification's data points, or null when it points nowhere.
@@ -23,14 +32,38 @@ export type SessionRoute = `/session/${string}` | `/session/${string}?recap=1`;
  * other explicit kind opens the plain detail, so a future push class never lands a
  * person in a compose sheet it did not ask for.
  */
-export function routeForNotification(data: unknown): SessionRoute | null {
+export function routeForNotification(data: unknown): TapRoute | null {
   if (typeof data !== 'object' || data === null) return null;
   const d = data as Record<string, unknown>;
+  const kindRaw = typeof d.kind === 'string' ? d.kind : null;
+  if (kindRaw && DROP_KINDS.has(kindRaw)) {
+    const dropId = dropIdFrom(d);
+    return dropId ? `/drops?open=${dropId}` : null;
+  }
   const id = sessionIdFrom(d);
   if (!id) return null;
   const kind = typeof d.kind === 'string' ? d.kind : null;
   const recap = kind === null || RECAP_KINDS.has(kind);
   return recap ? `/session/${id}?recap=1` : `/session/${id}`;
+}
+
+/**
+ * A drop banner's id, from `drop_id` or from the `builder://drops?open=<id>` the server also
+ * sends. Held to the same `isSafeId` as a session's: a notification payload is the one input
+ * that arrives from outside the app with no user in the loop.
+ */
+function dropIdFrom(d: Record<string, unknown>): string | null {
+  const v = d.drop_id;
+  if (typeof v === 'string' && isSafeId(v)) return v;
+  if (typeof d.url === 'string') return dropIdFromUrl(d.url);
+  return null;
+}
+
+/** `builder://drops?open=<id>` → `<id>`. Only the one shape `drops_notify.drop_url` builds. */
+export function dropIdFromUrl(url: string): string | null {
+  const m = /^[a-z][a-z0-9+.-]*:\/{2,3}drops\?(?:[^#]*&)?open=([^&#\s]+)/i.exec(url.trim());
+  const id = m?.[1] ? safeDecode(m[1]) : null;
+  return id && isSafeId(id) ? id : null;
 }
 
 function sessionIdFrom(d: Record<string, unknown>): string | null {

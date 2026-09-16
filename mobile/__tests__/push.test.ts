@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { dataFromResponse, routeForNotification, sessionIdFromUrl } from '../src/push/route';
+import { dataFromResponse, dropIdFromUrl, routeForNotification, sessionIdFromUrl } from '../src/push/route';
 
 const SID = '0b6d7a1e-2f44-4a4a-9d2e-5d2a5d7c0a11';
 
@@ -105,5 +105,41 @@ describe('dataFromResponse', () => {
     expect(routeForNotification(dataFromResponse(wrap({ data: null }, null)))).toBeNull();
     expect(routeForNotification(dataFromResponse(null))).toBeNull();
     expect(routeForNotification(dataFromResponse({}))).toBeNull();
+  });
+});
+
+
+describe('a drop banner', () => {
+  test('opens the board with the drop open, never a session', () => {
+    // A move's Claude Code session may not exist yet, and often never will (0029), so a banner
+    // that opened one would open nothing.
+    expect(routeForNotification({ kind: 'drop_read', drop_id: 'abc-123' })).toBe('/drops?open=abc-123');
+    expect(routeForNotification({ kind: 'drop_done', drop_id: 'abc-123' })).toBe('/drops?open=abc-123');
+  });
+
+  test('the url the server also sends carries the id', () => {
+    expect(routeForNotification({ kind: 'drop_done', url: 'builder://drops?open=abc-123' })).toBe(
+      '/drops?open=abc-123',
+    );
+    expect(dropIdFromUrl('builder://drops?open=abc-123')).toBe('abc-123');
+    expect(dropIdFromUrl('builder://drops?other=1&open=abc-123')).toBe('abc-123');
+  });
+
+  test('a drop banner with no id opens nothing rather than a session', () => {
+    expect(routeForNotification({ kind: 'drop_read' })).toBeNull();
+    expect(routeForNotification({ kind: 'drop_read', session_id: 'sess-1' })).toBeNull();
+  });
+
+  test('an id that is not an id is refused, like a session id', () => {
+    // A notification payload is the one input that arrives from outside the app with no user in
+    // the loop, so the same door applies.
+    expect(dropIdFromUrl('builder://drops?open=../../etc/passwd')).toBeNull();
+    expect(dropIdFromUrl('builder://drops?open=' + 'a'.repeat(300))).toBeNull();
+    expect(dropIdFromUrl('builder://session/abc')).toBeNull();
+  });
+
+  test('a session banner is untouched', () => {
+    expect(routeForNotification({ kind: 'session_finished', session_id: 's1' })).toBe('/session/s1?recap=1');
+    expect(routeForNotification({ session_id: 's1' })).toBe('/session/s1?recap=1');
   });
 });

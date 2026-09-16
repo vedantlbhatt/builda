@@ -82,6 +82,19 @@ export default function DropsScreen() {
 
   const drop = useMemo(() => drops.find((d) => d.id === open) ?? null, [drops, open]);
 
+  /**
+   * How many moves are sitting there waiting to be tapped, and how many are going.
+   *
+   * On the title line rather than on the nodes. A count per node is clutter on a map whose whole
+   * job is shape, and the number a person wants when they open this tab is "is there anything to
+   * do", which is one number.
+   */
+  const todo = useMemo(() => moves.filter((m) => m.status === 'offered').length, [moves]);
+  const going = useMemo(
+    () => moves.filter((m) => m.status === 'queued' || m.status === 'running').length,
+    [moves],
+  );
+
   const onStart = useCallback(
     (ids: string[], adjustment: string | null, repoKeys: Record<string, string>) => {
       if (drop) void start(drop.id, ids, adjustment, repoKeys);
@@ -103,7 +116,17 @@ export default function DropsScreen() {
       <View style={[styles.title, { top: insets.top + 8 }]} pointerEvents="none">
         <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
           {`DROPS  ·  ${drops.length}`}
-          {waiting ? <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T> : null}
+          {todo ? (
+            <T role="label" style={{ color: c.textFaint, letterSpacing: 1.6 }}>{`   ${todo} TO DO`}</T>
+          ) : null}
+          {/* Amber is "needs you" and "in flight" everywhere else in this app, and these are the
+              two states where something is actually moving. */}
+          {going ? (
+            <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${going} GOING`}</T>
+          ) : null}
+          {waiting ? (
+            <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T>
+          ) : null}
         </T>
       </View>
 

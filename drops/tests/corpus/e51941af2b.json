@@ -1,0 +1,102 @@
+{
+ "url": "https://www.youtube.com/watch?v=fJopmhlA6v8",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/watch?v=fJopmhlA6v8",
+  "author": "Whip It Up With Jay",
+  "title": "This Garlic Butter Pasta BROKE the Internet 🤯🍝",
+  "thumbnail_url": "https://i.ytimg.com/vi_webp/fJopmhlA6v8/maxresdefault.webp",
+  "duration_s": 177,
+  "caption_chars": 700,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:29:33.747515+00:00"
+ },
+ "notes": [],
+ "text": "This Garlic Butter Pasta BROKE the Internet 🤯🍝\n\n🧄 Garlic Butter Pasta That’s Taking Over the Internet! 🍝 Craving something quick, easy, and insanely delicious? This garlic butter pasta recipe is pure comfort food GOLD — ready in under 20 minutes with just a handful of ingredients! Perfect for weeknights, date nights, or anytime you need a cozy bowl of pasta. 8oz Pasta (pinch of salt) 2 Heads of Garlic Olive Oil 12 Tbsp Butter 1 Tbsp Tomato Paste Parmesan Cheese Chopped Parsley Chili Crunch MY AMAZON STORE FRONT🚨 https://www.amazon.com/shop/whipitupwithjay CHANNEL DONATIONS: CashApp= $durtyzoe561 INSTAGRAM: whipitupwithjay https://www.instagram.com/whipitupwithjay For Sponsorships and endorsements please email: Palmbeachmarkdowns@gmail.com",
+ "refusal": null,
+ "plan": {
+  "kind": "recipe",
+  "title": "Garlic Butter Pasta",
+  "summary": "A garlic butter pasta with two heads of garlic, butter, tomato paste, parmesan, parsley and chili crunch, ready in under 20 minutes.",
+  "confidence": 45,
+  "moves": [
+   {
+    "move_kind": "apply",
+    "title": "Cook the garlic butter pasta",
+    "intent": "Make the dish from the listed ingredients in one sitting, in under 20 minutes.",
+    "evidence": "ready in under 20 minutes with just a handful of ingredients!",
+    "target": "none",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   }
+  ],
+  "tags": [
+   "pasta",
+   "garlic",
+   "butter",
+   "recipe"
+  ],
+  "recipe": {
+   "ingredients": [
+    {
+     "item": "Pasta",
+     "quantity": "8oz",
+     "note": "pinch of salt"
+    },
+    {
+     "item": "Heads of Garlic",
+     "quantity": "2",
+     "note": null
+    },
+    {
+     "item": "Olive Oil",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Butter",
+     "quantity": "12 Tbsp",
+     "note": null
+    },
+    {
+     "item": "Tomato Paste",
+     "quantity": "1 Tbsp",
+     "note": null
+    },
+    {
+     "item": "Parmesan Cheese",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Chopped Parsley",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Chili Crunch",
+     "quantity": null,
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "text": "Combine the listed ingredients into the garlic butter pasta, ready in under 20 minutes with just a handful of ingredients.",
+     "minutes": null
+    }
+   ],
+   "equipment": [],
+   "serves": null,
+   "total_minutes": 20
+  }
+ },
+ "counts": {
+  "moves_in": 1,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

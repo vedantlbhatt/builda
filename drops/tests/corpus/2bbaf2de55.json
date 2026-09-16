@@ -1,0 +1,60 @@
+{
+ "url": "https://www.youtube.com/shorts/0A-OkQYT8I8",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/0A-OkQYT8I8",
+  "author": "Kalman Web Design",
+  "title": "VS Code Terminal Shortcut! | Best VS Code Shortcuts",
+  "thumbnail_url": "https://i.ytimg.com/vi/0A-OkQYT8I8/hq720_2.jpg?sqp=-oaymwEoCIAKENAF8quKqQMcGADwAQH4AbYIgAKAD4oCDAgAEAEYVSBjKGUwDw==&rs=AOn4CLA_CmpzqZq0qZivPquLj07r8AkbEA",
+  "duration_s": 58,
+  "caption_chars": 1979,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:20:54.594354+00:00"
+ },
+ "notes": [],
+ "text": "VS Code Terminal Shortcut! | Best VS Code Shortcuts\n\nVisual Studio Code shortcuts that will help you maximize productivity and speed up your development workflow. These essential tips are perfect for both beginners and experienced developers who want to code more efficiently. Learn how to navigate VS Code faster, reduce repetitive tasks, and streamline your coding experience. By mastering these shortcuts, you'll be able to boost your productivity and spend more time focused on building great projects! Our Website: https://kalmanwebdesign.com/ Visual Studio Code: https://code.visualstudio.com/ Ultimate React JS Tutorial: https://www.youtube.com/watch?v=BufwtLMDQiE How to Create a Website From SCRATCH: https://www.youtube.com/watch?v=jrKkKB-8fug WAMP Server Download & Setup: https://www.youtube.com/watch?v=qGoA3gdPB2A #VisualStudioCode #VSCode #CodeEditor #Windows11 #InstallVSCode #VSCodeWindows #VSCodeTutorial #Windows11Setup #DeveloperTools #CodingTools #InstallVisualStudioCode #CodeOnWindows #SoftwareInstallation #LatestVersionVSCode #WebDevelopment #VSCodeSetupGuide #CodingOnWindows #VSCodeTips #VSCodeForBeginners #Windows11Install #DeveloperGuide #VSCodeInstallGuide #WebDevelopmentTools #VSCodeWindows11 #Windows11Tutorial #VSCodeUpdate #SoftwareDev #VSCodeHelp #InstallGuide #VisualStudioCodeSetup #VSCode2024 #VSCodeForDev #DevTools #VSCodeConfiguration #ProgrammingTools #HowToInstallVSCode #Windows11Tips #CodingSoftware #VSCodeStepByStep #SoftwareDevelopment #VisualStudioWindows #SetupVSCode #InstallCodeEditor #Windows11Tutorials #VSCode2024Install #VSCodeInstallHelp #CodeEditorInstall #VSCodeInWindows #SetupVSCodeWindows #LatestVSCodeVersion #InstallVSCodeWindows #WebDevSetup #DevOnWindows #Windows11CodeEditor #VSCodeDownload #VSCodeInstallSteps #InstallSoftware #VSCodeForWebDev #CodingWithVSCode #VSCodeHowTo #Windows11Software #DownloadVSCode #LatestCodeEditor #CodingOnWindows11 #VSCodeInstallationGuide #VSCodeSetupWindows #DevToolsWindows11 #VisualStudioCodeWindows #WebDeveloperTools #shorts",
+ "refusal": null,
+ "plan": {
+  "kind": "technique",
+  "title": "VS Code Terminal Shortcut and other productivity shortcuts",
+  "summary": "A video promises a VS Code terminal shortcut plus other shortcuts to speed up coding, but the specific keybindings are not named in the text.",
+  "confidence": 30,
+  "moves": [
+   {
+    "move_kind": "evaluate",
+    "title": "Find the VS Code terminal shortcut",
+    "intent": "Watch the video to learn the specific terminal shortcut and other VS Code shortcuts it demonstrates for speeding up the dev workflow.",
+    "evidence": "VS Code Terminal Shortcut! | Best VS Code Shortcuts",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   },
+   {
+    "move_kind": "install",
+    "title": "Install VS Code",
+    "intent": "Install Visual Studio Code from the linked site so the shortcuts can be tried out.",
+    "evidence": "Visual Studio Code: https://code.visualstudio.com/",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   }
+  ],
+  "tags": [
+   "vscode",
+   "shortcuts",
+   "terminal",
+   "productivity"
+  ],
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 2,
+  "evidence_dropped": 0,
+  "source_dropped": 1,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

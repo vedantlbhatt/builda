@@ -45,12 +45,12 @@ def load_schema() -> dict:
 def call_claude(
     system: str,
     user: str,
-    schema: dict,
+    schema: dict | None,
     model: str = DEFAULT_MODEL,
     *,
     tools: str = "",
     timeout_s: int = TIMEOUT_S,
-) -> tuple[dict, dict]:
+) -> tuple[dict | str | None, dict]:
     """Returns (structured_output, envelope).
 
     `tools` is the CLI's `--tools` value and defaults to the empty string, which is what the
@@ -74,8 +74,18 @@ def call_claude(
         user,
         "--output-format",
         "json",
-        "--json-schema",
-        json.dumps(schema),
+        # A schema is OPTIONAL, and `drops/web.py` is the one caller that passes None. MEASURED:
+        # `--json-schema` together with `--tools "WebSearch,WebFetch"` returns
+        # `stop_reason: "tool_use"` and no structured output at all, so anything that needs both
+        # a tool and a document is two calls, and the first of them has no schema to give.
+        *(["--json-schema", json.dumps(schema)] if schema is not None else []),
+        # `--tools` says which tools EXIST for this run; it does not grant permission to call
+        # them. MEASURED: with `--tools "WebSearch,WebFetch"` and nothing else, the model came
+        # back with "I don't have permission to use web search or web fetch in this session"
+        # and honoured the instruction not to invent an answer, which is the right behaviour
+        # and the wrong outcome. The allowlist is the grant, and it is derived from `tools`
+        # rather than given separately so the two can never name different sets.
+        *(["--allowedTools", *tools.split(",")] if tools else []),
         "--system-prompt",
         system,
         "--tools",
@@ -107,6 +117,10 @@ def call_claude(
         raise AnalysisError(f"claude -p returned non-JSON: {proc.stdout[:300]}") from e
     if env_out.get("is_error"):
         raise AnalysisError(f"claude -p error: {env_out.get('result')}")
+    if schema is None:
+        # No schema was asked for, so there is no structured output to find. The prose is the
+        # answer and the envelope carries it.
+        return env_out.get("result"), env_out
     so = env_out.get("structured_output")
     if not isinstance(so, dict):
         # Older CLIs put the JSON in `result` as a string.

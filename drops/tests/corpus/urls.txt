@@ -1,0 +1,20 @@
+# Real, public, short form links, collected 2026-09-16. `python3 scripts/drops_corpus.py`
+# resolves and plans each one and caches the answer beside this file, so the clustering
+# constants and the evidence gate are measured against posts somebody actually made rather
+# than against fixtures written to pass. A line that stops resolving is left in place: a
+# platform taking a post down is a case this pipeline has to handle, not a corpus to prune.
+https://www.tiktok.com/@nocode.joshua/video/7620790035939462407
+https://www.tiktok.com/@scout2015/video/6718335390845095173
+https://www.youtube.com/shorts/0A-OkQYT8I8
+https://www.youtube.com/shorts/6IwjxcDbVW0
+https://www.youtube.com/shorts/UFk8uJabnIc
+https://www.youtube.com/shorts/tm5rLZUdK-Y
+https://www.youtube.com/shorts/-wp0KxAfyWU
+https://www.youtube.com/shorts/WwSJhSpdnr0
+https://www.youtube.com/shorts/G7mA8ZWSBWk
+https://www.youtube.com/watch?v=HIqONcVBEm0
+https://www.youtube.com/watch?v=ifTF3ags0XI
+https://www.youtube.com/watch?v=Yn7JrZ1rb2w
+https://www.youtube.com/watch?v=4opxM6g77UA
+https://www.youtube.com/watch?v=fJopmhlA6v8
+https://www.youtube.com/watch?v=E8DEfBUH-IM

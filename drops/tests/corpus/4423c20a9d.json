@@ -1,0 +1,91 @@
+{
+ "url": "https://www.youtube.com/watch?v=Yn7JrZ1rb2w",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/watch?v=Yn7JrZ1rb2w",
+  "author": "Visual Studio Code",
+  "title": "Terminal Tips in VS Code",
+  "thumbnail_url": "https://i.ytimg.com/vi_webp/Yn7JrZ1rb2w/maxresdefault.webp",
+  "duration_s": 200,
+  "caption_chars": 283,
+  "transcript_chars": 5942,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:27:48.855948+00:00"
+ },
+ "notes": [],
+ "text": "Terminal Tips in VS Code\n\nFollow along for some of our top tips to get the most out of the terminal in VS Code! 📲 Follow VS Code: * X: https://x.com/code * Bluesky: https://bsky.app/profile/vscode.dev * LinkedIn: https://aka.ms/VSCode/LinkedIn * GitHub: https://github.com/microsoft/vscode #vscode #code #demo\n\n00:00:00,120 --> 00:00:02,747 The terminal in VS Code is a powerful tool, but 00:00:02,803 --> 00:00:04,479 are you making the most of it? 00:00:04,920 --> 00:00:06,080 Let me share some tips. 00:00:06,200 --> 00:00:08,801 First off, there is a new preview setting that you 00:00:08,853 --> 00:00:11,559 need to enable for an extra smooth experience in the 00:00:11,611 --> 00:00:12,079 terminal. 00:00:12,800 --> 00:00:15,508 Right now if I type a terminal command, nothing really 00:00:15,558 --> 00:00:15,959 happens. 00:00:16,680 --> 00:00:20,110 But when I enable the Terminal integrated suggest setting, look 00:00:20,165 --> 00:00:21,200 at this difference. 00:00:21,560 --> 00:00:24,792 As I'm typing that same command, we start seeing completions 00:00:24,846 --> 00:00:27,271 appear and I can then press tab to insert and 00:00:27,324 --> 00:00:30,826 there are even dynamically generated completions which we can see 00:00:30,880 --> 00:00:33,682 as it pulls in available branches to check out based 00:00:33,736 --> 00:00:34,760 on what I'm typing. 00:00:34,920 --> 00:00:37,533 Another place where this is super helpful is with path 00:00:37,582 --> 00:00:40,293 navigation, so I'm going to disable that setting just so 00:00:40,341 --> 00:00:41,600 we can see the difference. 00:00:41,600 --> 00:00:43,840 Again, when I'm typing, nothing happens. 00:00:44,320 --> 00:00:48,055 I enable this setting and again, I'm automatically seeing completions 00:00:48,109 --> 00:00:49,679 for my available directories. 00:00:49,800 --> 00:00:52,338 I can just keep typing and tabbing to build upon 00:00:52,391 --> 00:00:52,919 that path. 00:00:53,120 --> 00:00:55,860 There are so many other scenarios where this just really 00:00:55,909 --> 00:00:58,159 improves the experience and feels so seamless. 00:00:58,200 --> 00:01:00,160 So try out the setting. Again, 00:01:00,160 --> 00:01:04,081 that's the terminal integrated Suggest setting currently in preview. For 00:01:04,137 --> 00:01:04,800 my next tip, 00:01:04,880 --> 00:01:06,924 did you know that you can bring up copilot in 00:01:06,969 --> 00:01:07,560 the terminal? 00:01:07,760 --> 00:01:10,339 Use the command I or control I shortcut and you 00:01:10,394 --> 00:01:12,480 will have inline chat in the terminal. 00:01:12,680 --> 00:01:14,927 It's been a while since I've done C++ and I 00:01:14,982 --> 00:01:17,997 have this simple program with a Fibonacci method, but I 00:01:18,051 --> 00:01:20,080 can't remember the command to run it. 00:01:20,280 --> 00:01:22,485 So I can just ask copilot and I get a 00:01:22,545 --> 00:01:25,883 command returned that I can then successfully run in the 00:01:25,943 --> 00:01:26,479 terminal. 00:01:26,480 --> 00:01:29,729 You can also explain or fix errors using copilot. So 00:01:29,793 --> 00:01:31,960 I'm going to debug this using GDB. 00:01:32,080 --> 00:01:34,868 When an error happens in the terminal, you will see 00:01:34,923 --> 00:01:37,985 the sparkle icon appear and you can select Explain using 00:01:38,039 --> 00:01:41,101 Copilot, which will open chat with an explanation of the 00:01:41,156 --> 00:01:44,655 error or Fix using Copilot which will generate terminal commands 00:01:44,710 --> 00:01:45,639 to fix the error. 00:01:46,120 --> 00:01:49,763 So Copilot recommends a command to actually install GDB so 00:01:49,826 --> 00:01:53,029 I can select that suggested command and it will run 00:01:53,092 --> 00:01:54,599 directly in my terminal. 00:01:54,800 --> 00:01:57,781 Now we are all set without having to go manually 00:01:57,843 --> 00:02:00,080 look up syntax or how to fix errors. 00:02:00,600 --> 00:02:02,794 Before we go over the next tip, do you see 00:02:02,846 --> 00:02:05,720 how these characters in less than equals are connected? 00:02:05,840 --> 00:02:08,339 Those are called font ligatures and let me show you 00:02:08,388 --> 00:02:09,319 how to enable them. 00:02:09,480 --> 00:02:12,387 First you need to install a font that supports ligatures. 00:02:12,439 --> 00:02:14,359 Fira code is a really popular one. 00:02:14,600 --> 00:02:17,526 Once that's installed, then in VS Code settings set the 00:02:17,579 --> 00:02:19,920 font family to your ligature supported font. 00:02:20,280 --> 00:02:23,266 Then search for the ligature settings and you can enable 00:02:23,320 --> 00:02:26,360 editor font ligatures in your settings.json and then 00:02:26,413 --> 00:02:29,240 you can enable the terminal ligature setting as well. 00:02:29,440 --> 00:02:32,098 And now you will see ligatures in the editor and 00:02:32,153 --> 00:02:33,039 in the terminal. 00:02:33,840 --> 00:02:35,969 OK, one last tip to show you, if you use 00:02:36,022 --> 00:02:38,631 the terminal a lot, there's a VS Code command you 00:02:38,685 --> 00:02:41,719 definitely should know about: Terminal run recent command. 00:02:41,840 --> 00:02:44,192 This will show you a history of all your recently 00:02:44,240 --> 00:02:47,504 run commands divided into sections for the current session, previous 00:02:47,552 --> 00:02:49,520 sessions, and the shell's native history. 00:02:49,720 --> 00:02:53,014 Navigating through the current session section will actually take you 00:02:53,061 --> 00:02:55,496 to the command in your terminal session, so you can 00:02:55,544 --> 00:02:57,120 quickly see the resulting output. 00:02:57,280 --> 00:02:59,472 And if you press enter for any of these recent 00:02:59,520 --> 00:03:01,760 commands, it will run it right in the terminal. 00:03:01,919 --> 00:03:04,518 You can also pin commands or search through the 00:03:04,570 --> 00:03:07,168 history so that you can run and find your recently 00:03:07,220 --> 00:03:08,520 used commands in no time. 00:03:08,720 --> 00:03:10,833 Do you have any other tips that you use to 00:03:10,882 --> 00:03:12,800 make the most of the Terminal in VS code? 00:03:13,160 --> 00:03:16,400 Drop them in the comments and as always, happy coding.",
+ "refusal": null,
+ "plan": {
+  "kind": "technique",
+  "title": "Terminal Tips in VS Code",
+  "summary": "A set of VS Code terminal settings and commands: integrated suggest completions, inline Copilot chat, error explain/fix, font ligatures, and run recent command history.",
+  "confidence": 78,
+  "moves": [
+   {
+    "move_kind": "apply",
+    "title": "Turn on Terminal integrated suggest",
+    "intent": "Enable the preview setting so the terminal shows inline completions and dynamic branch suggestions as you type, with tab to insert.",
+    "evidence": "the Terminal integrated suggest setting, look",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Open Copilot inline chat in the terminal",
+    "intent": "Use the Cmd+I or Ctrl+I shortcut in the terminal to ask Copilot for a command you can't remember and run it directly.",
+    "evidence": "Use the command I or control I shortcut and you",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Explain or fix terminal errors with Copilot",
+    "intent": "Click the sparkle icon on a terminal error and choose Explain using Copilot or Fix using Copilot to get a runnable fix command.",
+    "evidence": "the sparkle icon appear and you can select Explain using",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Turn on font ligatures for editor and terminal",
+    "intent": "Install a ligature font like Fira Code, set it as the font family, then enable editor and terminal font ligature settings in settings.json.",
+    "evidence": "First you need to install a font that supports ligatures.",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Use Terminal: Run Recent Command",
+    "intent": "Run the command to browse current session, previous session, and shell history, then pin, search, or press enter to rerun a command.",
+    "evidence": "definitely should know about: Terminal run recent command.",
+    "target": "this_machine",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   }
+  ],
+  "tags": [
+   "vscode",
+   "terminal",
+   "copilot",
+   "productivity"
+  ],
+  "recipe": null,
+  "refusal": null
+ },
+ "counts": {
+  "moves_in": 5,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

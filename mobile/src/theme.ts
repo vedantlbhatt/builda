@@ -156,6 +156,23 @@ export function creatureHue(creature: CreatureId, scheme: Scheme = 'dark'): Hue 
   return hue(tokens.spectrum.creature[creature], scheme);
 }
 
+/** A drop kind, where the kind is the object (`spectrum.drop`). */
+export type DropKindId = keyof Spectrum['drop'];
+
+/**
+ * The hue a drop kind wears, or null for `unknown`.
+ *
+ * Null is the point, not an omission: a drop nobody could read has no hue, so it is drawn in
+ * the warm greys and the board's colour always means something was understood. A caller that
+ * wants a colour for every node gets `dim` from the palette for the null, never a grey pretending
+ * to be a hue.
+ */
+export function dropHue(kind: string, scheme: Scheme = 'dark'): Hue | null {
+  const table = tokens.spectrum.drop as Record<string, string>;
+  const name = table[kind];
+  return isHueName(name) ? hue(name, scheme) : null;
+}
+
 /**
  * The wire values that are not mark ids: Cursor's IDE and its CLI are one mark and one hue
  * (`HARNESS_MARKS`). `__tests__/spectrum.test.ts` holds this against `markFor`.

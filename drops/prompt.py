@@ -69,6 +69,13 @@ with no subtitles cannot support a confident reading, whatever the caption says.
 quantity the video never said is null. Null is not zero and it is not "1"; a null quantity
 renders as "to taste" territory on the card, and an invented one ruins a dish.
 
+A COOKING POST WHOSE TEXT NAMES THE DISH AND GIVES NO METHOD IS STILL `recipe`. Most of them
+are: the title says "20 minute one pan garlic butter shrimp pasta" and the description is
+empty, because the method is in the video. Do not invent the method and do not answer
+`unknown`. Answer `kind: recipe`, `recipe: null`, and ONE move of kind `card` whose intent is
+to go and find the full ingredients and steps for that named dish. A later pass with a web
+search does exactly that, and the card then holds a real recipe instead of a title.
+
 Set `refusal` with kind `unknown` when there is nothing here to act on:
   not_about_building   readable, and there is no move in it for a builder or a cook
   no_text              there was effectively nothing to read

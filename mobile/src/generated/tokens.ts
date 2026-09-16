@@ -447,6 +447,13 @@ export const tokens = {
       "converging": "data.add",
       "circling": "surface.textDim",
       "lost": "data.del"
+    },
+    "drop": {
+      "skill": "iris",
+      "technique": "tide",
+      "project": "orchid",
+      "tool": "brass",
+      "recipe": "coral"
     }
   },
   "card": {

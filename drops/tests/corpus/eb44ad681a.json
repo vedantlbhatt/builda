@@ -1,0 +1,81 @@
+{
+ "url": "https://www.youtube.com/watch?v=ifTF3ags0XI",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/watch?v=ifTF3ags0XI",
+  "author": "Fireship",
+  "title": "25 VS Code Productivity Tips and Speed Hacks",
+  "thumbnail_url": "https://i.ytimg.com/vi/ifTF3ags0XI/maxresdefault.jpg",
+  "duration_s": 695,
+  "caption_chars": 1533,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:26:40.737190+00:00"
+ },
+ "notes": [],
+ "text": "25 VS Code Productivity Tips and Speed Hacks\n\nLearn 25 VS Code tips and tricks that will help you write code faster. Try out awesome new features and extensions that turn your editor into a full-blown IDE. https://fireship.io/pro #vscode #learntocode #programming Support me for $1 on github https://github.com/sponsors/codediodeio 🔗 Resources VS Code https://code.visualstudio.com/ Remote Repositories https://code.visualstudio.com/blogs/2021/06/10/remote-repositories vim Tutorial https://youtu.be/-txKSRn0qeA 📚 Chapters 00:00 Intro 00:35 1. VS Code CLI 01:03 2. Release the Mouse 01:45 3. Command Palette Ctrl+P 02:10 4. Run Commands 02:25 5. Quokka 02:43 6. Find Symbols with @ 03:14 7. Find symbols with # 03:36 8. Move Around Quickly 04:07 9. Multiline Editing 04:23 10. Auto Rename Tag 04:47 11. Delete or move a line 05:16 12. Highlight & Comment Lines 05:39 13. JS Doc Extension 06:07 14. Better Comments 06:20 15. Integrated Terminal 07:14 16. Tasks 07:38 17. Git Source Control 08:26 18. Git Lens Extension 08:40 19. Remote Repositories 09:14 20. Remote SSH & Containers 09:31 21. Custom Snippets 10:01 22. Community Snippets 10:13 23. Auto-create directories 10:29 24. Paste as JSON 10:50 25. Rename Symbol 🤓 Install the quiz app iOS https://itunes.apple.com/us/app/fireship/id1462592372?mt=8 Android https://play.google.com/store/apps/details?id=io.fireship.quizapp 🔥 Watch more with Fireship PRO Upgrade to Fireship PRO at https://fireship.io/pro Use code lORhwXd2 for 25% off your first payment. 🎨 My Editor Settings - Atom One Dark - vscode-icons - Fira Code Font",
+ "refusal": null,
+ "plan": {
+  "kind": "technique",
+  "title": "25 VS Code Productivity Tips and Speed Hacks",
+  "summary": "A chaptered rundown of 25 VS Code shortcuts, settings, and extensions for writing code faster, from the command palette to GitLens and remote repositories.",
+  "confidence": 72,
+  "moves": [
+   {
+    "move_kind": "install",
+    "title": "Install VS Code",
+    "intent": "Get VS Code set up as your editor so the rest of the tips in the video have somewhere to land.",
+    "evidence": "VS Code https://code.visualstudio.com/",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Turn on Remote Repositories",
+    "intent": "Browse and edit a GitHub repo directly in VS Code without cloning it locally, using the Remote Repositories feature.",
+    "evidence": "Remote Repositories https://code.visualstudio.com/blogs/2021/06/10/remote-repositories",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "evaluate",
+    "title": "Go find and try the GitLens extension",
+    "intent": "Search the VS Code marketplace for the GitLens extension named in the video and try it for inline git blame and history.",
+    "evidence": "18. Git Lens Extension",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "keep",
+    "title": "Work through all 25 tips",
+    "intent": "Go chapter by chapter through the video and fold each of the 25 shortcuts, settings, and extensions into daily VS Code use.",
+    "evidence": "Learn 25 VS Code tips and tricks that will help you write code faster.",
+    "source": null,
+    "target": "this_machine",
+    "effort": "a_session",
+    "verification": null
+   }
+  ],
+  "tags": [
+   "vscode",
+   "productivity",
+   "shortcuts",
+   "extensions",
+   "editor"
+  ],
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 5,
+  "evidence_dropped": 1,
+  "source_dropped": 2,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

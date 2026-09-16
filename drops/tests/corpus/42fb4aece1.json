@@ -1,0 +1,132 @@
+{
+ "url": "https://www.youtube.com/shorts/-wp0KxAfyWU",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/-wp0KxAfyWU",
+  "author": "Dished",
+  "title": "Homemade Garlic Butter Pasta #shorts",
+  "thumbnail_url": "https://i.ytimg.com/vi/-wp0KxAfyWU/maxresdefault.jpg",
+  "duration_s": 43,
+  "caption_chars": 1049,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:23:47.978565+00:00"
+ },
+ "notes": [],
+ "text": "Homemade Garlic Butter Pasta #shorts\n\nMaking garlic butter pasta. In this recipe video, we'll show you how to make homemade garlic butter pasta, this recipe is for you garlic lovers! 📺 Link to the Full Recipe: : https://youtu.be/CRSYuP51t5I ➡️ SUBSCRIBE to Dished! https://www.youtube.com/channel/UCGNRSCD9-k1629nNEi8suhQ?sub_confirmation=1 🧑‍🍳 📕 We released a Cookbook! Get your copy here! ➡️ https://dishedme.com/ If you love this how to make garlic butter pasta recipe let us know what you think in the comments below! #dished #shorts Ingredients for making garlic butter pasta: A lot of garlic (to taste) Olive oil Unsalted butter Salt Pepper Parsley Tomato paste Parmesan cheese Pasta (400g) Chili flakes 🔔 Subscribe and ring the bell to get notified every time we post a new video! 🎬 Our YouTube Shorts Channel!: www.youtube.com/channel/UCOn8LdKK82EgLIpL4ZBzXMg?sub_confirmation=1 🔥 Social Media🔥 🎥 TikTok: https://www.tiktok.com/@dishedit 📸 Instagram: https://www.instagram.com/dishedofficial 📬 Facebook: https://www.facebook.com/dishedit 🎊 Twitter: https://twitter.com/DishedFood",
+ "refusal": null,
+ "plan": {
+  "kind": "recipe",
+  "title": "Homemade Garlic Butter Pasta",
+  "summary": "A garlic butter pasta with a full ingredient list here, but the actual method is only in the linked full recipe video.",
+  "confidence": 55,
+  "tags": [
+   "pasta",
+   "garlic",
+   "recipe",
+   "shorts"
+  ],
+  "moves": [
+   {
+    "move_kind": "apply",
+    "title": "Cook the garlic butter pasta",
+    "intent": "Make garlic butter pasta using a lot of garlic, olive oil, unsalted butter, salt, pepper, parsley, tomato paste, parmesan, 400g pasta, and chili flakes.",
+    "evidence": "Making garlic butter pasta.",
+    "target": "none",
+    "effort": "an_hour",
+    "source": null,
+    "verification": null
+   },
+   {
+    "move_kind": "evaluate",
+    "title": "Watch the full recipe video",
+    "intent": "Get the actual steps and quantities for the garlic butter pasta, since only the ingredient list is given here.",
+    "evidence": "Link to the Full Recipe: : https://youtu.be/CRSYuP51t5I",
+    "source": null,
+    "target": "none",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "evaluate",
+    "title": "Check out the cookbook",
+    "intent": "See whether the Dished cookbook has more recipes worth cooking through.",
+    "evidence": "We released a Cookbook! Get your copy here! ➡️ https://dishedme.com/",
+    "source": null,
+    "target": "none",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "recipe": {
+   "ingredients": [
+    {
+     "item": "A lot of garlic",
+     "quantity": null,
+     "note": "to taste"
+    },
+    {
+     "item": "Olive oil",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Unsalted butter",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Salt",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Pepper",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Parsley",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Tomato paste",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Parmesan cheese",
+     "quantity": null,
+     "note": null
+    },
+    {
+     "item": "Pasta",
+     "quantity": "400g",
+     "note": null
+    },
+    {
+     "item": "Chili flakes",
+     "quantity": null,
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "text": "Make homemade garlic butter pasta (the full method is in the linked recipe video, not in this caption).",
+     "minutes": null
+    }
+   ],
+   "equipment": [],
+   "serves": null,
+   "total_minutes": null
+  }
+ },
+ "counts": {
+  "moves_in": 3,
+  "evidence_dropped": 0,
+  "source_dropped": 2,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

@@ -1,0 +1,94 @@
+{
+ "url": "https://www.youtube.com/watch?v=4opxM6g77UA",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/watch?v=4opxM6g77UA",
+  "author": "Suboptimal Engineer",
+  "title": "How to Optimize Performance in Visual Studio Code",
+  "thumbnail_url": "https://i.ytimg.com/vi_webp/4opxM6g77UA/maxresdefault.webp",
+  "duration_s": 360,
+  "caption_chars": 1070,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:28:47.551166+00:00"
+ },
+ "notes": [],
+ "text": "How to Optimize Performance in Visual Studio Code\n\nIn this developer productivity video, we go over how to optimize performance in Visual Studio Code. We cover topics like selecting a proper working directory, excluding files, disabling extensions, and updating the default settings.json file. Following these tips will make your VS Code run faster. 📖 Code - https://github.com/SuboptimalEng/dotfiles 🎥 YouTube - https://youtube.com/SuboptimalEng 💻 GitHub - https://github.com/SuboptimalEng 🐦 Twitter - https://twitter.com/SuboptimalEng 🧵 Threads - https://www.threads.net/@suboptimaleng 📸 Instagram - https://instagram.com/suboptimaleng == [ Resources ] == VS Code Performance Tips: https://betterprogramming.pub/5-tips-to-boost-the-performance-of-your-vs-code-editor-ff28dda68d9b == [ Timestamps ] == 00:00 Working Directory Setup 00:54 Exclude Node Modules 01:24 Remove Unused Extensions 02:03 Bracket Pair Colorizer 03:13 Update VS Code Defaults 03:36 Hide Editor Minimap 04:05 Disable Search on Type 04:42 Terminal GPU Acceleration 04:56 Disable Code Lens 05:21 Outro == [ Tags ] == #suboptimal #vscode #visualstudio",
+ "refusal": null,
+ "plan": {
+  "kind": "technique",
+  "title": "Optimize Performance in Visual Studio Code",
+  "summary": "A set of VS Code tuning steps covering working directory setup, excluding files, disabling extensions and features, and editing settings.json to make the editor run faster.",
+  "confidence": 62,
+  "moves": [
+   {
+    "move_kind": "apply",
+    "title": "Update your settings.json defaults",
+    "intent": "Apply the performance-oriented defaults to settings.json so VS Code starts and runs faster.",
+    "evidence": "updating the default settings.json file",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Exclude node_modules from VS Code",
+    "intent": "Add node_modules to VS Code's file watcher and search exclusions in an existing project.",
+    "evidence": "Exclude Node Modules",
+    "source": null,
+    "target": "existing_repo",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Remove unused extensions",
+    "intent": "Uninstall or disable extensions that aren't actively used to cut startup and runtime overhead.",
+    "evidence": "Remove Unused Extensions",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Turn off minimap, search-on-type and Code Lens; enable terminal GPU acceleration",
+    "intent": "Flip the specific settings for hiding the minimap, disabling search-as-you-type, disabling Code Lens, and turning on terminal GPU acceleration.",
+    "evidence": "03:36 Hide Editor Minimap 04:05 Disable Search on Type 04:42 Terminal GPU Acceleration 04:56 Disable Code Lens",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "evaluate",
+    "title": "Check the dotfiles repo for the exact settings",
+    "intent": "Look through the linked dotfiles repository to see the actual settings.json values used in the video.",
+    "evidence": "📖 Code - https://github.com/SuboptimalEng/dotfiles",
+    "source": {
+     "source_kind": "github",
+     "ref": "SuboptimalEng/dotfiles",
+     "url": "https://github.com/SuboptimalEng/dotfiles"
+    },
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "tags": [
+   "vscode",
+   "performance",
+   "settings",
+   "productivity"
+  ],
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 5,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

@@ -1,0 +1,39 @@
+{
+ "url": "https://www.youtube.com/shorts/G7mA8ZWSBWk",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/G7mA8ZWSBWk",
+  "author": "Abdeluadud Hakimi",
+  "title": "Indie Hacker? Startup or SAAS?",
+  "thumbnail_url": "https://i.ytimg.com/vi/G7mA8ZWSBWk/hq720_2.jpg?sqp=-oaymwEoCIAKENAF8quKqQMcGADwAQH4AbYIgAKAD4oCDAgAEAEYNiBjKHIwDw==&rs=AOn4CLBv2sNVnullauerYtrLLGWC4sbcFw",
+  "duration_s": 52,
+  "caption_chars": 30,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:34:26.387263+00:00"
+ },
+ "notes": [],
+ "text": "Indie Hacker? Startup or SAAS?",
+ "refusal": null,
+ "plan": {
+  "kind": "unknown",
+  "title": "Indie Hacker? Startup or SAAS?",
+  "summary": "A 30 character caption asking whether the viewer is an indie hacker, startup or SaaS, with no other text saying what the video is about.",
+  "confidence": 5,
+  "moves": [],
+  "tags": [
+   "indiehacker",
+   "startup",
+   "saas"
+  ],
+  "refusal": "no_text",
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 0,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

@@ -1,0 +1,103 @@
+{
+ "url": "https://www.youtube.com/watch?v=E8DEfBUH-IM",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/watch?v=E8DEfBUH-IM",
+  "author": "Pocket To Plate",
+  "title": "Garlic Butter Pasta",
+  "thumbnail_url": "https://i.ytimg.com/vi/E8DEfBUH-IM/maxresdefault.jpg",
+  "duration_s": 194,
+  "caption_chars": 834,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:30:21.002228+00:00"
+ },
+ "notes": [],
+ "text": "Garlic Butter Pasta\n\n~ G A R L I C - B U T T E R - P A S T A ~ Serves 4 INGREDIENTS - 300g spaghetti - 50g butter - 3 cloves garlic (or minced garlic/garlic paste) - 50g pecorino or Italian hard cheese - Handful fresh parsley METHOD 1. Put the pasta on to boil in slightly salted water. 2. In another pan, add half the butter and melt. Grate the garlic cloves into the butter. Stir around and cook the garlic for a minute or so. 3. Add in the cooked pasta and stir. 4. Add the rest of the butter and stir to melt. Season with lots of black pepper. Add some of the starchy pasta water to make a silky sauce. 5. Turn off the heat and grate in the cheese. Stir to melt and add more pepper. 6. Chop up the parsley, add and stir. 7. Serve into bowls with more grated cheese and… Enjoy! 😋 #getfoodsavvy #simplepasta #garlicbutterpasta #cheapastadish #quickpasta",
+ "refusal": null,
+ "plan": {
+  "kind": "recipe",
+  "title": "Garlic Butter Pasta",
+  "summary": "A five ingredient garlic butter pasta for four, finished with pecorino, black pepper and starchy pasta water for a silky sauce.",
+  "confidence": 85,
+  "moves": [],
+  "tags": [
+   "pasta",
+   "garlic",
+   "butter",
+   "quickpasta"
+  ],
+  "recipe": {
+   "serves": "4",
+   "total_minutes": null,
+   "equipment": [
+    "pan",
+    "bowls"
+   ],
+   "ingredients": [
+    {
+     "item": "spaghetti",
+     "quantity": "300g",
+     "note": null
+    },
+    {
+     "item": "butter",
+     "quantity": "50g",
+     "note": null
+    },
+    {
+     "item": "garlic",
+     "quantity": "3 cloves",
+     "note": "or minced garlic/garlic paste"
+    },
+    {
+     "item": "pecorino or Italian hard cheese",
+     "quantity": "50g",
+     "note": null
+    },
+    {
+     "item": "fresh parsley",
+     "quantity": "Handful",
+     "note": null
+    }
+   ],
+   "steps": [
+    {
+     "text": "Put the pasta on to boil in slightly salted water.",
+     "minutes": null
+    },
+    {
+     "text": "In another pan, add half the butter and melt. Grate the garlic cloves into the butter. Stir around and cook the garlic for a minute or so.",
+     "minutes": null
+    },
+    {
+     "text": "Add in the cooked pasta and stir.",
+     "minutes": null
+    },
+    {
+     "text": "Add the rest of the butter and stir to melt. Season with lots of black pepper. Add some of the starchy pasta water to make a silky sauce.",
+     "minutes": null
+    },
+    {
+     "text": "Turn off the heat and grate in the cheese. Stir to melt and add more pepper.",
+     "minutes": null
+    },
+    {
+     "text": "Chop up the parsley, add and stir.",
+     "minutes": null
+    },
+    {
+     "text": "Serve into bowls with more grated cheese and… Enjoy! 😋",
+     "minutes": null
+    }
+   ]
+  }
+ },
+ "counts": {
+  "moves_in": 1,
+  "evidence_dropped": 1,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

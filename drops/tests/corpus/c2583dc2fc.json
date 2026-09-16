@@ -1,0 +1,50 @@
+{
+ "url": "https://www.youtube.com/shorts/UFk8uJabnIc",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/UFk8uJabnIc",
+  "author": "ice.karimcooks",
+  "title": "EASY 20-minute 1-PAN Garlic Butter Pasta w Shrimp 🍤",
+  "thumbnail_url": "https://i.ytimg.com/vi/UFk8uJabnIc/maxresdefault.jpg",
+  "duration_s": 37,
+  "caption_chars": 51,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:34:12.057958+00:00"
+ },
+ "notes": [],
+ "text": "EASY 20-minute 1-PAN Garlic Butter Pasta w Shrimp 🍤",
+ "refusal": null,
+ "plan": {
+  "kind": "recipe",
+  "title": "EASY 20-minute 1-PAN Garlic Butter Pasta w Shrimp",
+  "summary": "A 20 minute one pan garlic butter shrimp pasta whose full ingredients and steps are only in the video, not the caption.",
+  "confidence": 25,
+  "recipe": null,
+  "moves": [
+   {
+    "move_kind": "card",
+    "title": "Find the full recipe",
+    "intent": "Go and find the complete ingredient list and step by step method for this 20 minute one pan garlic butter shrimp pasta so the card holds a real recipe.",
+    "evidence": "EASY 20-minute 1-PAN Garlic Butter Pasta w Shrimp",
+    "target": "none",
+    "effort": "minutes",
+    "source": null,
+    "verification": null
+   }
+  ],
+  "tags": [
+   "pasta",
+   "shrimp",
+   "onepan",
+   "quick"
+  ]
+ },
+ "counts": {
+  "moves_in": 1,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

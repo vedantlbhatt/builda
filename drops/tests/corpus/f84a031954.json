@@ -1,0 +1,90 @@
+{
+ "url": "https://www.youtube.com/watch?v=HIqONcVBEm0",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/watch?v=HIqONcVBEm0",
+  "author": "Visual Studio Code",
+  "title": "Top 5 VS Code Productivity Tips Marathon",
+  "thumbnail_url": "https://i.ytimg.com/vi/HIqONcVBEm0/maxresdefault.jpg",
+  "duration_s": 179,
+  "caption_chars": 107,
+  "transcript_chars": 5471,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:25:44.070108+00:00"
+ },
+ "notes": [],
+ "text": "Top 5 VS Code Productivity Tips Marathon\n\nCheck out this highlight reel of our top 5 productivity tips in #vscode. #marathon #productivityvideo #code\n\n00:00:00,440 --> 00:00:03,519 Out of using complicated keyboard shortcuts in VS Code, did 00:00:03,572 --> 00:00:06,443 you know you can actually assign double shift to things 00:00:06,495 --> 00:00:09,418 that you use often, like opening the Command palette? Do 00:00:09,471 --> 00:00:12,446 this inside keyboard shortcuts and save yourself a lot of 00:00:12,498 --> 00:00:12,759 time. 00:00:13,880 --> 00:00:14,040 Cool. 00:00:15,760 --> 00:00:17,400 The key to productivity and coding is. 00:00:17,640 --> 00:00:18,520 Don't touch your mouse. 00:00:19,000 --> 00:00:20,897 But a lot of people will use their mouse to 00:00:20,941 --> 00:00:23,236 select items from the sidebar and then click back in 00:00:23,280 --> 00:00:25,575 the editor window. But you don't actually have to do 00:00:25,619 --> 00:00:25,839 this. 00:00:26,280 --> 00:00:28,646 If you want to go to the sidebar, just press 00:00:28,699 --> 00:00:31,388 control or command zero and that puts the focus in 00:00:31,442 --> 00:00:34,238 the sidebar. From here you can expand folders with a 00:00:34,292 --> 00:00:36,927 space and you can select items here and that will 00:00:36,981 --> 00:00:39,508 put the focus back in the editor window. But if 00:00:39,562 --> 00:00:41,928 you want to put the focus back in the editor 00:00:41,982 --> 00:00:44,940 window from the sidebar on the current file at anytime, 00:00:44,993 --> 00:00:47,360 you can do that with control or Command one. 00:00:47,930 --> 00:00:50,725 This is how you copy and paste like a pro. 00:00:50,792 --> 00:00:54,586 Do not waste time highlighting lines and then copying and 00:00:54,653 --> 00:00:57,981 pasting. Just put your cursor on the line that you 00:00:58,047 --> 00:01:00,976 want to change and do command C command C Do 00:01:01,043 --> 00:01:04,904 not waste time to highlight multiple lines to make similar 00:01:04,970 --> 00:01:08,565 changes. If the changes are similar, you can do option 00:01:08,631 --> 00:01:11,760 command. Hit the up arrow or down arrow for the 00:01:11,826 --> 00:01:14,089 lines that you want to modify and. 00:01:14,800 --> 00:01:17,920 Boom. Life is precious. Save all that extra time. 00:01:18,560 --> 00:01:19,000 So I. 00:01:19,480 --> 00:01:22,116 Built this Wordle clone in JavaScript with help from a 00:01:22,165 --> 00:01:24,703 guy named Rahul. Thank you Rahul, and in the process 00:01:24,752 --> 00:01:27,633 I figured out this really interesting use case for multiple 00:01:27,681 --> 00:01:28,999 cursors. Let me show it to. 00:01:29,000 --> 00:01:31,055 You so I found the Wordle word bank that comes 00:01:31,100 --> 00:01:33,021 from the source code and what we need to do 00:01:33,065 --> 00:01:33,200 is. 00:01:33,200 --> 00:01:34,080 Copy this. 00:01:34,120 --> 00:01:36,027 Into an array so that we can use it in 00:01:36,077 --> 00:01:36,679 our project. 00:01:37,060 --> 00:01:39,495 But the problem is, we need to quote these words 00:01:39,546 --> 00:01:41,728 and put commas to make it an array. So when 00:01:41,779 --> 00:01:44,266 we can do this, select everything in the file and 00:01:44,317 --> 00:01:47,514 you're noticed. Luckily enough, there's actually a space at the 00:01:47,564 --> 00:01:49,594 end of each word. So what we could do is 00:01:49,645 --> 00:01:52,233 select that space and then put a cursor on everyone 00:01:52,284 --> 00:01:55,024 here. But it's actually a better way. Instead, what we 00:01:55,075 --> 00:01:57,207 can do is we can go ahead and select every 00:01:57,257 --> 00:01:59,592 word in this file just like we did before, but 00:01:59,642 --> 00:02:01,774 we can do alt shift I, which puts a cursor 00:02:01,825 --> 00:02:04,007 at the end. Then we just add our quotes and 00:02:04,058 --> 00:02:06,392 our, and then we can sort of control arrow our 00:02:06,443 --> 00:02:06,899 way back. 00:02:07,020 --> 00:02:09,290 To the front and add a quote there. And then 00:02:09,342 --> 00:02:11,613 we just need to clean up this very last word 00:02:11,665 --> 00:02:13,420 here, remove this, and we're done. 00:02:13,900 --> 00:02:16,536 You can open multiple terminals in this code and you 00:02:16,587 --> 00:02:19,072 get tabs for the terminals over here on the side, 00:02:19,122 --> 00:02:21,861 but it's not ideal because you can't figure out what's 00:02:21,911 --> 00:02:23,939 what. Now you can right click these and. 00:02:24,020 --> 00:02:24,700 Rename them. 00:02:24,780 --> 00:02:27,229 Like that right there. And that's a little bit better, 00:02:27,274 --> 00:02:29,906 but it's not great because it's not obvious which keyboard 00:02:29,951 --> 00:02:32,627 shortcut you're supposed to use to access these things. Try 00:02:32,673 --> 00:02:32,900 this. 00:02:33,340 --> 00:02:35,940 Take one of these, grab it and drag it and. 00:02:35,940 --> 00:02:36,860 You can drop it. 00:02:37,020 --> 00:02:39,091 Right up in the editor. Yes, you can put your 00:02:39,137 --> 00:02:40,380 terminals up in the editor. 00:02:40,740 --> 00:02:40,900 So. 00:02:40,900 --> 00:02:43,176 If you put them all up there, check this out. 00:02:43,227 --> 00:02:45,858 Once they're all there, you can now access them with 00:02:45,908 --> 00:02:48,590 the file picker, which is Control P See, there's your 00:02:48,640 --> 00:02:51,625 terminals. So it's really easy to bounce between files that 00:02:51,676 --> 00:02:54,762 you're working on and terminal instances and you know exactly 00:02:54,812 --> 00:02:55,420 what's what.",
+ "refusal": null,
+ "plan": {
+  "kind": "technique",
+  "title": "Top 5 VS Code Productivity Tips",
+  "summary": "Five keyboard driven VS Code habits: custom shortcuts, mouse free navigation, fast line copy, multi cursor editing, and terminals docked in the editor.",
+  "confidence": 78,
+  "moves": [
+   {
+    "move_kind": "apply",
+    "title": "Assign double shift to a command",
+    "intent": "Open Keyboard Shortcuts settings and bind double shift to a frequently used command such as the Command Palette.",
+    "evidence": "you know you can actually assign double shift to things",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Jump to the sidebar and back without the mouse",
+    "intent": "Use control or command zero to focus the sidebar and control or command one to return focus to the editor, replacing mouse clicks.",
+    "evidence": "control or command zero and that puts the focus in",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Copy a line without selecting it",
+    "intent": "Put the cursor on the target line and press command C command C instead of highlighting the line to copy it.",
+    "evidence": "want to change and do command C command C Do",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Add a cursor to the end of every selected line",
+    "intent": "Select the lines, press alt shift I to place a cursor at the end of each one, then type the same edit into all of them at once.",
+    "evidence": "we can do alt shift I, which puts a cursor",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Drag a terminal into the editor area",
+    "intent": "Rename terminals by right clicking them, drag them up into the editor, then switch between them with the Control P file picker.",
+    "evidence": "the file picker, which is Control P See, there's your",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "tags": [
+   "vscode",
+   "shortcuts",
+   "productivity",
+   "keyboard"
+  ],
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 5,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

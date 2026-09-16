@@ -1,0 +1,38 @@
+{
+ "url": "https://www.tiktok.com/@scout2015/video/6718335390845095173",
+ "source": {
+  "platform": "tiktok",
+  "url": "https://www.tiktok.com/@scout2015/video/6718335390845095173",
+  "author": "Scout, Suki & Stella",
+  "title": "Scramble up ur name & I’ll try to guess it😍❤️ #foryoupage #petsoftiktok #aesthetic",
+  "thumbnail_url": "https://p19-common-sign.tiktokcdn-us.com/tos-maliva-p-0068/2367c7d45cf54a1397abd0e72bf22eac~tplv-tiktokx-origin.image?dr=9636&x-expires=1789704000&x-signature=fI38Y5nKCXVFf1hTCIAav3ezygE%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+  "duration_s": null,
+  "caption_chars": 82,
+  "transcript_chars": 0,
+  "resolver": "oembed",
+  "resolved_at": "2026-09-16T04:20:38.746934+00:00"
+ },
+ "notes": [],
+ "text": "Scramble up ur name & I’ll try to guess it😍❤️ #foryoupage #petsoftiktok #aesthetic",
+ "refusal": null,
+ "plan": {
+  "kind": "unknown",
+  "title": "Scramble ur name guessing game",
+  "summary": "A pet TikTok caption inviting viewers to scramble their name for a guessing game, nothing to build here.",
+  "confidence": 85,
+  "moves": [],
+  "tags": [
+   "pets",
+   "tiktok"
+  ],
+  "refusal": "not_about_building",
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 0,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

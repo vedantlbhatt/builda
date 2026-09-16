@@ -36,6 +36,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import unicodedata
 
 from analysis.run import AnalysisError, call_claude, dedash
 
@@ -56,6 +57,13 @@ _FOLD = {
     "‘": "'", "’": "'", "“": '"', "”": '"',
     " ": " ", "​": "", "﻿": "",
 }
+#: AN EMOJI IS NOT EVIDENCE, and asking a model to copy one back is asking it to fail.
+#: MEASURED on the real corpus: the caption "EASY 20-minute 1-PAN Garlic Butter Pasta w Shrimp"
+#: ended in a fried shrimp and the model copied every word of it verbatim and wrote a different
+#: shrimp, so the gate threw away a correct move over a pictograph nobody was going to read.
+#: Symbol and format characters (`So`, `Sk`, `Cf`) are dropped from BOTH sides. The words are
+#: still compared exactly; this is the one class of character the rule was never about.
+_DROPPED_CATEGORIES = frozenset({"So", "Sk", "Cf", "Cs", "Co"})
 #: A `ref` is a name: `owner/repo`, `@scope/pkg`, `some-package`. A space or a full stop in the
 #: middle means the model wrote a phrase into a field the installer will paste into a command.
 _REF_OK = re.compile(r"^[A-Za-z0-9@._/+-]{1,140}$")
@@ -63,6 +71,20 @@ _REF_OK = re.compile(r"^[A-Za-z0-9@._/+-]{1,140}$")
 
 class PlanError(RuntimeError):
     pass
+
+
+def subschema(name: str) -> dict:
+    """One `$def` out of the generated schema, as a root schema of its own.
+
+    `drops/recipe.py` asks a model for a `Recipe` and nothing else, and the shape it must
+    match is already defined once, in spec/drops.v1.json. Lifting the definition out beats
+    writing a second one that will drift from the field the server validates.
+    """
+    whole = json.loads(SCHEMA_PATH.read_text())
+    defs = whole.get("$defs") or {}
+    if name not in defs:
+        raise PlanError(f"{name} is not a $def in {SCHEMA_PATH}")
+    return {"title": name, **defs[name], "$defs": {k: v for k, v in defs.items() if k != name}}
 
 
 def load_schema() -> dict:
@@ -78,10 +100,11 @@ def load_schema() -> dict:
 
 
 def fold(text: str) -> str:
-    """Whitespace collapsed, smart quotes folded, lowercased. Comparison only."""
+    """Whitespace collapsed, smart quotes folded, emoji removed, lowercased. Comparison only."""
     out = text or ""
     for a, b in _FOLD.items():
         out = out.replace(a, b)
+    out = "".join(ch for ch in out if unicodedata.category(ch) not in _DROPPED_CATEGORIES)
     return " ".join(out.split()).lower()
 
 
@@ -141,14 +164,20 @@ def gate(plan: dict, text: str) -> tuple[dict, dict]:
     if kind != "recipe":
         plan["recipe"] = None
     elif not isinstance(recipe, dict) or not recipe.get("ingredients") or not recipe.get("steps"):
-        plan["kind"] = "unknown"
-        plan["refusal"] = "not_about_building"
+        # A HALF RECIPE IS THE ONE OUTPUT A PERSON CANNOT TELL FROM A WORKING ONE, so it is
+        # emptied. The KIND survives: MEASURED on the corpus, most cooking Shorts publish a
+        # title and no description at all ("EASY 20-minute 1-PAN Garlic Butter Pasta w Shrimp"
+        # with an empty description), and calling that `unknown` threw away the one thing the
+        # post did say. It is a recipe with no method yet, and the `card` move goes and gets
+        # one (drops/recipe.py).
         plan["recipe"] = None
-        plan["moves"] = []
 
     # A kind with no moves and no refusal is a card that says something is here and offers
-    # nothing to do about it. It is `unknown` with a reason instead.
-    if not plan["moves"] and not plan.get("refusal") and plan["kind"] != "recipe":
+    # nothing to do about it. It is `unknown` with a reason instead. A recipe that came back
+    # with its method intact is the one kind that is complete with no move on it: the card IS
+    # the thing you wanted.
+    complete_recipe = plan["kind"] == "recipe" and plan.get("recipe")
+    if not plan["moves"] and not plan.get("refusal") and not complete_recipe:
         plan["kind"] = "unknown"
         plan["refusal"] = "not_about_building"
 

@@ -1,0 +1,49 @@
+{
+ "url": "https://www.youtube.com/shorts/WwSJhSpdnr0",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/WwSJhSpdnr0",
+  "author": "Ben Chelin",
+  "title": "Garlic Butter Pasta 🔥 (Full recipe pinned in the comments)",
+  "thumbnail_url": "https://i.ytimg.com/vi/WwSJhSpdnr0/maxresdefault.jpg",
+  "duration_s": 17,
+  "caption_chars": 58,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:31:57.092844+00:00"
+ },
+ "notes": [],
+ "text": "Garlic Butter Pasta 🔥 (Full recipe pinned in the comments)",
+ "refusal": null,
+ "plan": {
+  "kind": "recipe",
+  "title": "Garlic Butter Pasta",
+  "summary": "A garlic butter pasta dish whose full recipe is pinned in the comments rather than given in the caption.",
+  "confidence": 30,
+  "recipe": null,
+  "moves": [
+   {
+    "move_kind": "card",
+    "title": "Go find the full recipe",
+    "intent": "Find and record the complete ingredient list and steps for this garlic butter pasta so the card holds a real recipe instead of just a title.",
+    "evidence": "Garlic Butter Pasta 🔥 (Full recipe pinned in the comments)",
+    "source": null,
+    "target": "none",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "tags": [
+   "pasta",
+   "garlic butter",
+   "recipe"
+  ]
+ },
+ "counts": {
+  "moves_in": 1,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

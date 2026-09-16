@@ -1,0 +1,50 @@
+{
+ "url": "https://www.youtube.com/shorts/tm5rLZUdK-Y",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/tm5rLZUdK-Y",
+  "author": "Yumeefoodies",
+  "title": "Creamy Garlic Butter Pasta in Seconds | Easy Viral Pasta Recipe 🍝| #recipe #easypasta #cooking",
+  "thumbnail_url": "https://i.ytimg.com/vi/tm5rLZUdK-Y/maxresdefault.jpg",
+  "duration_s": 21,
+  "caption_chars": 911,
+  "transcript_chars": 0,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:31:32.409949+00:00"
+ },
+ "notes": [],
+ "text": "Creamy Garlic Butter Pasta in Seconds | Easy Viral Pasta Recipe 🍝| #recipe #easypasta #cooking\n\nCreamy, rich, and unbelievably satisfying — this Creamy Garlic Butter Pasta is the ultimate comfort food! 🍝✨ Made with sizzling garlic butter, silky cream sauce, and perfectly coated pasta, this quick recipe looks like a luxury restaurant dish but is incredibly simple. Watch till the end to see the ultimate creamy pasta swirl! 👉 Subscribe to YumeeFoodies for more viral food recipes, luxury cooking shorts, and satisfying food videos every week. #garlicmushrooms #stuffedpasta #spicypotatoes #mouthwateringrecipes #favoritedish #comfortfood #populardish #healthydish #foodblogger #foodcombination #deliciousfoods #dinnertime #stuffedbellpeppers #pastasauce #garlicsauce #spiceitup #garlicsauce #spicylovers #spicyaddict #stuffednaan #spicy #internationalhotandspicyfoodday #buttersauce #spicerub #thespiceoflife #thespiceoflife #chillipotato #foodiesandspice #kitchenspices #marinade #fivespice #spicey #aioli",
+ "refusal": null,
+ "plan": {
+  "kind": "recipe",
+  "title": "Creamy Garlic Butter Pasta",
+  "summary": "A creamy garlic butter pasta is named but no ingredient list or method is given in the text, only a promise of sizzling garlic butter and silky cream sauce.",
+  "confidence": 25,
+  "moves": [
+   {
+    "move_kind": "card",
+    "title": "Find the full recipe",
+    "intent": "Go and find the complete ingredient list and step by step method for this Creamy Garlic Butter Pasta so the card holds a real recipe.",
+    "evidence": "Creamy Garlic Butter Pasta in Seconds | Easy Viral Pasta Recipe",
+    "source": null,
+    "target": "none",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "recipe": null,
+  "tags": [
+   "pasta",
+   "recipe",
+   "garlic",
+   "comfortfood"
+  ]
+ },
+ "counts": {
+  "moves_in": 1,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

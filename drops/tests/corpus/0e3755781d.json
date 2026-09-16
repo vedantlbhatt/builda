@@ -1,0 +1,49 @@
+{
+ "url": "https://www.tiktok.com/@nocode.joshua/video/7620790035939462407",
+ "source": {
+  "platform": "tiktok",
+  "url": "https://www.tiktok.com/@nocode.joshua/video/7620790035939462407",
+  "author": "nocode.joshua",
+  "title": "5 Claude Skills that every beginner needs to install. It’s hard to learn AI and Claude as a beginner. Before you start working in Claude here are 5 beginner Claude skills that will get you ahead of 90",
+  "thumbnail_url": "https://p19-common-sign.tiktokcdn-us.com/tos-alisg-p-0037/osNTCLMfAGfeMOEoFOk2AAgJ1AQigA1vGfeLIA~tplv-tiktokx-origin.image?dr=9636&x-expires=1789704000&x-signature=dwiQdfNG5DZ9G531CQ0VM5LXjQI%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=useast5",
+  "duration_s": null,
+  "caption_chars": 238,
+  "transcript_chars": 0,
+  "resolver": "oembed",
+  "resolved_at": "2026-09-16T04:20:14.834179+00:00"
+ },
+ "notes": [],
+ "text": "5 Claude Skills that every beginner needs to install. It’s hard to learn AI and Claude as a beginner. Before you start working in Claude here are 5 beginner Claude skills that will get you ahead of 90% of people. #ai #claude #claudetiktok",
+ "refusal": null,
+ "plan": {
+  "kind": "skill",
+  "title": "5 beginner Claude Skills to install",
+  "summary": "The caption promises 5 Claude Skills every beginner should install but does not name them, so the first move is to find out which ones.",
+  "confidence": 20,
+  "moves": [
+   {
+    "move_kind": "install",
+    "title": "Go find the 5 Claude skills",
+    "intent": "Identify the specific 5 beginner Claude skills this video refers to and install them into your Claude setup.",
+    "evidence": "5 Claude Skills that every beginner needs to install",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "tags": [
+   "claude",
+   "skills",
+   "beginner"
+  ],
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 1,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

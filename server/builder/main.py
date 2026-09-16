@@ -8,6 +8,7 @@ from .boot import run_startup_checks
 from .routes import (
     auth_routes,
     capture_keys,
+    drops,
     ingest,
     media,
     privacy,
@@ -48,6 +49,10 @@ app.include_router(auth_routes.router)
 app.include_router(sync.router)
 app.include_router(capture_keys.router)
 app.include_router(ingest.router)
+# drops BEFORE sessions for the reason media is: `POST /v1/drops:claim` and
+# `POST /v1/drops/moves:claim` must be matched ahead of any `/v1/{something}/{id}` route, or
+# the literal "drops:claim" is handed to another route as an id and refused as one.
+app.include_router(drops.router)
 # media BEFORE sessions: `GET /v1/projects/media:preview` must be matched ahead of
 # `GET /v1/projects/{key}`, or the literal "media:preview" is handed to the project route as
 # a key and refused as one.

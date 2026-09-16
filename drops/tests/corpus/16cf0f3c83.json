@@ -1,0 +1,80 @@
+{
+ "url": "https://www.youtube.com/shorts/6IwjxcDbVW0",
+ "source": {
+  "platform": "youtube",
+  "url": "https://www.youtube.com/shorts/6IwjxcDbVW0",
+  "author": "Visual Studio Code",
+  "title": "Navigate your code's history",
+  "thumbnail_url": "https://i.ytimg.com/vi/6IwjxcDbVW0/hq720_2.jpg?sqp=-oaymwEoCIAKENAF8quKqQMcGADwAQH4AbYIgAL-DooCDAgAEAEYTSBRKGUwDw==&rs=AOn4CLAzb1zDd829C3ATo__zQJirQEnU3Q",
+  "duration_s": 41,
+  "caption_chars": 56,
+  "transcript_chars": 1586,
+  "resolver": "yt_dlp",
+  "resolved_at": "2026-09-16T04:21:21.433756+00:00"
+ },
+ "notes": [],
+ "text": "Navigate your code's history\n\nwith this week's productivity tip of the week in #vscode\n\n00:00:00,040 --> 00:00:01,325 When you're working in a lot 00:00:01,325 --> 00:00:02,309 of files, it's easy 00:00:02,356 --> 00:00:03,160 to lose your way. 00:00:03,400 --> 00:00:04,691 Luckily VS Code has built-in 00:00:04,691 --> 00:00:06,600 navigation history to help. 00:00:09,320 --> 00:00:10,377 If you want to navigate 00:00:10,377 --> 00:00:11,434 back to where you were, 00:00:11,479 --> 00:00:13,100 you can use Alt + left arrow 00:00:13,100 --> 00:00:14,362 to go back, and you can do the 00:00:14,416 --> 00:00:15,148 opposite to navigate 00:00:15,148 --> 00:00:17,119 forward with Alt + right arrow. 00:00:17,280 --> 00:00:18,400 If you want to navigate your 00:00:18,400 --> 00:00:19,935 entire history, you can use 00:00:19,935 --> 00:00:21,408 CTRL + Tab to tab through 00:00:21,464 --> 00:00:22,599 your editor history. 00:00:22,760 --> 00:00:24,640 Now I'm on a Windows machine, so I'm 00:00:24,640 --> 00:00:26,160 showing you the Windows shortcuts. 00:00:26,240 --> 00:00:27,271 You can always look these up 00:00:27,271 --> 00:00:29,575 by running the Open Keyboard Shortcuts command, 00:00:29,674 --> 00:00:31,253 and if I search for \"go back\", 00:00:31,370 --> 00:00:32,287 then we can see that it's 00:00:32,287 --> 00:00:33,707 showing Alt + left arrow key. 00:00:33,707 --> 00:00:34,520 And you can easily change 00:00:34,520 --> 00:00:36,156 these key bindings by clicking 00:00:36,156 --> 00:00:37,410 the pencil icon to edit 00:00:37,450 --> 00:00:38,720 and then using the keys that you 00:00:38,780 --> 00:00:40,766 want as the shortcut and press enter.",
+ "refusal": null,
+ "plan": {
+  "kind": "technique",
+  "title": "Navigate your code's history",
+  "summary": "VS Code keeps a navigation history you can retrace with Alt+Left/Right and Ctrl+Tab, and you can find or rebind those shortcuts in Keyboard Shortcuts.",
+  "confidence": 85,
+  "tags": [
+   "vscode",
+   "shortcuts",
+   "navigation",
+   "productivity"
+  ],
+  "moves": [
+   {
+    "move_kind": "apply",
+    "title": "Jump back with Alt+Left, forward with Alt+Right",
+    "intent": "Use Alt+Left arrow to return to your previous cursor location in VS Code, and Alt+Right arrow to go forward again.",
+    "evidence": "you can use Alt + left arrow",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Tab through your whole editor history with Ctrl+Tab",
+    "intent": "Hold Ctrl+Tab in VS Code to cycle through every file in your editor history instead of just stepping one back or forward.",
+    "evidence": "CTRL + Tab to tab through",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Look up any shortcut in Keyboard Shortcuts",
+    "intent": "Run the Open Keyboard Shortcuts command and search (e.g. \"go back\") to see exactly which keys a VS Code command is bound to.",
+    "evidence": "by running the Open Keyboard Shortcuts command,",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   },
+   {
+    "move_kind": "apply",
+    "title": "Rebind a shortcut to keys you prefer",
+    "intent": "In Keyboard Shortcuts, click the pencil icon on a command, press the new key combination, and hit enter to change its binding.",
+    "evidence": "the pencil icon to edit",
+    "source": null,
+    "target": "this_machine",
+    "effort": "minutes",
+    "verification": null
+   }
+  ],
+  "recipe": null
+ },
+ "counts": {
+  "moves_in": 4,
+  "evidence_dropped": 0,
+  "source_dropped": 0,
+  "dashes": 0,
+  "model": "claude-sonnet-5"
+ }
+}

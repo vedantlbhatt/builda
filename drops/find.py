@@ -23,16 +23,10 @@ from __future__ import annotations
 
 import json
 
-from analysis.run import AnalysisError, call_claude
-
-from . import prompt as pr
+from . import prompt as pr, web
 from .tables import SOURCE_KIND
 
-#: The finder reads pages, so it is given room the planner does not need.
-TIMEOUT_S = 240
 DEFAULT_MODEL = "sonnet"
-#: WebSearch to find candidates, WebFetch to open the one it picks. Nothing that can write.
-TOOLS = "WebSearch,WebFetch"
 
 #: Where each drop kind's thing is most likely to live, best guess first. Given to the finder
 #: as a hint about SHAPE, never as an answer: it still has to fetch the page.
@@ -54,22 +48,21 @@ def wants_find(move: dict, drop_kind: str) -> bool:
 
 
 def find_source(name: str, claim: str, drop_kind: str, *, model: str = DEFAULT_MODEL) -> dict | None:
-    """A `MoveSource` for a named thing, or None. Never raises on a miss."""
+    """A `MoveSource` for a named thing, or None. Never raises on a miss.
+
+    Two calls (drops/web.py): one that may search and fetch and writes prose, one that may do
+    neither and writes the document. The second is handed the first's output and nothing else.
+    """
     kinds = LIKELY.get(drop_kind) or list(SOURCE_KIND)
-    schema = pr.find_schema(list(SOURCE_KIND))
-    try:
-        out, _ = call_claude(
-            pr.FIND_SYSTEM,
-            pr.find_message(name, claim, kinds),
-            schema,
-            model,
-            tools=TOOLS,
-            timeout_s=TIMEOUT_S,
-        )
-    except AnalysisError:
-        # A finder that could not run is a move with no source, which is the state it was
-        # already in. It is never an error the person has to see.
+    notes = web.research(pr.FIND_SYSTEM, pr.find_message(name, claim, kinds), model=model)
+    if not notes:
         return None
+    out = web.structure(
+        pr.find_schema(list(SOURCE_KIND)),
+        notes,
+        ask="Turn this into the source document: where the thing lives, and how its ecosystem names it.",
+        model=model,
+    )
     if not isinstance(out, dict) or not out.get("found"):
         return None
     kind, ref, url = out.get("source_kind"), out.get("ref"), out.get("url")

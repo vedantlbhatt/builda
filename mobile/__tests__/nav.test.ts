@@ -26,6 +26,7 @@ import {
   TABS,
   tabTitle,
 } from '../src/nav/rules';
+import { aliasPath, dropPath, redirectSystemPath } from '../app/+native-intent';
 
 describe('decideOnboarded', () => {
   test('a written flag is the answer, whatever the sign-in state', () => {
@@ -249,5 +250,45 @@ describe('the name waits for a sign-in', () => {
     await expect(saveLocalName('   ', kv)).rejects.toThrow();
     await expect(saveLocalName('x'.repeat(NAME_MAX + 1), kv)).rejects.toThrow();
     expect(kv.data).toEqual({});
+  });
+});
+
+
+describe('a link that carries a drop', () => {
+  test('the shapes a Mac, a Shortcut or a paste actually send', () => {
+    const link = 'https%3A%2F%2Fwww.tiktok.com%2F%40a%2Fvideo%2F1';
+    expect(dropPath(`builder://drop?url=${link}`)).toBe(`/drops?url=${link}`);
+    expect(dropPath(`builder:///drop?url=${link}`)).toBe(`/drops?url=${link}`);
+    expect(dropPath(`/drops?url=${link}`)).toBe(`/drops?url=${link}`);
+    expect(dropPath('drop')).toBe('/drops');
+    expect(dropPath('builder://drops')).toBe('/drops');
+  });
+
+  test('an empty url opens the board rather than a query that means nothing', () => {
+    expect(dropPath('builder://drop?url=')).toBe('/drops');
+    expect(dropPath('builder://drop?url=%20')).toBe('/drops');
+  });
+
+  test('it is not a drop link, and says so', () => {
+    expect(dropPath('builder://session/abc')).toBeNull();
+    expect(dropPath('builder://dropzone')).toBeNull();
+    expect(dropPath('builder:///')).toBeNull();
+  });
+
+  test('the link is not validated twice: what a link IS lives in src/drops/urls.ts', () => {
+    // Deliberately not a link. The router's job is to route; the door that decides what counts
+    // as a reel's URL is one function, and a second opinion here would be a second rule.
+    expect(dropPath('builder://drop?url=nonsense')).toBe('/drops?url=nonsense');
+  });
+
+  test('a plain launch still lands on the first tab', () => {
+    expect(redirectSystemPath({ path: 'builder:///', initial: true })).toBe('/now');
+    expect(aliasPath('builder://')).toBe('/now');
+  });
+
+  test('a drop link beats the alias table, which would have sent it to the root', () => {
+    expect(redirectSystemPath({ path: 'builder://drop?url=https%3A%2F%2Fx.com%2Fa', initial: true })).toBe(
+      '/drops?url=https%3A%2F%2Fx.com%2Fa',
+    );
   });
 });

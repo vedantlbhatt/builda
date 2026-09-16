@@ -183,7 +183,10 @@ class Runner:
         path = ws.scratch(drop_id) / "recipe.json"
         path.write_text(json.dumps(recipe, indent=1, ensure_ascii=False) + "\n")
         n_i, n_s = len(recipe.get("ingredients") or []), len(recipe.get("steps") or [])
-        return "done", f"{n_i} ingredients and {n_s} steps, from {url or 'a page'}"[:300], None
+        # The HOST, not the whole URL: an outcome is one line on a card and a recipe URL is
+        # three lines of slug on a phone.
+        host = url.split("/")[2] if url and url.count("/") > 2 else (url or "a page")
+        return "done", f"{n_i} ingredients and {n_s} steps, from {host}"[:300], None
 
     def _run_claude(self, move: dict) -> tuple[str, str | None, str | None]:
         exe = shutil.which("claude")

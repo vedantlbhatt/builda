@@ -20,6 +20,7 @@ import json
 import pathlib
 import sys
 import time
+import urllib.parse as up
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -44,13 +45,31 @@ def load_urls() -> list[str]:
     ]
 
 
+def redact(source: dict | None) -> dict | None:
+    """A cached thumbnail keeps its path and loses its query string.
+
+    FOUND IN THE PRE PUSH SCAN: TikTok's poster URLs are SIGNED, so caching one puts an
+    `x-signature` and an expiry into the repository. It is public data about a public post and
+    it is still a credential shaped string that goes stale, and neither the clustering nor the
+    evidence gate reads it. The host and the path are kept, so a row still says where the poster
+    lived.
+    """
+    if not source:
+        return source
+    url = source.get("thumbnail_url")
+    if isinstance(url, str) and "?" in url:
+        parts = up.urlsplit(url)
+        source["thumbnail_url"] = up.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    return source
+
+
 def one(url: str, *, model: str) -> dict:
     row: dict = {"url": url}
     try:
         r = dr.resolve(url)
     except du.UrlRefused as e:
         return {**row, "refusal": e.code, "source": None, "plan": None, "text": ""}
-    row["source"] = r.source_block()
+    row["source"] = redact(r.source_block())
     row["notes"] = r.notes
     row["text"] = r.text
     refusal = dr.refusal_for(r)

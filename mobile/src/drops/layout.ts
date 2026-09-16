@@ -32,6 +32,18 @@ export const HUB_SPACING = 4.2;
 export const NODE = 1;
 /** The gap a ring keeps from its hub, so a hub's own label is never under a member. */
 export const RING_MIN = 1.6;
+/**
+ * The floor and the ceiling on the opening view.
+ *
+ * FOUND ON THE SIMULATOR: fitting the whole board is the right instinct and the wrong result
+ * past about five clusters. The spiral is 4.2 units between hubs, so five clusters span sixteen
+ * units, which on a 393 point wide phone fits at 0.5 and draws every sigil at 23 points: a map
+ * of specks with a lot of black around it. A board is a thing you pan, so the opening view stops
+ * shrinking at a scale that keeps a node legible (46 * 0.62 = 29 points, the tap floor's own
+ * ballpark) and the rest is one drag away.
+ */
+export const MIN_FIT = 0.62;
+export const MAX_FIT = 1.4;
 
 export interface Placed {
   /** Index into the drops array the cluster came from. */
@@ -131,7 +143,10 @@ export function fit(
 ): { scale: number; x: number; y: number } {
   const w = (extent.maxX - extent.minX) * unit;
   const h = (extent.maxY - extent.minY) * unit;
-  const scale = Math.min(viewport.width / Math.max(w, 1), viewport.height / Math.max(h, 1), 1.4);
+  const scale = Math.max(
+    MIN_FIT,
+    Math.min(viewport.width / Math.max(w, 1), viewport.height / Math.max(h, 1), MAX_FIT),
+  );
   const cx = ((extent.minX + extent.maxX) / 2) * unit;
   const cy = ((extent.minY + extent.maxY) / 2) * unit;
   return { scale, x: viewport.width / 2 - cx * scale, y: viewport.height / 2 - cy * scale };

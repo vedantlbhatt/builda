@@ -64,6 +64,29 @@ Branch `claude/drops`, worktree `~/Downloads/projects/builder-drops`, based on
     `expo ^54` and this app is on 53.
 11. **A test that skips when the fixture gives it one account is a test that checked nothing.**
     The RLS test makes the second account.
+12. **A label is a word somebody wrote, not a stem.** The first board sheet named a cluster `saa`.
+13. **A `card` move that found a recipe and wrote it to disk is a move that did nothing.** It goes
+    back onto the card, through the same validated door.
+14. **A shared value's initial argument is read once.** The board seeded its transform from `fit`
+    at first render, and at first render the board is EMPTY, so the map opened at the zoom ceiling
+    on whatever was at the origin. It follows the board until a finger moves it.
+15. **Skia scales about (0,0) and React Native scales about the centre.** The two layers agreed at
+    scale 1 and nowhere else, so a cluster's word sat two hundred points from the cluster it named.
+    `transformOrigin` top left.
+16. **Fitting the whole board is the wrong result past five clusters:** every sigil at 23 points.
+    The opening view stops shrinking where a node is still legible; the rest is one drag away.
+17. **`#282420` on `#141210` is not subtle, it is missing.** The step number set huge behind a
+    recipe step measured 1.2:1 and did not appear at all.
+
+## Seen running
+
+`shots/drops/` holds the simulator passes: the board with seven real shared links on it, the
+recipe drop zoomed in with nine real ingredients in a mono column, and the method one step at a
+time. `shots/drops/board-corpus.png` is the review sheet
+(`scripts/render_drops_board.py`, which draws through the app's own TypeScript).
+
+The app is built with BOTH extensions in it (`Builda.app/PlugIns/BuilderShare.appex` and
+`BuilderWidgets.appex`) against the local stack on 127.0.0.1:8788.
 
 ## Next
 

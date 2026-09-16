@@ -32,6 +32,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 
 import { dropHue } from '../theme';
@@ -57,12 +58,16 @@ export interface DropDetailProps {
 
 export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDetailProps) {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const hue = drop.kind ? dropHue(drop.kind) : null;
   const ink = hue?.ink ?? c.textDim;
   const mine = useMemo(() => movesOf(moves, drop.id), [moves, drop.id]);
   const [armed, setArmed] = useState<string[]>([]);
   const [saying, setSaying] = useState(false);
   const [adjustment, setAdjustment] = useState('');
+  // The tab bar is under this panel, so the last row of a recipe has to clear it. Read, never
+  // guessed: the bar is 49 points plus whatever the home indicator takes on this device.
+  const tabBar = 49 + insets.bottom;
 
   const source = drop.resolution?.source ?? null;
   const recipe = drop.resolution?.plan?.recipe ?? null;
@@ -76,9 +81,13 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
       entering={FadeInDown.springify().damping(18)}
       style={[styles.panel, { backgroundColor: c.bg, borderTopColor: c.border }]}
     >
-      {/* The node, docked on the edge. */}
-      <View style={styles.dock} pointerEvents="none">
-        <View style={[styles.dockWell, { backgroundColor: c.bg }]}>
+      <ScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: 28 + tabBar }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* The node, on the panel's edge. It SCROLLS: it is the drop opening, and a sigil pinned
+            over a recipe that moves under it reads as a sticker somebody stuck on. */}
+        <View style={styles.dock} pointerEvents="none">
           <Sigil
             seed={drop.url}
             size={52}
@@ -87,9 +96,6 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
             motion={busy ? 'growing' : mine.some((m) => m.status === 'running') ? 'running' : 'still'}
           />
         </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={styles.kindRow}>
           <T role="label" style={{ color: ink, letterSpacing: 1.4 }}>
             {(drop.kind ? KIND_WORD[drop.kind] : 'unread').toUpperCase()}
@@ -208,7 +214,7 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
       {armed.length ? (
         <Animated.View
           entering={FadeInDown.duration(200)}
-          style={[styles.bar, { borderTopColor: c.border, backgroundColor: c.bg }]}
+          style={[styles.bar, { borderTopColor: c.border, backgroundColor: c.bg, paddingBottom: 16 + insets.bottom }]}
         >
           <Button
             kind="primary"
@@ -236,9 +242,8 @@ const styles = StyleSheet.create({
     maxHeight: '68%',
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  dock: { position: 'absolute', top: -26, left: 0, right: 0, alignItems: 'center' },
-  dockWell: { padding: 6, borderRadius: 6, borderCurve: 'continuous' },
-  body: { paddingTop: 36, paddingBottom: 28, paddingHorizontal: 16 },
+  dock: { alignItems: 'center', marginTop: -32, marginBottom: 10 },
+  body: { paddingTop: 8, paddingHorizontal: 16 },
   kindRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sourceRow: {
     flexDirection: 'row',

@@ -29,7 +29,7 @@
  * hue is the ink of the mark, the ground is the ground, and the words are the warm greys.
  */
 import { Canvas, createPicture, Group, PaintStyle, Picture, Skia, StrokeCap } from '@shopify/react-native-skia';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -99,6 +99,33 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
   const savedX = useSharedValue(start.x);
   const savedY = useSharedValue(start.y);
   const [zoomed, setZoomed] = useState(start.scale >= TITLE_SCALE);
+  /** Has a finger moved the map yet. Until it has, the view FOLLOWS the board. */
+  const touched = useSharedValue(false);
+
+  /**
+   * Re fit when the board changes shape, until somebody moves it themselves.
+   *
+   * FOUND ON THE SIMULATOR, first run: the transform was seeded from `fit` at first render, and
+   * at first render the board is EMPTY, because the drops arrive from the API a moment later. An
+   * empty board's extent is the padding alone, so the fit came out at the 1.4 ceiling and stayed
+   * there: the map opened zoomed most of the way in on whatever happened to be at the origin,
+   * and the only way to see it was to pinch out. A shared value's initial argument is read once,
+   * which is exactly the trap.
+   *
+   * It stops following the moment a finger moves the map, so a person who has panned somewhere
+   * does not get yanked back when a drop they shared lands.
+   */
+  useEffect(() => {
+    if (touched.value) return;
+    const next = fit(shape.extent, viewport, UNIT);
+    scale.value = withTiming(next.scale, { duration: 300 });
+    tx.value = withTiming(next.x, { duration: 300 });
+    ty.value = withTiming(next.y, { duration: 300 });
+    savedScale.value = next.scale;
+    savedX.value = next.x;
+    savedY.value = next.y;
+    setZoomed(next.scale >= TITLE_SCALE);
+  }, [shape.extent, viewport, savedScale, savedX, savedY, scale, touched, tx, ty]);
 
   /** Which drops are running something: the one motion allowed on the board. */
   const running = useMemo(() => {
@@ -130,6 +157,7 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
         onSelect(null);
         return;
       }
+      touched.value = true;
       const target = focus(best, viewport, UNIT, ZOOM_SCALE);
       scale.value = withTiming(target.scale, { duration: 420 });
       tx.value = withTiming(target.x, { duration: 420 });
@@ -145,6 +173,9 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
 
   const pan = Gesture.Pan()
     .averageTouches(true)
+    .onBegin(() => {
+      touched.value = true;
+    })
     .onUpdate((e) => {
       tx.value = savedX.value + e.translationX;
       ty.value = savedY.value + e.translationY;
@@ -155,6 +186,9 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
     });
 
   const pinch = Gesture.Pinch()
+    .onBegin(() => {
+      touched.value = true;
+    })
     .onUpdate((e) => {
       const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
       // Zoom about the fingers, not the origin, or the board slides out from under the pinch.
@@ -184,7 +218,17 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
     { scale: scale.value },
   ]);
 
+  /**
+   * The words ride the same transform as the canvas, ABOUT THE SAME ORIGIN.
+   *
+   * FOUND ON THE SIMULATOR: Skia's `Group` scales about (0, 0) and React Native's `scale` scales
+   * about the view's CENTRE, so the two layers agreed at scale 1 and drifted apart everywhere
+   * else. On the first real board a cluster's word sat two hundred points away from the cluster
+   * it named, which reads as a layout bug in the map rather than as two different definitions of
+   * where the middle is. `transformOrigin` top left makes the text layer use Skia's.
+   */
   const wordsStyle = useAnimatedStyle(() => ({
+    transformOrigin: '0% 0%',
     transform: [
       { translateX: tx.value },
       { translateY: ty.value },

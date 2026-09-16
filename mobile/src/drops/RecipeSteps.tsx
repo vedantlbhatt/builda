@@ -96,7 +96,10 @@ export function RecipeSteps({ recipe }: { recipe: Recipe }) {
           {/* One step, full width, with its number set huge behind it. Tap the right half to go
               on, the left half to go back: a thumb on a phone propped against a bag of flour. */}
           <View style={styles.stage}>
-            <T role="hero" style={[styles.ghost, { color: c.raised }]}>
+            {/* The step's number, set huge behind it. `border` rather than `raised`: at #282420
+                on the ground it measured 1.2:1 and simply did not appear, which is not subtle,
+                it is missing. */}
+            <T role="hero" style={[styles.ghost, { color: c.border }]}>
               {String(step + 1)}
             </T>
             <Animated.View key={step} entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
@@ -169,11 +172,12 @@ function hostOf(url: string): string {
 const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 },
   ing: { flexDirection: 'row', alignItems: 'baseline', paddingVertical: 9 },
-  // A fixed column, so the amounts read down as a column rather than as ragged prose.
-  qty: { width: 92 },
+  // A fixed column, so the amounts read down as a column rather than as ragged prose. 108, not
+  // 92: "4 tablespoons" is the longest real quantity on this corpus and it wrapped at 92.
+  qty: { width: 108 },
   item: { flex: 1 },
   stage: { minHeight: 132, justifyContent: 'center', paddingVertical: 12 },
-  ghost: { position: 'absolute', right: -4, top: -18, opacity: 0.9 },
+  ghost: { position: 'absolute', right: 0, top: 0 },
   steps: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   half: { paddingVertical: 12, paddingRight: 24 },
   right: { paddingRight: 0, paddingLeft: 24 },

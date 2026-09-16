@@ -18,7 +18,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DropsBoard } from '../../src/drops/Board';
-import { drainPending, landShared } from '../../src/drops/intake';
+import { drainPending, landShared, pendingCount } from '../../src/drops/intake';
 import { DropDetail } from '../../src/drops/DropDetail';
 import { Sigil } from '../../src/drops/SigilView';
 import { useBoard } from '../../src/drops/useBoard';
@@ -37,13 +37,24 @@ export default function DropsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string }>();
   const consumed = useRef<string | null>(null);
+  /**
+   * How many shares the extension has queued that this app has not sent.
+   *
+   * On screen, not in a log. A share that reaches the App Group and stops there is invisible
+   * otherwise: the person hit share, the sheet said "on your board", and the board does not have
+   * it. Null means there is no native module here at all (Expo Go, Android, web), and then the
+   * line says nothing rather than "0".
+   */
+  const [waiting, setWaiting] = useState<number | null>(null);
 
   // The share extension's queue, drained every time the tab comes forward. A share that happened
   // while the app was closed lands the first time you open it, and one that happened while it
   // was in the background lands when you come back to this tab.
   useEffect(() => {
     if (!focused) return;
+    setWaiting(pendingCount());
     void drainPending().then((n) => {
+      setWaiting(pendingCount());
       if (n > 0) void refresh();
     });
   }, [focused, refresh]);
@@ -82,6 +93,7 @@ export default function DropsScreen() {
       <View style={[styles.title, { top: insets.top + 8 }]} pointerEvents="none">
         <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
           {`DROPS  ·  ${drops.length}`}
+          {waiting ? <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T> : null}
         </T>
       </View>
 

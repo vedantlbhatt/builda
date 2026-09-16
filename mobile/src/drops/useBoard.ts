@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../data/client';
+import { tellThemItFinished, tellThemItWasRead } from './localNotify';
+import { worthSaying } from './news';
 import type { BoardResponse, DropRow, MoveRow } from './types';
 
 /** While something is in flight. Short enough that a resolution feels answered. */
@@ -38,9 +40,20 @@ export function useBoard(): BoardState {
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const seen = useRef<BoardResponse | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const next = await api.dropsBoard();
+      // The phone is the only thing watching before an APNs key exists, and it is watching
+      // anyway while something is in flight. Same words as the server's push, same identifier,
+      // so the two replace each other rather than stacking (`notifyCopy.ts`).
+      const news = worthSaying(seen.current, next);
+      for (const d of news.read) {
+        void tellThemItWasRead(d, next.moves.filter((m) => m.drop_id === d.id).length);
+      }
+      for (const m of news.finished) void tellThemItFinished(m);
+      seen.current = next;
       setBoard(next);
       setError(null);
     } catch (e) {

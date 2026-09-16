@@ -2,8 +2,16 @@
 
 `notify.py` is this module's older sibling and its four rules are the ones borrowed: only a
 TRANSITION is news, a re-read of something already read is not, an alert that is not news is not
-sent, and the words are composed once on the server so a phone build that does not know a kind
-renders nothing rather than a debug string.
+sent, and the words are composed once so a build that does not know a kind renders nothing rather
+than a debug string.
+
+TWO SENDERS, ONE SET OF WORDS. This module pushes when the Mac reads a link while the phone is in
+a pocket; `mobile/src/drops/notifyCopy.ts` posts a LOCAL banner when the phone is the thing
+watching the board, which is the only one that works at all before an APNs key exists. Two copies
+of a sentence is a sentence that will drift, so `mobile/__tests__/dropsNotify.test.ts` runs both
+over the same table and fails on any difference. Same arrangement as `notify.py` and
+`src/push/localCopy.ts` for sessions, and the identifier is this module's collapse id on both
+sides, so a local banner and a pushed one for the same drop replace each other rather than stack.
 
 TWO MOMENTS, and they are the two a person actually waits through.
 

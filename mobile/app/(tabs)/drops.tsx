@@ -73,8 +73,8 @@ export default function DropsScreen() {
   const drop = useMemo(() => drops.find((d) => d.id === open) ?? null, [drops, open]);
 
   const onStart = useCallback(
-    (ids: string[], adjustment: string | null) => {
-      if (drop) void start(drop.id, ids, adjustment);
+    (ids: string[], adjustment: string | null, repoKeys: Record<string, string>) => {
+      if (drop) void start(drop.id, ids, adjustment, repoKeys);
     },
     [drop, start],
   );

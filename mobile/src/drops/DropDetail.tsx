@@ -58,7 +58,7 @@ function hostOf(url: string): string {
 export interface DropDetailProps {
   drop: DropRow;
   moves: MoveRow[];
-  onStart: (moveIds: string[], adjustment: string | null) => void;
+  onStart: (moveIds: string[], adjustment: string | null, repoKeys: Record<string, string>) => void;
   onArchive: () => void;
   onClose: () => void;
 }
@@ -70,6 +70,8 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
   const ink = hue?.ink ?? c.textDim;
   const mine = useMemo(() => movesOf(moves, drop.id), [moves, drop.id]);
   const [armed, setArmed] = useState<string[]>([]);
+  /** move id -> the repository the person pointed it at. Local until the move starts. */
+  const [repos, setRepos] = useState<Record<string, string>>({});
   const [saying, setSaying] = useState(false);
   const [adjustment, setAdjustment] = useState('');
   // The tab bar is under this panel, so the last row of a recipe has to clear it. Read, never
@@ -193,6 +195,14 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
                   kind={drop.kind}
                   armed={armed.includes(m.id)}
                   onToggle={toggle}
+                  repoKey={repos[m.id] ?? m.repo_key}
+                  onChooseRepo={(id, key) => {
+                    setRepos((was) => ({ ...was, [id]: key }));
+                    // Choosing IS the second tap for this kind of move: the row could not be
+                    // armed without it, so arming it here saves a tap that would only ever go
+                    // one way.
+                    setArmed((was) => (was.includes(id) ? was : [...was, id]));
+                  }}
                 />
               ))}
               <Hairline />
@@ -243,8 +253,9 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
             label={armed.length === 1 ? 'Start it' : `Start ${armed.length}`}
             onPress={() => {
               commit();
-              onStart(armed, adjustment.trim() || null);
+              onStart(armed, adjustment.trim() || null, repos);
               setArmed([]);
+              setRepos({});
               setSaying(false);
               setAdjustment('');
             }}

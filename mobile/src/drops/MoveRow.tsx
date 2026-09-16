@@ -29,6 +29,7 @@ import { T } from '../ui/Text';
 import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
 import { EFFORT_WORD, MOVE_REFUSAL, MOVE_STATUS_LINE, MOVE_VERB } from './copy';
+import { RepoPicker } from './RepoPicker';
 import type { MoveRow as Move } from './types';
 
 export interface MoveRowProps {
@@ -36,15 +37,28 @@ export interface MoveRowProps {
   kind: string | null;
   armed: boolean;
   onToggle: (id: string) => void;
+  /** The repository this move is pointed at, for an `existing_repo` move. */
+  repoKey?: string | null;
+  onChooseRepo?: (moveId: string, repoKey: string) => void;
 }
 
-export function MoveRowView({ move, kind, armed, onToggle }: MoveRowProps) {
+export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo }: MoveRowProps) {
   const c = useColors();
+  const [picking, setPicking] = React.useState(false);
   const hue = kind ? dropHue(kind) : null;
   const ink = hue?.ink ?? c.text;
   const live = move.status !== 'offered' && move.status !== 'declined';
   const unverified = move.verification?.refusal === 'source_unverified';
   const verb = unverified && move.move_kind === 'install' ? 'Open it' : MOVE_VERB[move.move_kind];
+  /**
+   * A move that runs in one of YOUR repositories is not startable until you say which.
+   *
+   * The planner has never seen a repository and has no field to name one in, so this is the one
+   * kind of move a tap cannot finish on its own. The picker opens inside the row rather than as
+   * a sheet over it: the choice belongs to this move and to no other, and the moves around it
+   * stay visible while it is made.
+   */
+  const needsRepo = move.target === 'existing_repo' && !repoKey && move.status === 'offered';
 
   return (
     <View>
@@ -56,6 +70,10 @@ export function MoveRowView({ move, kind, armed, onToggle }: MoveRowProps) {
         disabled={live}
         onPress={() => {
           select();
+          if (needsRepo) {
+            setPicking((was) => !was);
+            return;
+          }
           onToggle(move.id);
         }}
         style={({ pressed }) => [
@@ -113,7 +131,33 @@ export function MoveRowView({ move, kind, armed, onToggle }: MoveRowProps) {
             {move.outcome}
           </T>
         ) : null}
+
+        {move.target === 'existing_repo' && repoKey ? (
+          <T role="mono" style={{ color: armed ? hue?.onFill : c.textFaint, marginTop: 6 }}>
+            {`in ${repoKey.slice(0, 7)}`}
+          </T>
+        ) : null}
+
+        {needsRepo && !picking ? (
+          <T role="meta" style={{ color: ink, marginTop: 8 }}>
+            Pick a repo first
+          </T>
+        ) : null}
       </Pressable>
+
+      {picking && move.status === 'offered' ? (
+        <View style={styles.picker}>
+          <RepoPicker
+            chosen={repoKey ?? null}
+            ink={ink}
+            onFill={hue?.onFill ?? c.bg}
+            onChoose={(key) => {
+              onChooseRepo?.(move.id, key);
+              setPicking(false);
+            }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -124,4 +168,5 @@ const styles = StyleSheet.create({
   quote: { flexDirection: 'row', marginTop: 10 },
   quoteRule: { width: 2, borderRadius: 1, borderCurve: 'continuous', marginRight: 10 },
   quoteText: { flex: 1, fontStyle: 'italic' },
+  picker: { paddingHorizontal: 16, paddingBottom: 16 },
 });

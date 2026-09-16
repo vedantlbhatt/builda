@@ -20,7 +20,7 @@ export interface BoardState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  start: (dropId: string, moveIds: string[], adjustment: string | null) => Promise<void>;
+  start: (dropId: string, moveIds: string[], adjustment: string | null, repoKeys?: Record<string, string>) => Promise<void>;
   archive: (dropId: string) => Promise<void>;
 }
 
@@ -64,7 +64,7 @@ export function useBoard(): BoardState {
   }, [board, refresh]);
 
   const start = useCallback(
-    async (dropId: string, moveIds: string[], adjustment: string | null) => {
+    async (dropId: string, moveIds: string[], adjustment: string | null, repoKeys: Record<string, string> = {}) => {
       // Optimistic: the row says `queued` the moment the thumb lifts. A 409 means it was
       // already going, which is not an error and is left alone; anything else puts it back.
       setBoard((b) => ({
@@ -75,7 +75,7 @@ export function useBoard(): BoardState {
       }));
       for (const id of moveIds) {
         try {
-          await api.startMove(dropId, id, { adjustment });
+          await api.startMove(dropId, id, { adjustment, repo_key: repoKeys[id] ?? null });
         } catch (e) {
           const status = (e as { status?: number }).status;
           if (status !== 409) setError(e instanceof Error ? e.message : 'could not start it');

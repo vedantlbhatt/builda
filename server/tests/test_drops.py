@@ -155,7 +155,9 @@ def test_the_caption_is_never_stored_and_shared_text_is_cleared(client, paired):
     before = _rows("SELECT shared_text FROM drops WHERE id = :i", i=drop["id"])
     assert before[0].shared_text == CAPTION
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
-    after = _rows("SELECT shared_text, resolution::text AS r FROM drops WHERE id = :i", i=drop["id"])
+    after = _rows(
+        "SELECT shared_text, resolution::text AS r FROM drops WHERE id = :i", i=drop["id"]
+    )
     assert after[0].shared_text is None
     # And the caption is not anywhere in what was stored: the wire carries its LENGTH.
     assert CAPTION not in after[0].r
@@ -209,7 +211,9 @@ def test_an_undeclared_field_cannot_be_stored(client, paired):
 def test_a_refusal_needs_no_source_block(client, paired):
     _uid, headers = paired
     drop = _share(client, headers).json()["drop"]
-    r = client.put(f"/v1/drops/{drop['id']}/refusal", json={"refusal": "private_or_gone"}, headers=headers)
+    r = client.put(
+        f"/v1/drops/{drop['id']}/refusal", json={"refusal": "private_or_gone"}, headers=headers
+    )
     assert r.status_code == 200
     got = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["drop"]
     assert (got["status"], got["refusal"]) == ("refused", "private_or_gone")
@@ -218,7 +222,9 @@ def test_a_refusal_needs_no_source_block(client, paired):
 def test_a_refusal_code_the_spec_does_not_know_is_refused(client, paired):
     _uid, headers = paired
     drop = _share(client, headers).json()["drop"]
-    r = client.put(f"/v1/drops/{drop['id']}/refusal", json={"refusal": "i_gave_up"}, headers=headers)
+    r = client.put(
+        f"/v1/drops/{drop['id']}/refusal", json={"refusal": "i_gave_up"}, headers=headers
+    )
     assert r.status_code == 422
 
 
@@ -239,7 +245,9 @@ def test_a_move_only_leaves_offered_through_the_tap(client, paired):
     # above and it is also why this reads the move again rather than reusing the first id: an
     # offered move is the planner's latest word, not a row a client can hold on to.
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    started = client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    started = client.post(
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers
+    )
     assert started.status_code == 200
     assert started.json()["move"]["status"] == "queued"
     assert started.json()["move"]["queued_at"] is not None
@@ -250,8 +258,9 @@ def test_a_double_tap_queues_once(client, paired):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    first = client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
-    second = client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    path = f"/v1/drops/{drop['id']}/moves/{move['id']}:start"
+    first = client.post(path, json={}, headers=headers)
+    second = client.post(path, json={}, headers=headers)
     assert (first.status_code, second.status_code) == (200, 409)
     assert "already queued" in second.json()["detail"]
     assert len(_rows("SELECT id FROM drop_moves WHERE status = 'queued'")) == 1
@@ -301,7 +310,8 @@ def test_a_second_resolution_leaves_a_decided_move_alone(client, paired):
         json=_resolution(moves=[_move(title="Rewritten"), _move(title="Also rewritten")]),
         headers=headers,
     )
-    after = {m["id"]: m for m in client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"]}
+    got = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"]
+    after = {m["id"]: m for m in got}
     assert after[moves[0]["id"]]["status"] == "queued"
     assert after[moves[0]["id"]]["title"] == "Go find the 5 skills"
     assert after[moves[1]["id"]]["status"] == "declined"
@@ -407,11 +417,14 @@ def test_a_board_is_one_persons(client, paired, created_users):
     assert client.get("/v1/drops", headers=other).status_code == 200
     assert client.get("/v1/drops", headers=other).json()["drops"] == []
     assert client.get(f"/v1/drops/{drop['id']}", headers=other).status_code == 404
-    assert client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=other).status_code == 404
-    assert client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=other).status_code == 404
+    start_path = f"/v1/drops/{drop['id']}/moves/{move['id']}:start"
+    assert client.post(start_path, json={}, headers=other).status_code == 404
+    res_path = f"/v1/drops/{drop['id']}/resolution"
+    assert client.put(res_path, json=_resolution(), headers=other).status_code == 404
     assert client.delete(f"/v1/drops/{drop['id']}", headers=other).status_code == 404
     # And it is still there, still offered, for the person whose board it is.
-    assert client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]["status"] == "offered"
+    mine = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"]
+    assert mine[0]["status"] == "offered"
 
 
 def test_archiving_takes_it_off_the_board_and_sharing_it_again_brings_it_back(client, paired):

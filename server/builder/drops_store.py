@@ -51,7 +51,9 @@ def _row(r: Any) -> dict:
 
 
 # --------------------------------------------------------------------------- create
-def create_drop(db: Session, user_id: str, *, url: str, platform: str, shared_text: str | None) -> dict:
+def create_drop(
+    db: Session, user_id: str, *, url: str, platform: str, shared_text: str | None
+) -> dict:
     """Insert, or return the drop this link already is.
 
     ON CONFLICT DO UPDATE rather than DO NOTHING: `DO NOTHING` returns no row, so the route
@@ -69,7 +71,9 @@ def create_drop(db: Session, user_id: str, *, url: str, platform: str, shared_te
               SET archived_at = NULL,
                   status = CASE WHEN drops.status = 'archived' THEN 'waiting' ELSE drops.status END,
                   shared_text = COALESCE(drops.shared_text, EXCLUDED.shared_text)
-            RETURNING """ + DROP_COLUMNS.replace("d.", "") + """, (xmax = 0) AS created
+            RETURNING """
+            + DROP_COLUMNS.replace("d.", "")
+            + """, (xmax = 0) AS created
             """
         ),
         {"uid": user_id, "url": url, "plat": platform, "txt": shared_text or None},
@@ -78,7 +82,9 @@ def create_drop(db: Session, user_id: str, *, url: str, platform: str, shared_te
 
 
 # ---------------------------------------------------------------------------- read
-def board(db: Session, user_id: str, *, include_archived: bool = False) -> tuple[list[dict], list[dict]]:
+def board(
+    db: Session, user_id: str, *, include_archived: bool = False
+) -> tuple[list[dict], list[dict]]:
     drops = [
         _row(r)
         for r in db.execute(
@@ -124,7 +130,10 @@ def moves_of(db: Session, user_id: str, drop_id: str) -> list[dict]:
     return [
         _row(r)
         for r in db.execute(
-            text(f"SELECT {MOVE_COLUMNS} FROM drop_moves m WHERE m.user_id = :uid AND m.drop_id = :id ORDER BY m.position"),
+            text(
+                f"SELECT {MOVE_COLUMNS} FROM drop_moves m "
+                "WHERE m.user_id = :uid AND m.drop_id = :id ORDER BY m.position"
+            ),
             {"uid": user_id, "id": drop_id},
         )
     ]
@@ -187,9 +196,14 @@ def apply_resolution(db: Session, user_id: str, drop_id: str, resolution: dict) 
             """
         ),
         {
-            "uid": user_id, "id": drop_id, "status": status, "kind": kind,
-            "title": (plan or {}).get("title"), "summary": (plan or {}).get("summary"),
-            "thumb": src.get("thumbnail_url"), "refusal": refusal,
+            "uid": user_id,
+            "id": drop_id,
+            "status": status,
+            "kind": kind,
+            "title": (plan or {}).get("title"),
+            "summary": (plan or {}).get("summary"),
+            "thumb": src.get("thumbnail_url"),
+            "refusal": refusal,
             "res": json.dumps(resolution),
         },
     )
@@ -197,7 +211,9 @@ def apply_resolution(db: Session, user_id: str, drop_id: str, resolution: dict) 
     # running one keeps running: a second resolution is new information about the link, not
     # permission to undo what a person already decided.
     db.execute(
-        text("DELETE FROM drop_moves WHERE user_id = :uid AND drop_id = :id AND status = 'offered'"),
+        text(
+            "DELETE FROM drop_moves WHERE user_id = :uid AND drop_id = :id AND status = 'offered'"
+        ),
         {"uid": user_id, "id": drop_id},
     )
     taken = {
@@ -221,9 +237,15 @@ def apply_resolution(db: Session, user_id: str, drop_id: str, resolution: dict) 
                 """
             ),
             {
-                "did": drop_id, "uid": user_id, "pos": i, "kind": m["move_kind"],
-                "title": m["title"], "intent": m["intent"], "ev": m["evidence"],
-                "target": m["target"], "effort": m["effort"],
+                "did": drop_id,
+                "uid": user_id,
+                "pos": i,
+                "kind": m["move_kind"],
+                "title": m["title"],
+                "intent": m["intent"],
+                "ev": m["evidence"],
+                "target": m["target"],
+                "effort": m["effort"],
                 "src": json.dumps(m["source"]) if m.get("source") else None,
                 "ver": json.dumps(m["verification"]) if m.get("verification") else None,
             },
@@ -245,8 +267,9 @@ def mark_refused(db: Session, user_id: str, drop_id: str, refusal: str) -> None:
 
 
 # --------------------------------------------------------------------------- moves
-def start_move(db: Session, user_id: str, move_id: str, *, adjustment: str | None,
-               repo_key: str | None) -> dict | None:
+def start_move(
+    db: Session, user_id: str, move_id: str, *, adjustment: str | None, repo_key: str | None
+) -> dict | None:
     """offered -> queued. The ONLY way a move is ever queued.
 
     The WHERE clause carries `status = 'offered'`, so a double tap queues once and the second
@@ -258,7 +281,7 @@ def start_move(db: Session, user_id: str, move_id: str, *, adjustment: str | Non
             UPDATE drop_moves SET status = 'queued', queued_at = now(),
                                   adjustment = :adj, repo_key = COALESCE(:repo, repo_key)
             WHERE user_id = :uid AND id = :id AND status = 'offered'
-            RETURNING {MOVE_COLUMNS.replace('m.', '')}
+            RETURNING {MOVE_COLUMNS.replace("m.", "")}
             """
         ),
         {"uid": user_id, "id": move_id, "adj": adjustment, "repo": repo_key},
@@ -272,7 +295,7 @@ def decline_move(db: Session, user_id: str, move_id: str) -> dict | None:
             f"""
             UPDATE drop_moves SET status = 'declined'
             WHERE user_id = :uid AND id = :id AND status IN ('offered', 'queued')
-            RETURNING {MOVE_COLUMNS.replace('m.', '')}
+            RETURNING {MOVE_COLUMNS.replace("m.", "")}
             """
         ),
         {"uid": user_id, "id": move_id},
@@ -310,8 +333,15 @@ def claim_queued(db: Session, user_id: str, *, limit: int = 2) -> list[dict]:
     return [_row(r) for r in rows]
 
 
-def finish_move(db: Session, user_id: str, move_id: str, *, status: str, outcome: str | None,
-                run_uuid: str | None) -> dict | None:
+def finish_move(
+    db: Session,
+    user_id: str,
+    move_id: str,
+    *,
+    status: str,
+    outcome: str | None,
+    run_uuid: str | None,
+) -> dict | None:
     """The runner says how it went, and which run it was.
 
     `run_uuid` is NOT the session id (0029): a Claude Code run becomes a Builda session only once
@@ -326,7 +356,7 @@ def finish_move(db: Session, user_id: str, move_id: str, *, status: str, outcome
             UPDATE drop_moves SET status = :st, finished_at = now(), outcome = :out,
                                   run_uuid = COALESCE(CAST(:run AS uuid), run_uuid)
             WHERE user_id = :uid AND id = :id AND status = 'running'
-            RETURNING {MOVE_COLUMNS.replace('m.', '')}
+            RETURNING {MOVE_COLUMNS.replace("m.", "")}
             """
         ),
         {"uid": user_id, "id": move_id, "st": status, "out": outcome, "run": run_uuid},

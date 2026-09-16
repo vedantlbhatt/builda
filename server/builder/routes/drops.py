@@ -25,10 +25,10 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import drops_store as store
 from ..auth import CurrentDevice, current_device
 from ..db import db_session
 from ..drops_spec import DropResolution
-from .. import drops_store as store
 
 router = APIRouter(prefix="/v1", tags=["drops"])
 
@@ -155,9 +155,7 @@ def put_resolution(
 
 
 @router.put("/drops/{drop_id}/refusal")
-def put_refusal(
-    drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(current_device)
-):
+def put_refusal(drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(current_device)):
     """A link the Mac could not read at all: no source block, just the code."""
     from ..drops_spec import ANALYSIS_ENUM_VALUES
 
@@ -225,7 +223,11 @@ def finish(move_id: str, body: FinishIn, device: CurrentDevice = Depends(current
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         move = store.finish_move(
-            db, uid, move_id, status=body.status, outcome=body.outcome,
+            db,
+            uid,
+            move_id,
+            status=body.status,
+            outcome=body.outcome,
             run_uuid=body.run_uuid,
         )
         if move is None:

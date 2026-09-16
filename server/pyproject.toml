@@ -23,7 +23,7 @@ dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff==0.16.6"]
 line-length = 100
 target-version = "py311"
 # Every file here is GENERATED (scripts/gen_contract.py, gen_analysis.py, gen_narrative.py,
-# gen_shipped.py, gen_report.py, gen_live.py). Style rules do not apply to generated output,
+# gen_shipped.py, gen_report.py, gen_live.py, gen_drops.py). Style rules do not apply to output,
 # and hand-editing it to satisfy them is exactly what CI forbids: the header says DO NOT EDIT
 # and means it.
 extend-exclude = [
@@ -35,6 +35,7 @@ extend-exclude = [
   "builder/live_spec.py",
   "builder/quotes_spec.py",
   "builder/media_spec.py",
+  "builder/drops_spec.py",
 ]
 
 [tool.ruff.lint]

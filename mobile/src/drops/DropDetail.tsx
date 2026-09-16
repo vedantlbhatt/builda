@@ -31,6 +31,7 @@
  * NO GRADIENT, no glow, no pale tint of anything.
  */
 import React, { useMemo, useState } from 'react';
+import { Image } from 'expo-image';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
@@ -141,17 +142,40 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
           </T>
         ) : null}
 
+        {/* THE POST ITSELF, where there is room for it.
+            The board is sigils on purpose: a hundred posters is a wall of other people's faces
+            and says nothing about what the drops are. Zoomed in on one, the poster frame is the
+            thing you actually recognise. It is the platform's OWN published thumbnail, never a
+            frame Builda pulled out of a video it did not download. */}
         <Pressable
           accessibilityRole="link"
           accessibilityLabel="Open the original post"
           onPress={() => Linking.openURL(drop.url)}
           style={styles.sourceRow}
         >
-          <T role="mono" style={{ color: c.textFaint }}>
-            {[PLATFORM_WORD[drop.platform], source?.author ? `@${source.author}` : null]
-              .filter(Boolean)
-              .join('  ·  ')}
-          </T>
+          {drop.thumbnail_url ? (
+            <Image
+              source={{ uri: drop.thumbnail_url }}
+              style={[styles.poster, { backgroundColor: c.raised, borderColor: c.border }]}
+              contentFit="cover"
+              transition={180}
+              accessibilityIgnoresInvertColors
+            />
+          ) : null}
+          <View style={styles.sourceWords}>
+            <T role="mono" numberOfLines={1} style={{ color: c.textFaint }}>
+              {[PLATFORM_WORD[drop.platform], source?.author ? `@${source.author}` : null]
+                .filter(Boolean)
+                .join('  ·  ')}
+            </T>
+            {source ? (
+              // Two lines: the poster is 78 tall and the sentence is the whole answer to "why
+              // is there nothing here", so truncating it to fit is the wrong trade.
+              <T role="mono" numberOfLines={2} style={{ color: c.textFaint }}>
+                {readLine(source.caption_chars, source.transcript_chars)}
+              </T>
+            ) : null}
+          </View>
           <T role="mono" style={{ color: ink }}>
             OPEN
           </T>
@@ -168,11 +192,6 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
             <T role="body" style={{ color: c.text }}>
               {REFUSAL[drop.refusal]}
             </T>
-            {source ? (
-              <T role="mono" style={{ color: c.textFaint, marginTop: 6 }}>
-                {readLine(source.caption_chars, source.transcript_chars)}
-              </T>
-            ) : null}
           </View>
         ) : null}
 
@@ -279,10 +298,20 @@ const styles = StyleSheet.create({
   kindRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sourceRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 14,
+    gap: 12,
+    marginTop: 16,
   },
+  // 9:16, the shape every one of these posts is. Small, because it is the thing you recognise
+  // rather than the thing you read.
+  poster: {
+    width: 44,
+    height: 78,
+    borderRadius: 6,
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  sourceWords: { flex: 1, gap: 2 },
   refusal: { marginTop: 18 },
   say: { marginTop: 18, paddingHorizontal: 16 },
   archive: { marginTop: 28, alignItems: 'center' },

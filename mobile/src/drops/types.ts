@@ -50,8 +50,13 @@ export interface MoveRow {
   verification: MoveVerification | null;
   adjustment: string | null;
   repo_key: string | null;
-  /** The Claude Code session the run became. This is where the loop closes. */
+  /**
+   * The Claude Code session the run became. Null until capture has uploaded the transcript, which
+   * is where the loop closes; `run_uuid` says it RAN, this says it can be opened.
+   */
   session_id: string | null;
+  /** The id the `claude` run was launched with, on the person's own machine. Not a session id. */
+  run_uuid: string | null;
   outcome: string | null;
   queued_at: string | null;
   started_at: string | null;

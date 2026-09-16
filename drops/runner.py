@@ -126,20 +126,25 @@ class Runner:
     def run_pass(self, limit: int = 1) -> int:
         moves = self._post(f"/v1/drops/moves:claim?limit={limit}", None).get("moves") or []
         for move in moves:
-            status, outcome, session_id = "failed", None, None
+            status, outcome, run_uuid = "failed", None, None
             try:
-                status, outcome, session_id = self.run_move(move)
+                status, outcome, run_uuid = self.run_move(move)
             except Exception as e:  # noqa: BLE001 — a move that blew up is a failed move, not a dead runner
                 outcome = f"{type(e).__name__}: {e}"[:300]
             self._post(
                 f"/v1/drops/moves/{move['id']}:finish",
-                {"status": status, "outcome": outcome, "session_id": session_id},
+                {"status": status, "outcome": outcome, "run_uuid": run_uuid},
             )
             self._say(f"    {status}: {outcome}")
         return len(moves)
 
     def run_move(self, move: dict) -> tuple[str, str | None, str | None]:
-        """(status, outcome, session_id)."""
+        """(status, outcome, run_uuid).
+
+        The third value is the id the `claude` run was LAUNCHED with, not a Builda session id:
+        the session does not exist until capture has uploaded the transcript. 0029 has the whole
+        reason, which is a foreign key violation on the first real run.
+        """
         kind = move["move_kind"]
         self._say(f"  run {kind}: {move['title']}")
         if kind == "keep":

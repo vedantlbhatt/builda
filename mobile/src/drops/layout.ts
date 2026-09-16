@@ -26,8 +26,32 @@ import type { Cluster } from './cluster';
 
 /** The golden angle, in radians. */
 export const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-/** Board units between the centres of two adjacent hubs, at the tightest. */
-export const HUB_SPACING = 4.2;
+/**
+ * The closest two hubs may ever be, whatever else is true. A board of singletons has no rings at
+ * all, and this is what keeps it from becoming a pile.
+ */
+export const MIN_HUB_SPACING = 2.2;
+/** Clear air between the outermost members of two neighbouring constellations, in node widths. */
+export const HUB_AIR = 0.6;
+
+/**
+ * Board units between the centres of two adjacent hubs, DERIVED from the rings on this board.
+ *
+ * It was a constant, 4.2. A board of five clusters looked sparse on the simulator so it was
+ * tightened to 3.4, and `dropsBoard.test.ts` immediately failed: two nodes 0.55 units apart, half
+ * a node, which is an overlap. The constant had been right and the reason was not written down.
+ *
+ * It is written down now, as the arithmetic: a sunflower spiral puts consecutive points about
+ * `spacing` apart, two neighbouring constellations reach `r1 + r2` towards each other, so the
+ * clearance is `spacing - r1 - r2` and it has to stay above a node's width. Taking the LARGEST
+ * ring on the board makes that true for every pair on it. The pay off is the case a constant
+ * cannot serve: a board of singletons has no rings, so it packs at MIN_HUB_SPACING and reads as
+ * one map rather than as specks with a lot of ground around them.
+ */
+export function hubSpacing(clusters: { size: number }[]): number {
+  const widest = clusters.reduce((m, c) => Math.max(m, ringRadius(c.size)), 0);
+  return Math.max(MIN_HUB_SPACING, 2 * widest + NODE * (1 + HUB_AIR));
+}
 /** A node's diameter, in board units. One, by definition; named so the maths reads. */
 export const NODE = 1;
 /** The gap a ring keeps from its hub, so a hub's own label is never under a member. */
@@ -64,6 +88,15 @@ export interface Hub {
   y: number;
   /** The ring the members sit on. 0 when there is only one member. */
   radius: number;
+  /**
+   * The y of this cluster's HIGHEST member, which is where its word goes.
+   *
+   * Not `y - radius`: a ring starts at its hub's own angle, so the topmost member is wherever
+   * that rotation put it. FOUND ON THE SIMULATOR: with a two member ring rotated off vertical,
+   * the label sat at the hub's centre, which on a real board was on top of the thread belonging
+   * to the cluster above it.
+   */
+  top: number;
 }
 
 export interface Board {
@@ -85,16 +118,18 @@ export function ringRadius(n: number): number {
 export function layout(clusters: Cluster[]): Board {
   const hubs: Hub[] = [];
   const nodes: Placed[] = [];
+  const spacing = hubSpacing(clusters);
 
   clusters.forEach((c, i) => {
     // sqrt(i) spacing keeps the density of hubs constant as the board grows: the alternative,
     // a linear radius, leaves the middle crowded and the edge empty.
     const angle = i * GOLDEN;
-    const radius = HUB_SPACING * Math.sqrt(i);
+    const radius = spacing * Math.sqrt(i);
     const hx = Math.cos(angle) * radius;
     const hy = Math.sin(angle) * radius;
     const r = ringRadius(c.size);
-    hubs.push({ cluster: i, label: c.label, size: c.size, x: hx, y: hy, radius: r });
+    const hub: Hub = { cluster: i, label: c.label, size: c.size, x: hx, y: hy, radius: r, top: hy };
+    hubs.push(hub);
 
     if (c.size === 1) {
       nodes.push({ index: c.members[0] as number, x: hx, y: hy, cluster: i, isHub: true });
@@ -104,13 +139,9 @@ export function layout(clusters: Cluster[]): Board {
       // The ring starts at the hub's own angle, so a constellation leans away from the centre
       // of the board rather than all of them pointing the same way.
       const a = angle + (j / c.size) * Math.PI * 2;
-      nodes.push({
-        index: m,
-        x: hx + Math.cos(a) * r,
-        y: hy + Math.sin(a) * r,
-        cluster: i,
-        isHub: false,
-      });
+      const ny = hy + Math.sin(a) * r;
+      hub.top = Math.min(hub.top, ny);
+      nodes.push({ index: m, x: hx + Math.cos(a) * r, y: ny, cluster: i, isHub: false });
     });
   });
 

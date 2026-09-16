@@ -328,13 +328,50 @@ def test_the_runner_finishes_a_move_and_points_it_at_its_session(client, paired)
     assert len(claimed) == 1 and claimed[0]["id"] == move["id"]
     assert _rows("SELECT status FROM drop_moves")[0].status == "running"
 
+    run = "3f2b0c84-9a1e-4c77-8d55-0a1b2c3d4e5f"
     done = client.post(
         f"/v1/drops/moves/{move['id']}:finish",
-        json={"status": "done", "outcome": "installed two skills", "session_id": None},
+        json={"status": "done", "outcome": "installed two skills", "run_uuid": run},
         headers=headers,
     )
     assert done.json()["move"]["status"] == "done"
     assert done.json()["move"]["finished_at"] is not None
+    # The run's OWN id, not a foreign key to a session that does not exist yet (0029). The first
+    # real run of a real move ended in a foreign key violation and a 500 with the work done.
+    assert done.json()["move"]["run_uuid"] == run
+    assert done.json()["move"]["session_id"] is None
+
+
+def test_a_run_id_that_is_not_a_uuid_is_refused(client, paired):
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    client.post("/v1/drops/moves:claim", headers=headers)
+    r = client.post(
+        f"/v1/drops/moves/{move['id']}:finish",
+        json={"status": "done", "outcome": None, "run_uuid": "not-a-uuid"},
+        headers=headers,
+    )
+    assert r.status_code == 422
+
+
+def test_the_claim_carries_the_drops_own_title(client, paired):
+    """A move says what to do; the drop says what it is ABOUT.
+
+    MEASURED: a `card` move handed its own intent as the dish searched for "Find the full
+    ingredients list and step by step method for this one pan garlic butter shrimp pasta" and
+    came back with nothing, where the title alone finds a published recipe in one search.
+    """
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    claimed = client.post("/v1/drops/moves:claim", headers=headers).json()["moves"][0]
+    assert claimed["drop_title"] == "5 beginner Claude Skills to install"
+    assert claimed["drop_kind"] == "skill"
 
 
 def test_finishing_a_move_that_was_not_running_is_a_conflict(client, paired):
@@ -344,7 +381,7 @@ def test_finishing_a_move_that_was_not_running_is_a_conflict(client, paired):
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
     r = client.post(
         f"/v1/drops/moves/{move['id']}:finish",
-        json={"status": "done", "outcome": None, "session_id": None},
+        json={"status": "done", "outcome": None, "run_uuid": None},
         headers=headers,
     )
     assert r.status_code == 409

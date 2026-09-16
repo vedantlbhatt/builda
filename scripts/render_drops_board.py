@@ -172,7 +172,7 @@ def render(shape: dict, out: pathlib.Path, *, width: int = 1170, height: int = 2
     for h in shape["hubs"]:
         label = h["label"].upper()
         w = d.textlength(label, font=hub_f)
-        top = Y(h["y"] - (h["radius"] or 0.62) - 0.55)
+        top = Y(h["top"] - 0.86)
         d.text((X(h["x"]) - w / 2, top), label, font=hub_f, fill=p["textDim"])
     column = 112 * k
     for n in shape["nodes"]:

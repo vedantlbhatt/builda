@@ -39,6 +39,7 @@ router = APIRouter(prefix="/v1", tags=["drops"])
 #: rather than rewritten by a second implementation that could differ.
 _URL = re.compile(r"^https://[^\s/@]+\.[^\s/@]+(/[^\s]*)?$")
 _REPO_KEY = re.compile(r"^[0-9a-f]{64}$")
+_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
 class DropIn(BaseModel):
@@ -66,7 +67,9 @@ class FinishIn(BaseModel):
 
     status: str
     outcome: str | None = Field(default=None, max_length=300)
-    session_id: str | None = None
+    #: The Claude Code run's own id, not a Builda session's (0029). The session for it does not
+    #: exist yet when this is written, and may never.
+    run_uuid: str | None = Field(default=None, max_length=36)
 
 
 class RefusalIn(BaseModel):
@@ -214,17 +217,21 @@ def claim_moves(
 
 @router.post("/drops/moves/{move_id}:finish")
 def finish(move_id: str, body: FinishIn, device: CurrentDevice = Depends(current_device)):
-    """The runner says how it went, and which session it became."""
+    """The runner says how it went, and which run it was."""
     if body.status not in ("done", "failed"):
         raise HTTPException(422, "status is done or failed")
+    if body.run_uuid is not None and not _UUID.match(body.run_uuid):
+        raise HTTPException(422, "run_uuid is a uuid")
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         move = store.finish_move(
             db, uid, move_id, status=body.status, outcome=body.outcome,
-            session_id=body.session_id,
+            run_uuid=body.run_uuid,
         )
         if move is None:
             raise HTTPException(409, "no such move, or it was not running")
+        # Cheap, and the only moment anything is likely to have changed.
+        store.link_session(db, uid)
         return {"move": move}
 
 

@@ -425,12 +425,42 @@ this session" and honoured the instruction not to invent a recipe, which is the 
 and the wrong outcome: `--allowedTools` is the grant, and `analysis/run.py` derives it from the
 same `tools` string so the two can never name different sets.
 
+**Four things a simulator found that no unit test could.** A shared value's initial argument is
+read ONCE, and the board seeded its transform from `fit` at first render, when the board is still
+empty because the drops arrive from the API a moment later: an empty extent fits at the ceiling,
+so the map opened zoomed most of the way in on the origin. Skia's `Group` scales about (0, 0) and
+React Native's `scale` scales about the view's CENTRE, so the canvas and the labels agreed at
+scale 1 and nowhere else, and a cluster's word sat two hundred points from the cluster it named.
+Fitting the whole board draws every sigil at 23 points past about five clusters, so the opening
+view stops shrinking where a node is still legible. And `#282420` on `#141210` measured 1.2:1:
+a step number set huge behind a recipe step simply did not appear, which is not subtle, it is
+missing.
+
+**A constant that is right for a reason nobody wrote down gets tightened.** `HUB_SPACING` was
+4.2. A real board looked sparse on the simulator, it was tightened to 3.4, and the layout test
+failed immediately with two nodes 0.55 units apart, half a node, which is an overlap. The
+arithmetic had always been there: a sunflower spiral puts consecutive hubs about `spacing` apart,
+two neighbouring constellations reach `r1 + r2` towards each other, and the clearance has to stay
+above a node's width. It is DERIVED from the widest ring on the board now, which also buys the
+case a constant could not serve: a board of singletons has no rings, so it packs.
+
 **Erosion is not how you draw a pixel glyph; accretion is.** Each drop grows a sigil from its own
 link. The first version filled a half grid at random and removed every cell with fewer than two
 orthogonal neighbours, to a fixed point. MEASURED: a 0.42 field came back at 0.05 mass, nine
 cells, three sigils in a row that were all the same square, because a random field is almost
 entirely thin parts and the pass cannot add anything back. Growing outward from a core places
 every cell next to one already there, so the glyph is connected by construction.
+
+**A foreign key to a row that does not exist YET is a 500 with the work already done.**
+`drop_moves.session_id` references `sessions(id)`, and the runner reported the id it launched
+`claude` with when a move finished. Those are not the same kind of identifier, and more to the
+point that row does not exist: a Claude Code run becomes a Builda session only once capture has
+read the transcript and uploaded it, which is minutes later and may be never, because an excluded
+repository never uploads. So the first successful run of a real move ended in a foreign key
+violation, after the work was done, with nothing the runner could do about it. Two columns,
+because they are two facts (0029): `run_uuid` is what the Mac launched and is not a foreign key
+to anything, and `session_id` is filled in afterwards or not at all. A card can say "it ran" from
+the first and "open the session" only from the second.
 
 **A test that skips when the fixture hands it one account is a test that checked nothing.** The
 drops RLS test asked `created_users` for a second account and skipped when there was not one,

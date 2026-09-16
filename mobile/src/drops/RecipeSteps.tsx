@@ -96,13 +96,16 @@ export function RecipeSteps({ recipe }: { recipe: Recipe }) {
           {/* One step, full width, with its number set huge behind it. Tap the right half to go
               on, the left half to go back: a thumb on a phone propped against a bag of flour. */}
           <View style={styles.stage}>
-            {/* The step's number, set huge behind it. `border` rather than `raised`: at #282420
-                on the ground it measured 1.2:1 and simply did not appear, which is not subtle,
-                it is missing. */}
-            <T role="hero" style={[styles.ghost, { color: c.border }]}>
+            {/* The step's number, set huge beside it.
+                Two goes at this: `raised` (#282420) measured 1.2:1 on the ground and `border`
+                (#2F2B27) 1.5:1, and neither appeared at all on the simulator. `textFaint` is the
+                token for exactly this, "disabled states and decoration only, never information",
+                and this number IS decoration: the step's position is already said in words, in
+                mono, above it. */}
+            <T role="hero" style={[styles.ghost, { color: c.textFaint }]}>
               {String(step + 1)}
             </T>
-            <Animated.View key={step} entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
+            <Animated.View key={step} entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.stepText}>
               <T role="title" style={{ color: c.text }}>
                 {at?.text ?? ''}
               </T>
@@ -177,7 +180,9 @@ const styles = StyleSheet.create({
   qty: { width: 108 },
   item: { flex: 1 },
   stage: { minHeight: 132, justifyContent: 'center', paddingVertical: 12 },
-  ghost: { position: 'absolute', right: 0, top: 0 },
+  ghost: { position: 'absolute', left: 0, top: 0, opacity: 0.55 },
+  // The words clear the number rather than running over it.
+  stepText: { paddingLeft: 62 },
   steps: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   half: { paddingVertical: 12, paddingRight: 24 },
   right: { paddingRight: 0, paddingLeft: 24 },

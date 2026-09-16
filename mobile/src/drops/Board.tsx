@@ -255,7 +255,7 @@ export function DropsBoard({ drops, moves, selected, onSelect }: BoardProps) {
                 styles.hubWord,
                 {
                   left: h.x * UNIT - 60,
-                  top: (h.y - (h.radius || 0.62) - 0.55) * UNIT,
+                  top: (h.top - 0.86) * UNIT,
                   color: c.textDim,
                 },
               ]}

@@ -85,19 +85,20 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
         contentContainerStyle={[styles.body, { paddingBottom: 28 + tabBar }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* The node, on the panel's edge. It SCROLLS: it is the drop opening, and a sigil pinned
-            over a recipe that moves under it reads as a sticker somebody stuck on. */}
-        <View style={styles.dock} pointerEvents="none">
+        {/* The sigil sits IN the header row, not hanging off the panel's edge.
+            FOUND ON THE SIMULATOR: docked half above the top hairline it was clipped to its
+            bottom two rows, because a ScrollView clips its content whatever `overflow` says. It
+            is the drop's own mark, so it goes where a mark goes: at the start of the line that
+            names the thing. */}
+        <View style={styles.kindRow}>
           <Sigil
             seed={drop.url}
-            size={52}
+            size={40}
             ink={ink}
             partner={hue?.partner ?? c.border}
             motion={busy ? 'growing' : mine.some((m) => m.status === 'running') ? 'running' : 'still'}
           />
-        </View>
-        <View style={styles.kindRow}>
-          <T role="label" style={{ color: ink, letterSpacing: 1.4 }}>
+          <T role="label" style={{ color: ink, letterSpacing: 1.4, flex: 1, marginLeft: 12 }}>
             {(drop.kind ? KIND_WORD[drop.kind] : 'unread').toUpperCase()}
           </T>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={12}>
@@ -107,7 +108,7 @@ export function DropDetail({ drop, moves, onStart, onArchive, onClose }: DropDet
           </Pressable>
         </View>
 
-        <T role="title" style={{ color: c.text, marginTop: 6 }}>
+        <T role="title" style={{ color: c.text, marginTop: 14 }}>
           {drop.title ?? 'Not read yet'}
         </T>
 
@@ -242,8 +243,7 @@ const styles = StyleSheet.create({
     maxHeight: '68%',
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  dock: { alignItems: 'center', marginTop: -32, marginBottom: 10 },
-  body: { paddingTop: 8, paddingHorizontal: 16 },
+  body: { paddingTop: 18, paddingHorizontal: 16 },
   kindRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sourceRow: {
     flexDirection: 'row',

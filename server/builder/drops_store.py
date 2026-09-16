@@ -36,7 +36,7 @@ DROP_COLUMNS = """
 MOVE_COLUMNS = """
   m.id, m.drop_id, m.position, m.move_kind, m.status, m.title, m.intent, m.evidence,
   m.target, m.effort, m.source, m.verification, m.adjustment, m.repo_key, m.session_id,
-  m.outcome, m.queued_at, m.started_at, m.finished_at
+  m.run_uuid, m.outcome, m.queued_at, m.started_at, m.finished_at
 """
 
 
@@ -311,21 +311,64 @@ def claim_queued(db: Session, user_id: str, *, limit: int = 2) -> list[dict]:
 
 
 def finish_move(db: Session, user_id: str, move_id: str, *, status: str, outcome: str | None,
-                session_id: str | None) -> dict | None:
+                run_uuid: str | None) -> dict | None:
+    """The runner says how it went, and which run it was.
+
+    `run_uuid` is NOT the session id (0029): a Claude Code run becomes a Builda session only once
+    capture has uploaded the transcript, which is later and may be never. Writing it into
+    `session_id` was a foreign key violation and a 500 with the work already done.
+    """
     if status not in ("done", "failed"):
         raise ValueError(f"finish_move takes done or failed, not {status!r}")
     r = db.execute(
         text(
             f"""
             UPDATE drop_moves SET status = :st, finished_at = now(), outcome = :out,
-                                  session_id = COALESCE(CAST(:sid AS uuid), session_id)
+                                  run_uuid = COALESCE(CAST(:run AS uuid), run_uuid)
             WHERE user_id = :uid AND id = :id AND status = 'running'
             RETURNING {MOVE_COLUMNS.replace('m.', '')}
             """
         ),
-        {"uid": user_id, "id": move_id, "st": status, "out": outcome, "sid": session_id},
+        {"uid": user_id, "id": move_id, "st": status, "out": outcome, "run": run_uuid},
     ).first()
     return _row(r) if r else None
+
+
+def link_session(db: Session, user_id: str) -> int:
+    """Point every finished move at the Builda session its run became, where there is one.
+
+    The join is `sessions.client_session_id`, which capture derives from the transcript, against
+    nothing this table holds; so until that link exists this walks the moves with a `run_uuid` and
+    no `session_id` and finds a session of the same account that started inside the move's own
+    window. It is deliberately conservative: one candidate or none, never a guess between two.
+    """
+    r = db.execute(
+        text(
+            """
+            WITH candidate AS (
+              SELECT m.id AS move_id,
+                     (SELECT s.id FROM sessions s
+                       WHERE s.user_id = m.user_id
+                         AND s.started_at BETWEEN m.started_at - interval '2 minutes'
+                                              AND COALESCE(m.finished_at, now())
+                       LIMIT 2) AS session_id,
+                     (SELECT count(*) FROM sessions s
+                       WHERE s.user_id = m.user_id
+                         AND s.started_at BETWEEN m.started_at - interval '2 minutes'
+                                              AND COALESCE(m.finished_at, now())) AS n
+              FROM drop_moves m
+              WHERE m.user_id = :uid AND m.run_uuid IS NOT NULL AND m.session_id IS NULL
+                AND m.started_at IS NOT NULL
+            )
+            UPDATE drop_moves m SET session_id = c.session_id
+            FROM candidate c
+            WHERE m.id = c.move_id AND c.n = 1 AND c.session_id IS NOT NULL
+            RETURNING m.id
+            """
+        ),
+        {"uid": user_id},
+    ).all()
+    return len(r)
 
 
 # ------------------------------------------------------------------------- archive

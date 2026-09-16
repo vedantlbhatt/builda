@@ -23,7 +23,7 @@ import {
   STATUS_LINE,
   readLine,
 } from '../src/drops/copy';
-import { fit, focus, layout, NODE, ringRadius } from '../src/drops/layout';
+import { fit, focus, hubSpacing, layout, MIN_HUB_SPACING, NODE, ringRadius } from '../src/drops/layout';
 
 const DROPS = [
   { kind: 'recipe', title: 'Garlic butter pasta', summary: 'one pan', tags: ['pasta', 'garlic'] },
@@ -77,6 +77,37 @@ describe('the map', () => {
       expect(node?.x).toBe(h.x);
       expect(node?.y).toBe(h.y);
       expect(node?.isHub).toBe(true);
+    }
+  });
+
+  test('the spacing is derived from the widest ring, never picked', () => {
+    // The regression this replaces: HUB_SPACING was tightened from 4.2 to 3.4 because a board
+    // looked sparse, and two nodes landed 0.55 units apart. Clearance is
+    // `spacing - r1 - r2` and it has to stay above a node's width for the widest pair.
+    for (const sizes of [[1, 1, 1], [2, 2], [9, 9], [1, 9, 3], [5, 4, 3, 2, 1]]) {
+      const clusters = sizes.map((size) => ({ size }));
+      const widest = Math.max(...sizes.map(ringRadius));
+      expect(hubSpacing(clusters) - 2 * widest).toBeGreaterThanOrEqual(NODE);
+    }
+    // And a board with no rings at all packs.
+    expect(hubSpacing([{ size: 1 }, { size: 1 }])).toBe(MIN_HUB_SPACING);
+  });
+
+  test('no two nodes overlap on any shape of board', () => {
+    for (const sizes of [[9, 9, 9], [1, 1, 1, 1, 1, 1, 1, 1], [5, 1, 4, 1, 3], [2, 2, 2, 2]]) {
+      const shape = layout(sizes.map((size, i) => ({
+        label: `c${i}`,
+        size,
+        members: Array.from({ length: size }, (_, j) => i * 100 + j),
+      })));
+      for (let i = 0; i < shape.nodes.length; i++) {
+        for (let j = i + 1; j < shape.nodes.length; j++) {
+          const a = shape.nodes[i];
+          const b = shape.nodes[j];
+          if (!a || !b) continue;
+          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(NODE * 0.9);
+        }
+      }
     }
   });
 

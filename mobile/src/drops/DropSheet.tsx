@@ -23,8 +23,10 @@ import React, { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Extrapolation,
   FadeIn,
   FadeOut,
+  interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -77,6 +79,7 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
   const [saying, setSaying] = useState(false);
   const [adjustment, setAdjustment] = useState('');
 
+  const scroller = React.useRef<ScrollView>(null);
   const restTop = height * (1 - REST);
   const tallTop = height * (1 - TALL);
   const top = useSharedValue(restTop);
@@ -99,6 +102,13 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
     });
 
   const sheetStyle = useAnimatedStyle(() => ({ top: top.value }));
+  /** 1 while the frame is showing, 0 once the sheet has covered it. */
+  const posterChromeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(top.value, [tallTop, tallTop + 90], [0, 1], Extrapolation.CLAMP),
+  }));
+  const sheetChromeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(top.value, [tallTop, tallTop + 90], [1, 0], Extrapolation.CLAMP),
+  }));
   const posterStyle = useAnimatedStyle(() => ({
     // The frame lifts a little as the sheet comes up, so the two move as one thing.
     transform: [{ scale: 1 + (restTop - top.value) / (restTop * 26) }],
@@ -164,8 +174,22 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
           <BlurView intensity={64} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(16,14,12,0.62)' }]} />
 
+          {/* THE WAY OUT, WHERE THE POSTER IS NOT.
+              CLOSE sits on the frame, which at full height is a 40 point sliver behind this
+              sheet's own title — so it was drawn over the word "A RECIPE". Both live on the same
+              curve now: the chrome on the frame fades out as the sheet covers it, and the grab
+              bar turns into the word, in the one place a thumb is already going. */}
           <View style={styles.grab}>
-            <View style={[styles.grabBar, { backgroundColor: c.textFaint }]} />
+            <Animated.View
+              style={[styles.grabBar, { backgroundColor: c.textFaint }, posterChromeStyle]}
+            />
+            <Animated.View style={[styles.grabClose, sheetChromeStyle]}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={20}>
+                <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
+                  CLOSE
+                </T>
+              </Pressable>
+            </Animated.View>
           </View>
 
           <View style={styles.head}>
@@ -194,6 +218,7 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
           ) : null}
 
           <ScrollView
+            ref={scroller}
             style={styles.body}
             contentContainerStyle={{ paddingBottom: insets.bottom + (armed.length ? 142 : 28) }}
             showsVerticalScrollIndicator={false}
@@ -225,7 +250,15 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
 
             {recipe && tab === 'recipe' ? (
               <View style={styles.recipe}>
-                <RecipeSteps recipe={recipe} />
+                <RecipeSteps
+                  recipe={recipe}
+                  onStep={(stageY) => {
+                    // Full height, and the step at the top of the scroller. You asked for the
+                    // next instruction; the next instruction is what should be on the screen.
+                    top.value = withSpring(tallTop, { damping: 20, stiffness: 180 });
+                    scroller.current?.scrollTo({ y: Math.max(0, stageY - 12), animated: true });
+                  }}
+                />
               </View>
             ) : null}
 
@@ -313,12 +346,15 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
         </Animated.View>
       </GestureDetector>
 
-      {/* The way out, ABOVE the sheet.
-          It used to be drawn under it, which was fine at rest and a trap at full height: drag the
-          sheet up to read a long list and CLOSE goes under it, leaving a drag down as the only
-          way back to the board. A screen you can only leave by guessing a gesture is a screen
-          people get stuck on, so this is the last thing drawn and it is always on the frame. */}
-      <View style={[styles.top, { paddingTop: insets.top + 8 }]}>
+      {/* The chrome on the frame, drawn ABOVE the sheet and fading as the sheet covers the frame.
+          Under it, dragging up to read a long list buried CLOSE and left a guessed gesture as the
+          only way back to the board. Over it and always visible, it printed itself across the
+          sheet's own title. It belongs to the frame, so it lives exactly as long as the frame
+          does, and the grab bar carries the word the rest of the time. */}
+      <Animated.View
+        pointerEvents="box-none"
+        style={[styles.top, { paddingTop: insets.top + 8 }, posterChromeStyle]}
+      >
         <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={16}>
           <View style={styles.chip}>
             <T role="label" style={styles.chipText}>
@@ -338,8 +374,7 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
             </T>
           </View>
         </Pressable>
-      </View>
-
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -375,7 +410,8 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
     overflow: 'hidden',
   },
-  grab: { alignItems: 'center', paddingTop: 9, paddingBottom: 4 },
+  grab: { alignItems: 'center', justifyContent: 'center', height: 26, paddingTop: 6 },
+  grabClose: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   grabBar: { width: 38, height: 4, borderRadius: 2, borderCurve: 'continuous', opacity: 0.7 },
   head: {
     flexDirection: 'row',

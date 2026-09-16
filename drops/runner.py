@@ -46,6 +46,30 @@ BUSY_SLEEP_S = 2
 
 FENCE = "<<<BUILDA-DROP-TEXT-9f3a>>>"
 
+#: Where an install actually goes, for the kind of thing this feature is most often handed.
+#:
+#: Not a command to run: a paragraph of ground truth, so the run does not have to guess at the
+#: surfaces and does not invent one. Read from code.claude.com/docs/en/skills on 2026-09-16; a
+#: line here that stops being true is a run that confidently puts a file in the wrong place, so
+#: it says where things live rather than promising what a command does.
+INSTALL_SURFACES = """Where these things live on this machine, if what you are installing is one:
+
+  a Claude Code SKILL     a directory under ~/.claude/skills/<name>/ with SKILL.md in it, whose
+                          frontmatter carries a `description`. Project scoped skills are the same
+                          shape under <repo>/.claude/skills/. Nothing else is needed; a skill is
+                          a directory and a file.
+  a PLUGIN                installed from a marketplace inside Claude Code with
+                          `/plugin install <plugin>@<marketplace>`, and a marketplace is added
+                          with `/plugin marketplace add <owner>/<repo>`. Those are slash commands
+                          typed into a session, not shell commands, so you cannot run them: if
+                          that is what this is, write down the exact line for the person instead.
+  an MCP SERVER           registered with `claude mcp add`, which IS a shell command.
+  anything else           its own ecosystem's installer, and only after you have looked at what
+                          you are installing.
+
+Check what the source actually is before assuming. If the link turns out to be an article about
+a skill rather than a skill, say so and install nothing."""
+
 
 class Runner:
     def __init__(self, client: Client, *, model: str = dp.DEFAULT_MODEL, verbose: bool = True):
@@ -272,6 +296,8 @@ class Runner:
         src = move.get("source")
         if isinstance(src, dict) and src.get("url"):
             lines += ["", f"The source it names: {src['source_kind']} {src['ref']} at {src['url']}"]
+        if move["move_kind"] == "install":
+            lines += ["", INSTALL_SURFACES]
         adj = (move.get("adjustment") or "").strip()
         if adj:
             # The person's own words. They go LAST, so they are the most recent instruction,

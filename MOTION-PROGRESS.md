@@ -28,6 +28,9 @@ keep the URL; from a new conversation pass the URL.
 - Metro: `cd mobile && EXPO_PUBLIC_ISLAND_DEMO=1 npx expo start --port 8081` (the env var makes
   the island cycle through every state for screenshots; drop it for real use).
 - Review motion: `scripts/sim_burst.sh <UDID> <dir> 20 1.2 700` tiles a burst of screenshots.
+- Metro: start it WITHOUT `CI=1` (`npx expo start --port 8081 < /dev/null` in the background). CI
+  mode turns file watching off, and the app then keeps loading the bundle Metro built first: from
+  02:54 to 03:22 the simulator ran stale JS and edits looked like they did nothing.
 - A rebuild of the native app: `cd mobile && BUILDER_API_URL=http://127.0.0.1:8788 npx expo run:ios
   --device <UDID> --no-bundler`, then `xcrun simctl install <UDID> <DerivedData>/Builda.app` if the
   install step was skipped. `targets/*/generated.entitlements` are not in git: copy them from

@@ -13,7 +13,7 @@ import { MONO_FAMILY } from '../theme';
 import { SHAPE } from '../ui/shape';
 import { Button } from '../ui/Button';
 import { useIslandActivities } from '../island/store';
-import { withAlpha } from '../motion/states';
+import { FieldDither } from '../ui/bits/backgrounds';
 import { CommandLine } from '../you/parts';
 import { EMPTY_DEMO } from './model';
 
@@ -42,9 +42,9 @@ export function DoorEmptyPrint({ width, height }: { width: number; height: numbe
  * The page's empty print, what it is beside it, the ask, and the two commands under it for the
  * terminal. The ask comes first because it is the one step a phone can take: it opens the ship
  * kit, whose button asks the Mac to film it (`docs/ship-kit.md`), and the island carries the
- * request from there. The print is a blank phone print in the project's hue, held at the same
- * tilt as a real one would lie; it was a frozen dither field, and a field of pixel noise read as
- * a broken image rather than an empty one.
+ * request from there. The print is an undeveloped print in the project's hue, held at the same
+ * tilt as a real one would lie: the project's hue as react-bits Dither's field (through its port,
+ * `src/ui/bits/backgrounds/FieldDither.tsx`, which keeps David Haz's notice), held still.
  */
 export function PageEmptyDemo({ hue, width, onAsk, projectKey }: { hue: HueName; width: number; onAsk?: () => void; projectKey?: string }) {
   const printW = Math.min(84, Math.round(width * 0.24));
@@ -57,8 +57,9 @@ export function PageEmptyDemo({ hue, width, onAsk, projectKey }: { hue: HueName;
   return (
     <View style={{ gap: 14 }}>
       <View style={styles.page}>
-        <View style={[styles.pagePrint, { width: printW, height: printH, backgroundColor: GROUND.card }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <View style={[styles.printScreen, { backgroundColor: withAlpha(h.ink, 0.2), borderColor: withAlpha(h.ink, 0.45) }]} />
+        <View style={[styles.pagePrint, { width: printW, height: printH }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {/* Held on its first frame: an undeveloped print, not a moving background. */}
+          <FieldDither width={printW} height={printH} ink={h.ink} partner={h.partner} paper={GROUND.bg} levels={2} speed={0} paused seed={3.1} />
         </View>
         <View style={styles.pageWords}>
           <Text maxFontSizeMultiplier={1.4} style={type.lead}>
@@ -90,7 +91,6 @@ const styles = StyleSheet.create({
   doorWords: { fontSize: 12, lineHeight: 15, fontWeight: '500', color: GROUND.dim },
   doorCode: { fontFamily: MONO_FAMILY, fontSize: 10.5, lineHeight: 14, fontWeight: '600', color: GROUND.text },
   page: { flexDirection: 'row', gap: 16, alignItems: 'center' },
-  pagePrint: { borderRadius: SHAPE.mark, borderCurve: 'continuous', overflow: 'hidden', transform: [{ rotate: '-3deg' }], padding: 5 },
-  printScreen: { flex: 1, borderRadius: SHAPE.mark - 3, borderCurve: 'continuous', borderWidth: 1 },
+  pagePrint: { borderRadius: SHAPE.mark, borderCurve: 'continuous', overflow: 'hidden', transform: [{ rotate: '-3deg' }] },
   pageWords: { flex: 1, gap: 6 },
 });

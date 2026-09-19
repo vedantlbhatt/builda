@@ -2,9 +2,11 @@
   "name": "builder-mobile",
   "version": "0.1.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "index",
   "scripts": {
     "start": "expo start",
+    "web": "node scripts/web-assets.mjs && expo start --web",
+    "export:web": "node scripts/web-assets.mjs && expo export --platform web",
     "ios": "expo run:ios",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

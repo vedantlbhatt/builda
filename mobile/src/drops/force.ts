@@ -159,6 +159,56 @@ export function clearance(a: Node, b: Node, o: ForceOptions = FORCE): number {
   return ra + rb + o.gap;
 }
 
+/**
+ * No two frames overlapping, as a CONSTRAINT rather than as another force.
+ *
+ * It was a force first — an extra shove that grew as two nodes closed — and a force is a request.
+ * Repulsion, springs and gravity all vote, and on a crowded web the shove lost: the suite caught
+ * two frames settled 89 points apart when the frame itself needs 102 to clear, which is a visible
+ * overlap of a centimetre. This moves them instead of asking, after everything else has had its
+ * say, so the guarantee holds no matter what the other forces wanted. Two passes, because moving
+ * one pair apart can push a third pair together.
+ *
+ * A node somebody is holding does not move; its neighbour takes the whole correction.
+ *
+ * ABOVE `step`, on purpose: the worklet plugin captures `step`'s closure when the module runs, so a
+ * `separate` declared below it is read before it exists (a TDZ ReferenceError on web, where V8
+ * enforces it, and an undefined in the closure on the UI runtime).
+ */
+export function separate(nodes: Node[], floor: number, passes = 2, o: ForceOptions = FORCE): void {
+  'worklet';
+  const n = nodes.length;
+  for (let pass = 0; pass < passes; pass++) {
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i] as Node;
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j] as Node;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const want = a.r == null && b.r == null ? floor : clearance(a, b, o);
+        if (d >= want) continue;
+        const need = want - d;
+        const ux = dx / d;
+        const uy = dy / d;
+        if (a.pinned && b.pinned) continue;
+        if (a.pinned) {
+          b.x += ux * need;
+          b.y += uy * need;
+        } else if (b.pinned) {
+          a.x -= ux * need;
+          a.y -= uy * need;
+        } else {
+          a.x -= (ux * need) / 2;
+          a.y -= (uy * need) / 2;
+          b.x += (ux * need) / 2;
+          b.y += (uy * need) / 2;
+        }
+      }
+    }
+  }
+}
+
 /** One tick. Mutates `nodes`, which is the point: the simulation runs every frame. */
 export function step(nodes: Node[], edges: Edge[], o: ForceOptions = FORCE): void {
   'worklet';
@@ -225,52 +275,6 @@ export function step(nodes: Node[], edges: Edge[], o: ForceOptions = FORCE): voi
   }
 
   separate(nodes, o.floor, 2, o);
-}
-
-/**
- * No two frames overlapping, as a CONSTRAINT rather than as another force.
- *
- * It was a force first — an extra shove that grew as two nodes closed — and a force is a request.
- * Repulsion, springs and gravity all vote, and on a crowded web the shove lost: the suite caught
- * two frames settled 89 points apart when the frame itself needs 102 to clear, which is a visible
- * overlap of a centimetre. This moves them instead of asking, after everything else has had its
- * say, so the guarantee holds no matter what the other forces wanted. Two passes, because moving
- * one pair apart can push a third pair together.
- *
- * A node somebody is holding does not move; its neighbour takes the whole correction.
- */
-export function separate(nodes: Node[], floor: number, passes = 2, o: ForceOptions = FORCE): void {
-  'worklet';
-  const n = nodes.length;
-  for (let pass = 0; pass < passes; pass++) {
-    for (let i = 0; i < n; i++) {
-      const a = nodes[i] as Node;
-      for (let j = i + 1; j < n; j++) {
-        const b = nodes[j] as Node;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
-        const want = a.r == null && b.r == null ? floor : clearance(a, b, o);
-        if (d >= want) continue;
-        const need = want - d;
-        const ux = dx / d;
-        const uy = dy / d;
-        if (a.pinned && b.pinned) continue;
-        if (a.pinned) {
-          b.x += ux * need;
-          b.y += uy * need;
-        } else if (b.pinned) {
-          a.x -= ux * need;
-          a.y -= uy * need;
-        } else {
-          a.x -= (ux * need) / 2;
-          a.y -= (uy * need) / 2;
-          b.x += (ux * need) / 2;
-          b.y += (uy * need) / 2;
-        }
-      }
-    }
-  }
 }
 
 /** Run it until it stops moving, for a first paint that is already settled. */

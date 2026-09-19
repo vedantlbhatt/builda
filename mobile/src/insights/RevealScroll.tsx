@@ -29,6 +29,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 
+import { usePaneOriginX } from '../desktop/paneOrigin';
 import type { usePageReveal } from './reveal';
 
 type Page = ReturnType<typeof usePageReveal>;
@@ -45,10 +46,14 @@ const HURRY_AT = 40;
 export function useRevealScroll(page: Page, onFirstScroll: () => void) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const still = useSharedValue(0);
+  // Settled means at its pane's left edge: the screen's on a phone (0), the pane's beside the
+  // desktop sidebar (`src/desktop/paneOrigin`), where a list never sits at 0 and would only ever
+  // arm on the fallback, two and a half seconds late.
+  const originX = usePaneOriginX();
   const watch = useFrameCallback(() => {
     if (page.armed.value) return;
     const m = measure(scrollRef);
-    if (m && m.width > 0 && Math.abs(m.pageX) < 0.5) {
+    if (m && m.width > 0 && Math.abs(m.pageX - originX) < 0.5) {
       still.value += 1;
       if (still.value >= 3) page.armed.value = 1;
     } else {

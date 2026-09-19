@@ -77,7 +77,6 @@ import { crewFor, crewHashed } from './crew';
 import { select } from '../ui/haptics';
 import { awaySummary } from './away';
 import { AwayBand, useAwayFrom } from './AwayBand';
-import { IslandStage } from './IslandStage';
 import { FACE_FOR_TILE } from '../island/feeds';
 import type { CrewMember } from '../island/model';
 import { creatureHue } from '../theme';
@@ -512,24 +511,28 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
             </Section>
           ) : null}
 
-          {(screen.kind === 'empty' || (ready && head)) && accent.ready ? (
+          {/* The island stage that stood here is gone (2026-09-19, the owner: the island is not
+              for saying how a run is doing). Empty says so in one line, with the last run. */}
+          {screen.kind === 'empty' ? (
+            <Section style={styles.pad}>
+              <Block>
+                <T maxFontSizeMultiplier={1.6} style={kitType.dim}>
+                  Nothing running.
+                </T>
+                {data.lastFinal ? (
+                  <WordLink
+                    label={lastFinishedLine(data.lastFinal, (iso) => dayLabel(iso), names)}
+                    color={accent.text}
+                    onPress={() => open(data.lastFinal!.id)}
+                  />
+                ) : null}
+                {screen.stale ? <Refusal>{staleLine(screen.stale, now)}</Refusal> : null}
+              </Block>
+            </Section>
+          ) : null}
+          {away ? (
             <View style={styles.stageWrap}>
-              <IslandStage
-                width={width - 16}
-                head={ready ? head : null}
-                quiet={screen.kind === 'empty'}
-                crew={ready ? shown.filter((m) => m.kind !== 'finished').map((m) => memberOf(m, crew.get(m.id) ?? crewHashed(m.id), now)) : []}
-                you={{ animal: accent.animal, ink: accent.ink }}
-                lastLine={screen.kind === 'empty' && data.lastFinal ? lastFinishedLine(data.lastFinal, (iso) => dayLabel(iso), names) : null}
-                onOpenLast={data.lastFinal ? () => open(data.lastFinal!.id) : undefined}
-                onPress={ready && doorway ? openLive : undefined}
-              />
-              {screen.kind === 'empty' && screen.stale ? (
-                <View style={{ marginTop: 12, paddingHorizontal: 8 }}>
-                  <Refusal>{staleLine(screen.stale, now)}</Refusal>
-                </View>
-              ) : null}
-              {away ? <AwayBand away={away} onOpen={open} onDone={awayDone} /> : null}
+              <AwayBand away={away} onOpen={open} onDone={awayDone} />
             </View>
           ) : null}
 

@@ -18,7 +18,6 @@
 import BuilderDrops, { type PendingDrop } from '../../modules/builder-drops';
 import { api } from '../data/client';
 import { normalizeShared } from './urls';
-import { trackDrop } from '../island/feeds';
 
 /** Send one shared payload to the board. Returns the drop's id, or null when it was not a link. */
 export async function landShared(payload: string, extraText = ''): Promise<string | null> {
@@ -26,8 +25,6 @@ export async function landShared(payload: string, extraText = ''): Promise<strin
   if (!shared) return null;
   const text = [shared.text, extraText].filter(Boolean).join(' ').slice(0, 1000);
   const { drop } = await api.shareDrop(shared.url, shared.platform, text || null);
-  // The answer lands on the island, where you are, not behind a banner (docs/motion.md).
-  if (drop.status === 'waiting' || drop.status === 'resolving') trackDrop(drop.id, shared.url);
   return drop.id;
 }
 

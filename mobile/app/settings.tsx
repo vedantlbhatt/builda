@@ -51,7 +51,6 @@ import { GROUND, ON_HUE } from '../src/insights/palette';
 import { Block, RevealPage, Section, usePageReveal } from '../src/insights/reveal';
 import { useRevealScroll } from '../src/insights/RevealScroll';
 import { AccentButton, WordLink } from '../src/nav/chrome';
-import { PASSING_STEPS, playIslandTour } from '../src/island/demo';
 import { useIsDesktop } from '../src/desktop/formFactor';
 import { getLocalName } from '../src/nav/name';
 import { sendPendingName } from '../src/nav/onboarding';
@@ -377,13 +376,6 @@ export default function SettingsScreen() {
               )}
             </Chapter>
           ) : null}
-
-          {/* The island shows only what is happening, so most of its states are rare: a run
-              waiting on you, a reel being read, a demo being cut. This plays each of them once,
-              with made up runs, so you know what each one looks like before it means something. */}
-          <Chapter title="The island" line="What the black shape at the top of the screen says while you work.">
-            <WordLink title="Play every state once" onPress={() => playIslandTour(desktop ? PASSING_STEPS : undefined)} />
-          </Chapter>
 
           {known ? (
             <Chapter title="Privacy" line={`What leaves your Mac, and what ${HERE} shows.`}>

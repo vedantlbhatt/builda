@@ -330,23 +330,22 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   tracked.clear();
   for (const [k, v] of next) tracked.set(k, v);
 
-  // A reel you shared has a card of its own (docs/drop-island.md), under the same two switches:
-  // no card without Live Activities AND Lock Screen details (its title is a stranger's words),
-  // and no server push to one unless this is the signed in poll.
+  // A reel's card and a demo's card (docs/drop-island.md, docs/demo-island.md) are OFF, and each
+  // sync tells the server to forget their push tokens and ends any card still up. The owner, on
+  // 2026-09-19: the island is not for saying how a run or a request is doing. The switches stay
+  // wired so the code can be deleted or kept by one decision, not half of each.
   if (mod) {
     result.errors.push(
       ...(await syncDropSurfaces({
-        enabled: enabled && activities && details,
+        enabled: false,
         push: Boolean(opts.pushTokens),
         environment: ENVIRONMENT,
         nowMs,
       }))
     );
-    // A demo you asked your Mac for (docs/demo-island.md), under the same two switches: the card
-    // names your project on the Lock Screen.
     result.errors.push(
       ...(await syncDemoSurfaces({
-        enabled: enabled && activities && details,
+        enabled: false,
         push: Boolean(opts.pushTokens),
         environment: ENVIRONMENT,
         nowMs,

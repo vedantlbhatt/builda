@@ -15,7 +15,7 @@ import { api } from '../src/data/client';
 import { DesktopFrame } from '../src/desktop/DesktopFrame';
 import { isIslandWindow } from '../src/desktop/windowKind';
 import { useLiveSurfaces } from '../src/live/useLiveSurfaces';
-import { Island } from '../src/island/Island';
+import { NoticeLine } from '../src/ui/NoticeLine';
 import { OverlayHost } from '../src/ui/overlay';
 import { HeaderRule } from '../src/nav/chrome';
 import { leftCreaturePicker } from '../src/nav/chromeRules';
@@ -201,9 +201,9 @@ export default function RootLayout() {
             </DesktopFrame>
           )}
           {/* What grows out of a screen to cover the whole phone (a drop opening out of its
-              poster), then the island above everything: the app's one voice. */}
+              poster), then the one line the app says after a tap. */}
           <OverlayHost />
-          {onboarded !== null && accent.ready ? <Island /> : null}
+          {onboarded !== null && !isIslandWindow() ? <NoticeLine /> : null}
         </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

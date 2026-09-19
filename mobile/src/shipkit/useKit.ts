@@ -12,7 +12,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../data/api';
 import { api } from '../data/client';
-import { trackDemo, untrackDemo } from '../island/feeds';
 import type { DemoRequestRow, ShipKitResponse } from './types';
 
 /** How often a waiting request is read again. The Mac films in minutes; this is a glance. */
@@ -72,10 +71,6 @@ export function useShipKit(key: string | null) {
         const r = await api.requestDemo(key, hue);
         setRequests((rs) => [r.request, ...(rs ?? []).filter((x) => x.id !== r.request.id)]);
         setError(null);
-        // The island carries it from here, past this screen: it says when the Mac starts filming
-        // and when the kit is up, wherever you are in the app by then, and with the row the
-        // system island carries it on once you leave the app (docs/demo-island.md).
-        trackDemo(key, name, r.request);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'The request did not reach the server.');
       } finally {
@@ -89,7 +84,6 @@ export function useShipKit(key: string | null) {
     try {
       const r = await api.cancelDemoRequest(id);
       setRequests((rs) => (rs ?? []).map((x) => (x.id === id ? r.request : x)));
-      if (key) untrackDemo(key);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'It could not be taken back.');
     }

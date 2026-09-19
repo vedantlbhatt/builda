@@ -583,12 +583,13 @@ export async function setLockScreenDetails(on: boolean): Promise<void> {
 }
 
 /**
- * Settings > Live Activities, this phone's too (a device key, so it outlives a sign out). On
- * unless turned off: the only other way to stop the cards was iOS Settings, and a card left up
- * after the app is swiped away stays there until the system retires it hours later.
+ * Settings > Live Activities, this phone's too (a device key, so it outlives a sign out). OFF
+ * unless turned on (2026-09-19, the owner: a card saying how a run is doing, up all the time, is
+ * not what the Dynamic Island is for). Someone who turned it on keeps it; the switch is still in
+ * Settings, and a card left up after the app is swiped away stays until the system retires it.
  */
 export const LIVE_ACTIVITIES_KEY = `${DEVICE_KEY_PREFIX}live_activities`;
-export const LIVE_ACTIVITIES_DEFAULT = true;
+export const LIVE_ACTIVITIES_DEFAULT = false;
 
 export async function getLiveActivities(): Promise<boolean> {
   const v = await getKv(LIVE_ACTIVITIES_KEY);

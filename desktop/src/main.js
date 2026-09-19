@@ -266,12 +266,17 @@ function send(/** @type {string} */ command) {
 // ------------------------------------------------------------------ the island
 
 const ISLAND_PREF = () => path.join(app.getPath('userData'), 'island.json');
+/**
+ * OFF unless switched on in the menu (2026-09-19, the owner: the island is not for saying how a run
+ * is doing). The window and the menu item stay, so turning it on is one click and deleting it is
+ * one decision.
+ */
 function islandEnabled() {
   if (process.env.BUILDA_ISLAND === '0') return false;
   try {
-    return JSON.parse(fs.readFileSync(ISLAND_PREF(), 'utf8')).enabled !== false;
+    return JSON.parse(fs.readFileSync(ISLAND_PREF(), 'utf8')).enabled === true;
   } catch {
-    return true;
+    return false;
   }
 }
 function setIslandEnabled(/** @type {boolean} */ on) {

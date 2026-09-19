@@ -13,7 +13,7 @@ import { endAllLiveActivities, syncLiveActivities, type SyncResult } from './act
 import { liveStatesOf } from './mission';
 import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
-import { announceFinished, publishLive, resetIslandFeeds, resumeDemos } from '../island/feeds';
+import { resetIslandFeeds } from '../island/feeds';
 import { crewFor } from './crew';
 import { cancelWeekCard, scheduleWeekCard } from '../push/weekly';
 import { weekOf } from '../session/week';
@@ -63,7 +63,6 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
       resetIslandFeeds();
       await endAllLiveActivities();
       clearWidgetSnapshot();
-      publishLive([], nowMs);
     }
     return null;
   }
@@ -95,8 +94,6 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
     loadRepoNames().catch(() => null),
   ]);
   // The island inside the app says what the system island says outside it, from the same rows.
-  publishLive(live, nowMs, names);
-  void resumeDemos(names, nowMs, [...finished, ...saved]).catch(() => null);
   // Made without being asked, each once: last week's card Monday to Wednesday (`share/weekOffer`),
   // else an hours milestone just passed (`share/milestones`). One card a pass, never two at once.
   // And Monday's notification for it, scheduled while this week has hours (`push/weekly`).
@@ -104,10 +101,6 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   void offerLastWeek(resolveAnimal(animal), nowMs)
     .then((offered) => (offered ? false : offerMilestone(profile, resolveAnimal(animal))))
     .catch(() => null);
-  if (finished.length > 0) {
-    const crew = crewFor([...finished, ...saved]);
-    for (const s of finished) announceFinished(s, crew.get(s.id) ?? resolveAnimal(animal), names);
-  }
   last = await syncLiveActivities(live, liveStatesOf(live), {
     creature: resolveAnimal(animal),
     around: saved,

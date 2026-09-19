@@ -16,9 +16,8 @@ phone": a recording of one size composed into a frame of another and stretched t
    measured 1% too short, 704x1520 for a 706x1534 screen.)
 
 WHAT IS DRAWN. A flat warm ground (design/tokens.json `surface.bg.dark`), the project's hue as a
-panel rising behind the lower part of the device, inset from the sides with continuous corners (the
-app's own band; never a gradient: tokens forbid one on an identity hue, and no dithered fringe since
-the app dropped them), the device's body as a thin dark
+band rising behind the lower part of the device with an ordered dither on its edge (the app's own
+texture; never a gradient: tokens forbid one on an identity hue), the device's body as a thin dark
 bezel with a shadow, the screen cut to the row's corner radius, and the post's title above when
 there is one. The Swift helper draws the still layers (`backdrop`, `mask`, `ring`); ffmpeg lays the
 recording over them.

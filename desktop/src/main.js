@@ -33,7 +33,7 @@ const { createIsland } = require('./island');
 const { buildMenu } = require('./menu');
 const { nativeIslandRunning } = require('./native');
 const { qrModules } = require('./qr');
-const { createTokenStore } = require('./tokens');
+const { createMemoryStore, createTokenStore } = require('./tokens');
 
 const ROOT = path.join(__dirname, '..');
 const WEB_DIR = path.join(ROOT, 'web');
@@ -108,7 +108,7 @@ app.on('second-instance', (_event, argv) => {
 
 // ------------------------------------------------------------------ the store and the id
 
-/** @type {ReturnType<typeof createTokenStore> | null} */
+/** @type {ReturnType<typeof createTokenStore> | ReturnType<typeof createMemoryStore> | null} */
 let store = null;
 
 function machineId() {
@@ -369,7 +369,9 @@ function registerIpc() {
 // ------------------------------------------------------------------ start
 
 app.whenReady().then(() => {
-  store = createTokenStore(path.join(app.getPath('userData'), 'tokens.bin'), safeStorage);
+  // An unattended capture run with its tokens from a file never asks the Keychain (`tokens.js`).
+  const unattended = Boolean(process.env.BUILDA_CAPTURE && (process.env.BUILDA_DEV_TOKENS || process.env.BUILDA_DEV_ACCESS));
+  store = unattended ? createMemoryStore() : createTokenStore(path.join(app.getPath('userData'), 'tokens.bin'), safeStorage);
   seedDevTokens();
   if (!DEV_URL) serveBundle(protocol, WEB_DIR, API_ORIGIN);
   bridgeApi(session.defaultSession, net, API_ORIGIN, APP_ORIGIN);

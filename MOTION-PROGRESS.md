@@ -36,6 +36,14 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **06:40 to 07:15**: the desktop says "this computer" and Cmd+R / Ctrl+R, never "this phone" and
+  "pull down" (30b2ded, `src/copy/device.ts`, 21 sentences). **Last week's card, made by itself**
+  (0e97699): Monday to Wednesday, first time in front, the island says "Last week's card is made:
+  14 hours. Tap to see it." and the tap opens the card; once a week (kv `week.offered`); Sessions
+  offers "Share last week" beside this week's. Island notices can carry a tap action. The card's
+  rows are one per title at the longest session's time (a sum read 14h 37m under a 14 hour week:
+  overlapping sessions). Simulator taps: after `simctl launch` the first click only focuses the
+  Simulator; prime with a harmless click. The status bar strip (top 54 pt) never gets a tap.
 - **06:15**: pixel fields arrive in their own orders (642c470): day grid, agent squares, the
   glossary collection, term squares; recording `shots/motion/web/fields-own-orders.mp4`. Report v12.
 - **06:10 to 06:30**: desktop Save image for every share card (93acd00). view-shot's `captureRef`

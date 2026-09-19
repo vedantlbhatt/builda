@@ -65,4 +65,31 @@ function createTokenStore(file, safe) {
   };
 }
 
-module.exports = { createTokenStore };
+/**
+ * The same store in memory, for an unattended capture run (`BUILDA_CAPTURE` with dev tokens).
+ * FOUND RUNNING THE PACKAGED APP: a newly signed build's first `safeStorage` call asks the login
+ * Keychain, macOS shows "Builda wants to use your confidential information", and the encrypt call
+ * blocks the main process until someone answers. Nobody does at 6am: the GPU process gave up
+ * after 15 s with "no connection" and the run wrote nothing. A capture run's tokens came from a
+ * file already, so it keeps them in memory and never touches the Keychain.
+ */
+function createMemoryStore() {
+  /** @type {Record<string, string>} */
+  const c = {};
+  return {
+    /** @param {string} key */
+    get(key) {
+      return typeof c[key] === 'string' ? c[key] : null;
+    },
+    /** @param {string} key @param {string} value */
+    set(key, value) {
+      c[key] = String(value);
+    },
+    /** @param {string} key */
+    remove(key) {
+      delete c[key];
+    },
+  };
+}
+
+module.exports = { createTokenStore, createMemoryStore };

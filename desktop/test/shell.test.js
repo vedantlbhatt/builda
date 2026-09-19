@@ -9,7 +9,7 @@ const { test } = require('node:test');
 
 const { islandGeometry, overPill, isAppLink, isExternalAllowed, WINDOW, NOTCH_WIDTH } = require('../src/geometry');
 const { fileFor, contentSecurityPolicy } = require('../src/bundle');
-const { createTokenStore } = require('../src/tokens');
+const { createMemoryStore, createTokenStore } = require('../src/tokens');
 const { allowHeaders } = require('../src/cors');
 const { qrModules } = require('../src/qr');
 const { MAX_BYTES, pngFromDataUrl, safeName, freePath } = require('../src/image');
@@ -155,4 +155,13 @@ test("a shared card's file name is never a path, and a second one does not overw
   const taken = new Set(['/d/card.png', '/d/card 2.png']);
   assert.equal(freePath('/d', 'card', (p) => taken.has(p), path.posix.join), '/d/card 3.png');
   assert.equal(freePath('/d', 'other', (p) => taken.has(p), path.posix.join), '/d/other.png');
+});
+
+test("a capture run's store never touches safeStorage, and holds what it is given", () => {
+  const m = createMemoryStore();
+  assert.equal(m.get('builder.access'), null);
+  m.set('builder.access', 'A1');
+  assert.equal(m.get('builder.access'), 'A1');
+  m.remove('builder.access');
+  assert.equal(m.get('builder.access'), null);
 });

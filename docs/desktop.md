@@ -58,6 +58,7 @@ cd desktop && npm run dev
 
 # package
 cd desktop && npx electron-builder --mac --dir          # dist/mac-arm64/Builda.app
+cd desktop && npx electron-builder --mac --dir -c.mac.identity=null   # ad hoc: no Keychain prompt
 cd desktop && npx electron-builder --mac                # DMGs, arm64 and x64
 cd desktop && npx electron-builder --win                # NSIS installer, x64
 cd desktop && npx electron-builder --linux              # AppImage
@@ -273,9 +274,14 @@ how where it matters. Rows marked "before the merge" were verified on the old UI
 | Deep links `builder://…` | OS handler, second launch, notification clicks | before the merge |
 | Social routes (feed, post, factions, profiles) | same code | not exercised (out of scope on the phone too) |
 
-Builds: before the merge, the Mac app was packaged (`--mac --dir`, arm64) and launched. After the
-merge only the unpackaged shell (`electron .` on the exported bundle) was run; the packaged app
-was NOT rebuilt. Windows: `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
+Builds: at 07:40 on 19 September the Mac app was rebuilt from tonight's bundle (`--mac --dir`,
+arm64) and ran its own capture (`BUILDA_CAPTURE`): five screens and every island state, no page
+error, 61 to 62 frames per 500 ms on each screen. Two things an unattended build has to route
+around, both found doing it: signing with the developer identity asks the login Keychain for the
+key, and a newly signed app's first `safeStorage` call asks it too; either prompt blocks until a
+person answers (the app's main process hung with no window, the GPU process quit after 15 s).
+An unattended build signs ad hoc (`-c.mac.identity=null`), and a capture run keeps its tokens in
+memory (`tokens.createMemoryStore`). Windows: `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
 `Builda.exe`, a 115 MB `Builda Setup 0.1.0.exe`, unsigned); neither has been RUN, because there
 is no Windows machine here. Linux: configured (AppImage), not built.
 

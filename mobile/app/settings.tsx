@@ -9,6 +9,7 @@ import Animated from 'react-native-reanimated';
 import { isGoogleConfigured, onGoogleSignIn, startGoogleSignIn } from '../src/auth/googleFlow';
 import { ApiError, type CaptureKey, type CaptureKeyCreated, type Me, type PrivacyPrefs } from '../src/data/api';
 import { forgetCachedQuotes } from '../src/data/builderCache';
+import { approveFailedLine } from '../src/pairing/parse';
 import * as cache from '../src/data/cache';
 import {
   FILE_NAMES_DETAIL,
@@ -218,8 +219,8 @@ export default function SettingsScreen() {
       const result = await api.approvePairing(pairCode.trim().toUpperCase());
       setMacLine(`Paired with ${result.label}.`);
       setPairCode('');
-    } catch {
-      setMacLine('That code was not recognised, or it expired.');
+    } catch (e) {
+      setMacLine(approveFailedLine(e, 'That code was not recognised, or it expired.'));
     }
   }, [pairCode]);
 

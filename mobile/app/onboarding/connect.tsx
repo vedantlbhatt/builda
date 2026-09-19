@@ -12,7 +12,7 @@ import { numSpec } from '../../src/insights/format';
 import { BandFigure, Refusal } from '../../src/insights/kit';
 import { ON_HUE } from '../../src/insights/palette';
 import { sendPendingName } from '../../src/nav/onboarding';
-import { parsePairingCode } from '../../src/pairing/parse';
+import { approveFailedLine, parsePairingCode } from '../../src/pairing/parse';
 import { copyText } from '../../src/onboarding/clipboard';
 import { CONNECT, CONTINUE, grouped, NOT_NOW, pairedWith, sessionsArrived } from '../../src/onboarding/copy';
 import { setDraftApple } from '../../src/onboarding/draft';
@@ -108,9 +108,9 @@ export default function ConnectStep() {
       Keyboard.dismiss();
       setPairing({ kind: 'paired', text: pairedWith(paired.label) });
       setPairedKey((k) => k + 1);
-    } catch {
+    } catch (e) {
       failure();
-      setPairing({ kind: 'error', text: CONNECT.rejected });
+      setPairing({ kind: 'error', text: approveFailedLine(e, CONNECT.rejected) });
     }
   }, []);
 

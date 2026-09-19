@@ -5,7 +5,7 @@ import { Linking, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../src/data/client';
-import { parsePairingCode } from '../src/pairing/parse';
+import { approveFailedLine, parsePairingCode } from '../src/pairing/parse';
 import { PixelSprite } from '../src/pixel/PixelSprite';
 import type { SpriteState } from '../src/pixel/sprites';
 import { colors, layout, space } from '../src/theme';
@@ -86,9 +86,9 @@ export default function PairScreen() {
         success();
         setStatus({ kind: 'ok', text: `Paired with ${paired.label}.` });
         later(() => router.back(), LEAVE_DELAY_MS);
-      } catch {
+      } catch (e) {
         failure();
-        setStatus({ kind: 'error', text: 'That code was not recognised, or it expired. Try again.' });
+        setStatus({ kind: 'error', text: approveFailedLine(e, 'That code was not recognised, or it expired. Try again.') });
         later(() => {
           lockRef.current = false;
         }, RESCAN_DELAY_MS);

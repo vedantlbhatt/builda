@@ -55,3 +55,11 @@ function safeDecode(s: string): string {
     return s;
   }
 }
+
+/** The server's answer once an account has missed ten codes in fifteen minutes (a 429). */
+export const TOO_MANY_CODES = 'Too many codes tried. Wait a few minutes, then try again.';
+
+/** What a pairing screen says when approving failed: `otherwise` is its own line for a wrong or old code. */
+export function approveFailedLine(e: unknown, otherwise: string): string {
+  return (e as { status?: number } | null)?.status === 429 ? TOO_MANY_CODES : otherwise;
+}

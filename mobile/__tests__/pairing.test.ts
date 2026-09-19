@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { parsePairingCode } from '../src/pairing/parse';
+import { approveFailedLine, parsePairingCode, TOO_MANY_CODES } from '../src/pairing/parse';
 
 describe('parsePairingCode', () => {
   test('bare code', () => {
@@ -50,5 +50,17 @@ describe('parsePairingCode', () => {
     expect(parsePairingCode('WIFI:S:home;T:WPA;P:secret;;')).toBeNull();
     // A bare host is not a code, even if it is eight characters.
     expect(parsePairingCode('https://ABCDEFGH')).toBeNull();
+  });
+});
+
+describe('when approving fails', () => {
+  test('a 429 says the tries are used up, not that the code was wrong', () => {
+    expect(approveFailedLine(Object.assign(new Error('x'), { status: 429 }), 'Wrong code.')).toBe(TOO_MANY_CODES);
+  });
+
+  test('anything else is the screen own line', () => {
+    expect(approveFailedLine(Object.assign(new Error('x'), { status: 404 }), 'Wrong code.')).toBe('Wrong code.');
+    expect(approveFailedLine(new TypeError('Network request failed'), 'Wrong code.')).toBe('Wrong code.');
+    expect(approveFailedLine(null, 'Wrong code.')).toBe('Wrong code.');
   });
 });

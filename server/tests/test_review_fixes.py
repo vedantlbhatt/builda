@@ -6,6 +6,8 @@ each one, with their assertions turned round):
   3. The pairing start took unbounded fields from anyone and kept expired grants.
   5. The media sweep deleted only the uncommitted half of an abandoned publish.
   6. A malformed id, or a reading of an archived drop, came back a 500.
+  7. An account could try pairing codes without limit, and a right guess pairs someone else's
+     machine to it.
 """
 
 import uuid
@@ -158,3 +160,36 @@ def test_a_malformed_id_is_a_404_and_an_archived_drop_takes_no_reading(app_env, 
     assert c.post(f"/v1/drops/{drop['id']}:archive", headers=mac).status_code == 200
     r = c.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=mac)
     assert r.status_code == 409
+
+
+def test_guessing_pairing_codes_is_cut_off(client, paired):
+    from builder.routes.auth_routes import APPROVE_MISSES
+
+    _uid, mac = paired
+    phone = _phone_for(mac)
+    for _ in range(APPROVE_MISSES.limit):
+        r = client.post("/v1/auth/device/approve", json={"user_code": "BBBB-BBBB"}, headers=phone)
+        assert r.status_code == 404
+    started = client.post(
+        "/v1/auth/device/start",
+        json={"machine_id": uuid.uuid4().hex * 2, "label": "a Mac", "agent_version": "0.1"},
+    ).json()
+    # Even the right code waits now: the account has used its tries.
+    r = client.post(
+        "/v1/auth/device/approve", json={"user_code": started["user_code"]}, headers=phone
+    )
+    assert r.status_code == 429
+
+
+def test_misses_are_forgotten_after_the_window():
+    from builder.throttle import Misses
+
+    now = [0.0]
+    m = Misses(limit=2, window_s=60, clock=lambda: now[0])
+    m.miss("a")
+    m.miss("a")
+    assert m.blocked("a") and not m.blocked("b")
+    now[0] = 59.0
+    assert m.blocked("a")
+    now[0] = 60.0
+    assert not m.blocked("a")

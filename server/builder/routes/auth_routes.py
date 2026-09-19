@@ -23,6 +23,7 @@ from ..auth import (
 )
 from ..db import db_session
 from ..settings import settings
+from ..throttle import Misses
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -154,9 +155,20 @@ class DeviceApproveRequest(BaseModel):
     user_code: str
 
 
+#: Codes an account may get wrong before it has to wait. RFC 8628 section 5.1: a user code is
+#: short enough to type, so the approve side is what has to stop guessing. A guessed code pairs
+#: SOMEONE ELSE'S machine to the guesser's account, and that machine then uploads its sessions
+#: there. Ten misses in fifteen minutes is far past any person retyping a code; 28^8 codes at ten
+#: guesses a quarter hour is not a search anyone finishes.
+APPROVE_MISSES = Misses(limit=10, window_s=15 * 60)
+
+
 @router.post("/device/approve")
 def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(current_person)):
     """Approve a pairing code from an already-signed-in surface."""
+    who = str(device.user_id)
+    if APPROVE_MISSES.blocked(who):
+        raise HTTPException(429, "too many pairing codes tried; wait a few minutes")
     with db_session(viewer_id=str(device.user_id)) as db:
         updated = db.execute(
             text(
@@ -170,6 +182,7 @@ def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(c
         ).first()
 
     if updated is None:
+        APPROVE_MISSES.miss(who)
         raise HTTPException(404, "no pending pairing with that code")
     return {"status": "approved", "label": updated.label, "platform": updated.platform}
 

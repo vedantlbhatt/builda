@@ -77,6 +77,9 @@ import {
   type TileModel,
 } from './mission';
 import { crewFor, crewHashed } from './crew';
+import { select } from '../ui/haptics';
+import { awaySummary } from './away';
+import { AwayBand, useAwayFrom } from './AwayBand';
 import { IslandStage } from './IslandStage';
 import { FACE_FOR_TILE } from '../island/feeds';
 import type { CrewMember } from '../island/model';
@@ -157,12 +160,22 @@ export interface MissionData {
   seen: ReadonlyMap<string, number>;
   /** The latest finished session, for the empty state's one line. */
   lastFinal: SessionDetail | null;
+  /** The latest finished sessions from the cache, for "while you were away" (`away.ts`). */
+  recent: SessionDetail[];
   inputs: Omit<MissionInputs, 'rows'>;
   refreshing: boolean;
   refresh: () => Promise<void>;
   /** A DEV sample is on screen, not the account's sessions. */
   sample: boolean;
 }
+
+/**
+ * Finished rows read for "while you were away". Twenty was the empty state's need (the last one);
+ * parallel agents finish more than that in a day. MEASURED on the local stack's corpus: 64
+ * sessions on its busiest day (2026-09-12), 24 on the next; the band names three and counts the
+ * rest, so reading one busy day whole is enough.
+ */
+const AWAY_READ = 64;
 
 function errorText(e: unknown): string {
   return e instanceof Error && e.message ? e.message : 'Builda is not reachable right now.';
@@ -178,6 +191,7 @@ export function useMission(sample: SampleKind | null): MissionData {
   const [finals, setFinals] = useState<SessionDetail[]>([]);
   const [seen, setSeen] = useState<ReadonlyMap<string, number>>(seenFinal);
   const [lastFinal, setLastFinal] = useState<SessionDetail | null>(null);
+  const [recent, setRecent] = useState<SessionDetail[]>([]);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [synced, setSynced] = useState(false);
@@ -210,7 +224,7 @@ export function useMission(sample: SampleKind | null): MissionData {
       const finished = (await Promise.all([...seenFinal.keys()].map((id) => cache.getDetail(id)))).filter(
         (s): s is SessionDetail => s !== null,
       );
-      const recent = await cache.listSessions(20);
+      const recentRows = await cache.listSessions(AWAY_READ);
       if (!failed) lastGoodSyncMs = nowMs;
       // The Lock Screen card and the widget from the same rows these tiles show, now rather
       // than at the root poll's next tick (docs/overnight-integration.md 3.5, the one line).
@@ -218,7 +232,8 @@ export function useMission(sample: SampleKind | null): MissionData {
       setLive(after);
       setFinals(finished);
       setSeen(new Map(seenFinal));
-      setLastFinal(lastFinished(recent));
+      setLastFinal(lastFinished(recentRows));
+      setRecent(recentRows);
       setError(failed);
       if (!failed) setSynced(true);
       setSavedAt(lastGoodSyncMs);
@@ -250,6 +265,7 @@ export function useMission(sample: SampleKind | null): MissionData {
       finals: fake.finals,
       seen: fake.seen,
       lastFinal: lastFinished(fake.finals),
+      recent: [],
       inputs: fake.inputs,
       refreshing: false,
       refresh: async () => undefined,
@@ -261,6 +277,7 @@ export function useMission(sample: SampleKind | null): MissionData {
     finals,
     seen,
     lastFinal,
+    recent,
     inputs: { signedIn, synced, error, savedAt },
     refreshing,
     refresh,
@@ -425,6 +442,15 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
   const refusal = rows ? refusalLine(rows) : null;
   // `morph`: the tile grew into the page and it is already on screen (`motion/MorphNav.tsx`).
   const open = useCallback((id: string, morph?: boolean) => router.push(morph ? `/session/${id}?morph=1` : `/session/${id}`), [router]);
+  const awayClock = useAwayFrom();
+  const away = useMemo(
+    () => (data.sample ? null : awaySummary(data.recent, data.live ?? [], awayClock.from, Date.now(), names)),
+    [data.sample, data.recent, data.live, awayClock.from, names],
+  );
+  const awayDone = useCallback(() => {
+    select();
+    awayClock.done();
+  }, [awayClock]);
   const openLive = useCallback(() => router.push('/live'), [router]);
 
   const signedIn = data.inputs.signedIn;
@@ -525,6 +551,7 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
                   <Refusal>{staleLine(screen.stale, now)}</Refusal>
                 </View>
               ) : null}
+              {away ? <AwayBand away={away} onOpen={(id) => open(id)} onDone={awayDone} /> : null}
             </View>
           ) : null}
 

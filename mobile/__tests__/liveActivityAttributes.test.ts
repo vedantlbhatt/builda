@@ -408,8 +408,6 @@ describe('BuilderDemoAttributes', () => {
     const views = read(DEMO_VIEWS);
     expect(views).toContain('URL(string: "builder://ship/\\(projectKey)")');
     expect(views).toContain('Link(destination: url)');
-    // The in-app island opens the same screen when its demo is tapped.
-    expect(read('src/island/Island.tsx')).toContain('router.push(`/ship/${encodeURIComponent(a.projectKey)}` as never)');
   });
 
   test('the record light is the generated palette, never a literal colour', () => {
@@ -420,20 +418,11 @@ describe('BuilderDemoAttributes', () => {
   });
 });
 
-describe('the demo card says what the in-app island and the kit screen say', () => {
+// The in-app island these words were held to was deleted on 2026-09-19 (the owner: the island is not
+// for status). The card itself is switched off (`live/activity.ts`) and still held to the kit screen.
+describe('the demo card says what the kit screen says', () => {
   const views = read(DEMO_VIEWS);
-  const island = read('src/island/Island.tsx');
   const swiftWord = (name: string) => new RegExp(`static let ${name} = "([^"]+)"`).exec(views)?.[1];
-
-  test('waiting, filming, the kit is up, and the line under it are DemoContent\'s words', () => {
-    for (const name of ['waiting', 'filming', 'ready', 'shareLine']) {
-      const w = swiftWord(name)!;
-      expect(w).toBeTruthy();
-      expect(island).toContain(`'${w}'`);
-    }
-    // The right ear's word once the kit is up.
-    expect(island).toContain(`{a.ready ? '${swiftWord('wordKit')}' :`);
-  });
 
   test('made is the in-app notice\'s own sentence, and its card has no Share', () => {
     const made = swiftWord('made')!;

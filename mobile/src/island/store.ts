@@ -14,7 +14,7 @@ import { HOLD_MS, shownActivities, type Activity } from './model';
 let items: Activity[] = [];
 /**
  * Whether the drawn island shows the standing states (a hardware island to sit beside) or only
- * the passing beats (a desktop window, a phone with a notch or none). Set by `Island.tsx`.
+ * the passing beats (a desktop window, a phone with a notch or none). Nothing sets it since the in-app island was deleted (2026-09-19).
  */
 let standing = true;
 const timers = new Map<string, ReturnType<typeof setTimeout>>();

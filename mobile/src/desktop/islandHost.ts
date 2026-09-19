@@ -1,5 +1,5 @@
 /**
- * Where the in-app island (`island/Island.tsx`) lives in this window. On a phone it is fused to
+ * Where the in-app island (deleted 2026-09-19; the tour in `island/demo.ts` still asks) lived in this window. On a phone it is fused to
  * the hardware island and this is null, a constant: the phone's island is exactly what it was.
  * `islandHost.web.ts` answers for the desktop layout and the desktop shell's island window.
  */

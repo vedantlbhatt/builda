@@ -224,7 +224,9 @@ keep the URL; from a new conversation pass the URL.
 4. On this Mac: two older macOS dialogs and a Keychain prompt (SecurityAgent) are on screen, left for
    a person. The Keychain one is from a packaged Builda run; Deny is safe, the app no longer asks
    during capture runs.
-5. Unreproduced: the Drops search placeholder drawn low once on a fresh iPhone SE install.
+5. Unreproduced: the Drops search placeholder drawn low once on the SE's first boot, with several
+   link alerts queued. Not seen again: cold launches, the link path, and a fresh reinstall (08:33)
+   all draw it right.
 6. The ground truth suite cannot pass on this machine any more (its corpus was garbage collected);
    a new reference needs a kept copy of a corpus and an independent measurement.
 

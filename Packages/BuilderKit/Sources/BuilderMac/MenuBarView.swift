@@ -5,95 +5,96 @@ import SwiftUI
 
 /// What drops down from the menu bar.
 ///
-/// The ordering is the whole design: **today, then the live session, then recent work,
-/// then the graph.** A menu bar item is opened to answer "how am I doing right now", and
-/// anything that makes that question take a scroll has failed.
+/// The ordering is still the whole design: **today, then what is running now, then recent
+/// work, then the graph.** What changed (docs/motion.md): it speaks the island's language.
+/// One number leads (today's active time, set still), the builder's face says the state,
+/// what is running is the island's crew wheel inside the one aura on the screen, and a section
+/// that arrives or leaves morphs on the island's springs rather than cutting. Pairing no longer
+/// opens a sheet over everything: the phone row grows into the code.
 struct MenuBarView: View {
 
     @Environment(AppStore.self) private var store
     @State private var showPairing = false
 
+    private var face: FaceState {
+        if store.islandAgents.contains(where: { $0.waiting != nil }) { return .waiting }
+        if !store.islandAgents.isEmpty { return .working }
+        return store.todayActiveSeconds > 0 ? .idle : .sleep
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider()
+            PopoverHeader(
+                todaySeconds: store.todayActiveSeconds, streakDays: store.streakDays, face: face,
+                creature: UserDefaults.standard.string(forKey: "IslandCreature") ?? "bit")
+                .padding(16)
+            Divider().overlay(StripPalette.border(dark: true))
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if let live = store.liveSession {
-                        liveCard(live)
-                    }
+                    now
                     AnalysisBlock(summary: store.analysis, dark: true)
                     recentSection
                     graphSection
-                    phoneRow
+                    phoneSection
                 }
                 .padding(16)
+                .animation(IslandMotion.animation(IslandMotion.island), value: store.islandAgents.map(\.id))
+                .animation(IslandMotion.animation(IslandMotion.island), value: showPairing)
+                .animation(IslandMotion.animation(IslandMotion.island), value: store.liveSession?.id)
             }
 
-            Divider()
+            Divider().overlay(StripPalette.border(dark: true))
             footer
         }
         .frame(width: 420, height: 560)
         .background(StripPalette.card(dark: true))
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showPairing, onDismiss: { store.cancelPairing() }) {
-            pairingSheet
-        }
         .onChange(of: store.pairing) { _, now in
             if now == .paired { showPairing = false }
         }
     }
 
-    // MARK: Header
+    // MARK: Now
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(duration(store.todayActiveSeconds))
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(StripPalette.text(dark: true))
-                Text("active today")
-                    .font(.system(size: 12))
-                    .foregroundStyle(StripPalette.textDim(dark: true))
+    @ViewBuilder
+    private var now: some View {
+        if !store.islandAgents.isEmpty {
+            TimelineView(.periodic(from: .now, by: IslandController.wheelTurn)) { tl in
+                NowCard(
+                    agents: store.islandAgents,
+                    strip: store.liveSession.flatMap { live in
+                        live.strip.isEmpty ? nil
+                            : (live.strip, live.marks, max(1, Int(live.wallSeconds * 1000)))
+                    },
+                    sinceStart: store.liveSession?.activeSeconds,
+                    wheelIndex: Int(tl.date.timeIntervalSinceReferenceDate / IslandController.wheelTurn),
+                    now: tl.date,
+                    onOpen: { TerminalFocus.open($0) })
             }
-            Spacer()
-            if store.streakDays > 1 {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(store.streakDays)")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .foregroundStyle(StripPalette.accent(dark: true))
-                    Text("day streak")
-                        .font(.system(size: 11))
-                        .foregroundStyle(StripPalette.textDim(dark: true))
-                }
-            }
+            .transition(.section)
+        } else if let live = store.liveSession {
+            quietLive(live)
+                .transition(.section)
         }
-        .padding(16)
     }
 
-    // MARK: Live
-
-    private func liveCard(_ row: AppStore.SessionRow) -> some View {
+    /// A session still open with no agent writing (idle inside its session threshold): no
+    /// aura, because nothing is being driven, and no big number, because the header has one.
+    private func quietLive(_ row: AppStore.SessionRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Circle()
-                    .fill(StripPalette.accent(dark: true))
-                    .frame(width: 7, height: 7)
-                Text("IN PROGRESS")
-                    .font(.system(size: 10, weight: .bold))
-                    .kerning(0.8)
-                    .foregroundStyle(StripPalette.accent(dark: true))
-                Spacer()
+                Text("Open")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(StripPalette.textDim(dark: true))
                 Text(row.repo)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(StripPalette.text(dark: true))
+                Spacer()
+                Text(duration(row.activeSeconds))
+                    .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(StripPalette.textDim(dark: true))
             }
-
-            Text(duration(row.activeSeconds))
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundStyle(StripPalette.text(dark: true))
-
             if !row.strip.isEmpty {
                 TimelineStripView(
                     columns: row.strip, marks: row.marks,
@@ -101,19 +102,14 @@ struct MenuBarView: View {
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(StripPalette.accent(dark: true).opacity(0.08)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(StripPalette.accent(dark: true).opacity(0.35), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black))
     }
 
     // MARK: Recent
 
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Recent sessions")
+            SectionTitle("Recent sessions")
 
             if store.recent.isEmpty {
                 Text(store.scanning ? "Reading your history…" : "No sessions yet.")
@@ -136,7 +132,7 @@ struct MenuBarView: View {
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text(duration(row.activeSeconds))
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(StripPalette.textDim(dark: true))
             }
 
@@ -170,7 +166,7 @@ struct MenuBarView: View {
 
     private var graphSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Last 17 weeks")
+            SectionTitle("Last 17 weeks")
             ContributionGridView(days: store.graph, dark: true)
             HStack(spacing: 6) {
                 Text("less")
@@ -190,30 +186,38 @@ struct MenuBarView: View {
 
     // MARK: Phone
 
-    private var phoneRow: some View {
-        PhoneConnectRow(
-            status: store.pairing == .paired
-                ? .paired(label: store.pairedLabel ?? "this Mac")
-                : .notPaired,
-            dark: true,
-            onConnect: {
-                showPairing = true
-                store.startPairing()
-            },
-            onDisconnect: { store.disconnectPhone() })
+    /// The row, and when pairing, the row grown into the code: the same object saying more,
+    /// rather than a sheet dropped over everything.
+    @ViewBuilder
+    private var phoneSection: some View {
+        if showPairing {
+            pairingCard
+                .transition(.section)
+        } else {
+            PhoneConnectRow(
+                status: store.pairing == .paired
+                    ? .paired(label: store.pairedLabel ?? "this Mac")
+                    : .notPaired,
+                dark: true,
+                onConnect: {
+                    showPairing = true
+                    store.startPairing()
+                },
+                onDisconnect: { store.disconnectPhone() })
+            .transition(.section)
+        }
     }
 
-    /// The QR sheet. Same card colour and dark scheme as the panel underneath it, so it
-    /// reads as part of the popover rather than a system dialog.
-    private var pairingSheet: some View {
-        VStack(spacing: 16) {
+    private var pairingCard: some View {
+        VStack(spacing: 14) {
             HStack {
                 Text("Connect your phone")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(StripPalette.text(dark: true))
                 Spacer()
                 Button {
                     showPairing = false
+                    store.cancelPairing()
                 } label: {
                     Text("Close")
                         .font(.system(size: 11, weight: .medium))
@@ -227,25 +231,25 @@ struct MenuBarView: View {
                 Text("Requesting a code…")
                     .font(.system(size: 12))
                     .foregroundStyle(StripPalette.textDim(dark: true))
-                    .frame(height: 220)
+                    .frame(height: 200)
 
             case .waiting(let userCode, let deepLink, let expiresAt):
-                PairingQRView(userCode: userCode, payload: deepLink, dark: true)
+                PairingQRView(userCode: userCode, payload: deepLink, dark: true, side: 200)
                 Text("Waiting for your phone · code expires \(relativeTime(expiresAt))")
                     .font(.system(size: 11))
                     .foregroundStyle(StripPalette.textDim(dark: true))
 
             case .approved(let label):
-                Text("Paired — this Mac is linked as “\(label)”.")
+                Text("Paired. This Mac is linked as “\(label)”.")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(StripPalette.text(dark: true))
-                    .frame(height: 220)
+                    .frame(height: 200)
 
             case .paired:
                 Text("Phone connected.")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(StripPalette.text(dark: true))
-                    .frame(height: 220)
+                    .frame(height: 200)
 
             case .failed(let message):
                 VStack(spacing: 10) {
@@ -262,20 +266,20 @@ struct MenuBarView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(StripPalette.accent(dark: true))
                 }
-                .frame(height: 220)
+                .frame(height: 200)
             }
         }
-        .padding(20)
-        .frame(width: 340)
-        .background(StripPalette.card(dark: true))
-        .preferredColorScheme(.dark)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black))
     }
 
     // MARK: Footer
 
     private var footer: some View {
         HStack {
-            if store.scanning {
+            if store.isPaused {
+                Text("paused")
+            } else if store.scanning {
                 Text("scanning…")
             } else if let last = store.lastScanAt {
                 Text("updated \(relativeTime(last))")
@@ -283,28 +287,15 @@ struct MenuBarView: View {
             Spacer()
             Text("\(store.totalSessions) sessions")
         }
-        .font(.system(size: 10))
+        .font(.system(size: 10).monospacedDigit())
         .foregroundStyle(StripPalette.textDim(dark: true))
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
-    private func sectionTitle(_ s: String) -> some View {
-        Text(s.uppercased())
-            .font(.system(size: 10, weight: .bold))
-            .kerning(0.8)
-            .foregroundStyle(StripPalette.textDim(dark: true))
-    }
-
     // MARK: Formatting
 
-    private func duration(_ seconds: Double) -> String {
-        let s = Int(seconds.rounded())
-        if s < 60 { return "\(s)s" }
-        let h = s / 3600
-        let m = (s % 3600) / 60
-        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
-    }
+    private func duration(_ seconds: Double) -> String { IslandText.minutes(seconds) }
 
     private func relativeDate(_ ts: Double) -> String {
         let df = DateFormatter()

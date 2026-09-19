@@ -125,7 +125,7 @@ public struct ShimmerSweep: View {
     public init() {}
 
     public var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: IslandMotion.reduceMotion)) { tl in
+        TimelineView(LoopSchedule(fps: 30, paused: IslandMotion.reduceMotion)) { tl in
             GeometryReader { geo in
                 let period = Double(IslandMotion.shimmerMs) / 1000
                 let phase = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
@@ -278,9 +278,11 @@ private struct RailFace: View {
     let alive: Bool
 
     var body: some View {
+        // Alive only while the rail is out: a hidden face breathing is a core's percent spent
+        // on nothing (MEASURED, crew collapsed 6.3% against idle 4.3% before this).
         CreatureFace(
             creature: face.creature, state: face.waiting ? .waiting : .working, points: 18,
-            ink: face.hue, glow: face.waiting, alive: alive, seed: UInt64(index + 7))
+            ink: face.hue, glow: face.waiting, alive: alive && open, seed: UInt64(index + 7))
             .frame(width: 30, height: 30)
             .scaleEffect(open ? 1 : 0.6)
             .opacity(open ? 1 : 0)
@@ -311,7 +313,7 @@ public struct AuraRing: ViewModifier {
     public func body(content: Content) -> some View {
         content.overlay {
             if active {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: IslandMotion.reduceMotion)) { tl in
+                TimelineView(LoopSchedule(fps: 30, paused: IslandMotion.reduceMotion)) { tl in
                     let turn = Double(IslandMotion.auraTurnMs) / 1000
                     let angle = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: turn) / turn * 360
                     RoundedRectangle(cornerRadius: radius, style: .continuous)

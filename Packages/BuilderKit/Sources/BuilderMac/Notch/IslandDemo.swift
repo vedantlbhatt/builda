@@ -45,6 +45,13 @@ final class IslandDemo {
 
     private func advance() {
         let steps = IslandFixtures.demoCycle()
+        // `BUILDER_ISLAND_DEMO_HOLD=<step>` holds one step, to measure what it costs to show.
+        if let hold = ProcessInfo.processInfo.environment["BUILDER_ISLAND_DEMO_HOLD"],
+           let step = steps.first(where: { $0.name == hold }) {
+            controller?.applyDemo(step.snapshot, expanded: step.expanded)
+            NSLog("builder: island demo holding %@", hold)
+            return
+        }
         index = (index + 1) % steps.count
         let step = steps[index]
         controller?.applyDemo(step.snapshot, expanded: step.expanded)

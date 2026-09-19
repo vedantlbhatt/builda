@@ -60,6 +60,24 @@ public enum LiveAgents {
                         lastEventAt: last, cwd: st.text(3)))
             }
         }
-        return out.sorted { $0.lastEventAt > $1.lastEventAt }
+        // One transcript is one agent, even when its records landed in two sessions: the Swift
+        // deriver pools by the repository each record's cwd resolves to, so a sitting that
+        // `cd`'d out of the repo is split (CLAUDE.md, "Pooling by the repository each record's
+        // cwd resolves to"). FOUND BY RUNNING IT: this Mac's orchestrator transcript came back
+        // twice, once under its repository and once under its home directory, and the wheel,
+        // keyed by transcript, drew only one of the two rows. The copy kept is the one whose
+        // session saw the latest event, a resolved repository breaking a tie.
+        var best: [String: Running] = [:]
+        for r in out {
+            guard let seen = best[r.sourceID] else {
+                best[r.sourceID] = r
+                continue
+            }
+            let known = { (x: Running) in x.repo != "a session" && !x.repo.hasPrefix("/") }
+            if (r.lastEventAt, known(r) ? 1 : 0) > (seen.lastEventAt, known(seen) ? 1 : 0) {
+                best[r.sourceID] = r
+            }
+        }
+        return best.values.sorted { ($0.lastEventAt, $0.sourceID) > ($1.lastEventAt, $1.sourceID) }
     }
 }

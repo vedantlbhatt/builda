@@ -268,35 +268,36 @@ final class IslandController {
         // Mouse events only where the island is: everywhere else the menu bar is the menu bar.
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         let over = inside && !dragging
-        if over != hovering || (over && hoverTask == nil && !expanded && !suppressHoverUntilExit) {
-            pointer(over: over)
+        if over { pointerEntered() } else { pointerLeft() }
+    }
+
+    /// Called on every sample while the pointer is over the island, so it must be idempotent:
+    /// a pending open is left to finish. (The first version restarted the delay on every call,
+    /// and with the monitors and the 10 Hz poll both calling, a moving pointer never opened it.)
+    private func pointerEntered() {
+        collapseTask?.cancel()
+        collapseTask = nil
+        guard !hovering, hoverTask == nil, !suppressHoverUntilExit else { return }
+        hoverTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.hoverOpenDelay * 1e9))
+            guard let self, !Task.isCancelled else { return }
+            self.hoverTask = nil
+            self.hovering = true
+            self.apply()
         }
     }
 
-    private func pointer(over: Bool) {
-        if over {
-            collapseTask?.cancel()
-            collapseTask = nil
-            guard !hovering, !suppressHoverUntilExit else { return }
-            hoverTask?.cancel()
-            hoverTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.hoverOpenDelay * 1e9))
-                guard let self, !Task.isCancelled else { return }
-                self.hovering = true
-                self.apply()
-            }
-        } else {
-            hoverTask?.cancel()
-            hoverTask = nil
-            suppressHoverUntilExit = false
-            guard hovering else { return }
-            collapseTask?.cancel()
-            collapseTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.hoverCloseDelay * 1e9))
-                guard let self, !Task.isCancelled else { return }
-                self.hovering = false
-                self.apply()
-            }
+    private func pointerLeft() {
+        hoverTask?.cancel()
+        hoverTask = nil
+        suppressHoverUntilExit = false
+        guard hovering, collapseTask == nil else { return }
+        collapseTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.hoverCloseDelay * 1e9))
+            guard let self, !Task.isCancelled else { return }
+            self.collapseTask = nil
+            self.hovering = false
+            self.apply()
         }
     }
 

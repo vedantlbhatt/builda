@@ -182,8 +182,11 @@ public enum IslandMotion {
 
     /// Whether the person asked for less motion. Read at each use rather than cached: the
     /// setting can change while the app runs, and a cached "no" keeps every loop going.
+    /// `BUILDER_REDUCE_MOTION=1` forces it on for one process, so the reduced path can be
+    /// filmed without changing the machine's accessibility settings.
     @MainActor
     public static var reduceMotion: Bool {
+        if ProcessInfo.processInfo.environment["BUILDER_REDUCE_MOTION"] == "1" { return true }
         #if canImport(AppKit)
             return NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         #else
@@ -196,5 +199,39 @@ public enum IslandMotion {
     @MainActor
     public static func animation(_ spec: SpringSpec) -> Animation {
         reduceMotion ? .easeOut(duration: 0.12) : spec.animation
+    }
+}
+
+/// The clock the idle loops draw on: a plain timer at `fps`, or one frame and stop.
+///
+/// Not `TimelineView(.animation(minimumInterval:))`, which rides the display link and wakes
+/// the process on every refresh whatever the interval says. MEASURED in demo mode with the
+/// island held collapsed and idle (CPU seconds over 30 s): `.animation` at 30 fps and at 12 fps
+/// both cost about 5% of a core, where pausing the loops cost 0.1%, so the cost was the wake-ups
+/// and not the drawing. This schedule wakes only when it has a frame to draw.
+public struct LoopSchedule: TimelineSchedule {
+    let interval: Double
+    let paused: Bool
+
+    public init(fps: Double, paused: Bool) {
+        self.interval = 1 / max(1, fps)
+        self.paused = paused
+    }
+
+    public func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
+        if paused {
+            var done = false
+            return AnyIterator {
+                defer { done = true }
+                return done ? nil : startDate
+            }
+        }
+        // A window the system has put in low frequency mode gets a frame a second.
+        let step = mode == .lowFrequency ? max(1, interval) : interval
+        var next = startDate
+        return AnyIterator {
+            defer { next = next.addingTimeInterval(step) }
+            return next
+        }
     }
 }

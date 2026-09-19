@@ -131,33 +131,78 @@ public struct CreatureFace: View {
         self.glow = glow
         self.alive = alive
         self.seed = seed
-        _blinks = State(initialValue: BlinkSchedule(seed: seed))
     }
 
-    @State private var blinks: BlinkSchedule
+    @State private var breathFrame = false
+    @State private var blink: Double = 0
 
+    /// How the loops run, and why not on a SwiftUI clock. MEASURED in demo mode, the island held
+    /// collapsed and idle, CPU seconds over 30 s: loops paused 0.1% of a core; the face on a
+    /// `TimelineView` about 5%, at 30 fps and at 12 fps alike, on the display link and on a
+    /// plain timer alike. The cost was re-rendering the face at all, not how often. So the one
+    /// continuous thing, the glow's breath, is a Core Animation keyframe animation that the
+    /// render server plays with no app work (`BreathingGlow`), and the pixel creature is drawn
+    /// only when it changes: the breath frame swapped twice a cycle, a blink every few seconds.
     public var body: some View {
         let still = !alive || IslandMotion.reduceMotion
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { timeline in
-            let t = still ? 0 : timeline.date.timeIntervalSinceReferenceDate
-            let breath = still ? 0.5 : FaceClock.breath(at: t)
-            let blink = still ? 0 : blinks.value(at: t)
-            FaceRender(
-                creature: state == .sleep && creature == "bit" ? "bit-sleeping" : creature,
-                points: points,
-                useBreathFrame: breath > 0.5,
-                blink: state.eyes == .dot ? blink : 0,
-                breath: breath,
-                ink: ink,
-                showGlow: glow,
-                tint: state.tint,
-                glowColor: state.glow,
-                eyeHeight: state.eyeHeight,
-                eyeArc: state.eyeArc)
+        FaceRender(
+            creature: state == .sleep && creature == "bit" ? "bit-sleeping" : creature,
+            points: points,
+            useBreathFrame: !still && breathFrame,
+            blink: state.eyes == .dot ? blink : 0,
+            ink: ink,
+            showGlow: glow,
+            liveGlow: !still,
+            tint: state.tint,
+            glowColor: state.glow,
+            eyeHeight: state.eyeHeight,
+            eyeArc: state.eyeArc)
+            .animation(IslandMotion.animation(IslandMotion.content), value: state)
+            .frame(width: points * 1.5, height: points * 1.5)
+            .accessibilityLabel(Text(Self.spoken(state)))
+            .task(id: still) {
+                guard !still else { return }
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { await breathLoop() }
+                    group.addTask { await blinkLoop() }
+                }
+            }
+    }
+
+    /// The creature's own breath frame, on while the glow is past half its breath: 0.75 s into
+    /// the 1.5 s rise until 0.85 s into the 1.7 s fall (FaceClock.breath crosses 0.5 there).
+    @MainActor
+    private func breathLoop() async {
+        let out = Double(IslandMotion.breatheOutMs) / 1000
+        let back = Double(IslandMotion.breatheBackMs) / 1000
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: UInt64(out / 2 * 1e9))
+            breathFrame = true
+            try? await Task.sleep(nanoseconds: UInt64((out / 2 + back / 2) * 1e9))
+            breathFrame = false
+            try? await Task.sleep(nanoseconds: UInt64(back / 2 * 1e9))
         }
-        .animation(IslandMotion.animation(IslandMotion.content), value: state)
-        .frame(width: points * 1.5, height: points * 1.5)
-        .accessibilityLabel(Text(Self.spoken(state)))
+    }
+
+    /// Blinks on BlinkSchedule's seeded gaps: close in 70 ms, open in 90, a quarter doubled.
+    @MainActor
+    private func blinkLoop() async {
+        let schedule = BlinkSchedule(seed: seed)
+        let close = Double(IslandMotion.blinkCloseMs) / 1000
+        let open = Double(IslandMotion.blinkOpenMs) / 1000
+        var n: UInt64 = 1
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: UInt64(schedule.gap(n) * 1e9))
+            let times = FaceClock.unit(seed, n, 2) < IslandMotion.blinkDoubleChance ? 2 : 1
+            for i in 0..<times {
+                if i > 0 { try? await Task.sleep(nanoseconds: 90_000_000) }
+                withAnimation(.linear(duration: close)) { blink = 1 }
+                try? await Task.sleep(nanoseconds: UInt64(close * 1e9))
+                withAnimation(.linear(duration: open)) { blink = 0 }
+                try? await Task.sleep(nanoseconds: UInt64(open * 1e9))
+            }
+            n += 1
+        }
     }
 
     static func spoken(_ s: FaceState) -> String {
@@ -258,22 +303,25 @@ struct FaceRender: View, Animatable {
     let creature: String
     let points: CGFloat
     let useBreathFrame: Bool
-    let blink: Double
-    let breath: Double
+    var blink: Double
     let ink: Color?
     let showGlow: Bool
+    /// The breathing Core Animation glow; false draws it still at mid breath (offscreen
+    /// renders, Reduce Motion), which ImageRenderer can see and a layer it cannot.
+    let liveGlow: Bool
     var tint: RGBA
     var glowColor: RGBA
     var eyeHeight: Double
     var eyeArc: Double
 
-    var animatableData: AnimatablePair<AnimatablePair<RGBA, RGBA>, AnimatablePair<Double, Double>> {
-        get { AnimatablePair(AnimatablePair(tint, glowColor), AnimatablePair(eyeHeight, eyeArc)) }
+    var animatableData: AnimatablePair<AnimatablePair<RGBA, RGBA>, AnimatablePair<Double, AnimatablePair<Double, Double>>> {
+        get { AnimatablePair(AnimatablePair(tint, glowColor), AnimatablePair(eyeHeight, AnimatablePair(eyeArc, blink))) }
         set {
             tint = newValue.first.first
             glowColor = newValue.first.second
             eyeHeight = newValue.second.first
-            eyeArc = newValue.second.second
+            eyeArc = newValue.second.second.first
+            blink = newValue.second.second.second
         }
     }
 
@@ -282,66 +330,165 @@ struct FaceRender: View, Animatable {
             (useBreathFrame ? CreatureGrids.breath[creature] : nil)
             ?? CreatureGrids.rest[creature] ?? CreatureGrids.rest["bit"]!
         ZStack {
-            if showGlow {
-                // The glow breathes: brighter and a touch larger at the top of the breath.
+            if showGlow && liveGlow {
+                BreathingGlow(color: glowColor)
+                    .frame(width: points * 1.45, height: points * 1.45)
+            } else if showGlow {
+                // Still, at mid breath.
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [glowColor.color, glowColor.color.opacity(0)],
                             center: .center, startRadius: 0, endRadius: points * 0.72))
                     .frame(width: points * 1.45, height: points * 1.45)
-                    .scaleEffect(1 + 0.14 * breath)
-                    .opacity(0.45 + 0.4 * breath)
+                    .scaleEffect(1.07)
+                    .opacity(0.65)
             }
-            Canvas { ctx, size in
-                let cell = size.width / CGFloat(CreatureGrids.size)
-                let body = ink ?? tint.color
-                var path = Path()
-                for (y, row) in grid.enumerated() {
-                    for (x, ch) in row.enumerated() where ch == "#" {
-                        path.addRect(CGRect(x: CGFloat(x) * cell, y: CGFloat(y) * cell, width: cell, height: cell))
-                    }
-                }
-                // Eyes: fill the eye cells, then cut the eye at its sprung height. Filling first
-                // is what lets an eye close; cutting it from the centre is what makes a flat
-                // line and a blink read as the same lid.
-                let sleeping = creature == "bit-sleeping"
-                if !sleeping {
-                    for e in CreatureGrids.eyes {
-                        path.addRect(CGRect(x: CGFloat(e.x) * cell, y: CGFloat(e.y) * cell, width: cell, height: cell))
-                    }
-                }
-                ctx.fill(path, with: .color(body))
-                guard !sleeping else { return }
-                let open = max(0, eyeHeight * (1 - 0.92 * blink))
-                // An open, flat or shut eye is a hole of that height, cut from the eye's centre.
-                // It fades out as the eye becomes an arc, so dot to arc is one movement.
-                let h = 2 * cell * open * (1 - eyeArc)
-                ctx.blendMode = .copy
-                if h > 0.2 {
-                    for cx in [6.0, 10.0] {
-                        let rect = CGRect(x: (cx - 1) * cell, y: 7 * cell - h / 2, width: 2 * cell, height: h)
-                        ctx.fill(Path(roundedRect: rect, cornerRadius: 0.15 * cell), with: .color(.black))
-                    }
-                }
-                // Done: the eyes become arcs, the pixel face's ^ ^. The kit draws a half height
-                // eye with a rounded bottom; on a 16 cell creature that read as sleepy, not
-                // pleased (seen in the first render), so the arc bows up instead.
-                if eyeArc > 0.01 {
-                    for cx in [6.0, 10.0] {
-                        var arc = Path()
-                        arc.move(to: CGPoint(x: (cx - 0.8) * cell, y: 7.6 * cell))
-                        arc.addQuadCurve(
-                            to: CGPoint(x: (cx + 0.8) * cell, y: 7.6 * cell),
-                            control: CGPoint(x: cx * cell, y: 5.6 * cell))
-                        ctx.stroke(
-                            arc, with: .color(.black),
-                            style: StrokeStyle(lineWidth: 0.62 * cell * eyeArc, lineCap: .round))
-                    }
-                }
-            }
+            // Rounded to what a pixel can show, so a face at rest compares equal frame to frame
+            // and its cells are not redrawn on every tick of the breath (`PixelCreature`).
+            PixelCreature(
+                creature: creature, rows: grid, ink: ink ?? tint.color,
+                eyeOpen: (max(0, eyeHeight * (1 - 0.92 * blink)) * 100).rounded() / 100,
+                eyeArc: (eyeArc * 100).rounded() / 100)
+                .equatable()
             .frame(width: points, height: points)
         }
         .frame(width: points * 1.5, height: points * 1.5)
     }
 }
+
+/// The creature's cells and eyes. Equatable, so SwiftUI skips it whenever the face changes only
+/// in its glow: MEASURED, the island collapsed and idle cost 4.3% of a core with the cells
+/// redrawn 30 times a second for a breath that only moves the light behind them.
+struct PixelCreature: View, Equatable {
+    let creature: String
+    let rows: [String]
+    let ink: Color
+    let eyeOpen: Double
+    let eyeArc: Double
+
+    var body: some View {
+        Canvas { ctx, size in
+            let cell = size.width / CGFloat(CreatureGrids.size)
+            var path = Path()
+            for (y, row) in rows.enumerated() {
+                for (x, ch) in row.enumerated() where ch == "#" {
+                    path.addRect(CGRect(x: CGFloat(x) * cell, y: CGFloat(y) * cell, width: cell, height: cell))
+                }
+            }
+            // Eyes: fill the eye cells, then cut the eye at its sprung height. Filling first is
+            // what lets an eye close; cutting it from the centre is what makes a flat line and a
+            // blink read as the same lid.
+            let sleeping = creature == "bit-sleeping"
+            if !sleeping {
+                for e in CreatureGrids.eyes {
+                    path.addRect(CGRect(x: CGFloat(e.x) * cell, y: CGFloat(e.y) * cell, width: cell, height: cell))
+                }
+            }
+            ctx.fill(path, with: .color(ink))
+            guard !sleeping else { return }
+            // An open, flat or shut eye is a hole of that height. It fades out as the eye
+            // becomes an arc, so dot to arc is one movement.
+            let h = 2 * cell * eyeOpen * (1 - eyeArc)
+            ctx.blendMode = .copy
+            if h > 0.2 {
+                for cx in [6.0, 10.0] {
+                    let rect = CGRect(x: (cx - 1) * cell, y: 7 * cell - h / 2, width: 2 * cell, height: h)
+                    ctx.fill(Path(roundedRect: rect, cornerRadius: 0.15 * cell), with: .color(.black))
+                }
+            }
+            // Done: the eyes become arcs, the pixel face's ^ ^. The kit draws a half height eye
+            // with a rounded bottom; on a 16 cell creature that read as sleepy, not pleased
+            // (seen in the first render), so the arc bows up instead.
+            if eyeArc > 0.01 {
+                for cx in [6.0, 10.0] {
+                    var arc = Path()
+                    arc.move(to: CGPoint(x: (cx - 0.8) * cell, y: 7.6 * cell))
+                    arc.addQuadCurve(
+                        to: CGPoint(x: (cx + 0.8) * cell, y: 7.6 * cell),
+                        control: CGPoint(x: cx * cell, y: 5.6 * cell))
+                    ctx.stroke(
+                        arc, with: .color(.black),
+                        style: StrokeStyle(lineWidth: 0.62 * cell * eyeArc, lineCap: .round))
+                }
+            }
+        }
+    }
+}
+
+#if canImport(AppKit)
+    import AppKit
+    import QuartzCore
+
+    /// The glow behind the face, breathing on the render server: brighter and 14% larger at the
+    /// top of the breath, 1500 ms out and 1700 ms back, ease in-out, forever, with no app work
+    /// per frame. Its colour is set from SwiftUI (which springs it between states on CONTENT).
+    struct BreathingGlow: NSViewRepresentable {
+        let color: RGBA
+
+        func makeNSView(context: Context) -> GlowView { GlowView() }
+
+        func updateNSView(_ view: GlowView, context: Context) { view.set(color) }
+
+        final class GlowView: NSView {
+            private let gradient = CAGradientLayer()
+
+            override init(frame: NSRect) {
+                super.init(frame: frame)
+                wantsLayer = true
+                layer = CALayer()
+                gradient.type = .radial
+                gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+                gradient.endPoint = CGPoint(x: 1, y: 1)
+                layer?.addSublayer(gradient)
+                breathe()
+            }
+
+            @available(*, unavailable)
+            required init?(coder: NSCoder) { fatalError() }
+
+            override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+            override func layout() {
+                super.layout()
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                gradient.frame = bounds
+                CATransaction.commit()
+            }
+
+            func set(_ c: RGBA) {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                let a = max(0, min(1, c.a))
+                gradient.colors = [
+                    CGColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: a),
+                    CGColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: 0),
+                ]
+                CATransaction.commit()
+            }
+
+            private func breathe() {
+                let out = Double(IslandMotion.breatheOutMs) / 1000
+                let back = Double(IslandMotion.breatheBackMs) / 1000
+                let total = out + back
+                let ease = CAMediaTimingFunction(name: .easeInEaseOut)
+                let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+                scale.values = [1, 1.14, 1]
+                let opacity = CAKeyframeAnimation(keyPath: "opacity")
+                opacity.values = [0.45, 0.85, 0.45]
+                let group = CAAnimationGroup()
+                for a in [scale, opacity] {
+                    a.keyTimes = [0, NSNumber(value: out / total), 1]
+                    a.timingFunctions = [ease, ease]
+                    a.duration = total
+                }
+                group.animations = [scale, opacity]
+                group.duration = total
+                group.repeatCount = .infinity
+                group.isRemovedOnCompletion = false
+                gradient.add(group, forKey: "breathe")
+            }
+        }
+    }
+#endif

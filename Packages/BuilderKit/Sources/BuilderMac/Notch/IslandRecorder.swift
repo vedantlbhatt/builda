@@ -16,7 +16,7 @@ import Foundation
 /// so filming does not slow the thing being filmed. Debug only: nothing reaches here unless
 /// the environment asks for it.
 final class IslandRecorder: @unchecked Sendable {
-    private typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+    fileprivate typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
 
     private let dir: String
     private let rect: CGRect
@@ -35,6 +35,16 @@ final class IslandRecorder: @unchecked Sendable {
         if let sym = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage") {
             create = unsafeBitCast(sym, to: CreateImage.self)
         }
+    }
+
+    /// One picture of `rect` (CG global coordinates) to `path`.
+    static func still(rect: CGRect, to path: String) {
+        guard let sym = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage") else { return }
+        let create = unsafeBitCast(sym, to: CreateImage.self)
+        guard let image = create(rect, 1 << 0, 0, 1 << 3)?.takeRetainedValue() else { return }
+        let rep = NSBitmapImageRep(cgImage: image)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        NSLog("builder: wrote %@", path)
     }
 
     func start() {

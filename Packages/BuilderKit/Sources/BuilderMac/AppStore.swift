@@ -68,6 +68,8 @@ final class AppStore {
     }
 
     var pairing: PairingState = .idle
+    /// Every running agent, as the notch island draws them; the popover's Now card reads the same.
+    var islandAgents: [IslandAgent] = []
     /// The label this Mac was paired under, kept so the row can say which link it is
     /// after a relaunch. The server does not echo it back on approval.
     var pairedLabel: String? = UserDefaults.standard.string(forKey: AppStore.pairedLabelKey)
@@ -82,6 +84,10 @@ final class AppStore {
     /// Creatures already drawn for a session in this process. A kept creature never changes,
     /// so an agent's dot does not change colour because a neighbour finished (crew.ts rule).
     private var keptCreatures: [String: String] = [:]
+    /// The running transcripts the last pass found, re-read between passes (`refreshTails`).
+    private var lastRunning: [LiveAgents.Running] = []
+    private var lastRanToday = false
+    private var tailTimer: Timer?
 
     // MARK: Private
 
@@ -141,6 +147,14 @@ final class AppStore {
             })
         daemon.start()
         self.daemon = daemon
+
+        // Between passes, the ends of the running transcripts are re-read on their own. A pass
+        // re-derives the whole corpus, MEASURED on this machine at 5.3 s in a release build and
+        // 18 s in a debug one, so "waiting on you" would otherwise reach the notch up to a pass
+        // late. Reading a few 128 KB tails every 2 s costs nothing a person would notice.
+        tailTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshTails() }
+        }
     }
 
     func refresh(force: Bool) {
@@ -168,7 +182,7 @@ final class AppStore {
             var names: [Int: String] = [:]
             var analysisSummary: MenuBarPanel.AnalysisSummary?
             var shippedNow: [IslandShipped] = []
-            var runningNow: [(agent: LiveAgents.Running, turn: LiveTail.Turn?)] = []
+            var runningNow: [IslandAgents.Read] = []
 
             do {
                 _ = try coordinator.run()
@@ -216,9 +230,7 @@ final class AppStore {
                 let now = Date().timeIntervalSince1970
                 if let running = try? LiveAgents.running(
                     state: state, open: openSessions, repoNames: names, now: now) {
-                    runningNow = running.map { r in
-                        (r, r.harness == .claudeCode ? LiveTail.read(path: r.path, now: now) : nil)
-                    }
+                    runningNow = IslandAgents.read(running, now: now)
                 }
 
                 // Model-written analyses, queued off this pass. A scheduling error is
@@ -283,33 +295,25 @@ final class AppStore {
 
     /// Running transcripts to island agents: each wears its session's crew creature, the
     /// phone's rule, oldest session first.
-    private func publishIsland(
-        _ running: [(agent: LiveAgents.Running, turn: LiveTail.Turn?)], ranToday: Bool
-    ) {
-        var sessions: [(id: String, startedAt: Double)] = []
-        for r in running where !sessions.contains(where: { $0.id == r.agent.sessionID }) {
-            sessions.append((r.agent.sessionID, r.agent.sessionStartedAt))
-        }
-        let creatures = CrewRule.creatures(sessions: sessions, kept: keptCreatures)
-        keptCreatures.merge(creatures) { _, new in new }
-        let agents = running.map { r -> IslandAgent in
-            let t = r.turn
-            let waiting = t?.waiting.map { w -> IslandAgent.Waiting in
-                let reason: IslandAgent.Waiting.Reason
-                switch w {
-                case .turnEnded: reason = .turnEnded
-                case .question: reason = .question
-                case .permission: reason = .permission
-                }
-                return IslandAgent.Waiting(
-                    reason: reason, since: t?.waitingSince ?? r.agent.lastEventAt, detail: t?.detail)
+    private func refreshTails() {
+        let running = lastRunning
+        guard !running.isEmpty, !isPaused else { return }
+        let ranToday = lastRanToday
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let reads = IslandAgents.read(running, now: Date().timeIntervalSince1970)
+            Task { @MainActor [weak self] in
+                // A pass that landed meanwhile has the newer list; do not overwrite it.
+                guard let self, self.lastRunning == running else { return }
+                self.publishIsland(reads, ranToday: ranToday)
             }
-            return IslandAgent(
-                id: r.agent.sourceID, sessionID: r.agent.sessionID, repo: r.agent.repo,
-                creature: creatures[r.agent.sessionID] ?? "bit", activity: t?.activity,
-                waiting: waiting, lastEventAt: max(r.agent.lastEventAt, t?.lastTs ?? 0),
-                transcriptPath: r.agent.path, cwd: t?.cwd ?? r.agent.cwd)
         }
+    }
+
+    private func publishIsland(_ running: [IslandAgents.Read], ranToday: Bool) {
+        lastRunning = running.map(\.agent)
+        lastRanToday = ranToday
+        let agents = IslandAgents.make(running, kept: &keptCreatures)
+        if agents != islandAgents { islandAgents = agents }
         onIsland?(agents, ranToday)
     }
 

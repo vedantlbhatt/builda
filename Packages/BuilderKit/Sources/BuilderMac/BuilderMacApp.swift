@@ -138,7 +138,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             DispatchQueue.main.async {
                 NSLog("builder: status summary = %@", summary)
                 self?.statusItem.button?.title = summary.isEmpty ? "" : " \(summary)"
+                self?.shootPopoverIfAsked()
             }
+        }
+    }
+
+    /// `BUILDER_POPOVER_SHOT=<file.png>`: after the first pass, open the popover and save a
+    /// picture of it, the app photographing its own window (IslandRecorder says why it has to).
+    private var popoverShot = ProcessInfo.processInfo.environment["BUILDER_POPOVER_SHOT"]
+
+    private func shootPopoverIfAsked() {
+        guard let path = popoverShot, let button = statusItem.button else { return }
+        popoverShot = nil
+        if !popover.isShown { togglePopover(button) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let window = self?.popover.contentViewController?.view.window else { return }
+            let screenTop = NSScreen.screens.first?.frame.maxY ?? 0
+            let f = window.frame
+            let rect = CGRect(x: f.minX, y: screenTop - f.maxY, width: f.width, height: f.height)
+            IslandRecorder.still(rect: rect, to: path)
         }
     }
 

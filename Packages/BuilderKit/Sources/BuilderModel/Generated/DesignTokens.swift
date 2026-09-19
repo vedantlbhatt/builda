@@ -187,4 +187,23 @@ public enum DesignTokens {
         public static let portrait  = (w: 1080.0,  h: 1350.0)
         public static let scale     = 2.0
     }
+
+    // MARK: spectrum. The nine identity hues as their dark ink, the creature each hue belongs
+    // to, and the crew ring a session's creature is hashed onto (FNV-1a of its client session
+    // id, mod the ring; mobile/src/live/crew.ts). Never chrome.
+    public enum Spectrum {
+        public static let hues: [String: SRGB] = [
+            "amber": SRGB(r: 1.0, g: 0.701961, b: 0.0),  // #FFB300
+            "brass": SRGB(r: 0.92549, g: 0.901961, b: 0.34902),  // #ECE659
+            "tide": SRGB(r: 0.423529, g: 0.85098, b: 0.945098),  // #6CD9F1
+            "cobalt": SRGB(r: 0.32549, g: 0.639216, b: 0.94902),  // #53A3F2
+            "iris": SRGB(r: 0.65098, g: 0.439216, b: 0.952941),  // #A670F3
+            "heather": SRGB(r: 0.917647, g: 0.721569, b: 1.0),  // #EAB8FF
+            "orchid": SRGB(r: 0.960784, g: 0.294118, b: 0.721569),  // #F54BB8
+            "coral": SRGB(r: 0.988235, g: 0.627451, b: 0.65098),  // #FCA0A6
+            "ember": SRGB(r: 0.976471, g: 0.513725, b: 0.243137),  // #F9833E
+        ]
+        public static let creature: [String: String] = ["bit": "amber", "cat": "orchid", "dog": "cobalt", "fox": "ember", "owl": "heather", "bee": "brass", "whale": "tide", "octopus": "iris", "crab": "coral"]
+        public static let crewRing: [String] = ["fox", "whale", "bee", "octopus", "crab", "dog", "cat", "owl"]
+    }
 }

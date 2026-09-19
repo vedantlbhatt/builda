@@ -35,6 +35,7 @@ gen:
 	@python3 scripts/gen_contract.py
 	@python3 scripts/gen_strip.py
 	@python3 scripts/gen_tokens.py
+	@python3 scripts/gen_mac_creatures.py
 	@python3 scripts/gen_harness_logos.py
 	@python3 scripts/gen_analysis.py
 	@python3 scripts/gen_narrative.py

@@ -344,6 +344,19 @@ def gen_swift(t: dict) -> str:
     )
 
     card = t["card"]
+
+    # The spectrum reaches BuilderKit for the Mac's notch island: an agent there wears its
+    # session's crew creature's hue, the same one the phone and the Lock Screen draw, so the
+    # Mac needs the dark inks, which creature wears which, and the ring. Only the dark inks:
+    # the island is black in both appearances, like the Dynamic Island it stands for.
+    spectrum = t["spectrum"]
+    hue_lines = "\n".join(
+        '            "{}": SRGB(r: {}, g: {}, b: {}),'.format(name, *hex_to_rgb(h["dark"]))
+        + f"  // {h['dark']}"
+        for name, h in clean(spectrum["hues"]).items()
+    )
+    creature_lines = ", ".join(f'"{c}": "{h}"' for c, h in clean(spectrum["creature"]).items())
+    ring = ", ".join(f'"{c}"' for c in spectrum["crew"]["ring"])
     return f"""{BANNER}
 
 import Foundation
@@ -428,6 +441,17 @@ public enum DesignTokens {{
         public static let landscape = (w: {card["landscape"]["w"]}.0, h: {card["landscape"]["h"]}.0)
         public static let portrait  = (w: {card["portrait"]["w"]}.0,  h: {card["portrait"]["h"]}.0)
         public static let scale     = {float(card["scale"])}
+    }}
+
+    // MARK: spectrum. The nine identity hues as their dark ink, the creature each hue belongs
+    // to, and the crew ring a session's creature is hashed onto (FNV-1a of its client session
+    // id, mod the ring; mobile/src/live/crew.ts). Never chrome.
+    public enum Spectrum {{
+        public static let hues: [String: SRGB] = [
+{hue_lines}
+        ]
+        public static let creature: [String: String] = [{creature_lines}]
+        public static let crewRing: [String] = [{ring}]
     }}
 }}
 """

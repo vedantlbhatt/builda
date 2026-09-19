@@ -42,13 +42,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private let store = AppStore()
+    private let island = IslandController()
+
+    /// The setting behind "Show island at the notch". On unless turned off.
+    static let showIslandKey = "ShowIslandAtNotch"
+    private var showIsland: Bool {
+        get { UserDefaults.standard.object(forKey: Self.showIslandKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.showIslandKey) }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("builder: launched, bundle=%@", Bundle.main.bundleIdentifier ?? "none")
+        let env = ProcessInfo.processInfo.environment
+        // A copy of the store to run against, so a development build never migrates the
+        // real one forward (state.sqlite is forward-only, and an older build refuses a newer
+        // store rather than dropping columns it does not know).
+        if let dir = env["BUILDER_STORE_DIR"] { StorePaths.root = dir }
         setUpStatusItem()
         setUpPopover()
+        setUpIsland()
+        recordIfAsked(env)
+
+        // BUILDER_ISLAND_DEMO=1 cycles the island through every mode on fixture data, for
+        // screenshots and recordings. It leaves the store alone: a demo should neither read
+        // nor announce anyone's sessions.
+        if env["BUILDER_ISLAND_DEMO"] == "1" {
+            island.start()
+            island.startDemo(shotsDir: env["BUILDER_ISLAND_RECORD"])
+            return
+        }
         requestNotificationPermission()
         store.start()
+    }
+
+    /// `BUILDER_ISLAND_RECORD=<dir>`: film the top of the screen around the island
+    /// (IslandRecorder), in the demo or on live data.
+    private func recordIfAsked(_ env: [String: String]) {
+        guard let dir = env["BUILDER_ISLAND_RECORD"] else { return }
+        if env["BUILDER_ISLAND_DEMO"] == "1" { island.start() }
+        guard let p = island.placement ?? NotchPlacement.current() else { return }
+        // The top of the screen around the notch, in CG's top-left coordinates.
+        let screenTop = NSScreen.screens.first?.frame.maxY ?? p.top
+        let rect = CGRect(x: p.centerX - 330, y: screenTop - p.top, width: 660, height: 190)
+        let seconds = Double(env["BUILDER_ISLAND_RECORD_SECONDS"] ?? "") ?? 26
+        IslandRecorder(dir: dir, rect: rect, seconds: seconds).start()
+    }
+
+    // MARK: - Island
+
+    private func setUpIsland() {
+        island.openPopover = { [weak self] in
+            guard let self, let button = self.statusItem.button else { return }
+            if !self.popover.isShown { self.togglePopover(button) }
+        }
+        island.openAgent = { agent in TerminalFocus.open(agent) }
+        let store = self.store
+        island.isPaired = { await store.isPaired() }
+        island.shareDrop = { shared in try await store.shareDrop(shared) }
+        island.pollDrop = { id in try await store.dropState(id: id) }
+        store.onIsland = { [weak self] agents, ranToday in
+            self?.island.update(agents: agents, ranToday: ranToday)
+        }
+        store.onShipped = { [weak self] shipped in self?.island.showShipped(shipped) }
+        if showIsland && ProcessInfo.processInfo.environment["BUILDER_ISLAND_DEMO"] != "1" {
+            island.start()
+        }
+    }
+
+    @objc private func toggleIsland() {
+        showIsland.toggle()
+        if showIsland {
+            island.start()
+            store.refresh(force: false)
+        } else {
+            island.stop()
+        }
     }
 
     // MARK: - Status item
@@ -90,6 +158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             action: #selector(togglePause), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Rescan now", action: #selector(rescan), keyEquivalent: "r")
+        let islandItem = NSMenuItem(
+            title: "Show island at the notch", action: #selector(toggleIsland), keyEquivalent: "")
+        islandItem.state = showIsland ? .on : .off
+        menu.addItem(islandItem)
         menu.addItem(
             withTitle: "Reveal data folder", action: #selector(revealData), keyEquivalent: "")
         menu.addItem(.separator())

@@ -75,6 +75,14 @@ final class AppStore {
     var onSummaryChange: ((String) -> Void)?
     var notifier: (any Notifier)?
 
+    /// Every running agent, for the notch island, after each pass.
+    var onIsland: (([IslandAgent], Bool) -> Void)?
+    /// A session just finished and was announced: the island's shipped beat.
+    var onShipped: ((IslandShipped) -> Void)?
+    /// Creatures already drawn for a session in this process. A kept creature never changes,
+    /// so an agent's dot does not change colour because a neighbour finished (crew.ts rule).
+    private var keptCreatures: [String: String] = [:]
+
     // MARK: Private
 
     private var state: SQLiteDB?
@@ -159,6 +167,8 @@ final class AppStore {
             var total = 0
             var names: [Int: String] = [:]
             var analysisSummary: MenuBarPanel.AnalysisSummary?
+            var shippedNow: [IslandShipped] = []
+            var runningNow: [(agent: LiveAgents.Running, turn: LiveTail.Turn?)] = []
 
             do {
                 _ = try coordinator.run()
@@ -175,6 +185,15 @@ final class AppStore {
                 for s in pending.runFinished { queue.append((session: s, kind: .runFinished)) }
 
                 for (s, kind) in queue {
+                    let repoName = try? Self.repoName(for: s.clientSessionID, cache: cache, names: names)
+                    let commits = (try? cache.scalarInt(
+                        "SELECT git_commits FROM session WHERE client_session_id = ?",
+                        [.text(s.clientSessionID)])).flatMap { $0 } ?? 0
+                    shippedNow.append(
+                        IslandShipped(
+                            sessionID: s.clientSessionID, repo: repoName ?? "a session",
+                            activeSeconds: s.activeSeconds, commits: commits,
+                            unattended: kind == .runFinished))
                     let alert = SessionAlert(
                         session: s,
                         kind: kind,
@@ -188,7 +207,19 @@ final class AppStore {
                     try? notifier?.deliver(alert)
                 }
 
-                let openSession = try lifecycle.openSession(among: sessions)
+                let openSessions = try lifecycle.openSessions(among: sessions)
+                let openSession = openSessions.first
+
+                // The island's crew: every transcript being written inside an open session, and
+                // what the end of each one says (working on what, or waiting on you). Read
+                // from disk, no network. A failure here costs the island a pass, never the pass.
+                let now = Date().timeIntervalSince1970
+                if let running = try? LiveAgents.running(
+                    state: state, open: openSessions, repoNames: names, now: now) {
+                    runningNow = running.map { r in
+                        (r, r.harness == .claudeCode ? LiveTail.read(path: r.path, now: now) : nil)
+                    }
+                }
 
                 // Model-written analyses, queued off this pass. A scheduling error is
                 // logged rather than allowed to abort the refresh.
@@ -226,6 +257,8 @@ final class AppStore {
             let capturedTotal = total
             let capturedNames = names
             let capturedAnalysis = analysisSummary
+            let capturedShipped = shippedNow
+            let capturedRunning = runningNow
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -240,8 +273,57 @@ final class AppStore {
                 self.lastScanAt = Date()
                 self.scanning = false
                 self.onSummaryChange?(Self.shortDuration(capturedToday))
+                self.publishIsland(capturedRunning, ranToday: capturedToday > 0)
+                for s in capturedShipped { self.onShipped?(s) }
             }
         }
+    }
+
+    // MARK: The island
+
+    /// Running transcripts to island agents: each wears its session's crew creature, the
+    /// phone's rule, oldest session first.
+    private func publishIsland(
+        _ running: [(agent: LiveAgents.Running, turn: LiveTail.Turn?)], ranToday: Bool
+    ) {
+        var sessions: [(id: String, startedAt: Double)] = []
+        for r in running where !sessions.contains(where: { $0.id == r.agent.sessionID }) {
+            sessions.append((r.agent.sessionID, r.agent.sessionStartedAt))
+        }
+        let creatures = CrewRule.creatures(sessions: sessions, kept: keptCreatures)
+        keptCreatures.merge(creatures) { _, new in new }
+        let agents = running.map { r -> IslandAgent in
+            let t = r.turn
+            let waiting = t?.waiting.map { w -> IslandAgent.Waiting in
+                let reason: IslandAgent.Waiting.Reason
+                switch w {
+                case .turnEnded: reason = .turnEnded
+                case .question: reason = .question
+                case .permission: reason = .permission
+                }
+                return IslandAgent.Waiting(
+                    reason: reason, since: t?.waitingSince ?? r.agent.lastEventAt, detail: t?.detail)
+            }
+            return IslandAgent(
+                id: r.agent.sourceID, sessionID: r.agent.sessionID, repo: r.agent.repo,
+                creature: creatures[r.agent.sessionID] ?? "bit", activity: t?.activity,
+                waiting: waiting, lastEventAt: max(r.agent.lastEventAt, t?.lastTs ?? 0),
+                transcriptPath: r.agent.path, cwd: t?.cwd ?? r.agent.cwd)
+        }
+        onIsland?(agents, ranToday)
+    }
+
+    /// Whether this Mac holds a token to send a drop with.
+    func isPaired() async -> Bool { await sync.isPaired }
+
+    func shareDrop(_ shared: DropLink.Shared) async throws -> SyncClient.DropState {
+        try await sync.shareDrop(
+            url: shared.url, platform: shared.platform,
+            sharedText: shared.text.isEmpty ? nil : String(shared.text.prefix(1000)))
+    }
+
+    func dropState(id: String) async throws -> SyncClient.DropState {
+        try await sync.drop(id: id)
     }
 
     // MARK: Pairing

@@ -103,16 +103,15 @@ private struct WheelLine: View {
         .lineLimit(1)
         .truncationMode(.tail)
         if shimmer {
-            // The sweep and the line in one group, masked by the line: the light exists only
-            // where there are letters. (An earlier version blended the band with plusLighter
-            // inside the overlay; the blend escaped the mask and drew a hairline at the edge
-            // of the island mid morph, caught in a recorded frame.)
-            ZStack(alignment: .leading) {
-                line
-                ShimmerSweep()
-            }
-            .compositingGroup()
-            .mask(line)
+            // The sweep sized to the line, the two as one layer, masked by the line: the light
+            // exists only where there are letters. Two versions were caught wrong in recorded
+            // frames: the band blended with plusLighter escaped the mask and drew a hairline at
+            // the island's edge mid morph, and a sweep in a ZStack beside the line widened the
+            // row, so the centred mask cut the line in half.
+            line
+                .overlay { ShimmerSweep() }
+                .compositingGroup()
+                .mask { line }
         } else {
             line
         }

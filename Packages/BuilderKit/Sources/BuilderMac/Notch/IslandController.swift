@@ -59,6 +59,7 @@ final class IslandController {
     private var wheelTimer: Timer?
     private var pollTimer: Timer?
     private var monitors: [Any] = []
+    private var screenObserver: NSObjectProtocol?
 
     private var panel: IslandPanel?
     private(set) var demo: IslandDemo?
@@ -114,7 +115,7 @@ final class IslandController {
         wheelTimer = Timer.scheduledTimer(withTimeInterval: Self.wheelTurn, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.turnWheel() }
         }
-        NotificationCenter.default.addObserver(
+        screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.screensChanged() }
@@ -128,6 +129,8 @@ final class IslandController {
         monitors = []
         pollTimer?.invalidate()
         wheelTimer?.invalidate()
+        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+        screenObserver = nil
         demo?.stop()
         demo = nil
     }

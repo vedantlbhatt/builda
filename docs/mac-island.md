@@ -90,7 +90,7 @@ not on the notch (found by running it: "7 agents running", four of them windows 
 | idle, collapsed | 4.3% | 0.8% |
 | crew, collapsed | 6.3% | 1.0% |
 | needs you, open | 6.8% | 0.4% |
-| crew, open (shimmer, three rail faces) | 6.9% | ~9% |
+| crew, open (shimmer at 20 fps, three rail faces) | 6.9% | 6.9% |
 
 The face on a SwiftUI `TimelineView` cost about 5% of a core at 30 fps and at 12 fps alike, on
 the display link and on a timer alike, so the cost was redrawing it at all, not how often. The

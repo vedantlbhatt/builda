@@ -126,7 +126,9 @@ public struct ShimmerSweep: View {
     public init() {}
 
     public var body: some View {
-        TimelineView(LoopSchedule(fps: 30, paused: IslandMotion.reduceMotion)) { tl in
+        // 20 frames a second: the band is soft and travels a line in 1.9 s, so it moves a few
+        // points a frame, and the open crew is the one state that draws continuously.
+        TimelineView(LoopSchedule(fps: 20, paused: IslandMotion.reduceMotion)) { tl in
             GeometryReader { geo in
                 let period = Double(IslandMotion.shimmerMs) / 1000
                 let phase = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period

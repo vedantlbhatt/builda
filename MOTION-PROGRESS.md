@@ -37,6 +37,21 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **09:05 to 09:21**: two more review agents, on the server and on Drops and the ship kit.
+  Server (8b8ff49, 1155168, 02690ca, `server/tests/test_review_fixes.py`): a paired Mac could write
+  a move and start it itself, so only a person's app (phone or desktop) starts a move, asks for a
+  demo or approves a pairing; excluding a repository now clears the drop moves naming it; the
+  pairing start is bounded and forgets grants a day old; the media sweep takes a whole abandoned
+  publish; a malformed id is a 404 and an archived drop takes no reading (both were 500s). Drops
+  and ship kit (14a5c31, 33702c1, 6a57f8c, 7c691b5): a bare link was cut at its first `)`, in the
+  app and the share extension; one failed board read ended polling for good; a refused Start said
+  "Sent to your Mac"; a tapped banner on a cold start landed on the wall; a paste that failed said
+  nothing; reading LinkedIn's caption dropped the kit's video; an over-limit caption was shared
+  anyway; the kit video ignored Reduce Motion; VoiceOver could not reach a card's buttons; a
+  recipe's step control was drawn twice. Deferred, for the owner: two Macs can claim one drop after
+  the 10 minute stale window (needs a `claimed_at` column); no rate limit on the device routes.
+  Mobile 2839 pass, server 583, CI green.
+
 - **by 08:58**: a simulator "priming" tap (bottom right of Settings) landed on the Public profile
   switch and turned it off on the local test account; turned back on within a minute and checked.
   Prime taps now go to the status bar, drags run at screen x=1000 (clear of the switches and of
@@ -226,7 +241,7 @@ keep the URL; from a new conversation pass the URL.
   `design/tokens.json` `spectrum.island`.
 - The brief and the design (`brief-motion.md`, `docs/motion.md`).
 
-## Next (for the owner, as of 07:55)
+## Next (for the owner, as of 09:21)
 
 1. Merge `claude/motion`: `main` has been red since 2026-09-14 and turns green only with 31a1131
    and 7423fcd. Every job is green on this branch.
@@ -239,7 +254,9 @@ keep the URL; from a new conversation pass the URL.
 5. Unreproduced: the Drops search placeholder drawn low once on the SE's first boot, with several
    link alerts queued. Not seen again: cold launches, the link path, and a fresh reinstall (by 08:30)
    all draw it right.
-6. The ground truth suite cannot pass on this machine any more (its corpus was garbage collected);
+6. Two server items the review left: a `claimed_at` column so two Macs cannot claim one drop after
+   the stale window, and rate limits on the device routes.
+7. The ground truth suite cannot pass on this machine any more (its corpus was garbage collected);
    a new reference needs a kept copy of a corpus and an independent measurement.
 
 ## Measured

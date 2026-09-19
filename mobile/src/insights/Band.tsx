@@ -100,7 +100,7 @@ export function Band({ hue, index, title, children, onPress: press, href, access
   const router = useRouter();
   const cardRef = useRef<View>(null);
   const onPress = href
-    ? () => morphOpen(cardRef.current, () => router.push(`${href}${href.includes('?') ? '&' : '?'}morph=1` as never), { color: hue.ink, radius: BAND_RADIUS, ground: GROUND.bg })
+    ? () => morphOpen(cardRef.current, () => router.push(`${href}${href.includes('?') ? '&' : '?'}morph=1` as never), { color: hue.ink, radius: BAND_RADIUS, ground: GROUND.bg }, href)
     : press;
   const [h, setH] = useState(0);
   const onLayout = useCallback((e: LayoutChangeEvent) => {

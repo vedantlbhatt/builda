@@ -375,11 +375,12 @@ export function SessionsScreen() {
               keyExtractor={(s) => s.id}
               onItemPress={(s) =>
                 // The row lifts into a card and grows into its page (`motion/MorphNav.tsx`).
-                morphOpen(rowRefs.current.get(s.id) ?? null, () => router.push(`/session/${s.id}?morph=1`), {
-                  color: GROUND.card,
-                  radius: 18,
-                  ground: GROUND.bg,
-                })
+                morphOpen(
+                  rowRefs.current.get(s.id) ?? null,
+                  () => router.push(`/session/${s.id}?morph=1`),
+                  { color: GROUND.card, radius: 18, ground: GROUND.bg },
+                  `/session/${s.id}`,
+                )
               }
               renderItem={({ item, index }) => (
                 <FinishedRow

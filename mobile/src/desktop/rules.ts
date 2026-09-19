@@ -145,3 +145,50 @@ export function masterWidthFor(master: 'sessions' | 'drops' | 'projects', window
   const room = windowWidth - sidebar - 390;
   return Math.max(320, Math.min(MASTER_WIDTH[master], room));
 }
+
+/** A rectangle in window points. */
+export interface PaneRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Where the frame lays a place out: the list column's width (0 with no list), the room right of
+ * it, and the rectangle the screen itself is drawn in (a page with no list stops at
+ * `CONTENT_MAX` and sits centred in its room). ONE rule for the frame that draws it and for a
+ * morph that has to land exactly where the page will appear (`morphTarget.web.ts`), so the two
+ * can never disagree by a pixel.
+ */
+export function frameLayout(place: Place, windowWidth: number, windowHeight: number, sidebar: number): { master: number; room: number; content: PaneRect } {
+  const master = place.master ? masterWidthFor(place.master, windowWidth, sidebar) : 0;
+  const room = windowWidth - sidebar - master;
+  const w = place.master ? room : Math.min(room, CONTENT_MAX);
+  return { master, room, content: { x: sidebar + master + Math.max(0, (room - w) / 2), y: 0, w, h: windowHeight } };
+}
+
+/**
+ * The rectangle a pushed route will be drawn in, or null where it draws its own full window
+ * (onboarding, the island) or has no page of its own (a list's own tab root, which the list
+ * column already is).
+ */
+export function paneRectFor(pathname: string, windowWidth: number, windowHeight: number, sidebar: number): PaneRect | null {
+  const place = placeOf(pathname);
+  if (place.bare || place.masterRoot) return null;
+  return frameLayout(place, windowWidth, windowHeight, sidebar).content;
+}
+
+/**
+ * Where a morph from `fromPath` to `toPath` lands: the rectangle that CHANGES. A row in a list that
+ * stays opens into the pane beside it; but a tile on Now opening a session brings the Sessions list
+ * in with it, so the pane it will sit in is not on screen yet and half the page it came from would
+ * be left showing beside a grown window (seen in the first recording: Now cut off at 617 points).
+ * Then everything right of the sidebar changes, and the window covers exactly that.
+ */
+export function morphRectFor(fromPath: string, toPath: string, windowWidth: number, windowHeight: number, sidebar: number): PaneRect | null {
+  const to = placeOf(toPath);
+  if (to.bare || to.masterRoot) return null;
+  if (to.master && to.master !== placeOf(fromPath).master) return { x: sidebar, y: 0, w: windowWidth - sidebar, h: windowHeight };
+  return frameLayout(to, windowWidth, windowHeight, sidebar).content;
+}

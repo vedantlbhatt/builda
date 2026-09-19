@@ -11,6 +11,8 @@ import { join } from 'node:path';
 import { useFormFactor, useIsDesktop } from '../src/desktop/formFactor';
 import { PLACES, fold, rank, score, type PaletteItem } from '../src/desktop/paletteModel';
 import { deviceLabel, devicePlatform, pairLink, readPoll } from '../src/desktop/pairing';
+import { useIslandHost } from '../src/desktop/islandHost';
+import { morphTarget, useFrame } from '../src/desktop/morphTarget';
 import { usePaneOriginX } from '../src/desktop/paneOrigin';
 import {
   CONTENT_MAX,
@@ -20,7 +22,10 @@ import {
   cleanPath,
   commandFor,
   formFactorFor,
+  frameLayout,
   masterWidthFor,
+  morphRectFor,
+  paneRectFor,
   placeOf,
   shortcutLabel,
 } from '../src/desktop/rules';
@@ -67,6 +72,10 @@ describe('form factor', () => {
     expect(useFormFactor()).toBe('phone');
     expect(useIsDesktop()).toBe(false);
     expect(usePaneOriginX()).toBe(0);
+    // A morph grows to the whole screen, the island stays fused to the hardware one.
+    expect(morphTarget('/session/abc')).toBeNull();
+    expect(useFrame()).toEqual({ desktop: false, sidebar: 0, path: '/' });
+    expect(useIslandHost()).toBeNull();
   });
 
   test('the tab navigator gets exactly the props it had on a phone', () => {
@@ -115,6 +124,47 @@ describe('where a path sits', () => {
       }
     }
     expect(CONTENT_MAX).toBeGreaterThan(900);
+  });
+});
+
+describe('where a push is drawn, which is where a morph lands', () => {
+  test('a detail opens in the pane right of its list', () => {
+    // 1440 wide, the sidebar open (224): Sessions is 400, the wall 520.
+    expect(paneRectFor('/session/abc?morph=1', 1440, 900, 224)).toEqual({ x: 624, y: 0, w: 816, h: 900 });
+    expect(paneRectFor('/drop/xyz', 1440, 900, 224)).toEqual({ x: 744, y: 0, w: 696, h: 900 });
+    expect(paneRectFor('/project/0123abcd', 1440, 900, 76)).toEqual({ x: 496, y: 0, w: 944, h: 900 });
+  });
+
+  test('a page with no list stops at CONTENT_MAX and sits in the middle of its room', () => {
+    // 1440 - 224 = 1216 of room, 1120 of page, 48 either side.
+    expect(paneRectFor('/analysis', 1440, 900, 224)).toEqual({ x: 272, y: 0, w: CONTENT_MAX, h: 900 });
+    expect(paneRectFor('/live', 1100, 800, 224)).toEqual({ x: 224, y: 0, w: 876, h: 800 });
+  });
+
+  test("a list's own tab, onboarding and the island have no pane to grow into", () => {
+    expect(paneRectFor('/sessions', 1440, 900, 224)).toBeNull();
+    expect(paneRectFor('/drops', 1440, 900, 224)).toBeNull();
+    expect(paneRectFor('/onboarding/hello', 1440, 900, 224)).toBeNull();
+    expect(paneRectFor('/island', 1440, 900, 224)).toBeNull();
+  });
+
+  test('a morph covers what changes: the pane when the list stays, everything past the sidebar when it arrives', () => {
+    expect(morphRectFor('/sessions', '/session/abc', 1440, 900, 224)).toEqual({ x: 624, y: 0, w: 816, h: 900 });
+    expect(morphRectFor('/session/one', '/session/two', 1440, 900, 224)).toEqual({ x: 624, y: 0, w: 816, h: 900 });
+    expect(morphRectFor('/drops', '/drop/xyz', 1440, 900, 224)).toEqual({ x: 744, y: 0, w: 696, h: 900 });
+    // A tile on Now opens a session with the Sessions list beside it: both arrive together.
+    expect(morphRectFor('/now', '/session/abc', 1440, 900, 224)).toEqual({ x: 224, y: 0, w: 1216, h: 900 });
+    expect(morphRectFor('/live', '/session/abc', 1440, 900, 76)).toEqual({ x: 76, y: 0, w: 1364, h: 900 });
+    // A band on You opens a page with no list: the same centred column.
+    expect(morphRectFor('/you', '/analysis?morph=1', 1440, 900, 224)).toEqual({ x: 272, y: 0, w: CONTENT_MAX, h: 900 });
+    expect(morphRectFor('/now', '/onboarding/hello', 1440, 900, 224)).toBeNull();
+  });
+
+  test('the frame and the morph read one rule', () => {
+    const f = frameLayout(placeOf('/session/abc'), 1440, 900, 224);
+    expect(f.master).toBe(masterWidthFor('sessions', 1440, 224));
+    expect(f.room).toBe(1440 - 224 - f.master);
+    expect(f.content).toEqual(paneRectFor('/session/abc', 1440, 900, 224)!);
   });
 });
 

@@ -8,14 +8,21 @@
  * is the platform's own swipe and slide, because a page you are leaving has no rectangle to
  * shrink into that is still on screen once you scroll.
  *
- * `morphOpen(ref, go, look)` measures `ref`, shows the window in the root overlay layer
+ * `morphOpen(ref, go, look, route)` measures `ref`, shows the window in the root overlay layer
  * (`ui/overlay.tsx`) and calls `go` at the moment it covers the screen. Under Reduce Motion, or
  * when the view cannot be measured, it just calls `go`.
+ *
+ * ON A DESKTOP a push opens in a pane beside the list it came from, not over the whole window, so
+ * the window grows into that pane (`desktop/morphTarget`, which is null on a phone: there the
+ * target is the whole screen, exactly as before).
  */
+import { Image } from 'expo-image';
 import React, { useEffect } from 'react';
 import { AccessibilityInfo, StyleSheet, useWindowDimensions, type View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
 
+import { morphTarget } from '../desktop/morphTarget';
+import type { PaneRect } from '../desktop/rules';
 import { overlay } from '../ui/overlay';
 import { SPRING } from './springs';
 
@@ -25,6 +32,11 @@ export interface MorphLook {
   radius: number;
   /** The page's ground, which the window turns into as it grows. */
   ground: string;
+  /**
+   * A picture the thing you touched showed (a drop's poster). It stays in the window as it grows
+   * instead of turning into the ground, because the page it opens starts with the same picture.
+   */
+  image?: string | null;
 }
 
 /** Where the window has covered enough of the screen to push the page under it. */
@@ -42,22 +54,38 @@ AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => {
   reduceMotion = v;
 });
 
-export function morphOpen(node: View | null, go: () => void, look: MorphLook): void {
+/** `route` is the path `go` opens, so a desktop knows which pane the page will be drawn in. */
+export function morphOpen(node: View | null, go: () => void, look: MorphLook, route?: string): void {
   if (!node || reduceMotion) {
     go();
     return;
   }
+  const target = morphTarget(route);
   node.measureInWindow((x, y, w, h) => {
     if (!w || !h) {
       go();
       return;
     }
-    overlay.show((hide) => <Window origin={{ x, y, w, h }} look={look} onCovered={go} onDone={hide} />);
+    overlay.show((hide) => <Window origin={{ x, y, w, h }} target={target} look={look} onCovered={go} onDone={hide} />);
   });
 }
 
-function Window({ origin, look, onCovered, onDone }: { origin: { x: number; y: number; w: number; h: number }; look: MorphLook; onCovered: () => void; onDone: () => void }) {
+function Window({
+  origin,
+  target,
+  look,
+  onCovered,
+  onDone,
+}: {
+  origin: { x: number; y: number; w: number; h: number };
+  /** Where it lands; null is the whole screen. */
+  target: PaneRect | null;
+  look: MorphLook;
+  onCovered: () => void;
+  onDone: () => void;
+}) {
   const { width: W, height: H } = useWindowDimensions();
+  const T = target ?? { x: 0, y: 0, w: W, h: H };
   const p = useSharedValue(0);
   const fade = useSharedValue(1);
 
@@ -81,10 +109,10 @@ function Window({ origin, look, onCovered, onDone }: { origin: { x: number; y: n
   const style = useAnimatedStyle(() => {
     const t = p.value;
     return {
-      left: origin.x * (1 - t),
-      top: origin.y * (1 - t),
-      width: origin.w + (W - origin.w) * t,
-      height: origin.h + (H - origin.h) * t,
+      left: origin.x + (T.x - origin.x) * t,
+      top: origin.y + (T.y - origin.y) * t,
+      width: origin.w + (T.w - origin.w) * t,
+      height: origin.h + (T.h - origin.h) * t,
       borderRadius: interpolate(t, [0, 1], [look.radius, 0], Extrapolation.CLAMP),
       opacity: fade.value,
     };
@@ -95,7 +123,11 @@ function Window({ origin, look, onCovered, onDone }: { origin: { x: number; y: n
 
   return (
     <Animated.View pointerEvents="none" style={[styles.window, { backgroundColor: look.color }, style]}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.ground }, tint]} />
+      {look.image ? (
+        <Image source={{ uri: look.image }} style={StyleSheet.absoluteFill} contentFit="cover" />
+      ) : (
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.ground }, tint]} />
+      )}
     </Animated.View>
   );
 }

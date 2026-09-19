@@ -404,7 +404,7 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
   const tileRef = useRef<View>(null);
   const onPress = useCallback(() => {
     if (!onOpen) return;
-    morphOpen(tileRef.current, () => onOpen(m.id, true), { color: ink.fill, radius: TILE_RADIUS, ground: GROUND.bg });
+    morphOpen(tileRef.current, () => onOpen(m.id, true), { color: ink.fill, radius: TILE_RADIUS, ground: GROUND.bg }, `/session/${m.id}`);
   }, [onOpen, m.id, ink.fill]);
   const trackH = m.track !== null ? v.track : 0;
   const { inner, lower: lowerWidth, repo: repoWidth, headGap } = tileMeasures(variant, width);

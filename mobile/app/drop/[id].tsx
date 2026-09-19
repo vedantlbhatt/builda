@@ -23,7 +23,7 @@ export default function DropScreen() {
   const c = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { drops, moves, start, archive } = useBoard();
+  const { drops, moves, start, archive, loading } = useBoard();
 
   const drop = useMemo(() => drops.find((d) => d.id === id) ?? null, [drops, id]);
 
@@ -35,7 +35,11 @@ export default function DropScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Stack.Screen options={{ headerShown: false, animation: 'fade' }} />
-      {drop ? (
+      {/* Nothing until the board has answered: a drop is not "not here" because its board has not
+          loaded yet. FOUND on the desktop, where a poster opens this route instead of the phone's
+          Opening, which is handed the drop: the page said "That drop is not here" under the growing
+          poster until the board came back. */}
+      {!drop && loading ? null : drop ? (
         <DropSheet
           drop={drop}
           moves={moves}

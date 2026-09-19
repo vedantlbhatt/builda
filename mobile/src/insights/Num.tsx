@@ -20,11 +20,11 @@
  */
 import React, { useLayoutEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import Animated, { runOnJS, useAnimatedProps, useAnimatedReaction } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedProps, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 
 import { countLanded, formatWith, restingText, type NumSpec } from './format';
 import { COUNT_MS, ease, phase } from './motion';
-import { useClock } from './reveal';
+import { useClock, usePageCounted } from './reveal';
 
 // `text` rides the native prop path, as in the kit's CountUp (see the comment there).
 Animated.addWhitelistedNativeProps({ text: true });
@@ -44,10 +44,14 @@ export interface NumProps {
 export function Num({ spec, textStyle, delay = 0, duration = COUNT_MS, style, accessibilityLabel }: NumProps) {
   const clock = useClock();
   const { value, final, fmt } = spec;
+  // Once per screen (`reveal.tsx` Page.counted): the first number on the page to play counts up,
+  // every later one is set still. -1 until its block starts, then 1 (counts) or 0 (still).
+  const counted = usePageCounted();
+  const role = useSharedValue(counted ? -1 : 1);
 
   const animatedProps = useAnimatedProps(() => {
     const p = phase(clock.value, delay, duration);
-    const text = countLanded(clock.value, delay, duration) ? final : formatWith(fmt, value * ease(p));
+    const text = role.value === 0 || countLanded(clock.value, delay, duration) ? final : formatWith(fmt, value * ease(p));
     return { text } as unknown as Partial<React.ComponentProps<typeof TextInput>>;
   });
 
@@ -64,6 +68,20 @@ export function Num({ spec, textStyle, delay = 0, duration = COUNT_MS, style, ac
       if (now !== before) runOnJS(setLanded)(now);
     },
     [delay, duration],
+  );
+  useAnimatedReaction(
+    () => clock.value > 0,
+    (started) => {
+      if (!started || role.value !== -1 || !counted) return;
+      if (counted.value === 0) {
+        counted.value = 1;
+        role.value = 1;
+      } else {
+        role.value = 0;
+        runOnJS(setLanded)(true);
+      }
+    },
+    [counted],
   );
   const startsAt = restingText(spec, landed);
   const flat = StyleSheet.flatten(textStyle) ?? {};

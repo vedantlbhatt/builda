@@ -34,6 +34,7 @@ import {
   crewDots,
   crewLead,
   dropSteps,
+  earLabel,
   lead,
   minutesLabel,
   restingMode,
@@ -290,7 +291,7 @@ function CrewCompact({ a, now }: { a: Extract<Activity, { kind: 'crew' }>; now: 
             ))}
           </View>
         ) : (
-          <Text style={[styles.mono, { color: DIM }]}>{l.startedMs ? minutesLabel(now - l.startedMs) : ''}</Text>
+          <Text numberOfLines={1} style={[styles.mono, { color: DIM }]}>{l.startedMs ? earLabel(now - l.startedMs) : ''}</Text>
         )
       }
     />
@@ -301,7 +302,7 @@ function WaitingCompact({ a, now }: { a: Extract<Activity, { kind: 'needsYou' }>
   return (
     <Ears
       left={<Face animal={a.animal} state="waiting" ink={a.ink} size={20} />}
-      right={<Text style={[styles.mono, { color: AMBER }]}>{minutesLabel(now - a.sinceMs)}</Text>}
+      right={<Text numberOfLines={1} style={[styles.mono, { color: AMBER }]}>{earLabel(now - a.sinceMs)}</Text>}
     />
   );
 }

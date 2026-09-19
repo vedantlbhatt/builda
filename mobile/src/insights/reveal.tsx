@@ -45,9 +45,21 @@ interface Page {
    * through the frames a heavy mount holds the UI thread for, and lands before anyone saw it.
    */
   armed: SharedValue<number>;
+  /**
+   * How many numbers on this page have counted up. The pixel diet (docs/motion.md): a number
+   * counts up ONCE per screen, the first one to play, which is the screen's headline; every other
+   * figure is set still and fades in with its block. Fifty numbers each counting from zero as you
+   * scroll was the "numbers all look the same" the owner named.
+   */
+  counted: SharedValue<number>;
 }
 
 const PageCtx = createContext<Page | null>(null);
+
+/** The page's count of numbers that have counted up, or null outside a page. */
+export function usePageCounted(): SharedValue<number> | null {
+  return useContext(PageCtx)?.counted ?? null;
+}
 const SectionCtx = createContext<SharedValue<number> | null>(null);
 const ClockCtx = createContext<SharedValue<number> | null>(null);
 const LandedCtx = createContext(false);
@@ -58,10 +70,11 @@ export function usePageReveal(reduced: boolean): Page {
   const viewport = useSharedValue(0);
   const reducedSV = useSharedValue(reduced ? 1 : 0);
   const armed = useSharedValue(0);
+  const counted = useSharedValue(0);
   useEffect(() => {
     reducedSV.value = reduced ? 1 : 0;
   }, [reduced, reducedSV]);
-  return useMemo(() => ({ scrollY, viewport, reduced: reducedSV, armed }), [scrollY, viewport, reducedSV, armed]);
+  return useMemo(() => ({ scrollY, viewport, reduced: reducedSV, armed, counted }), [scrollY, viewport, reducedSV, armed, counted]);
 }
 
 export function RevealPage({ page, children }: { page: Page; children: ReactNode }) {

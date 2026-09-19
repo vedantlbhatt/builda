@@ -90,6 +90,23 @@ export function staggerDelay(i: number, per: number = STAGGER_MS): number {
   return Math.min(Math.max(0, Math.floor(i)), STAGGER_CAP) * per;
 }
 
+/**
+ * Where a spring released from rest at 0 toward 1 is after `ms`, in closed form. For surfaces that
+ * play on a CLOCK rather than on a Reanimated spring (the chapter bands read their block's clock,
+ * `insights/reveal.tsx`), so they can still move with the island's physics: the same overshoot and
+ * settle as `withSpring(1, ISLAND)`, as a pure function of time. A worklet.
+ */
+export function springAt(ms: number, s: SpringSpec = ISLAND): number {
+  'worklet';
+  if (ms <= 0) return 0;
+  const t = ms / 1000;
+  const w0 = Math.sqrt(s.stiffness / s.mass);
+  const z = s.damping / (2 * Math.sqrt(s.stiffness * s.mass));
+  if (z >= 1) return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+  const wd = w0 * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z / Math.sqrt(1 - z * z)) * Math.sin(wd * t));
+}
+
 /** The damping ratio: under 1 overshoots, 1 is critical. */
 export function dampingRatio(s: SpringSpec): number {
   return s.damping / (2 * Math.sqrt(s.stiffness * s.mass));

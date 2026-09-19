@@ -728,7 +728,8 @@ describe('the Projects tab leads with the projects', () => {
   test('the doors come right after the hero, before every chart', () => {
     const src = readFileSync(join(MOBILE, 'src/projects/ProjectsScreen.tsx'), 'utf8');
     const at = (s: string) => src.indexOf(s, src.indexOf('export function ProjectsScreen'));
-    const hero = at('<HeroChapter');
+    // The hero is the split of your hours now (`HoursSplit`), not a hue band.
+    const hero = at('<HoursSplit');
     const doors = at('<ProjectDoorBand');
     expect(hero).toBeGreaterThan(0);
     expect(doors).toBeGreaterThan(hero);

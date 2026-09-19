@@ -6,6 +6,7 @@ import {
   crewLead,
   dropSteps,
   EAR,
+  earLabel,
   lead,
   minutesLabel,
   PRIORITY,
@@ -94,6 +95,15 @@ describe('what the island says', () => {
     expect(crewLead([member('a', 'working', 1), member('b', 'waiting', 5)])!.sessionId).toBe('b');
     expect(crewLead([])).toBeNull();
     expect(crewDots(Array.from({ length: 7 }, (_, i) => member(String(i), 'working', i)))).toHaveLength(4);
+  });
+
+  test('an ear says the time in its own short shape, never on two lines', () => {
+    expect(earLabel(30_000)).toBe('now');
+    expect(earLabel(12 * 60_000)).toBe('12m');
+    expect(earLabel(62 * 60_000)).toBe('1:02');
+    expect(earLabel(125 * 60_000)).toBe('2:05');
+    expect(earLabel(11 * 3600_000)).toBe('11h');
+    for (const m of [0, 5, 59, 60, 61, 599, 600, 5000]) expect(earLabel(m * 60_000).length).toBeLessThanOrEqual(4);
   });
 
   test('minutes as the island says them', () => {

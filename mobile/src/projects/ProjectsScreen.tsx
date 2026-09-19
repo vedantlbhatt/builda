@@ -38,15 +38,14 @@ import { n } from '../copy/numbers';
 import { DemoGallery } from '../demos/Gallery';
 import { useDemoLists, useDemoPreviews, type DemoLoad } from '../demos/useDemo';
 import { Band, BandWords } from '../insights/Band';
-import { CreaturePrint } from '../insights/Creature';
 import { numSpec } from '../insights/format';
-import { BandFigure, figure, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
+import { BandFigure, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
 import { REPORT_COMMAND } from '../insights/model';
-import { Num } from '../insights/Num';
-import { ON_HUE, SPECTRUM, type Hue } from '../insights/palette';
+import { SPECTRUM, type Hue } from '../insights/palette';
 import { Block, Section } from '../insights/reveal';
 import { useAccent } from '../theme/accent';
 import { ChapterPage } from '../you/ChapterPage';
+import { HoursSplit } from './HoursSplit';
 import { useBuilderProfile } from '../you/hooks';
 import { ChapterSkeleton, ErrorChapter, RefusalChapter, SignedOutChapter, StaleLine } from '../you/parts';
 import { ComparisonBlock } from './Comparisons';
@@ -60,7 +59,6 @@ import {
   projectsView,
   raceSummary,
   weeklyView,
-  type ProjectsHero,
 } from './model';
 import { useNicknames, useProjectRegistry } from './nicknames';
 import { RankRace } from './RankRace';
@@ -153,7 +151,9 @@ export function ProjectsScreen() {
 
             {view && hero && accent.ready ? (
               <>
-                <HeroChapter hero={hero} hue={heroHue} width={width} animal={accent.animal} empty={view.rows.length === 0} />
+                <Section>
+                  <HoursSplit hero={hero} rows={view.rows} width={width} ink={accent.ink} empty={view.rows.length === 0} />
+                </Section>
 
                 {doors.map((d, i) =>
                   stage >= 1 + i ? (
@@ -288,50 +288,6 @@ export function ProjectsScreen() {
         />
       ) : null}
     </>
-  );
-}
-
-function HeroChapter({ hero, hue, width, animal, empty }: { hero: ProjectsHero; hue: Hue; width: number; animal: Parameters<typeof CreaturePrint>[0]['animal']; empty: boolean }) {
-  const inner = width - GUTTER * 2;
-  const creature = Math.min(128, Math.floor((inner * 0.34) / 16) * 16);
-  return (
-    <Section>
-      <Band hue={hue} title="Where your hours go">
-        <View style={styles.heroRow}>
-          <View style={{ flex: 1 }}>
-            <BandFigure spec={hero.count} width={inner - creature - 12} max={112} min={56} delay={200} label={`${hero.count.final} ${hero.countCaption}`} />
-            <BandWords delay={320}>
-              <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                {hero.countCaption}
-              </Text>
-            </BandWords>
-          </View>
-          <CreaturePrint animal={animal} size={creature} color={ON_HUE} delay={180} spread={600} />
-        </View>
-        {hero.hours ? (
-          <BandWords delay={420}>
-            <View style={styles.hoursLine}>
-              <Num spec={hero.hours} textStyle={figure(44, ON_HUE)} delay={480} accessibilityLabel={`${hero.hours.final} ${hero.hoursCaption}`} />
-              <Text maxFontSizeMultiplier={1.3} style={[type.bandNote, { flexShrink: 1 }]}>
-                {hero.hoursCaption}
-              </Text>
-            </View>
-          </BandWords>
-        ) : null}
-        {hero.note ? (
-          <BandWords delay={520}>
-            <Text maxFontSizeMultiplier={1.3} style={[type.bandCaption, { marginTop: 6 }]}>
-              {hero.note}
-            </Text>
-          </BandWords>
-        ) : null}
-        {empty ? (
-          <BandWords delay={520}>
-            <Refusal onHue>No project to show. A session in a folder with no git belongs to none, and a repository you left out in Settings never appears here.</Refusal>
-          </BandWords>
-        ) : null}
-      </Band>
-    </Section>
   );
 }
 

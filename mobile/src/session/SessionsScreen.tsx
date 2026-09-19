@@ -33,14 +33,13 @@ import { api, SAMPLE_SESSION } from '../data/client';
 import { useRepoNames } from '../data/repoNames';
 import { Band, BandWords } from '../insights/Band';
 import { CreatureMark } from '../insights/Creature';
-import { BandFigure, figure as figureStyle, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
+import { figure as figureStyle, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
 import { fitSize } from '../insights/format';
 import { Num } from '../insights/Num';
 import { creatureHue, GROUND } from '../insights/palette';
 import { Block, RevealPage, Section, usePageReveal } from '../insights/reveal';
 import { useChapterStages, useRevealScroll } from '../insights/RevealScroll';
-import { crewFor, LIVE_REFRESH_MS, LiveSessions } from '../live/LiveSessions';
-import { summaryHead, tileModel, visibleRows } from '../live/mission';
+import { crewFor, LIVE_REFRESH_MS } from '../live/LiveSessions';
 import { HarnessLogo } from '../pixel/HarnessLogo';
 import { recapEligible } from '../recap/format';
 import { decodeMarks } from '../strip/decode';
@@ -263,11 +262,6 @@ export function SessionsScreen() {
   // One clock for the whole list, read once per load, so two rows never disagree about "the last
   // hour". The live band keeps its own ticking clock.
   const now = useMemo(() => Date.now(), [sessions, live]);
-  // Whether the live surface's band shows (`LiveSessions` renders nothing otherwise): its rule.
-  const liveBand = useMemo(() => {
-    const rows = visibleRows(live, [], new Map(), now);
-    return rows.length > 0 && summaryHead(rows.map((r) => tileModel(r, now))) !== null;
-  }, [live, now]);
   // Each session's creature, from mission control's rule and its memory (`crew.ts`): a session
   // keeps the colour it was first drawn in, here, on the Now grid and on its page.
   const crew = useMemo(() => {
@@ -314,10 +308,10 @@ export function SessionsScreen() {
       refreshControl={signedIn === false ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={accent.ink} />}
     >
       <RevealPage page={page}>
-        {/* While something runs, the top band is the live surface's (`live/LiveSessions.tsx`, the
-            Sessions doorway into mission control), in the builder's hue; the week follows on the
-            ground, so two bands of one hue never meet. Otherwise the week is the top band. */}
-        {liveBand && accent.ready ? <LiveSessions sessions={live} /> : null}
+        {/* The live band that sat here said, larger, what the island at the top of the screen is
+            already saying on every tab (docs/motion.md): two surfaces for one fact is one too
+            many, and it was the first of three identical hue slabs down this screen. The island
+            is the doorway into mission control now. The week is the top of Sessions. */}
         {bandReady ? (
           <Section>
             {signedIn === false ? (
@@ -333,10 +327,10 @@ export function SessionsScreen() {
                   </Text>
                 </BandWords>
               </Band>
-            ) : liveBand ? (
-              <WeekGround week={week} ink={accent.ink} width={width} />
             ) : (
-              <WeekBand week={week} accent={accent} width={width} />
+              // The week on the ground, in the builder's ink, never as a hue slab: Sessions is the
+              // list, and its head is set like a page, not like every other screen's chapter.
+              <WeekGround week={week} ink={accent.ink} width={width} />
             )}
             {signedIn === false ? (
               <Block style={styles.pad}>
@@ -413,48 +407,6 @@ export function SessionsScreen() {
         ) : null}
       </RevealPage>
     </Animated.ScrollView>
-  );
-}
-
-/** This week: the hours counting up, the days it took, and the week as seven bars in the band's ink. */
-function WeekBand({ week, accent, width }: { week: ReturnType<typeof weekOf> | null; accent: ReturnType<typeof useAccent>; width: number }) {
-  const inner = width - GUTTER * 2;
-  const figure = week ? weekFigure(week) : null;
-  return (
-    <Band hue={accent} title="This week">
-      {week === null ? (
-        <BandWords delay={300}>
-          <Refusal onHue>Your hours arrive with your profile, the next time this phone reaches Builda. Pull down to try.</Refusal>
-        </BandWords>
-      ) : (
-        <View style={styles.weekRow}>
-          <View style={styles.weekWords}>
-            {figure ? (
-              <>
-                <BandFigure spec={figure.num} width={inner - WEEK_BARS_WIDTH - 16} max={108} min={52} delay={200} label={`${figure.num.final} ${figure.caption}`} />
-                <BandWords delay={340}>
-                  <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                    {figure.caption}
-                  </Text>
-                </BandWords>
-                <BandWords delay={420}>
-                  <Text maxFontSizeMultiplier={1.3} style={type.bandNote}>
-                    {figure.note}
-                  </Text>
-                </BandWords>
-              </>
-            ) : (
-              <BandWords delay={300}>
-                <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
-                  {QUIET_WEEK}
-                </Text>
-              </BandWords>
-            )}
-          </View>
-          <WeekBars week={week} delay={320} />
-        </View>
-      )}
-    </Band>
   );
 }
 

@@ -16,6 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Band, BandWords, WORDS_AT } from '../insights/Band';
 import { CreaturePrint } from '../insights/Creature';
+import { Face } from '../motion';
 import { figure, GUTTER, type, Words } from '../insights/kit';
 import { GoLink } from '../insights/sections/Reading';
 import type { HeroModel, LedgerRow } from '../insights/model';
@@ -74,7 +75,10 @@ export function YouHero({
             hitSlop={8}
             style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.96 : 1 }] })}
           >
-            <CreaturePrint animal={animal} size={creature} color={ON_HUE} delay={180} spread={620} />
+            {/* Alive: it breathes and blinks, the island's character at rest. The one screen that
+                is about you is the one place your creature is a face rather than a print. No
+                glow: on its own hue the glow would be a paler patch of the same colour. */}
+            <Face animal={animal} state="idle" ink={ON_HUE} size={creature} glow={false} />
           </Pressable>
         </View>
       </Band>

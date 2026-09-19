@@ -368,7 +368,7 @@ describe('the session screens are built in the house style (design-refs/HOUSE-ST
     const page = CHAPTERS.find((f) => f.name === 'src/session/SessionPage.tsx')!.src;
     for (const part of ['RevealPage', 'useRevealScroll', 'useChapterStages', 'LiveBar']) expect({ part, used: page.includes(part) }).toEqual({ part, used: true });
     const list = CHAPTERS.find((f) => f.name === 'src/session/SessionsScreen.tsx')!.src;
-    for (const part of ['AnimatedList', 'BandFigure', 'useAccent', 'StripDraw']) expect({ part, used: list.includes(part) }).toEqual({ part, used: true });
+    for (const part of ['AnimatedList', '<Num ', 'useAccent', 'StripDraw']) expect({ part, used: list.includes(part) }).toEqual({ part, used: true });
   });
 
   test('the list re-syncs on the live list\'s own beat too, never a second constant', () => {

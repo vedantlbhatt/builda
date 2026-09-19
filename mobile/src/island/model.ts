@@ -183,6 +183,20 @@ export function minutesLabel(ms: number): string {
   return r === 0 ? `${h}h` : `${h}h ${r}m`;
 }
 
+/**
+ * The same time for an ear of the compact island, which has 34 points: "12m" under the hour and
+ * "1:02" after it, the system timer's own shape. "1h 2m" wrapped onto two lines there (seen on the
+ * simulator an hour into this very session).
+ */
+export function earLabel(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h >= 10) return `${h}h`;
+  return `${h}:${String(m % 60).padStart(2, '0')}`;
+}
+
 /** The wheel for a drop being read: where it is, and what comes next. */
 export function dropSteps(a: Extract<Activity, { kind: 'drop' }>): { rows: { key: string; text: string }[]; index: number } {
   const done =

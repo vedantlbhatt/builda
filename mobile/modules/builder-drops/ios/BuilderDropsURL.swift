@@ -112,7 +112,9 @@ public enum BuilderDropsURL {
     let raw = payload.trimmingCharacters(in: .whitespacesAndNewlines)
     if raw.isEmpty { return nil }
     var found: String?
-    if let re = urlInText,
+    // A bare link is taken whole, as `urls.ts` takes it: the pattern stops at the first `)`, which
+    // cut `.../Rust_(programming_language)` short (review, 2026-09-19).
+    if raw.rangeOfCharacter(from: .whitespacesAndNewlines) != nil, let re = urlInText,
        let m = re.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
        let r = Range(m.range, in: raw) {
       var f = String(raw[r])

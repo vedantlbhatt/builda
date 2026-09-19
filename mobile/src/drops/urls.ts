@@ -74,7 +74,10 @@ export function platformOf(host: string): string {
 export function normalizeShared(payload: string): Shared | null {
   const raw = (payload ?? '').trim();
   if (!raw) return null;
-  const found = URL_IN_TEXT.exec(raw)?.[0]?.replace(/[.,;:]+$/, '');
+  // A bare link is taken whole, as `drops/urls.py` `normalize` takes it; the pattern is only for
+  // finding a link inside text. FOUND IN REVIEW (2026-09-19): run on a bare link it stopped at the
+  // first `)`, so `.../Rust_(programming_language)` lost its last character and pointed nowhere.
+  const found = /\s/.test(raw) ? URL_IN_TEXT.exec(raw)?.[0]?.replace(/[.,;:]+$/, '') : undefined;
   const candidate = found ?? (raw.includes('://') ? raw : `https://${raw}`);
   if (candidate.length > MAX_URL) return null;
 

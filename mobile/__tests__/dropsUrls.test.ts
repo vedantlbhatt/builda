@@ -23,6 +23,8 @@ const CASES = [
   'https://twitter.com/x/status/1',
   'https://www.reddit.com/r/a/comments/b/c/',
   'https://example.com/a/b?z=1&a=2',
+  // A bare link with brackets in its path is one link, whole (FOUND IN REVIEW).
+  'https://en.wikipedia.org/wiki/Rust_(programming_language)',
 ];
 
 describe('the shared link, both sides', () => {

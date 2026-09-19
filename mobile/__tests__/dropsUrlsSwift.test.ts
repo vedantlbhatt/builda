@@ -80,6 +80,8 @@ const CASES = [
   'https://example.com:8443/x/',
   'instagram.com/reel/abc',
   'Look at this: https://x.com/a/status/9.',
+  'https://en.wikipedia.org/wiki/Rust_(programming_language)',
+  'see (https://example.com/a) here',
   'just some words',
   '',
   'https://evil.example@instagram.com/reel/x',

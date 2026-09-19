@@ -37,7 +37,7 @@ export const PIXEL_MOTIONS = [
 export type PixelMotion = (typeof PIXEL_MOTIONS)[number];
 
 /** FNV-1a, 32 bit: the same stable pick on every device and every launch. */
-function fnv(s: string): number {
+export function fnv(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -120,4 +120,57 @@ export function takeOrder(taken: Set<number>, own: number, count: number = PIXEL
     taken.add(o);
   }
   return o;
+}
+
+/**
+ * How a screen's one counting number arrives (`insights/Num.tsx`: only the first number on a
+ * page moves). Four ways, so the number that moves is not the same movement on every screen:
+ *
+ *   count      up from zero on the page's curve (react-bits CountUp, the original)
+ *   scramble   every digit spins and they settle left to right, a split flap board
+ *   type       the characters arrive left to right, a terminal printing its answer
+ *   tick       up in ten steps, a mechanical counter clicking over
+ */
+export const NUM_MOTIONS = ['count', 'scramble', 'type', 'tick'] as const;
+export type NumMotion = (typeof NUM_MOTIONS)[number];
+
+export function numMotionFor(key: string): NumMotion {
+  return NUM_MOTIONS[fnv(`num:${key}`) % NUM_MOTIONS.length]!;
+}
+
+/**
+ * The text a number shows at `p` (0 to 1, already eased) of its arrival, for the three motions
+ * that are not a plain count (`count` is `formatWith(fmt, value * p)` in Num). A worklet: it runs
+ * on the UI thread every frame of the arrival. `tick` needs the count's own formatter, so Num
+ * computes it; here it is only the step.
+ */
+export function numFrame(motion: number, final: string, p: number, frame: number): string {
+  'worklet';
+  if (p >= 1) return final;
+  const n = final.length;
+  if (motion === 1) {
+    let out = '';
+    for (let i = 0; i < n; i++) {
+      const c = final.charCodeAt(i);
+      const settle = 0.15 + (0.8 * (i + 1)) / (n + 1);
+      if (c < 48 || c > 57 || p >= settle) {
+        out += final[i];
+      } else {
+        const v = Math.sin((frame + i * 7) * 12.9898 + i * 78.233) * 43758.5453;
+        out += String.fromCharCode(48 + Math.floor((v - Math.floor(v)) * 10));
+      }
+    }
+    return out;
+  }
+  if (motion === 2) {
+    const k = Math.ceil(p * n);
+    return final.slice(0, k);
+  }
+  return final;
+}
+
+/** `tick`'s step: the count held on tenths. */
+export function tickStep(p: number): number {
+  'worklet';
+  return p >= 1 ? 1 : Math.floor(p * 10) / 10;
 }

@@ -22,6 +22,7 @@ import React, { useLayoutEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated, { runOnJS, useAnimatedProps, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 
+import { NUM_MOTIONS, numFrame, numMotionFor, tickStep, type NumMotion } from '../motion/pixelMotion';
 import { countLanded, formatWith, restingText, type NumSpec } from './format';
 import { COUNT_MS, ease, phase } from './motion';
 import { useClock, usePageCounted } from './reveal';
@@ -39,11 +40,14 @@ export interface NumProps {
   style?: StyleProp<ViewStyle>;
   /** Read aloud instead of the number alone ("44 percent of the time"). */
   accessibilityLabel?: string;
+  /** How it arrives when it is the page's counting number. Default: its own, from its value. */
+  motion?: NumMotion;
 }
 
-export function Num({ spec, textStyle, delay = 0, duration = COUNT_MS, style, accessibilityLabel }: NumProps) {
+export function Num({ spec, textStyle, delay = 0, duration = COUNT_MS, style, accessibilityLabel, motion }: NumProps) {
   const clock = useClock();
   const { value, final, fmt } = spec;
+  const how = NUM_MOTIONS.indexOf(motion ?? numMotionFor(`${accessibilityLabel ?? ''}|${final}`));
   // Once per screen (`reveal.tsx` Page.counted): the first number on the page to play counts up,
   // every later one is set still. -1 until its block starts, then 1 (counts) or 0 (still).
   const counted = usePageCounted();
@@ -51,7 +55,18 @@ export function Num({ spec, textStyle, delay = 0, duration = COUNT_MS, style, ac
 
   const animatedProps = useAnimatedProps(() => {
     const p = phase(clock.value, delay, duration);
-    const text = role.value === 0 || countLanded(clock.value, delay, duration) ? final : formatWith(fmt, value * ease(p));
+    const e = ease(p);
+    const done = role.value === 0 || countLanded(clock.value, delay, duration);
+    // One of four arrivals (`pixelMotion.NUM_MOTIONS`): the count, a split flap scramble, typed
+    // in, or ticking over in tenths. The frame index for the scramble is the clock in 40 ms steps,
+    // so the digits flip at a readable rate rather than every display frame.
+    const text = done
+      ? final
+      : how === 0
+        ? formatWith(fmt, value * e)
+        : how === 3
+          ? formatWith(fmt, value * tickStep(e))
+          : numFrame(how, final, e, Math.floor(clock.value / 40));
     return { text } as unknown as Partial<React.ComponentProps<typeof TextInput>>;
   });
 

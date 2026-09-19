@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { cellOrder, modeOf, motionFor, PIXEL_MOTIONS, takeOrder, type PixelMotion } from '../src/motion/pixelMotion';
+import { cellOrder, modeOf, motionFor, NUM_MOTIONS, numFrame, numMotionFor, PIXEL_MOTIONS, takeOrder, tickStep, type PixelMotion } from '../src/motion/pixelMotion';
 
 const COLS = 40;
 const ROWS = 24;
@@ -61,5 +61,27 @@ describe('one page, no two bands alike', () => {
     expect(new Set([...all, rise, (rise + 1) % 8]).size).toBe(8);
     // A ninth band: every order is on the page already, so it keeps its own.
     expect(takeOrder(taken, 5)).toBe(5);
+  });
+});
+
+describe("each screen's counting number arrives its own way", () => {
+  test('scramble keeps the shape and settles left to right, type prints left to right, all land on the final', () => {
+    const final = '23,141';
+    const early = numFrame(1, final, 0.1, 3);
+    expect(early.length).toBe(final.length);
+    expect(early[2]).toBe(',');
+    // The first digit settles before the last one does.
+    const mid = numFrame(1, final, 0.45, 3);
+    expect(mid[0]).toBe('2');
+    expect(numFrame(2, final, 0.5, 0)).toBe('23,');
+    for (const m of [1, 2]) expect(numFrame(m, final, 1, 9)).toBe(final);
+    expect(tickStep(0.37)).toBe(0.3);
+    expect(tickStep(1)).toBe(1);
+  });
+
+  test('a number keeps its motion, and the four are all in use', () => {
+    expect(numMotionFor('x|12')).toBe(numMotionFor('x|12'));
+    const seen = new Set(Array.from({ length: 40 }, (_, i) => numMotionFor(`n|${i}`)));
+    expect(seen.size).toBe(NUM_MOTIONS.length);
   });
 });

@@ -115,13 +115,8 @@ export default function ConnectStep() {
   }, []);
 
   // The Mac's QR, scanned with the Camera app mid onboarding, lands here with the code in it
-  // (`pathWhileOnboarding`). Pair at once when there is an account to pair it to.
-  const autoPaired = useRef(false);
-  useEffect(() => {
-    if (autoPaired.current || signedIn !== true || !parsePairingCode(code.current)) return;
-    autoPaired.current = true;
-    void pair();
-  }, [signedIn, pair]);
+  // (`pathWhileOnboarding`). It is put in the field and a person presses Pair: a link never pairs
+  // by itself (`app/pair.tsx` says why: anyone can get a code, and a link can come from anywhere).
 
   const signIn = useCallback(async () => {
     setSignInError(null);

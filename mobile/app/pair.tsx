@@ -55,9 +55,12 @@ export default function PairScreen() {
 
   const granted = permission?.granted ?? false;
   const canAsk = permission?.canAskAgain ?? true;
+  // Only when the camera is the way in: a code that came in a link is shown, not scanned, and the
+  // screen asked for the camera over its own Approve button (seen on the simulator).
+  const linked = typeof paramCode === 'string' && paramCode.length > 0;
   useEffect(() => {
-    if (permission && !granted && canAsk) void requestPermission();
-  }, [permission, granted, canAsk, requestPermission]);
+    if (!linked && permission && !granted && canAsk) void requestPermission();
+  }, [linked, permission, granted, canAsk, requestPermission]);
 
   const later = useCallback((fn: () => void, ms: number) => {
     timers.current.push(setTimeout(fn, ms));
@@ -98,10 +101,13 @@ export default function PairScreen() {
     [approve]
   );
 
+  // A link NEVER approves by itself. FOUND IN REVIEW (2026-09-19): this used to approve the moment
+  // a signed in app opened `builder://pair?code=`, and anyone can start a device grant and get a
+  // code without an account, so a link on a web page or in an email ("Open in Builda?") handed that
+  // stranger's device a token pair for this account. The code is shown, and a person approves it
+  // only if their own Mac is showing the same code. A scan stays one step: pointing the camera at
+  // the Mac on your desk is the deliberate act a link is not.
   const deepLinked = typeof paramCode === 'string' && paramCode.length > 0;
-  useEffect(() => {
-    if (deepLinked && signedIn) void approve(paramCode);
-  }, [deepLinked, paramCode, signedIn, approve]);
 
   if (signedIn === false) {
     return (
@@ -114,11 +120,26 @@ export default function PairScreen() {
   }
 
   if (deepLinked) {
+    const shown = parsePairingCode(paramCode) ?? paramCode;
+    if (status.kind === 'idle') {
+      return (
+        <Notice
+          title="Connect a Mac?"
+          text={`Approve only if a Mac of yours is showing ${shown} right now. Approving lets it upload sessions and read your account.`}
+          actions={
+            <>
+              <Button label={`Approve ${shown}`} onPress={() => void approve(paramCode)} />
+              <Button kind="secondary" size="compact" label="Not mine" onPress={() => router.back()} />
+            </>
+          }
+        />
+      );
+    }
     return (
       <Notice
         title="Connecting your Mac"
         sprite={status.kind === 'ok' ? 'celebrating' : undefined}
-        text={status.kind === 'idle' ? `Pairing ${parsePairingCode(paramCode) ?? paramCode}…` : status.text}
+        text={status.text}
         tone={status.kind === 'error' ? 'del' : 'dim'}
         actions={status.kind === 'error' ? <TypeInstead /> : null}
       />

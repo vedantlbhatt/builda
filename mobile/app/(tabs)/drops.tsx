@@ -46,6 +46,7 @@ import { RippleItem } from '../../src/motion';
 import { morphOpen } from '../../src/motion/MorphNav';
 import { useAccent } from '../../src/theme/accent';
 import { T } from '../../src/ui/Text';
+import { SHAPE } from '../../src/ui/shape';
 import { TextField } from '../../src/ui/TextField';
 import { commit, select } from '../../src/ui/haptics';
 import { overlay } from '../../src/ui/overlay';
@@ -172,14 +173,25 @@ export default function DropsScreen() {
     if (drops.some((d) => d.id === id)) router.push(`/drop/${id}`);
   }, [params.open, drops, router]);
 
+  // A link from outside (`builder://drop?url=`) is SHOWN, and sent only when a person says so.
+  // FOUND IN REVIEW (2026-09-19): it was sent the moment it arrived, so a link on any web page could
+  // put a stranger's URL on the board, and the Mac would fetch it and pay for a plan of it. The
+  // share extension and the paste field are a person's own act and still send at once.
+  const [incoming, setIncoming] = useState<string | null>(null);
   useEffect(() => {
     const url = params.url;
     if (!url || consumed.current === url) return;
     consumed.current = url;
-    void landShared(url)
-      .then(() => refresh())
-      .finally(() => router.setParams({ url: undefined }));
-  }, [params.url, refresh, router]);
+    setIncoming(url);
+    router.setParams({ url: undefined });
+  }, [params.url, router]);
+  const sendIncoming = useCallback(() => {
+    const url = incoming;
+    setIncoming(null);
+    if (!url) return;
+    commit();
+    void landShared(url).then(() => refresh());
+  }, [incoming, refresh]);
 
   const inner = width - GUTTER * 2;
   const cell = Math.floor((inner - GAP * (COLUMNS - 1)) / COLUMNS);
@@ -201,6 +213,7 @@ export default function DropsScreen() {
               load that failed during a reload drew "Send yourself something to build" over eleven
               drops the server had. The line says what happened; pull to try again. */}
           <WallHeader line={error ? `Builda could not load your drops. ${TRY_AGAIN}` : waiting ? `${waiting} arriving` : ''} />
+          {incoming ? <Incoming url={incoming} onSend={sendIncoming} onDrop={() => setIncoming(null)} /> : null}
           <Empty
             onRefresh={refresh}
             onPaste={async (link) => {
@@ -220,6 +233,7 @@ export default function DropsScreen() {
           <View style={styles.search}>
             <SearchLine value={query} onChangeText={setQuery} hits={only ? { shown: only.size, total: wall.all.length } : null} />
           </View>
+          {incoming ? <Incoming url={incoming} onSend={sendIncoming} onDrop={() => setIncoming(null)} /> : null}
 
           {!only && wall.bands.building.length > 0 ? (
             <RippleItem i={section++}>
@@ -320,6 +334,49 @@ function footOf(w: WallDrop): string {
 
 
 
+/**
+ * A link that came in from outside, held until a person sends it: where it points, in full, so the
+ * decision is made on the real address, and Send or Not now.
+ */
+function Incoming({ url, onSend, onDrop }: { url: string; onSend: () => void; onDrop: () => void }) {
+  const c = useColors();
+  let host = url;
+  try {
+    host = new URL(url).host.replace(/^www\./, '');
+  } catch {
+    // Shown as it came.
+  }
+  return (
+    <View style={[styles.incoming, { backgroundColor: c.raised }]}>
+      <T role="headline" style={{ color: c.text }}>
+        {`Send this ${host} link to your Mac?`}
+      </T>
+      <T role="meta" numberOfLines={2} style={{ color: c.textDim }}>
+        {url}
+      </T>
+      <View style={styles.incomingActions}>
+        <Pressable accessibilityRole="button" onPress={onSend} hitSlop={8}>
+          <T role="headline" style={{ color: c.accent }}>
+            Send
+          </T>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            select();
+            onDrop();
+          }}
+          hitSlop={8}
+        >
+          <T role="headline" style={{ color: c.textDim }}>
+            Not now
+          </T>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste: (link: string) => Promise<void> }) {
   const c = useColors();
   const [busy, setBusy] = useState(false);
@@ -371,6 +428,8 @@ function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste
 }
 
 const styles = StyleSheet.create({
+  incoming: { marginHorizontal: GUTTER, marginTop: 14, padding: 16, borderRadius: SHAPE.container, borderCurve: 'continuous', gap: 6 },
+  incomingActions: { flexDirection: 'row', gap: 28, marginTop: 8 },
   fill: { flex: 1 },
   search: { marginTop: 14, paddingHorizontal: GUTTER },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },

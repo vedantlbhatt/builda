@@ -199,6 +199,13 @@ def score_frames(ff: str, video: pathlib.Path, times: list[float], work: pathlib
     return [(t, read.get(p.name, 0), stds.get(p.name, 0.0)) for t, p in zip(times, frames)]
 
 
+#: Difference hash bits that mean the screen has STARTED to change: half the "same picture" rule
+#: (`pictures.SAME_PICTURE_BITS`, 16). MEASURED on the RideGT kit: a sheet sliding up crosses 16
+#: bits a fifth of a second after it starts, so a ring timed from 16 was still showing over the
+#: next screen; 8 finds the first frames of the slide.
+CHANGE_BITS = 8
+
+
 def change_times(video: pathlib.Path, timeline: list[dict], work: pathlib.Path) -> dict[int, float]:
     """For each beat with a tap: when its screen first changed after its crossfade, from the
     video itself (10 frames a second, difference hashes), so a ring lands just before the app
@@ -223,7 +230,7 @@ def change_times(video: pathlib.Path, timeline: list[dict], work: pathlib.Path) 
         prints = pictures.fingerprints(files)
         first = prints[0]
         for i, p in enumerate(prints[1:], 1):
-            if not pictures.same_picture(first, p):
+            if bin(first ^ p).count("1") >= CHANGE_BITS:
                 out[k] = round(start + i / 10, 3)
                 break
     return out
@@ -454,7 +461,10 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
             bg = fr.draw_backdrop(lay, band, p.title, work / f"bg-{fid}.png")
             mask = fr.draw_mask(lay, work / f"mask-{fid}.png")
             aspect = fr.check_aspect(ff, lay, device, mask, work)
-            changes = change_times(video, timeline, work) if any(b.get("tap") for b in timeline) else {}
+            # A capture made since timelines carry `change` measured it on each beat's own clip;
+            # an older one is measured here on the finished video.
+            needs = any(b.get("tap") and b.get("change") is None for b in timeline)
+            changes = change_times(video, timeline, work) if needs else {}
             ring_list = fr.rings(timeline, changes)
             ring = fr.draw_ring(max(8, fr.even(lay.w * fr.RING_SHARE)), work / f"ring-{fid}.png") if ring_list else None
             dur = compose.probe(video)["duration"]

@@ -116,6 +116,13 @@ class DeviceTable(unittest.TestCase):
         self.assertEqual(compose.caption_bottom(devices.default_phone()), 0.115)
         self.assertLess(compose.caption_bottom(devices.by_id("mac-1512")), 0.05, "no tab bar in a browser")
 
+    def test_a_beat_keeps_its_tap_when_the_recording_realigns_it(self):
+        """FOUND ON THE FIRST RIDEGT KIT (2026-09-19): the driver found both taps, `realign` built
+        each beat again without them, and the kit drew no ring anywhere."""
+        beats = [BeatWindow("a", None, 0.0, 2.0, still=pathlib.Path("a.png"), tap=(0.31, 0.16))]
+        out = compose.realign(beats, [7, 7, 7, 7, 7, 7, 7, 7, 7, 7], [7], fps=5)
+        self.assertEqual(out[0].tap, (0.31, 0.16))
+
     def test_the_timeline_is_computed_from_the_numbers_the_join_cuts_with(self):
         beats = [BeatWindow("a", None, 0, 1), BeatWindow("b", None, 0, 1, tap=(0.5, 0.8)), BeatWindow("c", None, 0, 1)]
         tl = compose.timeline(beats, [4.0, 5.0, 3.0], speed=1.0, pad=0.5)
@@ -163,7 +170,7 @@ class Frame(unittest.TestCase):
         lay = fr.layout(devices.fmt("vertical"), devices.default_phone(), True)
         tl = [{"start": 0, "end": 3.0, "tap": None}, {"start": 2.6, "end": 6.2, "tap": [0.25, 0.75]}]
         rings = fr.rings(tl, {1: 3.4})
-        self.assertEqual([(r.at, r.x, r.y) for r in rings], [(3.18, 0.25, 0.75)], "just before the screen reacted")
+        self.assertEqual([(r.at, r.x, r.y) for r in rings], [(3.1, 0.25, 0.75)], "just before the screen reacted")
         g = fr.filter_graph(lay, tl, rings)
         self.assertIn("alphamerge", g)
         self.assertIn("eval=frame", g)
@@ -172,6 +179,13 @@ class Frame(unittest.TestCase):
         self.assertEqual(z.count("clip("), 4, "two beats long enough to punch in, two clips each")
         self.assertIn(str(round(lay.w * 0.25 * fr.ZOOM, 3)), x, "x moves by the tap's share, so the tap stays put")
         self.assertEqual(fr.filter_graph(lay, [], []).count("eval=frame"), 1, "no beats: no zoom, the overlay only")
+
+    def test_the_change_measured_on_the_beats_own_clip_wins(self):
+        """The finished video's first 0.4 s of a beat is a crossfade; a change inside it can only
+        be seen on the beat's own clip, which the capture measured (`compose.first_change`)."""
+        tl = [{"start": 5.7, "end": 10.0, "tap": [0.88, 0.8], "change": 6.0}]
+        self.assertEqual([r.at for r in fr.rings(tl, {0: 6.5})], [5.75], "the clip's 6.0 less the lead, never before the beat")
+        self.assertEqual([r.at for r in fr.rings([{**tl[0], "change": None}], {0: 6.5})], [6.2])
 
     def test_a_ring_without_a_measured_change_lands_after_the_crossfade(self):
         rings = fr.rings([{"start": 0, "end": 3, "tap": [0.5, 0.5]}, {"start": 2.6, "end": 5, "tap": [0.1, 0.9]}])

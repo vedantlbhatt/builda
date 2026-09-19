@@ -325,19 +325,63 @@ def _font() -> str | None:
     return None
 
 
-def timeline(beats: list[BeatWindow], durations: list[float], speed: float = 1.0, pad: float = 0.0, fade: float = FADE) -> list[dict]:
+def timeline(
+    beats: list[BeatWindow],
+    durations: list[float],
+    speed: float = 1.0,
+    pad: float = 0.0,
+    fade: float = FADE,
+    changes: list[float | None] | None = None,
+) -> list[dict]:
     """Where each beat is in the FINISHED video, in its seconds: the social formats zoom and draw
     a tap ring on this clock (shipkit.frame), so it is computed from the same numbers `join_command`
     cuts with, never re-estimated (pure). A beat's `start` is where its clip starts, under the
-    crossfade from the one before."""
+    crossfade from the one before; `change` is when its screen first changed, measured on its own
+    clip (`first_change`), or None."""
     out: list[dict] = []
     t = 0.0
     for k, (b, d) in enumerate(zip(beats, durations)):
         start = t
         end = start + d / speed + (pad if k == len(durations) - 1 else 0.0)
-        out.append({"label": b.label, "caption": b.caption, "start": round(start, 3), "end": round(end, 3), "tap": list(b.tap) if b.tap else None})
+        ch = (changes or [None] * len(beats))[k]
+        out.append({
+            "label": b.label, "caption": b.caption, "start": round(start, 3), "end": round(end, 3),
+            "tap": list(b.tap) if b.tap else None, "change": round(start + ch / speed, 3) if ch is not None else None,
+        })  # fmt: skip
         t = start + d / speed - fade
     return out
+
+
+#: Difference hash bits that mean a screen has STARTED to change: half the "same picture" rule
+#: (`pictures.SAME_PICTURE_BITS`, 16). MEASURED on the RideGT kit: a sheet sliding up crosses 16
+#: bits a fifth of a second after it starts; 8 finds the first frames of the slide.
+CHANGE_BITS = 8
+CHANGE_FPS = 10
+
+
+def first_change(clip: pathlib.Path, work: pathlib.Path) -> float | None:
+    """Seconds into one beat's own clip when its screen first changes from its first frame.
+
+    Measured on the beat's clip BEFORE the join, because in the finished video a beat's first
+    0.4 s is a crossfade: FOUND ON THE RIDEGT KIT, a colour tap whose screen answered inside that
+    crossfade was timed from the next thing that moved, and its ring showed over the NEXT screen."""
+    from . import pictures
+
+    frames = work / f"change-{clip.stem}"
+    if frames.exists():
+        for p in frames.glob("*.png"):
+            p.unlink()
+    frames.mkdir(parents=True, exist_ok=True)
+    _run([tools.ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", "-i", str(clip), "-vf", f"fps={CHANGE_FPS},scale=96:-2",
+          str(frames / "f-%04d.png")], f"sampling {clip.name} for its first change")  # fmt: skip
+    files = sorted(frames.glob("f-*.png"))
+    if len(files) < 2:
+        return None
+    prints = pictures.fingerprints(files)
+    for i, p in enumerate(prints[1:], 1):
+        if bin(prints[0] ^ p).count("1") >= CHANGE_BITS:
+            return round(i / CHANGE_FPS, 3)
+    return None
 
 
 def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.Path, device: dict | None = None) -> dict:
@@ -417,7 +461,7 @@ def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.
         "freezes": freeze_count,
         "speed": speed,
         "captions": "drawtext" if use_drawtext else "overlay",
-        "timeline": timeline(kept, durations, speed, pad),
+        "timeline": timeline(kept, durations, speed, pad, changes=[first_change(pathlib.Path(f), work) if b.tap else None for f, b in zip(files, kept)]),
         "poster_at": round(poster_time(durations, speed), 3),
     }
 
@@ -483,7 +527,7 @@ def realign(beats: list[BeatWindow], frame_prints: list[int], still_prints: list
         start = max(prev_end, b.start + shift, 0.0)
         if end - start < 0.5:
             start = max(prev_end, first / fps)
-        out.append(BeatWindow(b.label, b.caption, round(start, 3), round(end, 3), video=b.video, still=b.still))
+        out.append(BeatWindow(b.label, b.caption, round(start, 3), round(end, 3), video=b.video, still=b.still, tap=b.tap))
         prev_end = end
     return out
 

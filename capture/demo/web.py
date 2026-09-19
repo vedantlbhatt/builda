@@ -445,7 +445,7 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
     notes = [
         f"the dev server ran from the clone ({srv.how}) on {base}",
         f"requests to {len(BLOCK_HOSTS)} analytics hosts were aborted",
-        f"filmed as a {phone['name']} ({phone['points'][0]}x{phone['points'][1]} points at {phone['scale']:g}x)",
+        f"filmed as the {phone['name']} row ({phone['points'][0]}x{phone['points'][1]} points at {phone['native_scale']:g}x)",
     ]
     notes.extend(res.get("notes") or [])
     notes.extend(checked)
@@ -470,7 +470,7 @@ def _desktop(d: dict | None, row: dict | None, notes: list[str]) -> Capture | No
         return None
     stills = [Still(pathlib.Path(s["path"]), s["label"]) for s in d["stills"] if s["path"] not in left_out]
     beats = [BeatWindow(b["label"], b["caption"], b["start"], b["end"], tap=_tap(b.get("tap"))) for b in d["beats"]]
-    notes.append(f"a desktop pass in a {row['name']} ({row['points'][0]}x{row['points'][1]} points): {len(stills)} stills" + (", a video" if d.get("video") else ""))
+    notes.append(f"a desktop pass in the {row['name']} row: {len(stills)} stills" + (", a video" if d.get("video") else ""))
     notes.extend(f"desktop: {n}" for n in (d.get("notes") or []))
     notes.extend(f"desktop: {n}" for n in checked)
     return Capture(stills=stills, video=pathlib.Path(d["video"]) if d.get("video") else None, beats=beats, device=row["id"])

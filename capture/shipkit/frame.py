@@ -49,7 +49,9 @@ ZOOM_OUT = 0.35
 #: The tap ring: its size as a share of the rendered screen's width, how long it shows, and how
 #: long it fades in and out.
 RING_SHARE = 0.17
-RING_SHOW = 0.62
+RING_SHOW = 0.5
+#: How long before the screen reacts the ring appears: a finger lands, then the app answers.
+RING_LEAD = 0.3
 RING_FADE_IN = 0.08
 RING_FADE_OUT = 0.28
 FPS = 30
@@ -214,15 +216,15 @@ class Ring:
 
 def rings(timeline: list[dict], changes: dict[int, float] | None = None) -> list[Ring]:
     """A ring for every beat whose first tap place is known, `RING_LEAD` before the screen
-    reacted when that was measured (`changes`, by beat index), else just after the beat's
-    crossfade (pure)."""
+    reacted: the change the capture measured on the beat's own clip (`change`), else one measured
+    on the finished video (`changes`, by beat index), else just after the beat's crossfade (pure)."""
     out = []
     for k, b in enumerate(timeline):
         tap = b.get("tap")
         if not tap:
             continue
-        when = (changes or {}).get(k)
-        at = max(float(b["start"]) + 0.05, when - 0.22) if when is not None else float(b["start"]) + (0.45 if k else 0.1)
+        when = b.get("change") if b.get("change") is not None else (changes or {}).get(k)
+        at = max(float(b["start"]) + 0.05, when - RING_LEAD) if when is not None else float(b["start"]) + (0.45 if k else 0.1)
         out.append(Ring(round(at, 3), float(tap[0]), float(tap[1])))
     return out
 

@@ -663,7 +663,7 @@ def run(
             if row is None:
                 raise table.DeviceError("unknown_device", device=dev.type_id or dev.name)
         row = row or table.default_phone()
-        say(f"simulator: {dev.name} ({dev.udid}), a {row['name']} ({row['pixels'][0]}x{row['pixels'][1]}), booting headless")
+        say(f"simulator: {dev.name} ({dev.udid}), the {row['name']} row ({row['pixels'][0]}x{row['pixels'][1]}), booting headless")
         sim.boot(dev)
     except sim.SimulatorError as e:
         raise CaptureError(str(e)) from e

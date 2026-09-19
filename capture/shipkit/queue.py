@@ -75,7 +75,9 @@ def now_iso() -> str:
 def enqueue(job: dict) -> pathlib.Path:
     """Write a job into `pending/`, atomically: a worker reading the directory never sees half."""
     job = {"id": secrets.token_hex(6), "created_at": now_iso(), **job}
-    name = f"{job['created_at'].replace(':', '').replace('-', '')}-{job['id']}.json"
+    # Microseconds in the name: the queue is taken in name order, and two jobs in one second
+    # ordered by their random ids were taken newest first (FOUND BY A TEST).
+    name = f"{dt.datetime.now(dt.UTC).strftime('%Y%m%dT%H%M%S%f')}Z-{job['id']}.json"
     d = state_dir("pending")
     tmp = d / f".{name}.tmp"
     tmp.write_text(json.dumps(job, indent=1) + "\n")

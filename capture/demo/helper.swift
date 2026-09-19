@@ -400,13 +400,16 @@ func ring(_ args: [String]) {
     let d = CGFloat(s)
     let line = max(2, d * 0.06)
     let circle = CGRect(x: d * 0.18, y: d * 0.18, width: d * 0.64, height: d * 0.64)
-    ctx.setShadow(offset: .zero, blur: d * 0.08, color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.5))
-    ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.22))
+    // Two tones, so the mark reads on a light app and a dark one alike. FOUND ON THE FIRST RIDEGT
+    // KIT: a white ring on RideGT's white search sheet was a faint grey circle nobody would see.
+    ctx.setFillColor(CGColor(red: 0.08, green: 0.07, blue: 0.06, alpha: 0.18))
     ctx.fillEllipse(in: circle)
-    ctx.setShadow(offset: .zero, blur: 0, color: nil)
-    ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.95))
+    ctx.setStrokeColor(CGColor(red: 0.08, green: 0.07, blue: 0.06, alpha: 0.78))
+    ctx.setLineWidth(line * 2.2)
+    ctx.strokeEllipse(in: circle.insetBy(dx: line * 1.1, dy: line * 1.1))
+    ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.98))
     ctx.setLineWidth(line)
-    ctx.strokeEllipse(in: circle.insetBy(dx: line / 2, dy: line / 2))
+    ctx.strokeEllipse(in: circle.insetBy(dx: line * 1.1, dy: line * 1.1))
     writePNG(ctx, out)
 }
 

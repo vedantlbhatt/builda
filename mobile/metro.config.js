@@ -1,8 +1,9 @@
 // Metro configuration. Identical to Expo's default for iOS and Android.
 //
 // The only addition is a resolver hook that is a no-op unless `platform === 'web'`: on web it
-// swaps three modules that have no browser implementation for the shims in `src/web/`, and three
-// modules inside packages (below, INNER_SHIMS) that the desktop layout needs to behave.
+// swaps three modules that have no browser implementation for the shims in `src/web/`, three
+// modules inside packages (below, INNER_SHIMS) that the desktop layout needs to behave, and the
+// deep import of the window size hook that babel writes into every app file (DEEP_WINDOW_HOOK).
 // Native bundles never see this branch, so their module graph is byte-identical to a project
 // with no metro.config.js at all.
 //
@@ -51,6 +52,17 @@ const INNER_SHIMS = [
   },
 ];
 
+// The same window size hook, reached the way the app's OWN files reach it. On web babel-preset-expo
+// runs babel-plugin-react-native-web, which rewrites `import { useWindowDimensions } from
+// 'react-native'` to a deep import of `react-native-web/dist/exports/useWindowDimensions`, so the
+// index shim above never saw an app file: MEASURED in the export of 2026-09-19, 44 modules (Now,
+// Sessions, the wall, Projects, a session, the analysis) imported the deep path and were laid out
+// for the 1440 point window inside a 400 to 1120 point pane, which put the Now stage's words off
+// its left edge and a wall poster at 450 points in a 520 point column. The shim itself imports
+// only `Dimensions`, so pointing every deep import at it cannot loop.
+const DEEP_WINDOW_HOOK = /^react-native-web[\\/]dist[\\/](cjs[\\/])?exports[\\/]useWindowDimensions([\\/]index(\.js)?)?$/;
+const WINDOW_SHIM = path.resolve(__dirname, 'src/web/useWindowDimensions.web.ts');
+
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web' && Object.prototype.hasOwnProperty.call(WEB_SHIMS, moduleName)) {
@@ -59,6 +71,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web') {
     const inner = INNER_SHIMS.find((x) => x.moduleName === moduleName && x.from.test(context.originModulePath));
     if (inner) return { type: 'sourceFile', filePath: inner.filePath };
+    if (DEEP_WINDOW_HOOK.test(moduleName) && context.originModulePath !== WINDOW_SHIM) return { type: 'sourceFile', filePath: WINDOW_SHIM };
   }
   return (defaultResolveRequest ?? context.resolveRequest)(context, moduleName, platform);
 };

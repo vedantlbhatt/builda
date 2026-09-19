@@ -52,6 +52,7 @@ const ROUTES = [
   ['drop', D && `/drop/${D}`, 'Drops: the wall beside one drop'],
   ['projects', '/projects', 'Projects: the list, nothing open'],
   ['project', P && `/project/${P}`, 'Projects: the list beside one project'],
+  ['ship', P && `/ship/${P}`, "Projects: the list beside one project's ship kit"],
   ['you', '/you', 'You'],
   ['live', '/live', 'Mission control, full size'],
   ['analysis', '/analysis', 'Your analysis'],

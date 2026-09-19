@@ -11,6 +11,11 @@
  * arrived while a drop was open navigated underneath it, and the drop stayed over the new page,
  * which is what a tapped notification would do. A morph window is the opposite: it pushes the
  * route itself and fades over it, so it keeps the default and closes itself.
+ *
+ * A keyboard's Esc (the desktop layout, `DesktopFrame.web.tsx`) asks the shown thing to close
+ * through `dismiss`, which runs the closer it registered with `onDismiss`, motion and all. Without
+ * it Esc went BACK under a preview that stayed up: the page changed and the preview did not. A
+ * thing that registers nothing (a morph's window, gone in half a second) is left alone.
  */
 import { usePathname } from 'expo-router';
 import React, { useEffect, useSyncExternalStore } from 'react';
@@ -20,6 +25,7 @@ type Render = (hide: () => void) => React.ReactNode;
 
 let current: { key: number; render: Render; closeOnNavigate: boolean; path?: string } | null = null;
 let seq = 0;
+let dismisser: (() => void) | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -35,6 +41,19 @@ export const overlay = {
   },
   isShowing(): boolean {
     return current !== null;
+  },
+  /** The shown thing's own way out, for Esc. Returns the unregister, for an effect's cleanup. */
+  onDismiss(fn: () => void): () => void {
+    dismisser = fn;
+    return () => {
+      if (dismisser === fn) dismisser = null;
+    };
+  },
+  /** Close what is up the way it closes itself; false when nothing up said how. */
+  dismiss(): boolean {
+    if (!current || !dismisser) return false;
+    dismisser();
+    return true;
   },
 };
 

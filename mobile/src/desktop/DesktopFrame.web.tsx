@@ -21,6 +21,7 @@ import { aliasPath, dropPath, recapPath } from '../../app/+native-intent';
 import { handleIncomingUrl } from '../auth/googleFlow';
 import { api } from '../data/client';
 import { nav } from '../nav/Skeleton';
+import { overlay } from '../ui/overlay';
 import { PaneSize, useWindowSize } from '../web/useWindowDimensions.web';
 import { desktopBridge } from './bridge';
 import { CommandPalette } from './CommandPalette';
@@ -28,11 +29,11 @@ import { injectDesktopCss, injectFontCss } from './css';
 import { DesktopSignIn } from './DesktopSignIn';
 import { EmptyDetail } from './EmptyDetail';
 import { MasterColumn, type MasterName } from './Master';
+import { publishFrame } from './morphTarget';
 import {
-  CONTENT_MAX,
   commandFor,
   DESKTOP_MIN_WIDTH,
-  masterWidthFor,
+  frameLayout,
   placeOf,
   sectionPath,
   SIDEBAR_FOLDED,
@@ -127,6 +128,13 @@ function DesktopFrameInner({ children: stack }: { children: ReactNode }) {
     if (!island) injectDesktopCss();
   }, [island]);
 
+  // Where the frame puts things, for a morph that grows into the pane a push will open
+  // (`morphTarget.web.ts`): read at the moment of a tap, so a plain value is enough.
+  const framedNow = !island && desktop && !place.bare;
+  useEffect(() => {
+    publishFrame({ desktop: framedNow, sidebar: framedNow ? (folded ? SIDEBAR_FOLDED : SIDEBAR_WIDTH) : 0, path: pathname });
+  }, [framedNow, folded, pathname]);
+
   // The site root has no route (the phone's first tab is `/now`, and `+native-intent` only runs
   // on a phone). A browser or the shell opening `/` lands on the first tab.
   useEffect(() => {
@@ -164,7 +172,9 @@ function DesktopFrameInner({ children: stack }: { children: ReactNode }) {
           toggleFold();
           return;
         case 'back':
+          // A preview over the window first (`ui/overlay.tsx`), then the page under it.
           if (palette) setPalette(false);
+          else if (overlay.dismiss()) return;
           else if (router.canGoBack()) router.back();
           return;
         case 'refresh':
@@ -248,11 +258,13 @@ function DesktopFrameInner({ children: stack }: { children: ReactNode }) {
   const onboarding = desktop && place.bare;
   const framed = desktop && !place.bare;
   const side = framed ? (folded ? SIDEBAR_FOLDED : SIDEBAR_WIDTH) : 0;
-  const masterWidth = framed && place.master ? masterWidthFor(place.master, win.width, side) : 0;
-  const paneWidth = win.width - side - masterWidth;
-  // A page with no list beside it stops at a readable width and sits in the middle; onboarding,
-  // a phone's flow, sits in a phone-wide column.
-  const contentWidth = onboarding ? ONBOARDING_WIDTH : framed && !place.master ? Math.min(paneWidth, CONTENT_MAX) : paneWidth;
+  // A page with no list beside it stops at a readable width and sits in the middle (the rule is
+  // `rules.frameLayout`, which a morph reads too); onboarding, a phone's flow, sits in a
+  // phone-wide column.
+  const frame = frameLayout(framed ? place : { ...place, master: null }, win.width, win.height, side);
+  const masterWidth = framed ? frame.master : 0;
+  const paneWidth = frame.room;
+  const contentWidth = onboarding ? ONBOARDING_WIDTH : framed ? frame.content.w : paneWidth;
   const hideStack = framed && place.masterRoot;
 
   return (

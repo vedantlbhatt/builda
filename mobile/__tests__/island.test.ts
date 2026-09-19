@@ -178,3 +178,21 @@ describe('the store', () => {
     expect(island.snapshot()).toHaveLength(0);
   });
 });
+
+describe("a desktop window's tour", () => {
+  afterEach(() => island.reset());
+
+  test('plays only the states a desktop window draws, each one passing', async () => {
+    const { DEMO_STEPS, PASSING_STEPS } = await import('../src/island/demo');
+    const labels = DEMO_STEPS.map((s) => s.label);
+    for (const label of PASSING_STEPS) expect(labels).toContain(label);
+    for (const s of DEMO_STEPS.filter((x) => PASSING_STEPS.includes(x.label))) {
+      island.reset();
+      s.run();
+      const shown = island.snapshot();
+      expect(shown.length).toBeGreaterThan(0);
+      // Each step leaves only passing activities up: a toast, never the crew or a wait.
+      for (const a of shown) expect(restingMode(a)).toBe('toast');
+    }
+  });
+});

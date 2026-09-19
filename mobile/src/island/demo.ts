@@ -109,18 +109,28 @@ export function startIslandDemo(): void {
 }
 
 /**
+ * The steps whose state passes (a reel being read, shipped): all a desktop window's island shows,
+ * because the standing ones (the crew, a run waiting on you, a demo) live in the desktop island at
+ * the top of the screen (`desktop/islandHost.web.ts`). Played alone there, so the tour does not
+ * open on seventeen seconds of states the window will not draw.
+ */
+export const PASSING_STEPS: readonly string[] = ['drop sent', 'drop reading', 'drop planned', 'shipped'];
+
+/**
  * Every state once, then the island goes back to exactly what it was showing (Settings, "Play
  * every state once"). The real activities are set aside for the tour and put back after it, so a
- * run that was waiting on you before the tour is still waiting on you after it.
+ * run that was waiting on you before the tour is still waiting on you after it. `only` narrows the
+ * tour to some steps by label; with none it is every step, as on the phone.
  */
-export function playIslandTour(): void {
+export function playIslandTour(only?: readonly string[]): void {
   if (running) return;
   const saved = island.snapshot();
   island.reset();
   island.setTouring(true);
+  const steps = only ? DEMO_STEPS.filter((s) => only.includes(s.label)) : DEMO_STEPS;
   let i = 0;
   const step = () => {
-    if (i >= DEMO_STEPS.length) {
+    if (i >= steps.length) {
       running = null;
       island.reset();
       for (const a of saved) island.post(a, 0);
@@ -128,7 +138,7 @@ export function playIslandTour(): void {
       island.setTouring(false);
       return;
     }
-    const s = DEMO_STEPS[i]!;
+    const s = steps[i]!;
     s.run();
     i += 1;
     running = setTimeout(step, s.ms);

@@ -15,6 +15,11 @@
  * what came of the reels you sent (the reel beside what you made of it, and the way to make a
  * reel of that), and then everything you ever sent, as the posters they were. A drop opens out of
  * its own poster (`wall/Opening.tsx`).
+ *
+ * On a desktop the wall is a list column and a drop opens BESIDE it, as its route in the pane to
+ * the right (`src/desktop/`), so the poster grows into that pane (`motion/MorphNav.tsx`) rather
+ * than into an overlay over the whole window: the Opening covered the sidebar and the wall it was
+ * opened from, and was a page with no route, so Esc, the sidebar and a second poster all fought it.
  */
 import { useIsFocused } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -22,6 +27,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useIsDesktop } from '../../src/desktop/formFactor';
 import { search } from '../../src/drops/cluster';
 import { drainPending, landShared, pendingCount } from '../../src/drops/intake';
 import { SearchLine } from '../../src/drops/SearchLine';
@@ -35,6 +41,7 @@ import { GUTTER, TopFade, WallBand, WallHeader } from '../../src/drops/wall/Chro
 import { tokens } from '../../src/generated/tokens';
 import { notice } from '../../src/island/feeds';
 import { RippleItem } from '../../src/motion';
+import { morphOpen } from '../../src/motion/MorphNav';
 import { useAccent } from '../../src/theme/accent';
 import { T } from '../../src/ui/Text';
 import { TextField } from '../../src/ui/TextField';
@@ -45,6 +52,8 @@ import { useColors } from '../../src/ui/scheme';
 /** Between posters in the grid. */
 const GAP = 6;
 const COLUMNS = 3;
+/** A poster's corner at the grid's size (7% of a 158 point cell, `Poster`): where a morph starts. */
+const POSTER_RADIUS = 11;
 
 export default function DropsScreen() {
   const c = useColors();
@@ -59,6 +68,8 @@ export default function DropsScreen() {
   const consumed = useRef<string | null>(null);
   const [waiting, setWaiting] = useState<number | null>(null);
   const posters = useRef(new Map<string, RNView | null>());
+  // Always false on a phone (a constant): the Opening below is the phone's, unchanged.
+  const desktop = useIsDesktop();
 
   const wall = useMemo(() => wallOf(drops, moves), [drops, moves]);
 
@@ -79,6 +90,15 @@ export default function DropsScreen() {
         return;
       }
       const row = drops.find((d) => d.id === id);
+      if (desktop) {
+        morphOpen(
+          node,
+          () => router.push(`/drop/${id}?morph=1`),
+          { color: tokens.surface.card.dark, radius: POSTER_RADIUS, ground: c.bg, image: row?.thumbnail_url ?? null },
+          `/drop/${id}`,
+        );
+        return;
+      }
       node.measureInWindow((x, y, w, h) => {
         if (!w || !h || !row) {
           router.push(`/drop/${id}`);
@@ -91,7 +111,7 @@ export default function DropsScreen() {
         );
       });
     },
-    [router, drops, moves, refresh],
+    [router, drops, moves, refresh, desktop, c.bg],
   );
 
   const startMove = useCallback(

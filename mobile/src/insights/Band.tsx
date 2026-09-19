@@ -115,12 +115,30 @@ function rgba(hex: string): [number, number, number, number] {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
 }
 
-export function BandPixels({ width, solid, ink, motion, origin }: { width: number; solid: number; ink: string; motion: PixelMotion; origin?: { x: number; y: number } }) {
+export function BandPixels({
+  width,
+  solid,
+  ink,
+  motion,
+  origin,
+  fringe = FRINGE,
+  delay = 0,
+}: {
+  width: number;
+  solid: number;
+  ink: string;
+  motion: PixelMotion;
+  origin?: { x: number; y: number };
+  /** The dissolve under it; 0 for a block that ends square (a tile). */
+  fringe?: number;
+  /** When the print starts on the block's clock. */
+  delay?: number;
+}) {
   const clock = useClock();
   const reduced = useReducedSV();
   const source = bandEffect();
   const inkU = rgba(ink);
-  const height = solid + FRINGE;
+  const height = solid + fringe;
   const mode = modeOf(motion);
   const cols = Math.max(1, Math.ceil(width / CELL));
   const rows = Math.max(1, Math.ceil(height / CELL));
@@ -129,8 +147,8 @@ export function BandPixels({ width, solid, ink, motion, origin }: { width: numbe
   const uniforms = useDerivedValue(() => ({
     cell: CELL,
     solid,
-    fringe: FRINGE,
-    reveal: reduced.value ? 1 : ease(phase(clock.value, 0, PRINT_MS)),
+    fringe: Math.max(0.001, fringe),
+    reveal: reduced.value ? 1 : ease(phase(clock.value, delay, PRINT_MS)),
     mode,
     cols,
     rows,

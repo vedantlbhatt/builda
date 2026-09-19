@@ -1,24 +1,22 @@
 /**
- * The builder's creature, drawn two ways: large, arriving on its band, and small, as a flat mark
- * beside an archetype's rule.
+ * The builder's creature, drawn two ways: large, printing itself cell by cell onto its band (a
+ * `PixelField`: each cell arrives in the creature's own order, then still), and small, as a flat
+ * mark beside an archetype's rule or on a list row.
  *
- * WHAT CHANGED (docs/motion.md, the pixel diet). The large one used to PRINT itself, each cell
- * arriving in a random order, on nine screens, the same half second of pixels every time a page
- * opened. The pixel art stays (it is the identity); the pixel-by-pixel print does not. It arrives
- * the way everything arrives now: whole, growing from 0.86 on the island spring (`springAt`, read
- * off its block's clock) and hanging a few points down into place, a beat after its band.
+ * The print is the creature's own (`motion/pixelMotion.ts`): the octopus might open from its
+ * centre, the dog scan down, the whale land in blocks. It used to be one random order for every
+ * creature on nine screens; the pixels were never the problem, the sameness was.
  *
  * The frames are the pack's own (`src/pixel/animals.ts`, frame 0, the rest pose); only the ink
  * is this page's, so the creature wears its hue from the colour sheet.
  */
 import React, { useMemo } from 'react';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
 import { cellsPath } from '../motion/faceModel';
-import { springAt } from '../motion/spec';
+import { cellOrder, motionFor, type PixelMotion } from '../motion/pixelMotion';
 import { ANIMAL_FRAMES, type Animal } from '../pixel/animals';
-import { useClock, useReducedSV } from './reveal';
+import { PixelField, type PixelCell } from './Pixels';
 
 const GRID = 16;
 
@@ -33,26 +31,39 @@ function inked(animal: Animal): { x: number; y: number }[] {
 
 /**
  * Large, on a band. `size` snaps down to whole points per cell so pixels stay square. `spread` is
- * kept for the callers that still pass it (it was the print's length) and no longer read.
+ * how long the whole print takes; `motion` overrides the creature's own order.
  */
-export function CreaturePrint({ animal, size, color, delay = 0 }: { animal: Animal; size: number; color: string; delay?: number; spread?: number }) {
+export function CreaturePrint({
+  animal,
+  size,
+  color,
+  delay = 0,
+  spread = 520,
+  motion,
+}: {
+  animal: Animal;
+  size: number;
+  color: string;
+  delay?: number;
+  spread?: number;
+  motion?: PixelMotion;
+}) {
   const px = Math.max(1, Math.floor(size / GRID));
   const drawn = px * GRID;
-  const clock = useClock();
-  const reduced = useReducedSV();
-  const arrive = useAnimatedStyle(() => {
-    if (reduced.value) return { opacity: 1, transform: [{ scale: 1 }, { translateY: 0 }] };
-    const p = springAt(clock.value - delay);
-    return {
-      opacity: Math.min(1, Math.max(0, (clock.value - delay) / 120)),
-      transform: [{ scale: 0.86 + 0.14 * p }, { translateY: (1 - p) * -6 }],
-    };
-  });
-  return (
-    <Animated.View style={[{ width: drawn, height: drawn }, arrive]} accessible accessibilityLabel={`${animal}, your creature`}>
-      <CreatureMark animal={animal} size={drawn} color={color} />
-    </Animated.View>
+  const order = motion ?? motionFor(`creature:${animal}`);
+  const cells: PixelCell[] = useMemo(
+    () =>
+      inked(animal).map(({ x, y }) => ({
+        x: x * px,
+        y: y * px,
+        w: px,
+        h: px,
+        color,
+        delay: delay + cellOrder(order, x, y, GRID, GRID, 7) * spread,
+      })),
+    [animal, px, color, delay, spread, order],
   );
+  return <PixelField cells={cells} width={drawn} height={drawn} duration={90} grow={false} accessibilityLabel={`${animal}, your creature`} />;
 }
 
 /**

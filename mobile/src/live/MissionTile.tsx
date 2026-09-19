@@ -63,7 +63,9 @@ import { creatureHue, MONO_FAMILY, radius, type Hue } from '../theme';
 import { T, useReduceMotion } from '../ui';
 import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
-import { Aura, Face, stateColor, Wash } from '../motion';
+import { Aura, Face, stateColor } from '../motion';
+import { motionFor } from '../motion/pixelMotion';
+import { BandPixels } from '../insights/Band';
 import { morphOpen } from '../motion/MorphNav';
 import { FACE_FOR_TILE } from '../island/feeds';
 import { fitWords, stateLayout, STATE_GAP, tileMeasures, VARIANT, type TileVariant, type VariantSpec } from './fit';
@@ -100,17 +102,18 @@ interface Inks {
 }
 
 /**
- * The tile is the warm dark card now, not a slab of the hue (docs/motion.md, the pixel diet: a
- * full screen of hue-filled bands was most of why every screen looked alike). The hue lives where
- * it means something: the creature, its glow in the run's state, and a wash of it coming in from
- * the creature's corner. A stale tile loses the wash and the glow, and goes a step up in grey.
+ * A tile is a slab of its run's hue again, printed in pixels on arrival, square cornered like
+ * every printed thing here. The dark card with a wash of the hue that replaced it for a night
+ * traded the pixel identity for a gradient; what repeated across the app was never the pixels
+ * but the one arrival, so each tile now prints in its own order (`motion/pixelMotion.ts`, picked
+ * from the session's id) and the grid lands as several movements rather than one. A stale tile
+ * prints in the raised grey instead: the hue means live.
  */
-/** A tile's corners: the container radius, like every card on the dark ground. */
-const TILE_RADIUS = radius.md;
+const TILE_RADIUS = 0;
 
 function inksFor(hue: Hue, stale: boolean): Inks {
   if (stale) return { fill: GROUND.raised, text: GROUND.text, dim: GROUND.dim, creature: hue.ink, stamp: GROUND.text };
-  return { fill: GROUND.card, text: GROUND.text, dim: GROUND.dim, creature: hue.ink, stamp: hue.ink };
+  return { fill: hue.fill, text: ON_HUE, dim: ON_HUE, creature: ON_HUE, stamp: hue.ink };
 }
 
 // ------------------------------------------------------------------ the print
@@ -409,12 +412,11 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
           <View
             ref={tileRef}
             onLayout={onLayout}
-            style={[styles.tile, { width, minHeight, padding: v.pad, paddingBottom: v.pad + trackH, backgroundColor: ink.fill }]}
+            style={[styles.tile, { width, minHeight, padding: v.pad, paddingBottom: v.pad + trackH }]}
           >
-            {/* Sized from the props until the tile has laid out, so its first frame is already
-                covered: a flash of the whole colour before the print would be the print undone. */}
-            {/* The run's hue, painted in from the creature's corner: a wash, never a fill. */}
-            {!m.stale ? <Wash color={hue.ink} from="right" strength={0.2} /> : null}
+            {/* The hue itself is the print: no fill under it, so nothing of the colour shows
+                before its cells arrive. Sized from the props until the tile has laid out. */}
+            <BandPixels width={box.w || width} solid={box.h || minHeight} ink={ink.fill} motion={motionFor(`tile:${m.id}`)} fringe={0} delay={delay} />
 
             <Arrive delay={wordsAt} style={{ gap: v.gap }}>
               <View style={[styles.head, { gap: headGap }]}>
@@ -451,7 +453,7 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
             <View pointerEvents="none" style={[styles.creature, { right: v.pad - 4, bottom: v.pad - 4 + trackH }]}>
               {/* The island's face: its eyes and its glow say the state before a word does. Only
                   the lead tile breathes and blinks; a grid of blinking creatures is noise. */}
-              <Face animal={creature} state={m.stale ? 'sleep' : FACE_FOR_TILE[m.kind]} ink={ink.creature} size={v.creature} glow={!m.stale} alive={animate} />
+              <Face animal={creature} state={m.stale ? 'sleep' : FACE_FOR_TILE[m.kind]} ink={ink.creature} size={v.creature} glow={false} alive={animate} />
             </View>
 
             {m.track !== null && box.w > 0 ? <FootTrack track={m.track} width={box.w} height={trackH} color={ink.text} delay={delay + 380} /> : null}

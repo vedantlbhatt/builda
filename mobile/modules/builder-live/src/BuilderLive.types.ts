@@ -81,3 +81,55 @@ export type BuilderLiveEvents = {
   onPushToStartToken: (e: { token: string }) => void;
   onActivityState: (e: { activityId: string; sessionId: string; state: string }) => void;
 };
+
+// ------------------------------------------------------------------ a reel you shared
+
+/**
+ * The JS half of `BuilderDropAttributes` (ios/BuilderDropAttributes.swift, byte-identical with
+ * targets/widget/_shared/). `__tests__/liveActivityAttributes.test.ts` holds these keys to the
+ * Swift struct, to the module's Records and to the server's push (`drop_push.CONTENT_STATE_KEYS`).
+ * docs/drop-island.md.
+ */
+export type DropPhase = 'sent' | 'reading' | 'planned' | 'refused' | 'started';
+
+/** Static for the life of the card. */
+export type DropAttrs = {
+  /** The server's drop uuid. */
+  dropId: string;
+  /** Where it came from, as a person reads it: "instagram.com". */
+  host: string;
+  /** spec/drops.v1.json `platform`. */
+  platform: string;
+};
+
+export type DropState = {
+  phase: DropPhase;
+  /** What the Mac read it to be; null until it has. */
+  title: string | null;
+  /** Moves offered once planned; 0 before. */
+  moves: number;
+  /** What Start would start. */
+  firstMoveTitle: string | null;
+  /** Null also when the island cannot start it itself (a move into one of your repositories). */
+  firstMoveId: string | null;
+  /** spec/drops.v1.json `drop_kind` once planned: the hue. */
+  kind: string | null;
+  updatedEpoch: number;
+};
+
+export type DropActivityInfo = {
+  id: string;
+  dropId: string;
+  state: 'active' | 'stale' | 'ended' | 'dismissed' | string;
+  phase: DropPhase | string;
+  updatedEpoch: number;
+};
+
+/** DEBUG: what the server has been handed (`flushDropTokens`). */
+export type DropTokenStatus = {
+  enabled?: boolean;
+  environment?: string;
+  pushToStart?: boolean;
+  pushToStartRegistered?: boolean;
+  activities?: { activityId: string; dropId: string; registered: boolean }[];
+};

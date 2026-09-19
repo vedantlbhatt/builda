@@ -6,6 +6,7 @@ import type { PushEnvironment, SessionDetail } from '../data/api';
 import { api } from '../data/client';
 import { scheduleFinished, scheduleNeedsYou } from '../push/local';
 import { crewFor } from './crew';
+import { syncDropSurfaces } from './dropActivity';
 import { visibleRows } from './mission';
 import {
   buildWidgetSnapshot,
@@ -327,6 +328,20 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
 
   tracked.clear();
   for (const [k, v] of next) tracked.set(k, v);
+
+  // A reel you shared has a card of its own (docs/drop-island.md), under the same two switches:
+  // no card without Live Activities AND Lock Screen details (its title is a stranger's words),
+  // and no server push to one unless this is the signed in poll.
+  if (mod) {
+    result.errors.push(
+      ...(await syncDropSurfaces({
+        enabled: enabled && activities && details,
+        push: Boolean(opts.pushTokens),
+        environment: ENVIRONMENT,
+        nowMs,
+      }))
+    );
+  }
 
   if (opts.writeWidget !== false) {
     // The rows mission control shows: a finished turn leaves the widget when it leaves the grid.

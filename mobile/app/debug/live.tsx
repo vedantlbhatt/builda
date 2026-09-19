@@ -6,7 +6,10 @@ import { timeOfDay } from '../../src/copy/time';
 import type { SessionDetail } from '../../src/data/api';
 import * as cache from '../../src/data/cache';
 import { loadRepoNames } from '../../src/data/repoNames';
+import BuilderDrops from '../../modules/builder-drops';
+import BuilderLive from '../../modules/builder-live';
 import { activityFor, endAllLiveActivities, liveActivitiesAvailable, renderLivePreviews, syncLiveActivities, type SyncResult } from '../../src/live/activity';
+import { debugDropCard } from '../../src/live/dropActivity';
 import { crewFor } from '../../src/live/crew';
 import { debugSessions, DEBUG_TODAY, parseDebugLive, type DebugLiveRequest } from '../../src/live/fixtures';
 import { buildWidgetSnapshot, payloadBytes, phaseOf, toAttrs, toState, type LiveStateWire } from '../../src/live/surface';
@@ -48,6 +51,16 @@ import { ANIMAL_KEY } from '../icon';
  * A session row needs only `id`; the rest defaults to a live claude_code row with no stats.
  * Sending the same ids again UPDATES their activities (and alerts on a move into needs you).
  *
+ * A reel you shared (docs/drop-island.md):
+ *
+ *   drop=sent|reading|planned|refused|started|end[&stale=10][&render=1]
+ *              one sample drop's card, driven to that phase through the same `dropState` a real
+ *              poll uses (no server); `stale` shortens its stale date
+ *   drop=credential   what the share extension would find in the App Group's keychain
+ *   drop=direct&url=<link>   the share extension's own send, run from the app, with no queue
+ *              fallback: proves the mirrored token and the one route on a simulator
+ *   drop=tokens       what the server has been handed for drop cards
+ *
  * DEV ONLY. A release build renders nothing here and redirects, touching no activity. (The root
  * layout does not list this route, because another change owns that file; listing it in the
  * `__DEV__` group there is the follow up.)
@@ -66,13 +79,36 @@ function DebugLive() {
   const req = useMemo((): Request => {
     const p = params as Record<string, string | string[] | undefined>;
     const raw = Array.isArray(p.payload) ? p.payload[0] : p.payload;
+    const first = (k: string) => {
+      const v = p[k];
+      return Array.isArray(v) ? v[0] : v;
+    };
+    const drop = first('drop');
+    if (drop !== undefined) {
+      const stale = Number(first('stale'));
+      return {
+        kind: 'drop',
+        drop: {
+          action: drop,
+          url: first('url') ?? null,
+          stale: Number.isInteger(stale) && stale >= 1 && stale <= 3600 ? stale : null,
+          render: ['1', 'true', 'yes'].includes((first('render') ?? '').toLowerCase()),
+        },
+      };
+    }
     return raw !== undefined ? parsePayload(raw) : { kind: 'fixtures', req: parseDebugLive(p) };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [lines, setLines] = useState<string[]>(['working']);
 
   useEffect(() => {
     let cancelled = false;
-    (req.kind === 'payload' ? runPayload(req.payload) : req.kind === 'problem' ? Promise.resolve([req.problem]) : run(req.req))
+    (req.kind === 'drop'
+      ? runDrop(req.drop)
+      : req.kind === 'payload'
+        ? runPayload(req.payload)
+        : req.kind === 'problem'
+          ? Promise.resolve([req.problem])
+          : run(req.req))
       .then((out) => !cancelled && setLines(out))
       .catch((e: unknown) => !cancelled && setLines([`failed: ${e instanceof Error ? e.message : String(e)}`]));
     return () => {
@@ -146,6 +182,43 @@ async function run(req: DebugLiveRequest): Promise<string[]> {
   return out;
 }
 
+// ------------------------------------------------------------------ drop=<phase|credential|direct|tokens>
+
+const DROP_PHASES = ['sent', 'reading', 'planned', 'refused', 'started', 'end'] as const;
+
+async function runDrop(r: DropRequest): Promise<string[]> {
+  const out: string[] = [liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build'];
+  if ((DROP_PHASES as readonly string[]).includes(r.action)) {
+    out.push(await debugDropCard(r.action as (typeof DROP_PHASES)[number], r.stale ?? undefined));
+  } else if (r.action === 'credential') {
+    const s = BuilderDrops?.credentialStatus?.();
+    out.push(
+      !s
+        ? 'no drops module in this build'
+        : s.present
+          ? `credential for ${s.baseURL}: ${s.usable ? `usable, ${Math.round(s.secondsLeft)} s left` : 'expired'}`
+          : 'no credential in the App Group keychain'
+    );
+  } else if (r.action === 'direct') {
+    if (!r.url) return [...out, 'direct needs &url=<a link>'];
+    const res = await BuilderDrops?.debugShareDirect?.(r.url, '');
+    out.push(!res ? 'no drops module in this build' : res.sent ? `sent: drop ${res.dropId}` : `kept: ${res.why}`);
+  } else if (r.action === 'tokens') {
+    out.push(JSON.stringify((await BuilderLive?.flushDropTokens?.()) ?? {}));
+  } else {
+    out.push(`drop must be one of ${DROP_PHASES.join(', ')}, credential, direct or tokens, not "${r.action}"`);
+  }
+  for (const c of BuilderLive?.listDrops?.() ?? []) out.push(`card ${c.id.slice(0, 8)} ${c.dropId} ${c.state} ${c.phase}`);
+  if (r.render) {
+    try {
+      out.push(`rendered ${(await renderLivePreviews()).length} previews into Documents/live-previews`);
+    } catch (e) {
+      out.push(`render failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ payload=<JSON>
 
 type RowIn = Partial<SessionDetail> & { id: string };
@@ -159,7 +232,10 @@ interface DebugPayload {
   widget: boolean;
 }
 
+type DropRequest = { action: string; url: string | null; stale: number | null; render: boolean };
+
 type Request =
+  | { kind: 'drop'; drop: DropRequest }
   | { kind: 'fixtures'; req: DebugLiveRequest }
   | { kind: 'payload'; payload: DebugPayload }
   | { kind: 'problem'; problem: string };

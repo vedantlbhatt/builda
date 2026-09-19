@@ -8,6 +8,7 @@ import { api } from '../data/client';
 import type { RepoNames } from '../copy/repoLabel';
 import { tileModel } from '../live/mission';
 import { crewFor } from '../live/crew';
+import { dropLanded, dropMoved } from '../live/dropActivity';
 import type { FaceState } from '../motion/states';
 import { DEFAULT_ANIMAL, type Animal } from '../pixel/animals';
 import { creatureHue, dropHue } from '../theme';
@@ -117,11 +118,14 @@ export function trackDrop(dropId: string, url: string): void {
   const id = `drop:${dropId}`;
   const base = { kind: 'drop' as const, id, dropId, host, title: null, thumbnail: null, moves: 0, firstMove: null, hue: null };
   island.post({ ...base, phase: 'sent' }, 0);
+  // And the system island, for the moment you leave the app (docs/drop-island.md).
+  void dropLanded(dropId, url);
   const started = Date.now();
 
   const tick = async () => {
     try {
       const { drop, moves } = await api.drop(dropId);
+      void dropMoved(drop, moves);
       const offered = moves.filter((m) => m.status === 'offered').sort((a, b) => a.position - b.position);
       const hue = drop.kind ? (dropHue(drop.kind)?.ink ?? null) : null;
       const common = { ...base, title: drop.title, thumbnail: drop.thumbnail_url, hue };

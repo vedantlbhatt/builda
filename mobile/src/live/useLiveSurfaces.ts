@@ -13,7 +13,7 @@ import { endAllLiveActivities, syncLiveActivities, type SyncResult } from './act
 import { liveStatesOf } from './mission';
 import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
-import { announceFinished, publishLive } from '../island/feeds';
+import { announceFinished, publishLive, resumeDemos } from '../island/feeds';
 import { crewFor } from './crew';
 
 /**
@@ -89,6 +89,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   ]);
   // The island inside the app says what the system island says outside it, from the same rows.
   publishLive(live, nowMs, names);
+  void resumeDemos(names, nowMs).catch(() => null);
   if (finished.length > 0) {
     const crew = crewFor([...finished, ...saved]);
     for (const s of finished) announceFinished(s, crew.get(s.id) ?? resolveAnimal(animal), names);

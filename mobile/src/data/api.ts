@@ -1074,6 +1074,11 @@ export class Api {
   }
 
   /** Your requests for this project's demo, newest first. */
+  /** Every project's requests, newest first (the server caps the list): what a relaunch resumes. */
+  allDemoRequests(): Promise<{ requests: DemoRequestRow[] }> {
+    return this.request('GET', '/v1/demos/requests');
+  }
+
   demoRequests(key: string): Promise<{ requests: DemoRequestRow[] }> {
     return this.request('GET', `/v1/demos/requests?project_key=${encodeURIComponent(key)}`);
   }

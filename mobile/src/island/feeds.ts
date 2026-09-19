@@ -5,7 +5,7 @@
  */
 import type { SessionDetail } from '../data/api';
 import { api } from '../data/client';
-import type { RepoNames } from '../copy/repoLabel';
+import { repoLabel, type RepoNames } from '../copy/repoLabel';
 import { tileModel } from '../live/mission';
 import { crewFor } from '../live/crew';
 import { demoAsked, demoMoved, demoTakenBack, type DemoRequestCard } from '../live/demoActivity';
@@ -176,11 +176,11 @@ export function untrackDemo(projectKey: string): void {
  * same request as a Live Activity (docs/demo-island.md), for the moment you leave the app; the
  * in-app island below is the same with or without it.
  */
-export function trackDemo(projectKey: string, title: string, request?: DemoRequestCard): void {
+export function trackDemo(projectKey: string, title: string, request?: DemoRequestCard, opts?: { sinceMs?: number }): void {
   if (demos.has(projectKey)) return;
   demos.add(projectKey);
   const id = `demo:${projectKey}`;
-  const sinceMs = Date.now();
+  const sinceMs = opts?.sinceMs ?? Date.now();
   const base = { kind: 'demo' as const, id, projectKey, title, progress: null, sinceMs };
   island.post({ ...base, filming: false, ready: false }, 0);
   if (request) void demoAsked(request, title);
@@ -232,4 +232,31 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
     setTimeout(() => void tick(), DEMO_EVERY_MS);
   };
   setTimeout(() => void tick(), 1500);
+}
+
+/**
+ * How often the root poll asks whether a demo is still being made. A relaunch or a return to the
+ * app is when it matters (the in-app island forgot it; the system card did not); asking on every
+ * tick of the minute poll would be a request a minute for a list that is almost always empty.
+ */
+export const DEMO_RESUME_MS = 5 * 60_000;
+let lastResume = -Infinity;
+
+/**
+ * Pick up the demos still being made after a relaunch: the newest request per project, when it is
+ * queued or claimed, tracked again from when it was ASKED (so the ear's clock is right). It does
+ * not start a system card: the one started at the tap is still there, carried by push.
+ */
+export async function resumeDemos(names: RepoNames | null, nowMs: number): Promise<void> {
+  if (nowMs - lastResume < DEMO_RESUME_MS) return;
+  lastResume = nowMs;
+  const { requests } = await api.allDemoRequests();
+  const seen = new Set<string>();
+  for (const r of requests) {
+    if (seen.has(r.project_key)) continue;
+    seen.add(r.project_key);
+    if (r.status !== 'queued' && r.status !== 'claimed') continue;
+    const asked = Date.parse(r.created_at);
+    trackDemo(r.project_key, repoLabel({ repo_key: r.project_key }, names), undefined, { sinceMs: Number.isFinite(asked) ? asked : nowMs });
+  }
 }

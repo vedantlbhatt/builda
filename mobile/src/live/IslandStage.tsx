@@ -11,7 +11,7 @@
  * wheel of what each run is doing, the rail of faces. Leave the app and the same object keeps
  * going in the system island.
  *
- * ON A DESKTOP there is no hardware island in the window to grow out of: a 125 point pill
+ * ON A DESKTOP (and on a phone with no Dynamic Island) there is no hardware island to grow out of: a 125 point pill
  * appearing in the middle of a 1104 point stage read as a stray black lozenge, not as the island.
  * The desktop's island is the pill at the top of the SCREEN (the shell's own window), so here the
  * stage drops out of the top edge instead: full width from the first frame, its height growing
@@ -22,12 +22,14 @@
  * line that opens the session that finished last).
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 
 import { useIsDesktop } from '../desktop/formFactor';
 import { tokens } from '../generated/tokens';
 import { Face, RippleItem, Wash, Wheel, useMorph, RAIL_STAGGER_MS, ISLAND_BLACK } from '../motion';
+import { islandOf } from '../island/hardware';
 import type { CrewMember } from '../island/model';
 import type { Animal } from '../pixel/animals';
 import { T } from '../ui/Text';
@@ -75,9 +77,14 @@ export function IslandStage({
     const t = setTimeout(() => setGrown(true), 60);
     return () => clearTimeout(t);
   }, []);
-  // Always false on a phone (a constant), where the stage grows out of the pill as before.
+  // Always false on a phone (a constant).
   const desktop = useIsDesktop();
-  const target = grown ? { w: width, h, r: 44 } : desktop ? { w: width, ...EDGE } : PILL;
+  // A phone with no Dynamic Island (a notch, an SE) has nothing to grow out of either: the pill
+  // would appear from nowhere mid screen, the desktop's stray lozenge. It drops from the edge too.
+  const screen = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const edge = desktop || islandOf(screen.width, insets.top) === null;
+  const target = grown ? { w: width, h, r: 44 } : edge ? { w: width, ...EDGE } : PILL;
   const { box, contentIn } = useMorph(target, grown ? 'open' : 'pill');
 
   const [i, setI] = useState(0);

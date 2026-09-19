@@ -153,6 +153,14 @@ describe('the store', () => {
     off();
   });
 
+  test('while the tour plays, the live feeds wait and land when it ends', () => {
+    island.setTouring(true);
+    island.replaceKind('crew', [crew]);
+    expect(island.snapshot()).toHaveLength(0);
+    island.setTouring(false);
+    expect(island.snapshot().map((a) => a.kind)).toEqual(['crew']);
+  });
+
   test('a transient beat takes itself down', async () => {
     island.post({ kind: 'notice', id: 'n', text: 'hi', state: 'done', animal: 'cat', ink: '#F54BB8' }, 20);
     expect(island.snapshot()).toHaveLength(1);

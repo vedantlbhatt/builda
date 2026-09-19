@@ -108,6 +108,34 @@ export function startIslandDemo(): void {
   step();
 }
 
+/**
+ * Every state once, then the island goes back to exactly what it was showing (Settings, "Play
+ * every state once"). The real activities are set aside for the tour and put back after it, so a
+ * run that was waiting on you before the tour is still waiting on you after it.
+ */
+export function playIslandTour(): void {
+  if (running) return;
+  const saved = island.snapshot();
+  island.reset();
+  island.setTouring(true);
+  let i = 0;
+  const step = () => {
+    if (i >= DEMO_STEPS.length) {
+      running = null;
+      island.reset();
+      for (const a of saved) island.post(a, 0);
+      // Anything the live feeds said during the tour lands now, over what was saved.
+      island.setTouring(false);
+      return;
+    }
+    const s = DEMO_STEPS[i]!;
+    s.run();
+    i += 1;
+    running = setTimeout(step, s.ms);
+  };
+  step();
+}
+
 export function stopIslandDemo(): void {
   if (running) clearTimeout(running);
   running = null;

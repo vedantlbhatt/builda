@@ -15,6 +15,8 @@ let items: Activity[] = [];
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const listeners = new Set<() => void>();
 const expandListeners = new Set<() => void>();
+let touring = false;
+const heldKinds = new Map<Activity['kind'], Activity[]>();
 /** Ids already shown once, so a poll that sees the same finished session twice says it once. */
 const said = new Set<string>();
 
@@ -54,8 +56,26 @@ export const island = {
     emit();
   },
 
+  /**
+   * While the island tour plays (Settings), the live feeds' replacements are held back and applied
+   * when it ends: FOUND ON THE SIMULATOR, the minute poll put the real session into the middle of
+   * the tour's made up crew.
+   */
+  setTouring(on: boolean) {
+    touring = on;
+    if (!on) {
+      const held = [...heldKinds.entries()];
+      heldKinds.clear();
+      for (const [kind, next] of held) island.replaceKind(kind, next);
+    }
+  },
+
   /** Replace every activity of one kind at once (the crew, the waiting runs), keeping the rest. */
   replaceKind(kind: Activity['kind'], next: Activity[]) {
+    if (touring) {
+      heldKinds.set(kind, next);
+      return;
+    }
     const kept = items.filter((x) => x.kind !== kind);
     const same =
       kept.length + next.length === items.length &&

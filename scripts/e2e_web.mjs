@@ -70,6 +70,11 @@ const context = await browser.newContext({
 await context.addInitScript(
   ({ access, refresh }) => {
     try {
+      // Only into a page that has none yet. An init script runs on EVERY navigation, and the app
+      // rotates the pair on its first refresh: re-injecting the file's pair on the next route put a
+      // spent refresh token back, and the server revoked the device for reuse (FOUND 2026-09-19,
+      // once the access token had expired partway through a run).
+      if (localStorage.getItem('builder.refresh')) return;
       localStorage.setItem('builder.access', access);
       localStorage.setItem('builder.refresh', refresh);
     } catch {}

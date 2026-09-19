@@ -74,6 +74,11 @@ const browser = await chromium.launch({ args: ['--disable-web-security'], ...(pr
 const context = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1, colorScheme: 'dark', acceptDownloads: true });
 await context.addInitScript(({ access, refresh }) => {
   try {
+    // Only into a page that has none yet. An init script runs on EVERY navigation, and the app
+    // rotates the pair on its first refresh: re-injecting the file's pair on the next route put a
+    // spent refresh token back, and the server revoked the device for reuse (FOUND 2026-09-19,
+    // once the access token had expired partway through a run).
+    if (localStorage.getItem('builder.refresh')) return;
     localStorage.setItem('builder.access', access);
     localStorage.setItem('builder.refresh', refresh);
   } catch {}
@@ -138,7 +143,12 @@ if (!ONLY.length || ONLY.includes('flow-week')) {
     await page.goto(`${APP}/sessions`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForTimeout(Number(process.env.E2E_SETTLE ?? 4000) + 4000);
     const open = page.getByText('Share this week', { exact: true }).first();
-    if (!(await open.count())) {
+    const noProfile = await page.getByText(/Your hours arrive with your profile/).count();
+    if (noProfile) {
+      // Not a quiet week: the profile did not load (FOUND: a revoked test device read as "no hours").
+      failed += 1;
+      report.push('FAIL  flow-week: the profile did not load, so the week could not be shared');
+    } else if (!(await open.count())) {
       report.push('skip  flow-week: no hours this week, so no "Share this week" to press');
     } else {
       await open.click();

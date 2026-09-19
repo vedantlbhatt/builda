@@ -233,16 +233,7 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
         </T>
       ) : null}
 
-      {view.changelog.length ? (
-        <View style={styles.block}>
-          <T role="headline">{view.changelogTitle}</T>
-          {view.changelog.map((line, i) => (
-            <T key={i} role="meta" tone="dim" style={styles.threadLine}>
-              {line}
-            </T>
-          ))}
-        </View>
-      ) : null}
+      {view.changelog.length ? <Changelog title={view.changelogTitle} lines={view.changelog} /> : null}
       {view.refused.length ? (
         <View style={styles.block}>
           <T role="headline">Not made this time</T>
@@ -252,6 +243,34 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
             </T>
           ))}
         </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The commits the demo covers, the first few and then the rest on a tap. MEASURED on tonight's
+ * Builda kit: thirty lines, which pushed everything under them two screens down for a list most
+ * people glance at; eight is what fits under the captions on a 6.1 inch screen.
+ */
+const CHANGELOG_SHOWN = 8;
+
+function Changelog({ title, lines }: { title: string; lines: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? lines : lines.slice(0, CHANGELOG_SHOWN);
+  const rest = lines.length - shown.length;
+  return (
+    <View style={styles.block}>
+      <T role="headline">{title}</T>
+      {shown.map((line, i) => (
+        <T key={i} role="meta" tone="dim" style={styles.threadLine}>
+          {line}
+        </T>
+      ))}
+      {rest > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => setAll(true)} hitSlop={8} style={styles.threadLine}>
+          <T role="meta" tone="accent" weight={600}>{`and ${rest} more`}</T>
+        </Pressable>
       ) : null}
     </View>
   );

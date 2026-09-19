@@ -38,7 +38,9 @@ export function PickCard({
   width,
   onOpen,
   onStart,
+  posterRef,
 }: {
+  posterRef?: (n: View | null) => void;
   w: WallDrop;
   width: number;
   onOpen: () => void;
@@ -52,7 +54,7 @@ export function PickCard({
   return (
     <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}>
       <View style={[styles.card, { width }]}>
-        <Poster drop={w.drop} width={posterW} />
+        <Poster drop={w.drop} width={posterW} frameRef={posterRef} />
         <View style={styles.body}>
           <Text style={[styles.kind, { color: hue?.ink ?? DIM }]}>{w.drop.kind ? KIND_WORD[w.drop.kind] : 'a drop'}</Text>
           <Text numberOfLines={3} style={styles.title}>
@@ -110,7 +112,7 @@ function buildSteps(m: MoveRow, nowMs: number): { rows: { key: string; text: str
   return { rows, index: m.status === 'queued' ? 0 : m.status === 'running' ? 1 : 2 };
 }
 
-export function BuildingCard({ w, width, aura, onOpen }: { w: WallDrop; width: number; aura: boolean; onOpen: () => void }) {
+export function BuildingCard({ w, width, aura, onOpen, posterRef }: { w: WallDrop; width: number; aura: boolean; onOpen: () => void; posterRef?: (n: View | null) => void }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 20000);
@@ -123,7 +125,7 @@ export function BuildingCard({ w, width, aura, onOpen }: { w: WallDrop; width: n
     <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${m.title}, ${steps.rows[steps.index]!.text}`}>
       <View style={[styles.building, { width }]}>
         {aura ? <Aura radius={22} /> : null}
-        <Poster drop={w.drop} width={64} />
+        <Poster drop={w.drop} width={64} frameRef={posterRef} />
         <View style={[styles.body, { justifyContent: 'center' }]}>
           <Text numberOfLines={1} style={styles.kindDim}>
             {w.drop.title ?? 'A drop'}
@@ -140,7 +142,7 @@ export function BuildingCard({ w, width, aura, onOpen }: { w: WallDrop; width: n
   );
 }
 
-export function PairCard({ w, width, onOpen, onSession }: { w: WallDrop; width: number; onOpen: () => void; onSession: (id: string) => void }) {
+export function PairCard({ w, width, onOpen, onSession, posterRef }: { w: WallDrop; width: number; onOpen: () => void; onSession: (id: string) => void; posterRef?: (n: View | null) => void }) {
   const m = w.active;
   if (!m) return null;
   const posterW = Math.round(width * 0.3);
@@ -148,7 +150,7 @@ export function PairCard({ w, width, onOpen, onSession }: { w: WallDrop; width: 
     <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}>
       <View style={[styles.pair, { width }]}>
         <View>
-          <Poster drop={w.drop} width={posterW} foot="Seen" />
+          <Poster drop={w.drop} width={posterW} foot="Seen" frameRef={posterRef} />
         </View>
         <View style={styles.arrow}>
           <Text style={styles.arrowText}>→</Text>

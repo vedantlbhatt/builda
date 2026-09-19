@@ -71,8 +71,8 @@ export default function DropsScreen() {
   }, [query, wall]);
 
   const openDrop = useCallback(
-    (id: string) => {
-      const node = posters.current.get(id);
+    (id: string, from?: string) => {
+      const node = posters.current.get(from ?? id);
       if (!node) {
         router.push(`/drop/${id}`);
         return;
@@ -182,8 +182,8 @@ export default function DropsScreen() {
             <RippleItem i={section++}>
               <WallBand title="Being built">
                 {wall.bands.building.map((w, i) => (
-                  <View key={w.drop.id} ref={register(w.drop.id)} collapsable={false} style={{ marginBottom: 10 }}>
-                    <BuildingCard w={w} width={inner} aura={i === 0} onOpen={() => openDrop(w.drop.id)} />
+                  <View key={w.drop.id} style={{ marginBottom: 10 }}>
+                    <BuildingCard posterRef={register(w.drop.id)} w={w} width={inner} aura={i === 0} onOpen={() => openDrop(w.drop.id)} />
                   </View>
                 ))}
               </WallBand>
@@ -194,8 +194,8 @@ export default function DropsScreen() {
             <RippleItem i={section++}>
               <WallBand title="Pick a move">
                 {wall.bands.pick.map((w) => (
-                  <View key={w.drop.id} ref={register(w.drop.id)} collapsable={false} style={{ marginBottom: 12 }}>
-                    <PickCard w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onStart={(m) => startMove(w, m.id, m.title)} />
+                  <View key={w.drop.id} style={{ marginBottom: 12 }}>
+                    <PickCard posterRef={register(w.drop.id)} w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onStart={(m) => startMove(w, m.id, m.title)} />
                   </View>
                 ))}
               </WallBand>
@@ -206,8 +206,8 @@ export default function DropsScreen() {
             <RippleItem i={section++}>
               <WallBand title="What you made of them">
                 {wall.bands.built.map((w) => (
-                  <View key={w.drop.id} ref={register(w.drop.id)} collapsable={false} style={{ marginBottom: 14 }}>
-                    <PairCard w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onSession={(id) => router.push(`/session/${id}`)} />
+                  <View key={w.drop.id} style={{ marginBottom: 14 }}>
+                    <PairCard posterRef={register(w.drop.id)} w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onSession={(id) => router.push(`/session/${id}`)} />
                   </View>
                 ))}
               </WallBand>
@@ -224,13 +224,13 @@ export default function DropsScreen() {
                     accessibilityLabel={w.drop.title ?? 'A drop'}
                     onPress={() => {
                       select();
-                      openDrop(w.drop.id);
+                      openDrop(w.drop.id, `grid:${w.drop.id}`);
                     }}
                   >
                     {/* The grid is where search lands, so every drop registers here too; the
                         card above, when there is one, is measured first. */}
-                    <View ref={wall.bands.building.includes(w) || wall.bands.pick.includes(w) || wall.bands.built.includes(w) ? undefined : register(w.drop.id)} collapsable={false}>
-                      <Poster drop={w.drop} width={cell} foot={footOf(w)} footTone={w.band === 'built' ? 'add' : w.band === 'pick' ? 'hue' : 'dim'} reading={w.band === 'reading'} />
+                    <View>
+                      <Poster frameRef={register(`grid:${w.drop.id}`)} drop={w.drop} width={cell} foot={footOf(w)} footTone={w.band === 'built' ? 'add' : w.band === 'pick' ? 'hue' : 'dim'} reading={w.band === 'reading'} />
                     </View>
                   </Pressable>
                 ))}

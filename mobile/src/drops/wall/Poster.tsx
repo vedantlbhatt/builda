@@ -34,7 +34,10 @@ export function Poster({
   footTone = 'dim',
   reading = false,
   style,
+  frameRef,
 }: {
+  /** The poster's own view, so a drop can open out of exactly this rectangle. */
+  frameRef?: (n: View | null) => void;
   drop: DropRow;
   width: number;
   /** The one line at the poster's foot, or null for none. */
@@ -57,7 +60,7 @@ export function Poster({
   const picture = drop.thumbnail_url && !failed ? drop.thumbnail_url : null;
 
   return (
-    <View style={[{ width, height, borderRadius: radius, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: S.card.dark }, style]}>
+    <View ref={frameRef} collapsable={false} style={[{ width, height, borderRadius: radius, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: S.card.dark }, style]}>
       {picture ? (
         <>
           <Image source={{ uri: picture }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} recyclingKey={drop.id} onError={() => setFailed(true)} />

@@ -135,5 +135,8 @@ print(json.dumps({c: f['hmtx'][cmap[ord(c)]][0] / upm for c in sys.argv[1]}))
     expect(run.status).toBe(0);
     const measured = JSON.parse(run.stdout) as Record<string, number>;
     for (const ch of letters) expect(Math.abs(runEms(ch, 'sans') - measured[ch]!)).toBeLessThan(0.001);
-  });
+    // Instancing the variable font takes 2 to 3 s idle and 6.6 to 9.9 s while native builds share
+    // the machine (measured 2026-09-19): past bun's 5 s default, which failed a correct table on
+    // load. The question is whether the widths are right, not how busy the Mac is.
+  }, 30_000);
 });

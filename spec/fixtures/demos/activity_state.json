@@ -4,63 +4,130 @@
     "Written by hand, and held on BOTH sides: server/tests/test_demo_island.py runs",
     "demo_push.content_state over every case and mobile/__tests__/demoActivity.test.ts runs",
     "src/live/demoState.ts demoState, so the card the server pushes and the card the phone draws",
-    "from its own poll are one card. The request is the route's own shape (`created_at` as",
-    "`isoformat()` writes it, microseconds and all); `now` is Unix seconds; `expect: null` is a",
-    "request no card shows. The phase is `demoStepFor`, the in-app island's rule, renamed."
+    "from its own poll are one card. The request is the route's own shape (`created_at` and",
+    "`claimed_at` as `isoformat()` writes them, microseconds and all); `kit_published_at` is the",
+    "project's shown kit (`GET /v1/projects/{key}/kit` published_at), null or absent for none; `now`",
+    "is Unix seconds; `expect: null` is a request no card shows. The phase is `demoStepFor`, the",
+    "in-app island's rule, renamed, and a done request is `ready` only when `kitFromRequest` holds",
+    "(a kit published at or after the Mac took it), `made` otherwise."
   ],
   "cases": [
     {
       "name": "queued_is_asked_and_counts_from_the_ask",
       "now": 1757750460,
-      "request": {"status": "queued", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "request": {"status": "queued", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": null},
       "expect": {"phase": "asked", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750460}
     },
     {
       "name": "claimed_is_filming_and_still_counts_from_the_ask_not_the_claim",
       "now": 1757750700.4,
-      "request": {"status": "claimed", "refusal": null, "created_at": "2025-09-13T08:00:00.499999+00:00"},
+      "request": {"status": "claimed", "refusal": null, "created_at": "2025-09-13T08:00:00.499999+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
       "expect": {"phase": "filming", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750700}
     },
     {
-      "name": "done_is_ready_rounding_the_half_second_up_on_both_clocks",
+      "name": "claimed_with_a_kit_already_up_is_still_filming",
+      "now": 1757750700,
+      "kit_published_at": "2025-09-13T08:04:00+00:00",
+      "request": {"status": "claimed", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "filming", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750700}
+    },
+    {
+      "name": "done_with_a_kit_published_after_the_claim_is_ready_rounding_the_half_second_up_on_both_clocks",
       "now": 1757751180.5,
-      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00.500000+00:00"},
+      "kit_published_at": "2025-09-13T08:12:50.123456+00:00",
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00.500000+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
       "expect": {"phase": "ready", "sinceEpoch": 1757750401, "failure": null, "updatedEpoch": 1757751181}
+    },
+    {
+      "name": "done_with_no_kit_is_made",
+      "now": 1757751180,
+      "kit_published_at": null,
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "made", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "done_with_the_kit_field_absent_is_made_the_phase_that_promises_less",
+      "now": 1757751180,
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "made", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "done_with_an_older_kit_from_before_the_claim_is_made",
+      "now": 1757751180,
+      "kit_published_at": "2025-09-12T21:40:00+00:00",
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "made", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "a_kit_published_at_the_claims_own_instant_counts",
+      "now": 1757751180,
+      "kit_published_at": "2025-09-13T08:00:30+00:00",
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "ready", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "a_kit_in_the_claims_millisecond_counts_on_both_sides_as_date_parse_reads_it",
+      "now": 1757751180,
+      "kit_published_at": "2025-09-13T08:00:30.000400+00:00",
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30.000900+00:00"},
+      "expect": {"phase": "ready", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "a_kit_a_millisecond_before_the_claim_does_not",
+      "now": 1757751180,
+      "kit_published_at": "2025-09-13T08:00:29.999999+00:00",
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "made", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "a_row_with_no_claim_time_is_held_to_its_ask",
+      "now": 1757751180,
+      "kit_published_at": "2025-09-13T08:00:10+00:00",
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": null},
+      "expect": {"phase": "ready", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
     },
     {
       "name": "failed_carries_the_kit_screens_words_for_its_code",
       "now": 1757750760,
-      "request": {"status": "failed", "refusal": "capture_failed", "created_at": "2025-09-13T08:00:00+00:00"},
+      "request": {"status": "failed", "refusal": "capture_failed", "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
       "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": "the Mac could not film it", "updatedEpoch": 1757750760}
     },
     {
       "name": "failed_with_the_longest_words",
       "now": 1757750760,
-      "request": {"status": "failed", "refusal": "privacy_refused", "created_at": "2025-09-13T08:00:00+00:00"},
+      "request": {"status": "failed", "refusal": "privacy_refused", "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
       "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": "the Mac found a name or a key on screen and kept the demo to itself", "updatedEpoch": 1757750760}
     },
     {
       "name": "failed_with_no_code_says_nothing_it_does_not_know",
       "now": 1757750760,
-      "request": {"status": "failed", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "request": {"status": "failed", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
       "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750760}
+    },
+    {
+      "name": "failed_with_a_kit_up_is_still_failed",
+      "now": 1757750760,
+      "kit_published_at": "2025-09-13T08:05:00+00:00",
+      "request": {"status": "failed", "refusal": "kit_failed", "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
+      "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": "the demo was made, and the kit around it was not", "updatedEpoch": 1757750760}
     },
     {
       "name": "a_code_on_a_request_that_did_not_fail_is_not_shown",
       "now": 1757751180,
-      "request": {"status": "done", "refusal": "kit_failed", "created_at": "2025-09-13T08:00:00+00:00"},
+      "kit_published_at": "2025-09-13T08:12:00+00:00",
+      "request": {"status": "done", "refusal": "kit_failed", "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": "2025-09-13T08:00:30+00:00"},
       "expect": {"phase": "ready", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
     },
     {
       "name": "taken_back_has_no_card",
       "now": 1757750460,
-      "request": {"status": "cancelled", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "request": {"status": "cancelled", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": null},
       "expect": null
     },
     {
       "name": "a_status_this_build_does_not_know_has_no_card",
       "now": 1757750460,
-      "request": {"status": "archived", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "request": {"status": "archived", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00", "claimed_at": null},
       "expect": null
     }
   ]

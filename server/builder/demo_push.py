@@ -3,8 +3,17 @@
 A demo takes minutes on the Mac, and you do not wait on the kit screen for it: you tap "Request a
 demo", go back to what you were doing, and want to post the moment the kit is up. The phone
 starts the card itself at the tap (the app is in front, so no push-to-start is needed); this
-module MOVES it on the two transitions the Mac causes while the app is likely away: the Mac
-claiming the request (filming) and finishing it (ready, or failed with the kit screen's words).
+module MOVES it on the transitions the Mac causes while the app is likely away: the Mac claiming
+the request (filming), finishing it (ready, or failed with the kit screen's words), and a kit
+arriving for a demo the Mac had made and kept (made, then ready).
+
+DONE IS NOT THE SAME AS UP. `capture demo watch` without `--publish-requests` (the default) makes
+the demo and the kit, keeps them on the Mac and finishes the request `done`. A card that said "the
+kit is up" with a Share button then would open a screen with nothing new on it. So a done request
+is `ready` only when a kit for its project was published at or after the Mac took it (the phone's
+`shipkit/model.kitFromRequest`, the same rule the kit screen and the in-app island read), and
+`made` otherwise; a kit published later (`kit --publish` by hand) moves every card of the project
+still at `made` to `ready` (`after_publish`, from the kit's publish route).
 
 Two halves, kept apart for `drop_push.py`'s reason.
 
@@ -20,11 +29,12 @@ and records what each card was last told, and `send` delivers AFTER the demos ro
 has committed, as `drop_push` does: a push failure can never roll back what the Mac stored, and a
 crash between the two loses a push rather than doubling one. The rules, each tested:
 
-  * A card only moves FORWARD (`RANK`): asked, filming, an answer. A second claim or a finish
-    replayed is not news and is not sent.
+  * A card only moves FORWARD (`RANK`): asked, filming, made, then ready or failed. A second
+    claim or a finish replayed is not news and is not sent; made sits BELOW ready so a publish
+    after the finish can still move the card.
   * Only the request's owner's tokens are ever read, by user id AND under their RLS.
   * The answer (ready or failed) carries the alert, priority 10: it is the moment the person
-    asked to hear about. Filming is quiet, priority 5.
+    asked to hear about. Filming is quiet, priority 5, and so is made (MADE_IS_QUIET says why).
   * The server never ends a card on an answer: iOS takes an ended card out of the Dynamic Island
     at once, which would hide "the kit is up" as it lands. An answer that has been up for
     ANSWER_HOLD_SECONDS is ended by the Mac's next claim poll (`plan_ends`), and its token
@@ -42,7 +52,7 @@ import json
 import logging
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from .shipkit_spec import REQUEST_REFUSAL_SENTENCES
 
@@ -56,19 +66,22 @@ CONTENT_STATE_KEYS = ("phase", "sinceEpoch", "failure", "updatedEpoch")
 #: the tests hold all three sides to one list.
 ATTRIBUTE_KEYS = ("requestId", "projectKey", "title", "hue")
 
-#: The card's phases. The CHECK in 0032 is this list, both ways (the test reads it).
-PHASES = ("asked", "filming", "ready", "failed")
+#: The card's phases. The CHECK in the newest migration that writes it (0033) is this list, both
+#: ways (the test reads it).
+PHASES = ("asked", "filming", "made", "ready", "failed")
 #: A request status to the card's phase: `demoStepFor` on the phone (queued waiting, claimed
-#: filming, done ready, failed failed) with `waiting` named `asked` for the card. Cancelled, and
-#: anything this build does not know, has no card.
+#: filming, done ready, failed failed) with `waiting` named `asked` for the card. Done is `ready`
+#: here and becomes `made` in `content_state` when no kit came of it. Cancelled, and anything this
+#: build does not know, has no card.
 PHASE_OF_STATUS = {
     "queued": "asked",
     "claimed": "filming",
     "done": "ready",
     "failed": "failed",
 }
-#: How far along a phase is. A push goes out only to a card that is behind it.
-RANK = {"asked": 0, "filming": 1, "ready": 2, "failed": 2}
+#: How far along a phase is. A push goes out only to a card that is behind it. Made is below
+#: ready, so a kit published after the finish moves the card on; ready and failed are both final.
+RANK = {"asked": 0, "filming": 1, "made": 2, "ready": 3, "failed": 3}
 
 #: Asked and not picked up by then, the card says so. The worker looks every 30 s
 #: (`capture/shipkit/cli.py --every`), and this is the in-app island's own give up
@@ -104,6 +117,14 @@ END_EXPIRATION_SECONDS = 8 * 3600
 READY_ALERT = {"title": "The kit is up", "body": "Tap to share it anywhere."}
 FAILED_TITLE = "No kit this time"
 
+#: Made carries NO alert. An alert lights the screen and expands the island, which is the card's
+#: budget for "you can act on this now, here"; made asks you to act somewhere else (publish on the
+#: Mac), and the ready that follows a publish is the moment worth waking the phone for. Spending
+#: the alert on made would make that one the second alert for the same demo. The card still moves
+#: (the light goes grey, the ear says "made"), and the in-app island says it in words when you open
+#: Builda.
+MADE_IS_QUIET = True
+
 
 # ------------------------------------------------------------------------------ the card
 
@@ -131,6 +152,34 @@ def _epoch(value) -> float | None:
     return None
 
 
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _ms(value) -> int | None:
+    """A time as whole milliseconds, truncated, the precision `Date.parse` reads an ISO string at:
+    so a kit published in the same millisecond as the claim counts on both sides alike. Integer
+    arithmetic on the datetime, because a float of seconds since 1970 carries only about a tenth
+    of a microsecond and the case that matters is the last microsecond before a millisecond."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        return None
+    return (value - _EPOCH) // timedelta(milliseconds=1)
+
+
+def kit_from_request(request: Mapping, kit_published_at) -> bool:
+    """`shipkit/model.kitFromRequest`: a kit counts for a request only when it was published at or
+    after the Mac took it (`claimed_at`, or `created_at` for a row that has none)."""
+    published = _ms(kit_published_at)
+    if published is None:
+        return False
+    taken = _ms(request.get("claimed_at") or request.get("created_at"))
+    return taken is not None and published >= taken
+
+
 def failure_words(request: Mapping) -> str | None:
     """The kit screen's sentence for a failed request's code; None for any other request."""
     if request.get("status") != "failed":
@@ -138,14 +187,17 @@ def failure_words(request: Mapping) -> str | None:
     return REQUEST_REFUSAL_SENTENCES.get(request.get("refusal") or "")
 
 
-def content_state(request: Mapping, *, now: float) -> dict | None:
+def content_state(request: Mapping, *, now: float, kit_published_at=None) -> dict | None:
     """The card's ContentState: `demoState.ts demoState`, in Python, and the reference.
 
-    `request` is the row as the demos routes hold it (`status`, `refusal`, `created_at`). None for
-    a request no card shows."""
+    `request` is the row as the demos routes hold it (`status`, `refusal`, `created_at`,
+    `claimed_at`); `kit_published_at` is when the project's shown kit was published, or None for
+    no kit. None for a request no card shows."""
     phase = phase_of(request.get("status"))
     if phase is None:
         return None
+    if phase == "ready" and not kit_from_request(request, kit_published_at):
+        phase = "made"
     asked = _epoch(request.get("created_at"))
     return {
         "phase": phase,
@@ -156,6 +208,8 @@ def content_state(request: Mapping, *, now: float) -> dict | None:
 
 
 def stale_after(phase: str) -> int:
+    """Made takes an answer's stale date: the Mac is done, and a card waiting for a publish that
+    has not come in the hold is a card that has stopped being news."""
     if phase == "asked":
         return ASKED_STALE_SECONDS
     if phase == "filming":
@@ -164,6 +218,8 @@ def stale_after(phase: str) -> int:
 
 
 def answer_alert(state: Mapping) -> dict | None:
+    if state["phase"] == "made" and MADE_IS_QUIET:
+        return None
     if state["phase"] == "ready":
         return dict(READY_ALERT)
     if state["phase"] == "failed":
@@ -224,7 +280,7 @@ class DemoPush:
         return "alert" in self.payload["aps"]
 
 
-_REQUEST_COLUMNS = "id, status, refusal, created_at"
+_REQUEST_COLUMNS = "id, project_key, status, refusal, created_at, claimed_at"
 
 
 def _request(db, user_id: str, request_id: str):
@@ -240,7 +296,32 @@ def _request(db, user_id: str, request_id: str):
 
 
 def _row(r) -> dict:
-    return {"status": r.status, "refusal": r.refusal, "created_at": r.created_at}
+    return {
+        "status": r.status,
+        "refusal": r.refusal,
+        "created_at": r.created_at,
+        "claimed_at": r.claimed_at,
+    }
+
+
+def _kit_published_at(db, user_id: str, project_key: str):
+    """When the project's shown kit was published: the newest `ship_kits` row, which is exactly
+    what `GET /v1/projects/{key}/kit` answers as `published_at`. None for no kit."""
+    from sqlalchemy import text
+
+    return db.execute(
+        text(
+            "SELECT max(created_at) FROM ship_kits "
+            "WHERE user_id = CAST(:u AS uuid) AND project_key = :k"
+        ),
+        {"u": user_id, "k": project_key},
+    ).scalar()
+
+
+def _state(db, user_id: str, r, *, now: float) -> dict | None:
+    """The card for a request row, asking `ship_kits` only when the answer depends on it."""
+    kit = _kit_published_at(db, user_id, r.project_key) if r.status == "done" else None
+    return content_state(_row(r), now=now, kit_published_at=kit)
 
 
 def plan_updates(db, user_id: str, request_ids: Iterable[str], *, now: float) -> list[DemoPush]:
@@ -271,7 +352,7 @@ def plan_updates(db, user_id: str, request_ids: Iterable[str], *, now: float) ->
         r = _request(db, user_id, request_id)
         if r is None:
             continue
-        state = content_state(_row(r), now=now)
+        state = _state(db, user_id, r, now=now)
         if state is None:
             continue
         phase = state["phase"]
@@ -308,7 +389,7 @@ def _ends(db, user_id: str, rows, *, now: float) -> list[DemoPush]:
     pushes: list[DemoPush] = []
     for t in rows:
         r = _request(db, user_id, str(t.request_id))
-        state = content_state(_row(r), now=now) if r is not None else None
+        state = _state(db, user_id, r, now=now) if r is not None else None
         pushes.append(
             DemoPush(
                 target=Target(str(t.id), user_id, t.token, t.environment),
@@ -328,14 +409,16 @@ def _ends(db, user_id: str, rows, *, now: float) -> list[DemoPush]:
 
 
 def plan_ends(db, user_id: str, *, now: float) -> list[DemoPush]:
-    """An `end` to every card whose answer has been up for ANSWER_HOLD_SECONDS."""
+    """An `end` to every card whose answer has been up for ANSWER_HOLD_SECONDS. Made counts: a
+    publish moves it to ready and restarts the hold (`last_pushed_at`), and one that never comes
+    should not keep "made" in the island all day."""
     from sqlalchemy import text
 
     rows = db.execute(
         text(
             """
             SELECT id, request_id, token, environment FROM demo_activity_tokens
-            WHERE user_id = :u AND shown_phase IN ('ready', 'failed')
+            WHERE user_id = :u AND shown_phase IN ('made', 'ready', 'failed')
               AND last_pushed_at < now() - make_interval(secs => :hold)
             ORDER BY created_at, id
             FOR UPDATE
@@ -453,6 +536,38 @@ def after_claim(
         log.exception("demo island: deciding ends failed")
         return sent
     return sent + send(ends)
+
+
+def after_publish(user_id: str, project_key: str, *, now: float | None = None) -> list[DemoPush]:
+    """A kit's document arrived (the kit publish route committed): every card of this project's
+    requests that is behind where its request now is moves, which is a card at `made` going to
+    `ready` when this kit came at or after the Mac took its request. A card still filming (the
+    worker publishes before it finishes) is not moved: its request is still claimed."""
+    import time
+
+    from sqlalchemy import text
+
+    from .db import db_session
+
+    now = time.time() if now is None else now
+    try:
+        with db_session(viewer_id=user_id) as db:
+            ids = [
+                str(r.request_id)
+                for r in db.execute(
+                    text(
+                        "SELECT DISTINCT t.request_id FROM demo_activity_tokens t "
+                        "JOIN demo_requests r ON r.id = t.request_id "
+                        "WHERE t.user_id = CAST(:u AS uuid) AND r.project_key = :k"
+                    ),
+                    {"u": user_id, "k": project_key},
+                ).all()
+            ]
+            pushes = plan_updates(db, user_id, ids, now=now)
+    except Exception:
+        log.exception("demo island: deciding the publish update for a project failed")
+        return []
+    return send(pushes)
 
 
 def after_cancel(user_id: str, request_id: str, *, now: float | None = None) -> list[DemoPush]:

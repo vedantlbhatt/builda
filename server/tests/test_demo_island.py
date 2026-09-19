@@ -11,7 +11,9 @@ Two halves, tested the way each can fail, as test_drop_island.py does for a shar
     replaced by test_live_push's double: registration and its RLS through a second real account,
     an update when the Mac claims and when it finishes and never a step back, catch up on a late
     token, an end after the hold and never on the answer, an end at once when taken back, nothing
-    without a token, nothing ever to somebody else, and the no-key log line.
+    without a token, nothing ever to somebody else, and the no-key log line. And DONE IS NOT THE
+    SAME AS UP: a request the Mac finished without publishing is `made` (quietly), a kit published
+    later moves it to `ready`, and a worker that publishes before it finishes goes straight there.
 """
 
 import ast
@@ -24,7 +26,8 @@ import uuid
 import pytest
 from sqlalchemy import text
 from test_live_push import _APNs, apns  # noqa: F401 - the APNs double, picked up by name
-from test_project_media import _person
+from test_project_media import _person, store  # noqa: F401 - the kit store, picked up by name
+from test_shipkit import _publish
 from test_sync import (  # noqa: F401 - fixtures are picked up by name
     TEST_DB,
     _phone_for,
@@ -38,13 +41,14 @@ from test_sync import (  # noqa: F401 - fixtures are picked up by name
 from builder import demo_push
 from builder.shipkit_spec import REQUEST_REFUSAL_SENTENCES, SHIPKIT_ENUM_VALUES
 
-_SHARED_FIXTURES = (app_env, client, created_users, apns)
+_SHARED_FIXTURES = (app_env, client, created_users, apns, store)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SWIFT = ROOT / "mobile/modules/builder-live/ios/BuilderDemoAttributes.swift"
 VIEWS = ROOT / "mobile/targets/widget/_shared/DemoActivityViews.swift"
 FIXTURE = ROOT / "spec/fixtures/demos/activity_state.json"
 MIGRATION = ROOT / "server/alembic/versions/0032_demo_activity_tokens.py"
+MIGRATION_MADE = ROOT / "server/alembic/versions/0033_demo_activity_made.py"
 ISLAND_MODEL = ROOT / "mobile/src/island/model.ts"
 WATCH = ROOT / "capture/shipkit/watch.py"
 
@@ -80,17 +84,31 @@ def test_the_phases_are_the_ones_the_views_switch_on():
     assert [p.strip() for p in m.group(1).split(",")] == list(demo_push.PHASES)
 
 
-def test_the_migrations_check_list_is_the_phases():
-    """0032's CHECK, read with `ast` (test_drops.py records why a regex on a line is not enough)."""
-    tree = ast.parse(MIGRATION.read_text())
+def _phase_list(path: pathlib.Path, name: str) -> list[str]:
+    """A migration's quoted phase list, read with `ast` (test_drops.py records why a regex on a
+    line is not enough)."""
+    tree = ast.parse(path.read_text())
     literal = next(
         ast.literal_eval(node.value)
         for node in tree.body
-        if isinstance(node, ast.Assign)
-        and any(getattr(t, "id", "") == "DEMO_PHASE" for t in node.targets)
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == name for t in node.targets)
     )
-    assert re.findall(r"'([a-z]+)'", literal) == list(demo_push.PHASES)
+    return re.findall(r"'([a-z]+)'", literal)
+
+
+def test_the_migrations_check_list_is_the_phases():
+    """0033's CHECK is the phases, both ways; its way back is exactly 0032's list, and it follows
+    0032, which follows 0031."""
+    assert _phase_list(MIGRATION_MADE, "DEMO_PHASE") == list(demo_push.PHASES)
+    assert _phase_list(MIGRATION_MADE, "OLD_PHASE") == _phase_list(MIGRATION, "DEMO_PHASE")
+    assert set(demo_push.PHASES) - set(_phase_list(MIGRATION, "DEMO_PHASE")) == {"made"}
     assert 'down_revision = "0031_drop_activity_tokens"' in MIGRATION.read_text()
+    assert 'down_revision = "0032_demo_activity_tokens"' in MIGRATION_MADE.read_text()
+
+
+def test_made_sits_below_ready_so_a_publish_can_still_move_the_card():
+    rank = demo_push.RANK
+    assert rank["asked"] < rank["filming"] < rank["made"] < rank["ready"] == rank["failed"]
 
 
 def test_the_phase_of_a_status_is_the_in_app_islands_step():
@@ -131,16 +149,24 @@ def test_every_refusal_a_request_can_carry_has_words():
 @pytest.mark.parametrize("case", json.loads(FIXTURE.read_text())["cases"], ids=lambda c: c["name"])
 def test_the_shared_fixture(case):
     """The file the phone's `demoState` is held to, case for case."""
-    got = demo_push.content_state(case["request"], now=case["now"])
+    got = demo_push.content_state(
+        case["request"], now=case["now"], kit_published_at=case.get("kit_published_at")
+    )
     assert got == case["expect"]
     if got is not None:
         assert tuple(got) == demo_push.CONTENT_STATE_KEYS
 
 
-def test_an_answer_carries_the_alert_and_filming_is_quiet():
-    ready = demo_push.content_state(
-        {"status": "done", "refusal": None, "created_at": "2025-09-13T08:00:00+00:00"}, now=100
+def test_an_answer_carries_the_alert_and_filming_and_made_are_quiet():
+    done = {"status": "done", "refusal": None, "created_at": "2025-09-13T08:00:00+00:00"}
+    made = demo_push.content_state(done, now=100)
+    assert made["phase"] == "made"
+    assert demo_push.answer_alert(made) is None
+    assert (
+        demo_push.update_payload(made, now=100)["aps"]["stale-date"]
+        == 100 + demo_push.ANSWER_STALE_SECONDS
     )
+    ready = demo_push.content_state(done, now=100, kit_published_at="2025-09-13T08:10:00+00:00")
     aps = demo_push.update_payload(ready, now=100, alert=demo_push.answer_alert(ready))["aps"]
     assert aps["alert"] == {"title": "The kit is up", "body": "Tap to share it anywhere."}
     assert aps["stale-date"] == 100 + demo_push.ANSWER_STALE_SECONDS
@@ -278,8 +304,16 @@ def test_a_malformed_registration_is_a_422_not_a_500(client, created_users):
     assert client.delete("/v1/push/demo-activity/a%20b", headers=a["phone"]).status_code == 422
 
 
+def _shown(token: str = CARD) -> str:
+    return _rows("SELECT shown_phase FROM demo_activity_tokens WHERE token = :t", t=token)[
+        0
+    ].shown_phase
+
+
 @needs_db
-def test_the_mac_claiming_and_finishing_moves_the_card_forward_once(client, created_users, apns):
+def test_the_mac_claiming_and_finishing_moves_the_card_forward_once(
+    client, created_users, apns, store
+):
     a = _person(client, created_users)
     req = _ask(client, a)
     _register(client, a["phone"], request_id=req["id"], activity_id="act-1", token=CARD)
@@ -304,24 +338,87 @@ def test_the_mac_claiming_and_finishing_moves_the_card_forward_once(client, crea
     client.post("/v1/demos/requests:claim", headers=a["mac"])
     assert len(_updates(apns)) == 1
 
-    # Done: the kit is up, with the alert, and no end (iOS would pull the card as it lands).
+    # Done, the default worker's way: the kit stays on the Mac, so the card says made, quietly,
+    # and never "the kit is up" over a screen with nothing new on it.
     _finish(client, a, req["id"], "done")
     ups = _updates(apns)
     assert len(ups) == 2
-    answer = ups[1]["body"]["aps"]
+    made = ups[1]["body"]["aps"]
+    assert made["content-state"]["phase"] == "made"
+    assert "alert" not in made
+    assert ups[1]["headers"]["apns-priority"] == "5"
+    assert _shown() == "made"
+
+    # The kit is published on the Mac later: the card moves on to ready, with the alert, and no
+    # end (iOS would pull the card as it lands).
+    _publish(client, a)
+    ups = _updates(apns)
+    assert len(ups) == 3
+    answer = ups[2]["body"]["aps"]
     assert answer["content-state"]["phase"] == "ready"
     assert answer["content-state"]["failure"] is None
     assert answer["alert"]["title"] == "The kit is up"
-    assert ups[1]["headers"]["apns-priority"] == "10"
+    assert ups[2]["headers"]["apns-priority"] == "10"
     assert _ends(apns) == []
-    assert (
-        _rows("SELECT shown_phase FROM demo_activity_tokens WHERE token = :t", t=CARD)[
-            0
-        ].shown_phase
-        == "ready"
-    )
+    assert _shown() == "ready"
+    # A second publish is not news.
+    _publish(client, a)
+    assert len(_updates(apns)) == 3
     # No banner rides along: the card's alert is the one moment.
     assert apns.banners() == []
+
+
+@needs_db
+def test_a_worker_that_publishes_before_it_finishes_goes_straight_to_ready(
+    client, created_users, apns, store
+):
+    """`watch --publish-requests`: the kit is published while the request is still claimed (no
+    push: the card is filming and stays filming), then the finish says ready, with the alert."""
+    a = _person(client, created_users)
+    req = _ask(client, a)
+    _register(client, a["phone"], request_id=req["id"], activity_id="act-p", token=CARD)
+    client.post("/v1/demos/requests:claim", headers=a["mac"])
+    _publish(client, a)
+    assert [u["body"]["aps"]["content-state"]["phase"] for u in _updates(apns)] == ["filming"]
+    _finish(client, a, req["id"], "done")
+    ups = _updates(apns)
+    assert [u["body"]["aps"]["content-state"]["phase"] for u in ups] == ["filming", "ready"]
+    assert ups[1]["body"]["aps"]["alert"]["title"] == "The kit is up"
+
+
+@needs_db
+def test_a_kit_from_before_the_claim_is_not_this_requests(client, created_users, apns, store):
+    """An older kit of the project was already up when the Mac took this request: done is made."""
+    a = _person(client, created_users)
+    _publish(client, a)
+    req = _ask(client, a)
+    _register(client, a["phone"], request_id=req["id"], activity_id="act-o", token=CARD)
+    client.post("/v1/demos/requests:claim", headers=a["mac"])
+    _finish(client, a, req["id"], "done")
+    assert [u["body"]["aps"]["content-state"]["phase"] for u in _updates(apns)] == [
+        "filming",
+        "made",
+    ]
+
+
+@needs_db
+def test_a_publish_moves_only_that_projects_cards(client, created_users, apns, store):
+    """Two projects of one person, both made; a kit for one moves that card and not the other."""
+    a = _person(client, created_users)
+    other_key = uuid.uuid4().hex * 2
+    from test_sync import _payload, _upload
+
+    assert _upload(client, a["mac"], _payload(repo_hash=other_key))["accepted"] == 1
+    b = {**a, "key": other_key}
+    for p, token, act in ((a, CARD, "act-a"), (b, "ab" * 40, "act-b")):
+        r = _ask(client, p)
+        _register(client, p["phone"], request_id=r["id"], activity_id=act, token=token)
+    for q in client.post("/v1/demos/requests:claim", headers=a["mac"]).json()["requests"]:
+        _finish(client, a, q["id"], "done")
+    assert _shown(CARD) == "made" and _shown("ab" * 40) == "made"
+    _publish(client, b)
+    assert _shown(CARD) == "made"
+    assert _shown("ab" * 40) == "ready"
 
 
 @needs_db
@@ -352,17 +449,19 @@ def test_a_card_that_registers_late_catches_up_at_once(client, created_users, ap
         client, a["phone"], request_id=req["id"], activity_id="act-3", token=CARD, showing="asked"
     )
     assert r.json()["caught_up"] == 1
-    assert [u["body"]["aps"]["content-state"]["phase"] for u in _updates(apns)] == ["ready"]
-    # A card that already shows the answer is not told it again.
-    r = _register(
-        client,
-        a["phone"],
-        request_id=req["id"],
-        activity_id="act-4",
-        token="ee" * 40,
-        showing="ready",
-    )
-    assert r.json()["caught_up"] == 0
+    assert [u["body"]["aps"]["content-state"]["phase"] for u in _updates(apns)] == ["made"]
+    # A card that already shows where it stands is not told it again; one that says more than the
+    # server knows (the phone saw the kit first) is not stepped back either.
+    for token, showing in (("ee" * 40, "made"), ("ef" * 40, "ready")):
+        r = _register(
+            client,
+            a["phone"],
+            request_id=req["id"],
+            activity_id=f"act-{showing}",
+            token=token,
+            showing=showing,
+        )
+        assert r.json()["caught_up"] == 0
 
 
 @needs_db
@@ -390,7 +489,8 @@ def test_an_answer_comes_down_after_its_hold_on_the_macs_next_poll(client, creat
     assert len(ends) == 1
     aps = ends[0]["body"]["aps"]
     assert aps["dismissal-date"] == aps["timestamp"]
-    assert aps["content-state"]["phase"] == "ready"
+    # Made, here (no kit was published): it has had its hold too, and comes down the same way.
+    assert aps["content-state"]["phase"] == "made"
     assert _rows("SELECT id FROM demo_activity_tokens WHERE user_id = :u", u=a["uid"]) == []
     # And once only: the token is gone, so the next poll has nothing to end.
     client.post("/v1/demos/requests:claim", headers=a["mac"])

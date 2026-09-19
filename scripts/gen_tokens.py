@@ -220,6 +220,17 @@ def validate_spectrum(t: dict) -> list[str]:
     missing = {"working", "thinking", "waiting", "error", "done", "reading", "sleep"} - set(spec.get("island", {}))
     if spec.get("island") is not None and missing:
         problems.append(f"spectrum.island is missing {sorted(missing)}")
+    # A demo request's record light (Palette.swift `demoInk`, docs/demo-island.md). Exactly the
+    # card's four phases, because each becomes a Swift case the views switch over exhaustively; and
+    # a token path, never a hue, because the light says where the request stands and the project's
+    # own hue already colours its title on the same card.
+    demo = spec.get("demo")
+    if demo is not None:
+        if set(demo) != {"asked", "filming", "ready", "failed"}:
+            problems.append(f"spectrum.demo must be exactly asked, filming, ready and failed, not {sorted(demo)}")
+        for k, v in demo.items():
+            if v not in TOKEN_REFS + ("surface.textFaint",):
+                problems.append(f"spectrum.demo.{k} is {v!r}; a record light is one of {TOKEN_REFS + ('surface.textFaint',)}")
     for k, v in spec.get("verdict", {}).items():
         if v not in TOKEN_REFS:
             problems.append(f"spectrum.verdict.{k} is {v!r}; a verdict is a state colour, one of {TOKEN_REFS}")
@@ -567,6 +578,8 @@ def gen_widget_palette(t: dict) -> str:
         f"    case .{k}: return {island_ink(v)}" for k, v in spec["island"].items()
     )
     island_names = ", ".join(spec["island"])
+    demo_cases = "\n".join(f"    case .{k}: return {island_ink(v)}" for k, v in spec["demo"].items())
+    demo_names = ", ".join(spec["demo"])
     ring = ", ".join(f'"{c}"' for c in spec["crew"]["ring"])
     hue_names = ", ".join(hues)
     return f"""{BANNER}
@@ -706,6 +719,19 @@ enum BuilderPalette {{
   static func islandInk(_ state: IslandState) -> Color {{
     switch state {{
 {island_cases}
+    }}
+  }}
+
+  /// spectrum.demo: a demo request's record light (docs/demo-island.md), one per card phase:
+  /// faint while it waits for the Mac, the data red while the Mac films, the data green once the
+  /// kit is up, the data red again (drawn as a cross) for one that could not be made.
+  enum DemoState: String, CaseIterable {{
+    case {demo_names}
+  }}
+
+  static func demoInk(_ state: DemoState) -> Color {{
+    switch state {{
+{demo_cases}
     }}
   }}
 }}

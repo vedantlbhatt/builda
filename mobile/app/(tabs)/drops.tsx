@@ -33,7 +33,8 @@ import { search } from '../../src/drops/cluster';
 import { drainPending, pendingCount, sendByHand } from '../../src/drops/intake';
 import { SearchLine } from '../../src/drops/SearchLine';
 import { useBoard } from '../../src/drops/useBoard';
-import { BuildingCard, PairCard, PickCard } from '../../src/drops/wall/Cards';
+import { BuildingCard, PairCard } from '../../src/drops/wall/Cards';
+import { PickPile } from '../../src/drops/wall/PickPile';
 import { wallLine, wallOf, type WallDrop } from '../../src/drops/wall/model';
 import { Opening, type Rect as Origin } from '../../src/drops/wall/Opening';
 import { Poster } from '../../src/drops/wall/Poster';
@@ -245,7 +246,9 @@ export default function DropsScreen() {
           keyboardDismissMode="on-drag"
           refreshControl={<RefreshControl refreshing={false} tintColor={c.textDim} onRefresh={() => void refresh()} />}
         >
-          <WallHeader line={[line, waiting ? `${waiting} arriving` : ''].filter(Boolean).join(', ')} />
+          {/* No count line under the title (2026-09-19, the owner: the big, small, grey pattern);
+              only a share still arriving is worth a line. */}
+          <WallHeader line={waiting ? `${waiting} arriving` : ''} />
           <View style={styles.search}>
             <SearchLine value={query} onChangeText={setQuery} hits={only ? { shown: only.size, total: wall.all.length } : null} />
           </View>
@@ -266,11 +269,13 @@ export default function DropsScreen() {
           {!only && wall.bands.pick.length > 0 ? (
             <RippleItem i={section++}>
               <WallBand title="Pick a move">
-                {wall.bands.pick.map((w) => (
-                  <View key={w.drop.id} style={{ marginBottom: 12 }}>
-                    <PickCard posterRef={register(w.drop.id)} w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onStart={(m) => startMove(w, m.id, m.title)} />
-                  </View>
-                ))}
+                <PickPile
+                  items={wall.bands.pick}
+                  width={inner}
+                  posterRef={register}
+                  onOpen={openDrop}
+                  onStart={(w, m) => startMove(w, m.id, m.title)}
+                />
               </WallBand>
             </RippleItem>
           ) : null}

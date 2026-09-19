@@ -135,9 +135,6 @@ export function BuildingCard({ w, width, aura, onOpen, posterRef }: { w: WallDro
       <View style={[styles.building, { width }]}>
         <Poster drop={w.drop} width={64} frameRef={posterRef} />
         <View style={[styles.body, { justifyContent: 'center' }]}>
-          <Text numberOfLines={1} style={styles.kindDim}>
-            {w.drop.title ?? 'A drop'}
-          </Text>
           <Text numberOfLines={2} style={styles.moveTitle}>
             {m.title}
           </Text>
@@ -189,21 +186,18 @@ export function PairCard({
     >
       <View style={[styles.pair, { width }]}>
         <View>
-          <Poster drop={w.drop} width={posterW} foot="Seen" frameRef={posterRef} />
+          <Poster drop={w.drop} width={posterW} frameRef={posterRef} />
         </View>
         <View style={styles.arrow}>
           <Text style={styles.arrowText}>→</Text>
         </View>
         <View style={[styles.built, { height: Math.round(posterW * (16 / 9)) }]}>
-          <Text style={[styles.kind, { color: tokens.data.add.dark }]}>Built</Text>
+          {/* The title and what you can do with it. The kind word, the run's own words and the
+              upload note were three more sizes and greys under it (2026-09-19, the owner: the
+              big, small, grey pattern; say less). The run's words are one tap away, on the drop. */}
           <Text numberOfLines={3} style={styles.title}>
             {m.title}
           </Text>
-          {m.outcome ? (
-            <Text numberOfLines={3} style={styles.outcome}>
-              {undash(m.outcome)}
-            </Text>
-          ) : null}
           <View style={{ flex: 1 }} />
           {m.session_id ? (
             <Pressable
@@ -214,11 +208,9 @@ export function PairCard({
                 onSession(m.session_id!);
               }}
             >
-              <Text style={styles.link}>Open the session →</Text>
+              <Text style={styles.link}>Open the session</Text>
             </Pressable>
-          ) : (
-            <Text style={styles.moveWhere}>The session lands once your Mac uploads it</Text>
-          )}
+          ) : null}
           {onFilm && filmable ? (
             // Shown, the video half: the ship kit films the project the move made (`docs/ship-kit.md`).
             <Pressable
@@ -230,7 +222,7 @@ export function PairCard({
               }}
               style={{ marginTop: 10 }}
             >
-              <Text style={styles.link}>Film it for sharing →</Text>
+              <Text style={styles.link}>Film it</Text>
             </Pressable>
           ) : null}
           {onShare ? (
@@ -244,7 +236,7 @@ export function PairCard({
               }}
               style={{ marginTop: 10 }}
             >
-              <Text style={[styles.link, { color: tokens.data.add.dark }]}>Share what you made of it</Text>
+              <Text style={styles.link}>Share</Text>
             </Pressable>
           ) : null}
         </View>

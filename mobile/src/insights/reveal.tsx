@@ -15,7 +15,7 @@
  * Blocks must be direct children of a `Section`, and sections direct children of the scroll
  * content: each position is read from `onLayout`, which is relative to the parent.
  */
-import { takeOrder } from '../motion/pixelMotion';
+import { modeOf, motionFor, PIXEL_MOTIONS, takeOrder, type PixelMotion } from '../motion/pixelMotion';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import Animated, {
@@ -101,6 +101,11 @@ export function usePageOrder(own: number, count: number): number {
   const got = useRef<number | null>(null);
   if (got.current === null) got.current = taken ? takeOrder(taken, own, count) : own;
   return got.current;
+}
+
+/** A drawn field's order on its page (a grid of cells, not a band): from its name, distinct here. */
+export function useFieldMotion(key: string): PixelMotion {
+  return PIXEL_MOTIONS[usePageOrder(modeOf(motionFor(key)), PIXEL_MOTIONS.length)]!;
 }
 
 /** A chapter of the page. Its children that play are `Block`s. */

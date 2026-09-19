@@ -13,7 +13,8 @@ import { isRefused, type TimeModel } from '../model';
 import { Num } from '../Num';
 import { GRAPH_LEVELS, GROUND, ON_HUE, SPECTRUM } from '../palette';
 import { CountMarks, PixelField, type PixelCell } from '../Pixels';
-import { Block, Section } from '../reveal';
+import { arrivalMs } from '../../motion/pixelMotion';
+import { Block, Section, useFieldMotion } from '../reveal';
 
 const HUE = SPECTRUM.amber;
 
@@ -129,6 +130,9 @@ function DayGrid({ grid, width }: { grid: Extract<TimeModel['grid'], { cells: un
   const cell = Math.floor((width - GAP * (grid.weeks - 1)) / grid.weeks);
   const w = cell * grid.weeks + GAP * (grid.weeks - 1);
   const h = cell * 7 + GAP * 6;
+  // The grid's own arrival (a wave was every grid's); the span the diagonal wave took.
+  const motion = useFieldMotion('day grid');
+  const span = (grid.weeks + 6) * 30;
   const cells: PixelCell[] = useMemo(
     () =>
       grid.cells.map((c) => ({
@@ -139,9 +143,9 @@ function DayGrid({ grid, width }: { grid: Extract<TimeModel['grid'], { cells: un
         color: c.before ? GROUND.border : (GRAPH_LEVELS[Math.min(c.level, GRAPH_LEVELS.length - 1)] ?? GRAPH_LEVELS[0]!),
         outline: c.before,
         ring: c.today ? GROUND.text : undefined,
-        delay: 40 + (c.col + c.row) * 30,
+        delay: arrivalMs(motion, c.col, c.row, grid.weeks, 7, 40, span),
       })),
-    [grid.cells, cell, GAP],
+    [grid.cells, grid.weeks, cell, GAP, motion, span],
   );
   return (
     <View>

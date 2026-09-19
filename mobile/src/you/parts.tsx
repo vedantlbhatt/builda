@@ -23,7 +23,8 @@ import { ease, ENTER_MS, phase, RISE } from '../insights/motion';
 import { Num } from '../insights/Num';
 import { GROUND, ON_HUE, type Hue } from '../insights/palette';
 import { PixelField, type PixelCell } from '../insights/Pixels';
-import { Block, Section, useClock, useReducedSV } from '../insights/reveal';
+import { Block, Section, useClock, useFieldMotion, useReducedSV } from '../insights/reveal';
+import { arrivalMs } from '../motion/pixelMotion';
 import { GoLink } from '../insights/sections/Reading';
 import { copyText } from '../onboarding/clipboard';
 import { snap } from '../ui';
@@ -115,14 +116,19 @@ export function useClockReached(at: number): boolean {
 
 /**
  * One square a catalog term: found ones in the hue, the rest as quiet outlines still to find (the
- * way Apple Fitness dims an award not yet earned). They fill in a diagonal wave from the top left,
- * the order appllama's Braille Flipwave loader runs (a column step a little shorter than a row
- * step; pattern and numbers only, that repo is GPL), and then stay still.
+ * way Apple Fitness dims an award not yet earned). They fill in the field's own order
+ * (`motion/pixelMotion`, distinct on its page) over the span the old diagonal wave took (a column
+ * step a little shorter than a row step, from appllama's Braille Flipwave loader; pattern and
+ * numbers only, that repo is GPL), and then stay still.
  */
 export function TermSquares({ found, catalog, width, hue, delay = 40 }: { found: number; catalog: number; width: number; hue: Hue; delay?: number }) {
   const cols = catalog <= 80 ? 15 : 20;
   const gap = 4;
   const size = Math.floor((width - gap * (cols - 1)) / cols);
+  const rows = Math.ceil(catalog / cols);
+  const motion = useFieldMotion('term squares');
+  // As long as the diagonal wave took.
+  const span = (cols - 1) * WAVE_COL_MS + (rows - 1) * WAVE_ROW_MS;
   const cells: PixelCell[] = useMemo(() => {
     const out: PixelCell[] = [];
     for (let i = 0; i < catalog; i++) {
@@ -136,12 +142,11 @@ export function TermSquares({ found, catalog, width, hue, delay = 40 }: { found:
         h: size,
         color: on ? hue.ink : GROUND.border,
         outline: !on,
-        delay: delay + col * WAVE_COL_MS + row * WAVE_ROW_MS,
+        delay: arrivalMs(motion, col, row, cols, rows, delay, span),
       });
     }
     return out;
-  }, [found, catalog, cols, size, hue.ink, delay]);
-  const rows = Math.ceil(catalog / cols);
+  }, [found, catalog, cols, rows, size, hue.ink, delay, motion, span]);
   return (
     <PixelField
       cells={cells}

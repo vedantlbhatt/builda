@@ -116,6 +116,15 @@ export function cellOrder(m: PixelMotion, x: number, y: number, cols: number, ro
 }
 
 /**
+ * When cell (x, y) of a JS drawn field (`insights/Pixels.PixelField`) starts arriving, in ms of its
+ * block's clock: `start`, plus its place in order `m` spread over `span`. The grids used to share
+ * one diagonal wave; a field now arrives in its own order, the way a band does.
+ */
+export function arrivalMs(m: PixelMotion, x: number, y: number, cols: number, rows: number, start: number, span: number): number {
+  return start + cellOrder(m, x, y, cols, rows) * span;
+}
+
+/**
  * `cellOrderWith` in SkSL, calling a hash named `H` the program already defines (`hash` in the
  * band, onboarding's sine-free `hash12` in the step band). Seven thresholds on `mode` and the last
  * order as the fall through, in `PIXEL_MOTIONS` order.

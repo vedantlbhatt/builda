@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { cellOrder, modeOf, orderSksl, motionFor, NUM_MOTIONS, numFrame, numMotionFor, PIXEL_MOTIONS, takeOrder, tickStep, type PixelMotion } from '../src/motion/pixelMotion';
+import { arrivalMs, cellOrder, modeOf, orderSksl, motionFor, NUM_MOTIONS, numFrame, numMotionFor, PIXEL_MOTIONS, takeOrder, tickStep, type PixelMotion } from '../src/motion/pixelMotion';
 
 const COLS = 40;
 const ROWS = 24;
@@ -49,6 +49,28 @@ describe('each pixel surface arrives its own way', () => {
     expect(branches.length).toBe(PIXEL_MOTIONS.length - 1);
     expect(modeOf('rain')).toBe(0);
     expect(modeOf('wipe')).toBe(PIXEL_MOTIONS.length - 1);
+  });
+});
+
+describe('the drawn fields arrive their own way too', () => {
+  test('a cell starts inside the span, and the orders spread it differently', () => {
+    for (const m of PIXEL_MOTIONS) {
+      for (let y = 0; y < 7; y++) for (let x = 0; x < 26; x++) {
+        const t = arrivalMs(m, x, y, 26, 7, 40, 960);
+        expect(t >= 40 && t <= 1000).toBe(true);
+      }
+    }
+    expect(arrivalMs('wipe', 0, 3, 26, 7, 0, 1000)).toBeLessThan(arrivalMs('wipe', 25, 3, 26, 7, 0, 1000));
+    expect(arrivalMs('rise', 4, 6, 26, 7, 0, 1000)).toBeLessThan(arrivalMs('rise', 4, 0, 26, 7, 0, 1000));
+  });
+
+  test('no grid is left on the one diagonal wave every grid shared', () => {
+    for (const f of ['../src/insights/sections/Time.tsx', '../src/insights/sections/Agent.tsx', '../src/insights/sections/Reading.tsx', '../src/you/parts.tsx']) {
+      const src = readFileSync(join(import.meta.dir, f), 'utf8');
+      expect(src).toContain('useFieldMotion(');
+      expect(src).toContain('arrivalMs(motion');
+      expect(src).not.toMatch(/delay: \d+ \+ \(c\.col \+ c\.row\) \*/);
+    }
   });
 });
 

@@ -20,7 +20,8 @@ import { Num } from '../Num';
 import { GROUND, ON_HUE, SPECTRUM, type Hue, type HueName } from '../palette';
 import { DOOR_HUE, type DoorKey } from '../../you/chapters';
 import { PixelField, type PixelCell } from '../Pixels';
-import { Block, Section } from '../reveal';
+import { arrivalMs } from '../../motion/pixelMotion';
+import { Block, Section, useFieldMotion } from '../reveal';
 
 const STANDS = SPECTRUM.iris;
 const WORDS = SPECTRUM.orchid;
@@ -185,6 +186,10 @@ function Collection({ found, catalog, width, hue }: { found: number; catalog: nu
   const cols = catalog <= 80 ? 15 : 20;
   const gap = 4;
   const size = Math.floor((width - gap * (cols - 1)) / cols);
+  const rows = Math.ceil(catalog / cols);
+  const motion = useFieldMotion('term collection');
+  // As long as reading order took, 14 ms a term.
+  const span = catalog * 14;
   const cells: PixelCell[] = useMemo(() => {
     const out: PixelCell[] = [];
     for (let i = 0; i < catalog; i++) {
@@ -198,12 +203,11 @@ function Collection({ found, catalog, width, hue }: { found: number; catalog: nu
         h: size,
         color: on ? hue.ink : GROUND.border,
         outline: !on,
-        delay: 40 + i * 14,
+        delay: arrivalMs(motion, col, row, cols, rows, 40, span),
       });
     }
     return out;
-  }, [found, catalog, cols, size]);
-  const rows = Math.ceil(catalog / cols);
+  }, [found, catalog, cols, rows, size, hue.ink, motion, span]);
   return (
     <PixelField
       cells={cells}

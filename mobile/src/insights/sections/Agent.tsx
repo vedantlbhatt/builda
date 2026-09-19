@@ -19,7 +19,8 @@ import { ease, phase } from '../motion';
 import { Num } from '../Num';
 import { GROUND, ON_HUE, SPECTRUM, type HueName } from '../palette';
 import { CountMarks, PixelField, type PixelCell } from '../Pixels';
-import { Block, Section, useClock } from '../reveal';
+import { arrivalMs } from '../../motion/pixelMotion';
+import { Block, Section, useClock, useFieldMotion } from '../reveal';
 
 const WORK = SPECTRUM.heather;
 const AGENTS = SPECTRUM.brass;
@@ -319,6 +320,10 @@ function AgentSquares({ types, width }: { types: { name: string; agents: number 
   const cols = total <= 52 ? 13 : total <= 140 ? 20 : 26;
   const gap = cols === 13 ? 5 : 3;
   const size = Math.floor((width - gap * (cols - 1)) / cols);
+  const motion = useFieldMotion('agent squares');
+  const rows = Math.ceil(Math.min(total, cols * 14) / cols);
+  // As long as reading order took, capped: 22 ms a square.
+  const span = Math.min(1100, Math.min(total, cols * 14) * 22);
   const cells: PixelCell[] = useMemo(() => {
     const out: PixelCell[] = [];
     let i = 0;
@@ -327,12 +332,11 @@ function AgentSquares({ types, width }: { types: { name: string; agents: number 
       for (let k = 0; k < t.agents && i < cols * 14; k++, i++) {
         const col = i % cols;
         const row = Math.floor(i / cols);
-        out.push({ x: col * (size + gap), y: row * (size + gap), w: size, h: size, color, delay: 60 + i * 22 });
+        out.push({ x: col * (size + gap), y: row * (size + gap), w: size, h: size, color, delay: arrivalMs(motion, col, row, cols, rows, 60, span) });
       }
     });
     return out;
-  }, [types, cols, size, gap]);
-  const rows = Math.ceil(Math.min(total, cols * 14) / cols);
+  }, [types, cols, size, gap, motion, rows, span]);
   const h = rows * size + Math.max(0, rows - 1) * gap;
   return (
     <View>

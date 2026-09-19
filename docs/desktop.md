@@ -201,10 +201,16 @@ Every one of these is web only or behind the form factor: the phone's twins (`mo
 pressable with no fill, a closer registered with the overlay, an optional argument) draw and do
 nothing different on a phone.
 
-NOT fixed, a design law finding for the owner: the wall's "Being built" card wears `motion/Aura.tsx`,
-a four hue sweep gradient ring (cobalt, iris, orchid, tide) with a glow. That is a multi-hue
-gradient border, which the house rules ban. It is the phone's design as merged, the desktop only
-shows it, and changing it would change the phone, so it is left for whoever owns the motion work.
+One more, not the desktop's to fix: at the merge the wall's "Being built" card wore
+`motion/Aura.tsx` as a four hue sweep gradient ring (cobalt, iris, orchid, tide) with a glow, a
+multi-hue gradient border the house rules ban. The motion branch replaced it with one hue, the
+state's own, a light travelling round the edge (27e2eef); this branch merged that in and the
+desktop wall was checked with it.
+
+Merged in later from the motion branch and checked here: the ship kit (`/ship/<key>`), which now
+sits beside the Projects list with Projects lit (`rules.placeOf`, and a route in
+`scripts/e2e_desktop_web.mjs`), and a live session's page opening on the island's bar, which fits
+its pane.
 
 ## Verifying without a screen
 
@@ -247,6 +253,8 @@ how where it matters. Rows marked "before the merge" were verified on the old UI
 | Drop banners (read, finished) | native notifications from the shell | wired (`localNotify.web.ts`); not observed |
 | The in-app island (passing news: "Sent to your Mac", shipped, a reel being read) | a toast from the window's top edge, centred over the page area; standing states are the desktop island's | verified with the Settings tour, recorded; a real notice from a Start not exercised |
 | Projects: where the hours go (the split), a project's page | same code, list beside page | verified |
+| A project's ship kit (`/ship/<key>`), asking the Mac for a demo | same code, beside the Projects list | verified rendering (no kit yet); the request not exercised |
+| A live session's page: the island's bar on this run | same code, beside the list | verified on the account's live run |
 | You, Analysis, Wrapped (15 cards), Money, Stack, Dimensions, Glossary; a band growing into its page | same code; the band grows into the 1120 column | verified rendering; the You to Analysis morph recorded |
 | Codebase map, time lapse | same code | verified (the finished-session state only) |
 | Creature picker | same code | verified rendering |
@@ -318,7 +326,6 @@ given); `app/settings.tsx` and `app/(tabs)/drops.tsx` (a desktop branch behind `
 - Rebuild and run the PACKAGED Mac app on the merged UI (only `electron .` was run after the merge).
 - Sharing an image from the desktop: save to a file and reveal it, or copy it, through the bridge.
   The pair preview's Share button is the phone's and does nothing useful here.
-- The Aura's four hue ring on the wall's "Being built" card (see "After the motion merge").
 - The in-app island and the desktop island window are two pages: a notice the app posts ("Sent to
   your Mac") shows in the app's window only. A bridge message would let the window say it too.
 - The Settings tour on a desktop plays only the passing states; the standing ones are the desktop

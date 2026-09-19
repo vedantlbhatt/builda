@@ -6,12 +6,14 @@ import * as Linking from 'expo-linking';
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { handleIncomingUrl } from '../src/auth/googleFlow';
 import { api } from '../src/data/client';
+import { DesktopFrame } from '../src/desktop/DesktopFrame';
+import { isIslandWindow } from '../src/desktop/windowKind';
 import { useLiveSurfaces } from '../src/live/useLiveSurfaces';
 import { HeaderRule } from '../src/nav/chrome';
 import { leftCreaturePicker } from '../src/nav/chromeRules';
@@ -84,13 +86,20 @@ export default function RootLayout() {
   // white frame behind the stack on cold start. KeyboardProvider sits inside it so
   // keyboard tracking (`useReanimatedKeyboardAnimation`, `KeyboardStickyView`) works on
   // any screen that asks for it and costs nothing on the ones that do not.
+  // The desktop shell's island window renders `/island` from this same bundle on a transparent
+  // window (src/desktop/island/); everywhere else the root is the canvas.
+  const ground = isIslandWindow() ? 'transparent' : c.bg;
+
   return (
-    <GestureHandlerRootView style={[styles.root, { backgroundColor: c.bg }]}>
+    <GestureHandlerRootView style={[styles.root, { backgroundColor: ground }]}>
       <KeyboardProvider>
         <ThemeProvider>
           <StatusBar style="light" />
           <AccentFollowsCreature onboarded={onboarded} />
           {onboarded !== null && accent.ready && (
+            // On a phone the frame is its children, untouched; on web from 900 wide it is the
+            // sidebar and the split views around this stack (src/desktop/DesktopFrame.web.tsx).
+            <DesktopFrame>
             <Stack
               screenOptions={{
                 // The bar is the canvas with one warm hairline under it, the same rule the tab
@@ -159,6 +168,16 @@ export default function RootLayout() {
                 <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
               </Stack.Protected>
 
+              {/* The desktop shell's island (desktop/): a pill on its own transparent window,
+                  drawn from this bundle. Web only, and in either state, so a first launch that is
+                  still onboarding never routes the island window into onboarding. */}
+              <Stack.Protected guard={Platform.OS === 'web'}>
+                <Stack.Screen
+                  name="island"
+                  options={{ headerShown: false, animation: 'none', contentStyle: { backgroundColor: 'transparent' } }}
+                />
+              </Stack.Protected>
+
               {/* Dev tools, reachable in either state and absent from release builds. */}
               <Stack.Protected guard={__DEV__}>
                 <Stack.Screen
@@ -171,6 +190,7 @@ export default function RootLayout() {
                 <Stack.Screen name="debug/live" options={{ title: 'Live surfaces' }} />
               </Stack.Protected>
             </Stack>
+            </DesktopFrame>
           )}
         </ThemeProvider>
       </KeyboardProvider>

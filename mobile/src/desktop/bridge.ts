@@ -43,6 +43,10 @@ export interface DesktopBridge {
   };
   /** A stable per-install id, sha256 hex: the device grant's `machine_id`. */
   machineId(): Promise<string>;
+  /** The computer's name, for the label the phone shows ("Builda for Mac (studio)"). */
+  hostName: string;
+  /** A QR code of `text` as rows of dark modules, drawn by the main process (no QR code in the bundle). */
+  qr(text: string): Promise<boolean[][]>;
   notify(n: DesktopNotification): void;
   copyText(text: string): void;
   openExternal(url: string): void;

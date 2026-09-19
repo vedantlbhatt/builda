@@ -103,6 +103,23 @@ are data. What goes:
   Now grows its tiles out of the island, Sessions pages open by morphing the row into the page,
   Projects unfolds rivers, You is the creature's face, big, with its state.
 
+**Where the pixels stay, on purpose.** Onboarding keeps its print, its dissolve between steps and
+its creature switching hue cell by cell: it is the one place the pixel identity introduces itself,
+once, and a first meeting is where it belongs. Wrapped keeps its dithered card art: those cards
+are made to be shared as images, and they are the identity at its loudest by design. The strips
+stay: they are data. Everywhere else the pixels are the creature and nothing else.
+
+## Navigation grows out of what you touched
+
+`mobile/src/motion/MorphNav.tsx`. A mission tile, a session row, a project door or a door on You
+does not slide a page in beside it: a window the size and colour of the thing you touched grows
+to the whole phone on the island spring, turning into the page's ground as it grows, and the page
+is pushed underneath with no slide of its own (`?morph=1`; the root stack's `screenOptions` turn
+the animation off for any push that carries it). Back stays the platform's swipe and slide: a page
+you are leaving has no rectangle still on screen to shrink into once you have scrolled. A drop
+opening out of its poster is the same idea with the page laid out at full size behind a growing
+window (`drops/wall/Opening.tsx`), because the page IS the poster.
+
 ## Drops: seen, built, shown
 
 The owner's point, taken whole: "build something off a reel" is one way to use reels, and "do

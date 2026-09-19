@@ -270,7 +270,7 @@ keep the URL; from a new conversation pass the URL.
   `design/tokens.json` `spectrum.island`.
 - The brief and the design (`brief-motion.md`, `docs/motion.md`).
 
-## Next (for the owner, as of 11:34)
+## Next (for the owner, as of 11:52)
 
 0. Say whether the Mac notch island goes too, and which island idea (if any) to build.
 1. Merge `claude/motion`: `main` has been red since 2026-09-14 and turns green only with 31a1131
@@ -279,13 +279,14 @@ keep the URL; from a new conversation pass the URL.
    schedules it only when it was opened in a week with hours.
 3. Run the Windows and Linux builds on real machines (both build here, neither has run).
 4. On this Mac: two older macOS dialogs and a Keychain prompt (SecurityAgent) are on screen, left for
-   a person. The Keychain one is from a packaged Builda run; Deny is safe, the app no longer asks
-   during capture runs.
+   a person. The Keychain one is from the 08:53 packaged build's cookie encryption fuse, which is
+   off now; Deny is safe.
 5. Unreproduced: the Drops search placeholder drawn low once on the SE's first boot, with several
    link alerts queued. Not seen again: cold launches, the link path, and a fresh reinstall (by 08:30)
    all draw it right.
-6. Two server items the review left: a `claimed_at` column so two Macs cannot claim one drop after
-   the stale window, and rate limits on the device routes.
+6. Done since: the drop claim's `claimed_at` (0034) and a per account limit on pairing approvals.
+   Still open: a limit on the unauthenticated pairing start, which needs the real client address
+   (uvicorn behind Railway's proxy sees one address for everyone).
 7. The ground truth suite cannot pass on this machine any more (its corpus was garbage collected);
    a new reference needs a kept copy of a corpus and an independent measurement.
 

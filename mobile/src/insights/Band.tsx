@@ -1,70 +1,157 @@
 /**
- * A chapter's colour world: a card in the chapter's hue, words and the one big number in dark
- * ink on it.
+ * A chapter's colour world: a full bleed band in the chapter's hue, words and the one big
+ * number in dark ink on it, and under it a dissolve where the hue breaks up into the warm dark
+ * ground through the app's 1-bit ordered dither. No gradient: every point is ink or ground.
  *
- * WHAT THIS REPLACED (docs/motion.md, "Why the app looked the same everywhere"). The band used to
- * be a full-bleed slab that printed itself in pixel by pixel through an ordered dither and
- * dissolved into the ground through a 36 point dithered fringe. Each part was good; on 52 bands
- * across 30 screens it was a template, and a template is what reads as generated. The pixel print
- * and the fringe are gone from every band at once, here.
+ * It PRINTS ITSELF when its block plays, and HOW is the band's own (`motion/pixelMotion.ts`): the
+ * Time band scans in row by row, Money rises column by column like a meter, another opens from
+ * the centre, another lands as blocks, and so on through eight orders, picked from the band's
+ * title so a band always arrives the same way and the bands of one screen almost never share
+ * one. The print used to be one order everywhere (random cells biased downwards), and 52 bands
+ * arriving identically across 30 screens was the sameness, not the pixels. Then the words fade
+ * up, and the band is still.
  *
- * What it is now: an inset card with the island's corners, and it arrives the way the island does.
- * The hue grows DOWN from the title row on the island spring (`springAt`: the same overshoot and
- * settle as the island, as a function of the block's clock, because bands play on the reveal
- * clock rather than on a spring of their own), passing its height and coming back, and the words
- * follow it in (`BandWords`), so the colour leads and the words lag, as content lags its
- * container on the island. A second tone of the hue washes in from the far corner, so the card
- * has light in it instead of being one flat fill.
+ * The dither is the kit's (8x8 Bayer by arithmetic, from react-bits Dither and PixelBlast by
+ * David Haz, MIT + Commons Clause; the notice is in `src/ui/digits.ts`; used as part of this
+ * application, not redistributed). What is new here is the density: 1 across the band, falling
+ * to 0 over the dissolve, and the arrival orders.
  */
+import { Canvas, Rect, Shader, Skia, type SkRuntimeEffect } from '@shopify/react-native-skia';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import React, { useCallback, useRef, useState, type ReactNode } from 'react';
+import React, { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated';
 
 import { morphOpen } from '../motion/MorphNav';
-import { springAt } from '../motion/spec';
+import { modeOf, motionFor, type PixelMotion } from '../motion/pixelMotion';
 import { MONO_FAMILY } from '../theme';
 import { ease, phase, RISE } from './motion';
 import { GROUND, ON_HUE, type Hue } from './palette';
 import { Block, useClock, useReducedSV } from './reveal';
 
-/** The space under a band before whatever follows it, in points (the dithered fringe's old slot). */
-export const FRINGE = 12;
-/** When the words start to fade up, and how long they take. */
-export const WORDS_AT = 240;
-const WORDS_MS = 420;
-/** The row the hue grows down from: the title's own height. */
-const TITLE_ROW = 52;
-/** The card's corners: the island's expanded radius, less the 8 point inset. */
-export const BAND_RADIUS = 28;
+/**
+ * The same orders as `pixelMotion.cellOrder`, cell for cell (its `cellHash` with seed 0 is this
+ * `hash`), so a band and a JS print that share an order scatter alike.
+ */
+const BAND_SKSL = `
+uniform float cell;
+uniform float solid;
+uniform float fringe;
+uniform float reveal;
+uniform float mode;
+uniform float cols;
+uniform float rows;
+uniform float2 origin;
+uniform half4 ink;
 
-/** The hue, growing down from the title row on the island spring. */
-function BandGround({ height, hue }: { height: number; hue: Hue }) {
+float b2(float2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
+float b8(float2 a) { return b2(a * 0.25) * 0.0625 + b2(a * 0.5) * 0.25 + b2(a); }
+float hash(float2 c) { return fract(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453); }
+
+float orderOf(float2 c) {
+  float u = cols <= 1.0 ? 0.0 : c.x / (cols - 1.0);
+  float v = rows <= 1.0 ? 0.0 : c.y / (rows - 1.0);
+  float h = hash(c);
+  if (mode < 0.5) { return h * 0.55 + v * 0.45; }
+  if (mode < 1.5) { return v * 0.9 + h * 0.1; }
+  if (mode < 2.5) {
+    float aspect = cols / max(1.0, rows);
+    float2 d = float2((u - origin.x) * aspect, v - origin.y);
+    float far = length(float2(max(origin.x, 1.0 - origin.x) * aspect, max(origin.y, 1.0 - origin.y)));
+    return length(d) / max(far, 0.0001) * 0.85 + h * 0.15;
+  }
+  if (mode < 3.5) {
+    float speed = 0.45 + 0.55 * hash(float2(c.x + 78.43, 40.7));
+    return (1.0 - v) * speed + h * 0.08;
+  }
+  if (mode < 4.5) { return mod(c.x + c.y, 2.0) * 0.5 + v * 0.42 + h * 0.08; }
+  if (mode < 5.5) { return hash(floor(c / 8.0) + float2(35.65, 18.5)) * 0.72 + h * 0.28; }
+  if (mode < 6.5) {
+    float2 d = float2(u - 0.5, v - 0.5);
+    float r = min(1.0, length(d) / 0.7072);
+    float a = fract(atan(d.y, d.x) / 6.2831853 + 0.5);
+    return r * 0.7 + a * 0.22 + h * 0.08;
+  }
+  return u * 0.82 + h * 0.18;
+}
+
+half4 main(float2 p) {
+  float2 c = floor(p / cell);
+  float y = (c.y + 0.5) * cell;
+  float d = y < solid ? 1.0 : clamp(1.0 - (y - solid) / fringe, 0.0, 1.0);
+  if (d <= 0.0) { return half4(0.0); }
+  float on = b8(p / cell) < d * 0.999 ? 1.0 : 0.0;
+  float arrived = clamp(orderOf(c), 0.0, 1.0) < reveal * 1.02 ? 1.0 : 0.0;
+  return ink * half(on * arrived);
+}
+`;
+
+let effect: SkRuntimeEffect | null | undefined;
+function bandEffect(): SkRuntimeEffect | null {
+  if (effect === undefined) {
+    effect = Skia.RuntimeEffect.Make(BAND_SKSL);
+    if (!effect && __DEV__) console.warn('[insights/Band] the band shader did not compile; bands draw flat');
+  }
+  return effect;
+}
+
+/** The dissolve under the band, in points. */
+export const FRINGE = 36;
+/** One dither cell, in points (tokens.dither.cell): whole device pixels at @2x and @3x. */
+const CELL = 3;
+/**
+ * How long the band takes to print. 620 ms, a touch over the old 560: the orders that sweep
+ * (scan, wipe, rise) read as a movement across the band and need the extra beat to be seen as
+ * one; the random ones look the same at either length.
+ */
+const PRINT_MS = 620;
+/** When the words start to fade up, and how long they take. */
+export const WORDS_AT = 280;
+const WORDS_MS = 420;
+
+function rgba(hex: string): [number, number, number, number] {
+  const n = parseInt(hex.slice(1, 7), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
+}
+
+export function BandPixels({ width, solid, ink, motion, origin }: { width: number; solid: number; ink: string; motion: PixelMotion; origin?: { x: number; y: number } }) {
   const clock = useClock();
   const reduced = useReducedSV();
-  const grow = useAnimatedStyle(() => {
-    if (height <= 0) return { height: 0 };
-    const p = reduced.value ? 1 : springAt(clock.value);
-    return { height: Math.max(0, TITLE_ROW + (height - TITLE_ROW) * p), opacity: reduced.value ? 1 : Math.min(1, clock.value / 90) };
-  });
+  const source = bandEffect();
+  const inkU = rgba(ink);
+  const height = solid + FRINGE;
+  const mode = modeOf(motion);
+  const cols = Math.max(1, Math.ceil(width / CELL));
+  const rows = Math.max(1, Math.ceil(height / CELL));
+  const ox = origin?.x ?? 0;
+  const oy = origin?.y ?? 0;
+  const uniforms = useDerivedValue(() => ({
+    cell: CELL,
+    solid,
+    fringe: FRINGE,
+    reveal: reduced.value ? 1 : ease(phase(clock.value, 0, PRINT_MS)),
+    mode,
+    cols,
+    rows,
+    origin: [ox, oy],
+    ink: inkU,
+  }));
+  if (!source || width <= 0 || solid <= 0) {
+    return <View style={[styles.pixels, { width, height: solid, backgroundColor: ink }]} />;
+  }
   return (
-    <Animated.View pointerEvents="none" style={[styles.ground, { backgroundColor: hue.ink }, grow]}>
-      <Svg width="100%" height={Math.max(1, height)} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
-        <Defs>
-          <LinearGradient id={`band${hue.ink.slice(1)}`} x1="1" y1="1" x2="0.2" y2="0">
-            <Stop offset="0" stopColor={hue.partner} stopOpacity={0.55} />
-            <Stop offset="0.6" stopColor={hue.partner} stopOpacity={0} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#band${hue.ink.slice(1)})`} />
-      </Svg>
-    </Animated.View>
+    <View pointerEvents="none" style={[styles.pixels, { width, height }]}>
+      <Canvas style={{ width, height }}>
+        <Rect x={0} y={0} width={width} height={height}>
+          <Shader source={source} uniforms={uniforms} />
+        </Rect>
+      </Canvas>
+    </View>
   );
 }
 
-/** The words on a band fade up after its colour lands. */
+/** The words on a band fade up after its pixels land. */
 export function BandWords({ children, delay = WORDS_AT }: { children: ReactNode; delay?: number }) {
   const clock = useClock();
   const reduced = useReducedSV();
@@ -88,28 +175,31 @@ export interface BandProps {
    */
   onPress?: () => void;
   /**
-   * A doorway to a route: the card itself grows into the page it opens (`motion/MorphNav.tsx`),
+   * A doorway to a route: the band itself grows into the page it opens (`motion/MorphNav.tsx`),
    * in its own hue, instead of the page sliding in beside it. Wins over `onPress`.
    */
   href?: string;
+  /** How it prints. Default: its own, from its title (`pixelMotion.motionFor`). */
+  motion?: PixelMotion;
   /** What VoiceOver reads for a doorway band: where it goes and the number on it. */
   accessibilityLabel?: string;
 }
 
-export function Band({ hue, index, title, children, onPress: press, href, accessibilityLabel }: BandProps) {
+export function Band({ hue, index, title, children, onPress: press, href, motion, accessibilityLabel }: BandProps) {
   const router = useRouter();
-  const cardRef = useRef<View>(null);
+  const bandRef = useRef<View>(null);
+  const own = useMemo(() => motion ?? motionFor(title), [motion, title]);
   const onPress = href
-    ? () => morphOpen(cardRef.current, () => router.push(`${href}${href.includes('?') ? '&' : '?'}morph=1` as never), { color: hue.ink, radius: BAND_RADIUS, ground: GROUND.bg }, href)
+    ? () => morphOpen(bandRef.current, () => router.push(`${href}${href.includes('?') ? '&' : '?'}morph=1` as never), { color: hue.ink, radius: 0, ground: GROUND.bg }, href)
     : press;
-  const [h, setH] = useState(0);
+  const [box, setBox] = useState({ w: 0, h: 0 });
   const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const next = e.nativeEvent.layout.height;
-    setH((v) => (Math.abs(v - next) < 0.5 ? v : next));
+    const { width, height } = e.nativeEvent.layout;
+    setBox((b) => (Math.abs(b.w - width) < 0.5 && Math.abs(b.h - height) < 0.5 ? b : { w: width, h: height }));
   }, []);
   const body = (
-    <View ref={cardRef} collapsable={false} style={styles.outer}>
-      <BandGround height={h} hue={hue} />
+    <View ref={bandRef} collapsable={false}>
+      <BandPixels width={box.w} solid={box.h} ink={hue.ink} motion={own} />
       <View onLayout={onLayout} style={styles.band}>
         <BandWords>
           <View style={styles.head} accessibilityRole={onPress ? undefined : 'header'}>
@@ -136,8 +226,8 @@ export function Band({ hue, index, title, children, onPress: press, href, access
           onPress={onPress}
           accessibilityRole="link"
           accessibilityLabel={accessibilityLabel ?? title}
-          // A press settles the card a hair smaller. Scale, not opacity: a hue at partial opacity
-          // over the warm ground reads brown.
+          // A press settles the band a hair smaller, the way a printed card gives under a thumb.
+          // Scale, not opacity: a hue at partial opacity over the warm ground reads brown.
           style={({ pressed }) => ({ transform: [{ scale: pressed ? PRESSED_SCALE : 1 }] })}
         >
           {body}
@@ -153,11 +243,8 @@ export function Band({ hue, index, title, children, onPress: press, href, access
 const PRESSED_SCALE = 0.985;
 
 const styles = StyleSheet.create({
-  // 8 in from each edge with 12 of padding: the words sit 20 in, where the full-bleed band put
-  // them, so every figure fitted to `width - 2 * GUTTER` still fits.
-  outer: { marginHorizontal: 8 },
-  ground: { position: 'absolute', left: 0, right: 0, top: 0, borderRadius: BAND_RADIUS, borderCurve: 'continuous', overflow: 'hidden' },
-  band: { paddingHorizontal: 12, paddingTop: 22, paddingBottom: 22, gap: 6 },
+  pixels: { position: 'absolute', left: 0, top: 0 },
+  band: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 22, gap: 6 },
   head: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 4 },
   index: { fontFamily: MONO_FAMILY, fontSize: 13, fontWeight: '600', color: ON_HUE, opacity: 0.62, fontVariant: ['tabular-nums'] },
   title: { fontSize: 15, fontWeight: '700', letterSpacing: 0.1, color: ON_HUE },

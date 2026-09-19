@@ -42,7 +42,10 @@ keep the URL; from a new conversation pass the URL.
   and `notify.py` imported SQLAlchemy at the top, so the gate died on the import and reference,
   mobile, swift and backend were skipped behind it. Fixed in 31a1131 (lazy SQLAlchemy, contract as
   a type only); `make gen` on a fresh empty venv passes and moves nothing; pinned ruff and pytest
-  pass. Watching the first full CI run.
+  pass. First full run: contract, swift, backend, reference green; mobile failed three `dropsNotify`
+  pins (written on 09-16 while CI was dark) needing Pydantic on a bun only runner; 7423fcd installs it
+  at the server's pin. CI 35440468595: ALL FIVE JOBS GREEN. `main` is still red until this merges.
+  CLAUDE.md has the finding (12710dd). Desktop says Click where a phone says Tap (36ff982).
 - **07:21 to 07:27**: the desktop e2e drives Save image to the end and reads the PNG (74137b1);
   the offers' glue tested (fb60b76, dca4e2f). fb60b76 BROKE the suite for one commit (it patched
   the shared island store; nine tests in other files failed) and went in because the commit was

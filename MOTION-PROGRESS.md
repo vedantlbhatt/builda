@@ -37,6 +37,8 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:05**: Now's stage drops from its own edge on a phone with no Dynamic Island, as on the
+  desktop (5bd79cd); recorded on the SE. Report v14.
 - **06:42 to 07:02**: sessions rows carry their start time (ef20f47); the Sessions band says "Same
   days last week: 13.7 hours" (8ae6cb9, last week up to today's weekday, never the whole week); a
   test holds the desktop preload to the `DesktopBridge` type (09f0330). **iPhone SE pass** (868424a):
@@ -44,8 +46,8 @@ keep the URL; from a new conversation pass the URL.
   (now passing beats only, as `hardware.ts` always said); the row time and the comparison wrapped
   badly, fixed. OPEN, not reproduced: on the SE's first install the Drops search placeholder drew
   about 17 points low, clipped by its own field; a cold launch and the deep link path both render it
-  right, and a bare TextInput mounted first showed the same offset once. Suspect a first mount
-  before the font loaded. Not fixed without a repro. All suites green: bun 2790, analysis 1350,
+  right, and a bare TextInput mounted first showed the same offset once. Cause unknown (not a
+  font load: the app uses system fonts). Not fixed without a repro. All suites green: bun 2790, analysis 1350,
   server 577, desktop 14, desktop web e2e 22 routes. `test_public_repo` caught the simulator UDID in
   this file (93b8744).
 - **06:35 to 06:41**: the packaged Mac app rebuilt from tonight's bundle and self-captured (five

@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 
-import { islandOf } from '../drops/portal';
+import { islandOf } from './hardware';
 import { tokens } from '../generated/tokens';
 import { Face, RippleItem, Wash, Wheel, Words, stateColor, useMorph, withAlpha, RAIL_STAGGER_MS } from '../motion';
 import { useAccent } from '../theme/accent';

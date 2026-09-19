@@ -51,6 +51,12 @@ export interface Shared {
   text: string;
 }
 
+/** The host a person would say for a link: "youtube.com", never "www.youtube.com". */
+export function hostOf(url: string): string {
+  const m = /^https?:\/\/([^/]+)/.exec(url);
+  return (m?.[1] ?? url).replace(/^www\./, '');
+}
+
 export function platformOf(host: string): string {
   const h = host.toLowerCase().replace(/^www\./, '').replace(/^m\./, '').replace(/^vm\./, '');
   for (const [suffix, name] of HOSTS) {

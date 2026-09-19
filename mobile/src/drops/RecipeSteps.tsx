@@ -32,6 +32,7 @@ import { Hairline } from '../ui/Hairline';
 import { T } from '../ui/Text';
 import { useColors } from '../ui/scheme';
 import type { Recipe } from '../generated/drops';
+import { hostOf } from './urls';
 
 export interface RecipeStepsProps {
   recipe: Recipe;
@@ -127,11 +128,6 @@ export function RecipeSteps({ recipe, step, onStageY }: RecipeStepsProps) {
       ) : null}
     </View>
   );
-}
-
-function hostOf(url: string): string {
-  const m = /^https:\/\/([^/]+)/.exec(url);
-  return (m?.[1] ?? url).replace(/^www\./, '');
 }
 
 const styles = StyleSheet.create({

@@ -41,7 +41,7 @@ import { T } from '../ui/Text';
 import { TextField } from '../ui/TextField';
 import { commit, select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
-import { hostOf } from './WebNode';
+import { hostOf } from './urls';
 import { EFFORT_WORD, KIND_WORD, MOVE_TARGET_WORD, PLATFORM_WORD, REFUSAL, readLine, STATUS_LINE } from './copy';
 import { MoveRowView } from './MoveRow';
 import { RecipeSteps } from './RecipeSteps';
@@ -215,9 +215,9 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
 
           {recipe ? (
             <View style={styles.tabs}>
-              <WordToggle word="RECIPE" on={tab === 'recipe'} ink={ink} onPress={() => setTab('recipe')} />
+              <WordToggle word="Recipe" on={tab === 'recipe'} ink={ink} onPress={() => setTab('recipe')} />
               <WordToggle
-                word={`TO DO  ${mine.length}`}
+                word={`What to do · ${mine.length}`}
                 on={tab === 'do'}
                 ink={ink}
                 onPress={() => setTab('do')}

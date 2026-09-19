@@ -37,7 +37,7 @@ export function WordToggle({ word, on, onPress, ink }: WordToggleProps) {
         onPress();
       }}
     >
-      <T role="label" style={{ color: on ? c.text : c.textFaint, letterSpacing: 1.4 }}>
+      <T role="headline" style={{ color: on ? c.text : c.textFaint }}>
         {word}
       </T>
       <View style={[styles.rule, { backgroundColor: on ? ink ?? c.text : 'transparent' }]} />

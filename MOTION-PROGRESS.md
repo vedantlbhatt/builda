@@ -194,14 +194,19 @@ keep the URL; from a new conversation pass the URL.
   `design/tokens.json` `spectrum.island`.
 - The brief and the design (`brief-motion.md`, `docs/motion.md`).
 
-## Next
+## Next (for the owner, as of 07:55)
 
-1. Done at 06:20: the grids of cells take page-distinct orders (`useFieldMotion`, `arrivalMs`).
-   Kept on purpose: Wrapped art prints along its data's axis (time left to right, bars from the
-   foot, bursts from the centre), CountMarks follow the count, the dimensions strip counts left to
-   right. Each is a motion that says something about the data.
-2. Tests, UI audit (no AI tells), new features. Pixels stay (memory: builda-pixels-stay).
-3. Packaged desktop app rebuild; Windows and Linux never launched.
+1. Merge `claude/motion`: `main` has been red since 2026-09-14 and turns green only with 31a1131
+   and 7423fcd. Every job is green on this branch.
+2. Decide on a server push for Monday's week card (`docs/made-for-you.md`, "Not built"): the phone
+   schedules it only when it was opened in a week with hours.
+3. Run the Windows and Linux builds on real machines (both build here, neither has run).
+4. On this Mac: two older macOS dialogs and a Keychain prompt (SecurityAgent) are on screen, left for
+   a person. The Keychain one is from a packaged Builda run; Deny is safe, the app no longer asks
+   during capture runs.
+5. Unreproduced: the Drops search placeholder drawn low once on a fresh iPhone SE install.
+6. The ground truth suite cannot pass on this machine any more (its corpus was garbage collected);
+   a new reference needs a kept copy of a corpus and an independent measurement.
 
 ## Measured
 

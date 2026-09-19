@@ -37,6 +37,10 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **by 08:58**: a simulator "priming" tap (bottom right of Settings) landed on the Public profile
+  switch and turned it off on the local test account; turned back on within a minute and checked.
+  Prime taps now go to the status bar, drags run at screen x=1000 (clear of the switches and of
+  the macOS dialogs, which swallow screen x 525 to 986, y 166 to 464).
 - **08:31 to 08:53**: two more review agents, on the desktop shell's security and on the island and
   Live Activity code. Fixed: a `builder://pair?code=` link approved pairings with no tap (account
   takeover, since 2026-09-05; d7e99fa); a `builder://drop?url=` link sent drops unasked (d7e99fa);

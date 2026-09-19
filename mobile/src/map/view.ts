@@ -31,6 +31,7 @@ import { timeOfDay } from '../copy/time';
 import { dayOf } from '../you/numbers';
 import { cleanFrames, MAX_FRAMES, spanOf } from './frames';
 import type { Burst, Knot } from './knot';
+import { HERE } from '../copy/device';
 
 /** The replay's length: the roadmap's "replay it in fifteen seconds" (2.8). */
 export const REPLAY_MS = 15_000;
@@ -122,7 +123,7 @@ export function refusalCopy(kind: Refusal, screen: 'map' | 'timelapse', s: Sessi
     case 'notSent':
       return {
         title: `No ${what} from this server yet.`,
-        text: `The server this phone talks to does not send what a running session is doing, so there is no ${what} to draw.`,
+        text: `The server ${HERE} talks to does not send what a running session is doing, so there is no ${what} to draw.`,
         action: 'session',
       };
     case 'finished': {
@@ -150,7 +151,7 @@ export function refusalCopy(kind: Refusal, screen: 'map' | 'timelapse', s: Sessi
       };
     case 'partial':
       return {
-        title: `The full ${what} has not reached this phone.`,
+        title: `The full ${what} has not reached ${HERE}.`,
         text: 'Only the short version of this session saved from the list is here, and the refresh did not bring the rest.',
         action: 'retry',
       };

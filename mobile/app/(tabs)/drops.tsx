@@ -50,6 +50,7 @@ import { TextField } from '../../src/ui/TextField';
 import { commit, select } from '../../src/ui/haptics';
 import { overlay } from '../../src/ui/overlay';
 import { useColors } from '../../src/ui/scheme';
+import { TRY_AGAIN } from '../../src/copy/device';
 
 /** Between posters in the grid. */
 const GAP = 6;
@@ -199,7 +200,7 @@ export default function DropsScreen() {
           {/* A board that failed to load is not an empty board. FOUND ON THE SIMULATOR: a first
               load that failed during a reload drew "Send yourself something to build" over eleven
               drops the server had. The line says what happened; pull to try again. */}
-          <WallHeader line={error ? 'Builda could not load your drops. Pull down to try again.' : waiting ? `${waiting} arriving` : ''} />
+          <WallHeader line={error ? `Builda could not load your drops. ${TRY_AGAIN}` : waiting ? `${waiting} arriving` : ''} />
           <Empty
             onRefresh={refresh}
             onPaste={async (link) => {

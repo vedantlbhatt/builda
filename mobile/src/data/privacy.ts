@@ -21,6 +21,7 @@
 
 import { count } from '../copy/numbers';
 import { ApiError, type Api, type PrivacyPrefs, type PrivacyPrefsResult } from './api';
+import { HERE } from '../copy/device';
 
 /** Both off until the person turns one on (the migration's defaults, 0020). */
 export const DEFAULT_PRIVACY_PREFS: Readonly<PrivacyPrefs> = { quotes: false, live_names: false };
@@ -84,7 +85,7 @@ export function toggledLine(key: PrivacySwitch, on: boolean, result?: Pick<Priva
   }
   return on
     ? 'File names on. They show on a running session once its machine sends them.'
-    : 'File names off, and deleted from the server and from this phone.';
+    : `File names off, and deleted from the server and from ${HERE}.`;
 }
 
 // ------------------------------------------------------------------ the calls

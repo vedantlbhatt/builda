@@ -1,4 +1,5 @@
 import { ANIMAL_LABELS, type Animal } from '../pixel/animals';
+import { HERE } from '../copy/device';
 
 /**
  * Every word onboarding shows, in one place, so `__tests__/onboardingCopy.test.ts` can hold
@@ -124,7 +125,7 @@ export function readsList(names: readonly string[]): string {
 export const CONNECT = {
   label: 'your sessions',
   signedOutHeadline: 'Sign in to connect.',
-  signedOut: 'Your sessions reach this phone through your account. Once you are in, pair your Mac or send sessions from Claude Code.',
+  signedOut: `Your sessions reach ${HERE} through your account. Once you are in, pair your Mac or send sessions from Claude Code.`,
   headline: 'Connect your Mac.',
   signedInBefore: 'Run ',
   command: 'builder pair',

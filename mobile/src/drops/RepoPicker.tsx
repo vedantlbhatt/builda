@@ -26,6 +26,7 @@ import { Hairline } from '../ui/Hairline';
 import { T } from '../ui/Text';
 import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
+import { HERE_UP } from '../copy/device';
 
 export interface RepoPickerProps {
   /** The key already chosen, or null. */
@@ -66,7 +67,7 @@ export function RepoPicker({ chosen, onChoose, ink, onFill }: RepoPickerProps) {
   if (choices.length === 0) {
     return (
       <T role="meta" style={{ color: c.textFaint, marginTop: 10 }}>
-        This phone has no projects yet. Run the Mac agent once and they appear here.
+        {`${HERE_UP} has no projects yet. Run the Mac agent once and they appear here.`}
       </T>
     );
   }

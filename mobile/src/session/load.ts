@@ -17,6 +17,7 @@
  */
 
 import type { SessionDetail } from '../data/api';
+import { HERE } from '../copy/device';
 
 export interface LoadFailure {
   /** `ApiError.status`: 0 for no answer at all (offline, timed out), else the HTTP status. */
@@ -50,5 +51,5 @@ function sentence(message: string): string {
 
 /** "Builda is not reachable right now. Showing what this phone saved." */
 export function staleLine(message: string): string {
-  return `${sentence(message)} Showing what this phone saved.`;
+  return `${sentence(message)} Showing what ${HERE} saved.`;
 }

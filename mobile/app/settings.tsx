@@ -70,6 +70,7 @@ import { colors, space, TAP_TARGET } from '../src/theme';
 import { refreshAccent, useAccent, type AccentState } from '../src/theme/accent';
 import { forgetProjectsOnThisPhone } from '../src/projects/nicknames';
 import { Button, Hairline, SHAPE, T, TextField, useReduceMotion } from '../src/ui';
+import { HERE } from '../src/copy/device';
 
 /**
  * Settings, on the chapter grammar (design-refs/HOUSE-STYLE.md): not a stack of boxed rows but a
@@ -371,7 +372,7 @@ export default function SettingsScreen() {
           </Chapter>
 
           {known ? (
-            <Chapter title="Privacy" line="What leaves your Mac, and what this phone shows.">
+            <Chapter title="Privacy" line={`What leaves your Mac, and what ${HERE} shows.`}>
               <PrivacySwitches signedIn={signedIn} accent={accent} />
               <View style={styles.promise}>
                 <T role="body">Your prompts, your code, your diffs and your file names stay on your machine.</T>
@@ -436,7 +437,7 @@ export default function SettingsScreen() {
                 <View style={styles.action}>
                   <Button kind="secondary" size="compact" block={false} label="Sign out" onPress={() => void signOut()} />
                   <T role="row" weight={400} tone="dim">
-                    Deletes what this phone saved, your creature and name included. Your sessions stay on your account.
+                    {`Deletes what ${HERE} saved, your creature and name included. Your sessions stay on your account.`}
                   </T>
                 </View>
                 <Hairline />

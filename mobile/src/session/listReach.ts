@@ -18,6 +18,7 @@
  */
 import { commas } from '../copy/numbers';
 import { dayLabel } from '../theme';
+import { HERE } from '../copy/device';
 
 /** What the list holds: the sessions you were there for at least 20 minutes, or every one. */
 export type ListMode = 'notable' | 'every';
@@ -146,7 +147,7 @@ export function listEnd(args: {
         ? 'your newest session'
         : `your ${n} newest sessions`;
   const lead = one ? 'This is' : 'These are';
-  const words = reach ? `${lead} ${which}${back}. There are older ones.` : `${lead} ${which} saved on this phone${back}.`;
+  const words = reach ? `${lead} ${which}${back}. There are older ones.` : `${lead} ${which} saved on ${HERE}${back}.`;
   return {
     words,
     note: failed ? `Could not read older sessions. ${sentence(failed)}` : null,

@@ -69,6 +69,7 @@ import { useNicknames, useProjectRegistry } from './nicknames';
 import { recency, type Recency } from './recency';
 import { Swarm } from './Swarm';
 import { useProjectSessions } from './useProjectSessions';
+import { HERE } from '../copy/device';
 
 /** The chapters after the hero, mounted one at a time (`ChapterPage`). */
 const CHAPTERS = 7;
@@ -240,7 +241,7 @@ export function ProjectPage() {
                         <Kicker>every session, when it started, as big as it ran</Kicker>
                         <Swarm sessions={sessions} width={inner} ink={own.ink} core={accent.ink} from={firstAt} to={lastAt} delay={100} />
                         <Words style={[type.meta, styles.caption]}>{swarmLine(sessions.length, page.detail.history.sessions, total)}</Words>
-                        {error ? <Words style={[type.meta, styles.caption]}>{`${error.replace(/\.?$/, '.')} Showing the sessions saved on this phone.`}</Words> : null}
+                        {error ? <Words style={[type.meta, styles.caption]}>{`${error.replace(/\.?$/, '.')} Showing the sessions saved on ${HERE}.`}</Words> : null}
                       </Block>
                     ) : null}
                   </Section>
@@ -413,7 +414,7 @@ function HeroChapter({
         </Block>
       ) : editable && d.label.source === 'private' ? (
         <Block style={styles.nameHint}>
-          <WordLink title="Name this project" onPress={onName} accessibilityHint="Its name never left your Mac. Give it one this phone keeps." />
+          <WordLink title="Name this project" onPress={onName} accessibilityHint={`Its name never left your Mac. Give it one ${HERE} keeps.`} />
         </Block>
       ) : null}
       <Block style={styles.block}>

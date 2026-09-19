@@ -23,6 +23,7 @@ import { toolsMix, type ToolsMix } from '../you/chapters';
 import { dayOf } from '../you/numbers';
 import { EVIDENCE_ONLY, STACK_CATEGORY_LABEL, stackView } from '../you/stack';
 import { creditsFor, markOf, type StackMark } from './marks';
+import { HERE } from '../copy/device';
 
 export type { Refused } from '../insights/model';
 
@@ -351,7 +352,7 @@ export function toolsBand(mix: ToolsIn | null, avoid: readonly HueName[], own: (
     mix.tools.length === 1
       ? `${total === 1 ? 'It ran' : 'Every one ran'} in ${mix.tools[0]!.name}.`
       : `${capital(listOf(mix.tools.map((t) => `${t.name} ${n(t.count)}`)))}.`;
-  const where = source === 'report' ? 'your Mac read' : 'on this phone';
+  const where = source === 'report' ? 'your Mac read' : `on ${HERE}`;
   return { total: spec(n(total)), caption: `${total === 1 ? 'session' : 'sessions'} ${where}`, note, hue };
 }
 

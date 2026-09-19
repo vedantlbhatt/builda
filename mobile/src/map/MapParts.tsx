@@ -43,6 +43,7 @@ import { snap } from '../ui/haptics';
 import { useReduceMotion } from '../ui/motion';
 import { BandHeadline, BandSentence, WordLink, type BandHue } from './MapWords';
 import { LIVE_COMMAND, refusalCopy, type Refusal as RefusalKind } from './view';
+import { THEN_RETRY } from '../copy/device';
 
 // ------------------------------------------------------------------ the frame
 
@@ -287,7 +288,7 @@ export function MapRefusal({
             </Text>
             <WordLink
               title={copied ? 'Copied' : 'Copy the command'}
-              line="Run it on your Mac, then pull down here."
+              line={`Run it on your Mac, then ${THEN_RETRY}.`}
               icon="doc.on.doc"
               color={accent}
               onPress={() => {

@@ -65,6 +65,7 @@ import { RankRace } from './RankRace';
 import { recency } from './recency';
 import { Rivers } from './Rivers';
 import { useDoorRecency } from './useDoorRecency';
+import { HERE } from '../copy/device';
 
 /** Said when the Mac's report predates the projects block. */
 const NO_BLOCK = 'Your Mac sent a report without projects. A newer Mac sends them, and this tab fills in.';
@@ -263,7 +264,7 @@ export function ProjectsScreen() {
                       ))}
                       {view.rows.some((r) => r.label.source === 'private') ? (
                         <Words style={type.meta}>
-                          A private project goes by a number this phone gave it, because its name never leaves your Mac. Open one to give it a name only this phone knows.
+                          {`A private project goes by a number ${HERE} gave it, because its name never leaves your Mac. Open one to give it a name only ${HERE} knows.`}
                         </Words>
                       ) : null}
                     </Block>

@@ -41,6 +41,7 @@ import { glossaryView, type GlossaryMonth } from './glossary';
 import { columnUnits, dollarsOf, dollarUnit, shownUnits } from '../money/round';
 import { corpusBurn, corpusMoney, moneyView } from './money';
 import { stackView } from './stack';
+import { HERE } from '../copy/device';
 
 export type { Refused } from '../insights/model';
 export { isRefused } from '../insights/model';
@@ -670,5 +671,5 @@ export function toolsMix(sessions: readonly { harness: string }[]): ToolsMix | n
     .sort((x, y) => y.count - x.count);
   const unknown = sessions.length - known;
   const left = unknown > 0 ? ` ${count(unknown, 'session')} from a tool this build does not know ${unknown === 1 ? 'is' : 'are'} left out.` : '';
-  return { tools, basis: `Counted over the ${count(sessions.length, 'finished session')} saved on this phone.${left}` };
+  return { tools, basis: `Counted over the ${count(sessions.length, 'finished session')} saved on ${HERE}.${left}` };
 }

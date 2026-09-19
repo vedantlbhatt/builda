@@ -18,6 +18,7 @@ import { useAccent } from '../theme/accent';
 import { success } from '../ui';
 import { NICKNAME_MAX, normalizeNickname } from './model';
 import { saveNickname } from './nicknames';
+import { HERE } from '../copy/device';
 
 export function NameField({ projectKey, current, onDone }: { projectKey: string; current: string | null; onDone: () => void }) {
   const accent = useAccent();
@@ -48,11 +49,11 @@ export function NameField({ projectKey, current, onDone }: { projectKey: string;
         onSubmitEditing={() => void save()}
         selectionColor={accent.ink}
         cursorColor={accent.ink}
-        accessibilityLabel="The name for this project, kept on this phone"
+        accessibilityLabel={`The name for this project, kept on ${HERE}`}
         maxFontSizeMultiplier={1.4}
         style={[type.heading, styles.input]}
       />
-      <Words style={type.meta}>Only this phone knows it. Your Mac and the server keep the key, never a name.</Words>
+      <Words style={type.meta}>{`Only ${HERE} knows it. Your Mac and the server keep the key, never a name.`}</Words>
       <View style={styles.actions}>
         <AccentButton label={name ? 'Save the name' : current ? 'Take the name away' : 'Save'} onPress={() => void save()} disabled={!name && !current} />
         {/* Leaving is not a way somewhere, so it is a word with no arrow. */}

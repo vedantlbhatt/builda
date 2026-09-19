@@ -30,6 +30,7 @@ import { timeOfDay } from '../copy/time';
 import { isStale } from '../live/mission';
 import { dayOf } from '../you/numbers';
 import { lastSessionSentence, localDay, stageLabel, stageSentence } from './model';
+import { HERE } from '../copy/device';
 
 /** The fields of a session row this reads: a `SessionDetail` from the project route, the cache or the live list. */
 export interface PhoneSession {
@@ -163,10 +164,10 @@ export function recency(input: RecencyInput): Recency {
   const lastEnd = newestRan ? ms(newestRan.ended_at) : Number.NaN;
   const last =
     running && newestRunning
-      ? `The session running now started ${whenAt(ms(newestRunning.started_at), now)}, as this phone has it.`
+      ? `The session running now started ${whenAt(ms(newestRunning.started_at), now)}, as ${HERE} has it.`
       : newestRan
-        ? `Last session ${whenAt(ms(newestRan.started_at), now)}${Number.isFinite(lastEnd) && lastEnd > ms(newestRan.started_at) ? `, ended at ${timeOfDay(lastEnd)}` : ''}, as this phone has it.`
-        : `Last session ${dayWords(newestStart, now)}, as this phone has it.`;
+        ? `Last session ${whenAt(ms(newestRan.started_at), now)}${Number.isFinite(lastEnd) && lastEnd > ms(newestRan.started_at) ? `, ended at ${timeOfDay(lastEnd)}` : ''}, as ${HERE} has it.`
+        : `Last session ${dayWords(newestStart, now)}, as ${HERE} has it.`;
 
   const n = ranSince.length;
   const notIn =
@@ -190,7 +191,7 @@ export function recency(input: RecencyInput): Recency {
     lastSession: last,
     reportLine,
     streakNote: `By your Mac's report, which reads up to ${reportDay ?? 'its last session'}.`,
-    doorLine: running ? 'A session is running here now.' : `Last session ${dayWords(newestStart, now)}, as this phone has it.`,
+    doorLine: running ? 'A session is running here now.' : `Last session ${dayWords(newestStart, now)}, as ${HERE} has it.`,
     doorReport: `Your Mac's report stops at ${reportDay ?? 'an older session'}.`,
   };
 }

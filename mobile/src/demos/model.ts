@@ -13,6 +13,7 @@
 import type { MediaSourceRef, ProjectMediaItem } from '../data/api';
 import { count } from '../copy/numbers';
 import { DEFAULT_PHONE, DEVICES } from '../generated/devices';
+import { HERE } from '../copy/device';
 
 // ------------------------------------------------------------------ where a file came from
 
@@ -222,7 +223,7 @@ export const DELETE_DEMO = {
 /** The question under the title: exactly what leaves, from the whole list. */
 export function deleteAsk(entries: readonly GalleryEntry[]): string {
   const holds = holdsWords(entries);
-  return `${holds ? `${holds.charAt(0).toUpperCase()}${holds.slice(1)} leave` : 'Every file of it leaves'} your account and this phone. ${DELETE_DEMO.mac}`;
+  return `${holds ? `${holds.charAt(0).toUpperCase()}${holds.slice(1)} leave` : 'Every file of it leaves'} your account and ${HERE}. ${DELETE_DEMO.mac}`;
 }
 
 /**

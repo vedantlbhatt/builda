@@ -62,6 +62,7 @@ import { CREATURE_HUE, SPECTRUM, type HueName } from '../insights/palette';
 import { resolveAnimal, type Animal } from '../pixel/animals';
 import { archetypeDisplay, metricLabel, metricValue } from '../you/archetype';
 import { SWARM_MAX } from './geometry';
+import { HERE } from '../copy/device';
 
 // ------------------------------------------------------------------ labels
 
@@ -1459,7 +1460,7 @@ export function swarmSessions(fromProject: readonly SessionRowIn[], fromCache: r
  * two numbers that disagree with no reason given.
  */
 export function swarmLine(shown: number, macCount: number, uploaded?: number | null): string {
-  if (shown <= 0) return 'No session of this project is on this phone yet. They arrive as your machines upload them.';
+  if (shown <= 0) return `No session of this project is on ${HERE} yet. They arrive as your machines upload them.`;
   const total = uploaded != null && uploaded > shown ? uploaded : shown;
   const dots =
     total > shown

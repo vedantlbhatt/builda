@@ -58,6 +58,7 @@ import { Door } from './parts';
 import { ROW_FIGURE } from './type';
 import { QUIET_WEEK, weekFigure, weekOf, weekRows } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
+import { HERE, TRY_AGAIN } from '../copy/device';
 
 /** Rows drawn in the first commit; the rest mount a moment later, still (a page of fifty canvases mounted at once starves the first frames). */
 const FIRST_ROWS = 12;
@@ -375,7 +376,7 @@ export function SessionsScreen() {
           <View style={styles.lead}>
             <Words style={type.heading}>Could not load your sessions.</Words>
             <View style={styles.after}>
-              <Refusal>{`${sentence(error)} Pull down to try again.`}</Refusal>
+              <Refusal>{`${sentence(error)} ${TRY_AGAIN}`}</Refusal>
             </View>
           </View>
         ) : null}
@@ -456,7 +457,7 @@ function WeekGround({ week, ink, width, onShare }: { week: ReturnType<typeof wee
     <Block style={styles.groundWeek}>
       <Kicker>this week</Kicker>
       {week === null ? (
-        <Refusal>Your hours arrive with your profile, the next time this phone reaches Builda. Pull down to try.</Refusal>
+        <Refusal>{`Your hours arrive with your profile, the next time ${HERE} reaches Builda. ${TRY_AGAIN}`}</Refusal>
       ) : (
         <View style={styles.weekRow}>
           <View style={styles.weekWords}>

@@ -40,9 +40,9 @@ public final class BuilderPreviewRenderer: NSObject {
   @MainActor
   static func gallery() -> [(String, AnyView)] {
     typealias F = LiveFixtures
-    // The drop card first: it is the newest surface, and a render that stops part way (a view the
-    // system traps on) should not take its states down with it.
-    var out: [(String, AnyView)] = dropGallery()
+    // The newest surfaces first (the demo card, then the drop card): a render that stops part way
+    // (a view the system traps on) should not take their states down with it.
+    var out: [(String, AnyView)] = demoGallery() + dropGallery()
 
     let lock: [(String, BuilderSessionAttributes, BuilderSessionAttributes.ContentState, Bool)] = [
       ("lock-working", F.rideGT, F.working, false),
@@ -143,6 +143,38 @@ public final class BuilderPreviewRenderer: NSObject {
       out.append(("drop-compact-\(name)", AnyView(DropCompactFrame(d: d))))
       out.append(("drop-minimal-\(name)", AnyView(DropMinimalFrame(d: d))))
       out.append(("drop-expanded-\(name)", AnyView(DropExpandedFrame(d: d))))
+    }
+    return out
+  }
+}
+
+extension BuilderPreviewRenderer {
+  /// A demo you asked your Mac for, every state its card draws (docs/demo-island.md): the walk
+  /// from asked to the kit, a failure in the spec's shortest and longest words, a long project
+  /// name with no hue, a run past an hour (the timer's box must hold hours), and the Mac going
+  /// quiet past the stale date, asked and filming. Timers are frozen at `LiveFixtures.now`.
+  @available(iOS 17.0, *)
+  @MainActor
+  static func demoGallery() -> [(String, AnyView)] {
+    typealias D = DemoFixtures
+    let states: [(String, BuilderDemoAttributes, BuilderDemoAttributes.ContentState, Bool)] = [
+      ("asked", D.builda, D.asked, false),
+      ("filming", D.builda, D.filming, false),
+      ("ready", D.builda, D.ready, false),
+      ("failed", D.builda, D.failed, false),
+      ("failed-long", D.longName, D.failedLong, false),
+      ("filming-long-name", D.longName, D.filming, false),
+      ("filming-hours", D.builda, D.filmingLong, false),
+      ("asked-stale", D.builda, D.asked, true),
+      ("filming-stale", D.builda, D.filming, true),
+    ]
+    var out: [(String, AnyView)] = []
+    for (name, a, s, stale) in states {
+      let d = DemoDisplay(attributes: a, state: s, isStale: stale)
+      out.append(("demo-lock-\(name)", AnyView(LockFrame { DemoLockScreenView(d: d) })))
+      out.append(("demo-compact-\(name)", AnyView(DemoCompactFrame(d: d))))
+      out.append(("demo-minimal-\(name)", AnyView(DemoMinimalFrame(d: d))))
+      out.append(("demo-expanded-\(name)", AnyView(DemoExpandedFrame(d: d))))
     }
     return out
   }
@@ -277,6 +309,60 @@ private struct DropExpandedFrame: View {
     .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Color.black))
     .padding(12)
     .environment(\.colorScheme, .dark)
+  }
+}
+
+@available(iOS 17.0, *)
+private struct DemoCompactFrame: View {
+  let d: DemoDisplay
+  var body: some View {
+    HStack(spacing: 0) {
+      DemoCompactLeading(d: d)
+      Spacer(minLength: 0)
+      DemoCompactTrailing(d: d)
+    }
+    .padding(.horizontal, 9)
+    .frame(width: 230, height: 36.67)
+    .background(Capsule().fill(Color.black))
+    .padding(12)
+    .environment(\.colorScheme, .dark)
+    .environment(\.liveFrozenNow, LiveFixtures.now)
+  }
+}
+
+@available(iOS 17.0, *)
+private struct DemoMinimalFrame: View {
+  let d: DemoDisplay
+  var body: some View {
+    DemoMinimal(d: d)
+      .frame(width: 36.67, height: 36.67)
+      .background(Circle().fill(Color.black))
+      .padding(12)
+      .environment(\.colorScheme, .dark)
+      .environment(\.liveFrozenNow, LiveFixtures.now)
+  }
+}
+
+/// The same top row as a drop's (`DropExpandedFrame`), as `.belowIfTooWide` places it.
+@available(iOS 17.0, *)
+private struct DemoExpandedFrame: View {
+  let d: DemoDisplay
+  var body: some View {
+    VStack(spacing: 8) {
+      IslandTopRows(beside: 118, row: 36) {
+        DemoExpandedLeading(d: d)
+        DemoExpandedTrailing(d: d).frame(width: 100, height: 36)
+      }
+      DemoExpandedBottom(d: d)
+    }
+    .padding(.horizontal, 18)
+    .padding(.top, 14)
+    .padding(.bottom, 10)
+    .frame(width: 371)
+    .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Color.black))
+    .padding(12)
+    .environment(\.colorScheme, .dark)
+    .environment(\.liveFrozenNow, LiveFixtures.now)
   }
 }
 

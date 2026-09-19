@@ -46,17 +46,20 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     ff = tools.ffmpeg()
     rows = []
-    for d in sorted(p for p in paths.demos_dir().iterdir() if (p / "kit" / "kit.json").is_file()):
+    kits = sorted(p for p in paths.demos_dir().iterdir() if (p / "kit" / "kit.json").is_file())
+    for n, d in enumerate(kits, 1):
         kit = json.loads((d / "kit" / "kit.json").read_text())
         checks = json.loads((d / "kit" / "checks.json").read_text())
-        tag = f"{kit['device']['id'] if kit['device'] else 'terminal'}-{d.name[:6]}"
+        kind = json.loads((d / "manifest.json").read_text())["kind"]
+        # Named by what it is, never by the project's key or name: these files are committed.
+        tag = f"{n:02d}-{kind.replace('_', '-')}-{kit['device']['id'] if kit['device'] else 'terminal'}"
         made = []
         for f in kit["formats"]:
             p = out / f"{tag}-{f['id']}.png"
             frame0(ff, d / "kit" / f["file"], p)
             made.append(p)
             c = checks["formats"].get(f["id"], {}).get("aspect") or {}
-            rows.append((tag, f["id"], f"{f['width']}x{f['height']}", c.get("measured"), c.get("want_aspect"), c.get("got_aspect")))
+            rows.append((tag, f["id"], f"{f['width']}x{f['height']}", f.get("device") or "terminal", c.get("measured"), c.get("want_aspect"), c.get("got_aspect")))
         if kit["framed"]:
             src = d / "kit" / kit["framed"][0]["file"]
             p = out / f"{tag}-framed-still.png"
@@ -68,8 +71,8 @@ def main() -> int:
         if made:
             sheet(ff, made, out / f"{tag}-contact-sheet.png")
         print(f"{tag}: {len(made)} stills and a contact sheet")
-    table = ["| demo | format | canvas | screen measured | device aspect | measured aspect |", "|---|---|---|---|---|---|"]
-    table += [f"| {t} | {f} | {c} | {m[0]}x{m[1] if m else ''} | {w} | {g} |" if m else f"| {t} | {f} | {c} | refused | {w} | {g} |" for t, f, c, m, w, g in rows]
+    table = ["| demo | format | canvas | drawn device | screen measured | device aspect | measured aspect |", "|---|---|---|---|---|---|---|"]
+    table += [f"| {t} | {f} | {c} | {dv} | {f'{m[0]}x{m[1]}' if m else 'refused'} | {w} | {g} |" for t, f, c, dv, m, w, g in rows]
     (out / "aspects.md").write_text("\n".join(table) + "\n")
     print(f"wrote {out}")
     return 0

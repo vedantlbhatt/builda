@@ -220,6 +220,9 @@ def clone(project: Project, commit: str | None, root: pathlib.Path) -> tuple[pat
         raise WorkspaceError(f"git sparse-checkout in the work dir failed: {r.stderr.strip()[:300]}")
     target = commit or "origin/HEAD"
     r = _git(["checkout", "--quiet", "--detach", "--force", target], src)
+    if r.returncode != 0 and commit:
+        # A branch or tag name given for a URL project exists only as a remote ref in the clone.
+        r = _git(["checkout", "--quiet", "--detach", "--force", f"origin/{commit}"], src)
     if r.returncode != 0:
         raise WorkspaceError(f"git checkout {target} in the work dir failed: {r.stderr.strip()[:300]}")
     head = _head(src)

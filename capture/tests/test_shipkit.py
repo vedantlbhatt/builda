@@ -174,11 +174,18 @@ class Frame(unittest.TestCase):
         g = fr.filter_graph(lay, tl, rings)
         self.assertIn("alphamerge", g)
         self.assertIn("eval=frame", g)
-        self.assertEqual(g.count("overlay="), 2, "the device, then one ring")
+        self.assertEqual(g.count("overlay="), 3, "the picture inside the screen, the device, then one ring")
+        self.assertIn(f"[bg][dev]overlay=x={lay.x}:y={lay.y}:", g, "the device never moves or grows: only its picture does")
         z, x, y = fr.motion_exprs(lay, tl)
         self.assertEqual(z.count("clip("), 4, "two beats long enough to punch in, two clips each")
         self.assertIn(str(round(lay.w * 0.25 * fr.ZOOM, 3)), x, "x moves by the tap's share, so the tap stays put")
-        self.assertEqual(fr.filter_graph(lay, [], []).count("eval=frame"), 1, "no beats: no zoom, the overlay only")
+        self.assertEqual(fr.filter_graph(lay, [], []).count("eval=frame"), 0, "no beats: no zoom")
+        bar = fr.status_bar_px(lay, devices.default_phone())
+        self.assertEqual(bar, fr.even(lay.h * 62 / 874), "the row's 62 point top safe area, at the layout's scale")
+        held = fr.filter_graph(lay, tl, rings, bar=bar)
+        self.assertIn(f"crop={lay.w}:{bar}:0:0", held, "the status bar and the island are held still")
+        self.assertIn("[zc][bar]overlay=x=0:y=0", held, "and laid over the punched in picture")
+        self.assertEqual(fr.status_bar_px(lay, devices.by_id("mac-1512")), 0, "a browser window has no status bar")
 
     def test_the_change_measured_on_the_beats_own_clip_wins(self):
         """The finished video's first 0.4 s of a beat is a crossfade; a change inside it can only
@@ -337,6 +344,63 @@ class Queue(unittest.TestCase):
         skip, _ = kq.judge({"kind": "session_end", "cwd": self.tmp.name})
         self.assertEqual(skip, "not_a_repository")
         self.assertIn(skip, tables.REFUSALS)
+
+
+class History(unittest.TestCase):
+    """The before and after pairs a demo with an EARLIER commit's, labelled by when each commit
+    was written. FOUND ON THE MDN KIT: an old commit filmed after HEAD took HEAD as its "before"."""
+
+    def setUp(self):
+        import subprocess
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.env = mock.patch.dict(os.environ, {"BUILDER_DEMOS_DIR": self.tmp.name})
+        self.env.start()
+        self.src = pathlib.Path(self.tmp.name) / "src"
+        self.src.mkdir()
+
+        def git(*args, when="2014-03-12T10:00:00"):
+            env = {**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when,
+                   "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}  # fmt: skip
+            return subprocess.run(["git", "-C", str(self.src), *args], env=env, capture_output=True, text=True, check=True).stdout.strip()
+
+        git("init", "-q")
+        (self.src / "index.html").write_text("<p>old</p>")
+        git("add", ".")
+        git("commit", "-qm", "old")
+        self.old = git("rev-parse", "HEAD")
+        (self.src / "index.html").write_text("<p>new</p>")
+        git("commit", "-qam", "new", when="2019-06-01T10:00:00")
+        self.new = git("rev-parse", "HEAD")
+        self.key = "7a1c0e59" + "0" * 56
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def keep(self, commit: str, filmed: str) -> None:
+        d = kmod.history_root(self.key) / f"{filmed}-{commit[:12]}"
+        d.mkdir(parents=True)
+        (d / "manifest.json").write_text(json.dumps({"commit": commit, "taken_at": "2026-09-19T06:00:00Z", "assets": []}))
+
+    def demo(self, commit: str):
+        return types.SimpleNamespace(key=self.key, commit=commit)
+
+    def test_a_later_commit_filmed_earlier_is_never_the_before(self):
+        self.keep(self.new, "20260919T055900Z")
+        self.keep(self.old, "20260919T060100Z")
+        self.assertIsNone(kmod.previous_kit(self.demo(self.old), self.src), "HEAD is not the 2014 commit's before")
+        prev = kmod.previous_kit(self.demo(self.new), self.src)
+        self.assertEqual(json.loads((prev / "manifest.json").read_text())["commit"], self.old)
+
+    def test_without_a_clone_the_newest_other_commit_is_taken(self):
+        self.keep(self.new, "20260919T055900Z")
+        self.assertIsNotNone(kmod.previous_kit(self.demo(self.old), None))
+
+    def test_the_halves_are_labelled_by_the_day_the_code_was_written(self):
+        self.assertEqual(kmod.commit_day(self.src, self.old, "2026-09-19T06:00:00Z"), "2014-03-12")
+        self.assertEqual(kmod.commit_day(self.src, self.new, "2026-09-19T06:00:00Z"), "2019-06-01")
+        self.assertEqual(kmod.commit_day(None, self.new, "2026-09-19T06:00:00Z"), "2026-09-19")
 
 
 class Pins(unittest.TestCase):

@@ -331,7 +331,9 @@ def main(a: argparse.Namespace) -> int:
     try:
         if project.url:
             say("  cloning the repository into the work dir to read it")
-            ws = prepare(project, None)
+            # `--ref` is honoured here too: FOUND FILMING A BEFORE AND AFTER, a URL project's
+            # `--ref <old commit>` was dropped and both demos were of the same HEAD.
+            ws = prepare(project, None if a.ref == "HEAD" else a.ref)
             top, commit = ws.src, ws.commit
         else:
             top = project.checkout

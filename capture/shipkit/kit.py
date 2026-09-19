@@ -252,7 +252,7 @@ class Plan:
     previous: pathlib.Path | None
 
 
-def plan(demo: Demo, hue: str | None, shipped: dict | None, names=(), others=()) -> Plan:
+def plan(demo: Demo, hue: str | None, shipped: dict | None, names=(), others=(), src: pathlib.Path | None = None) -> Plan:
     refused: list[dict] = []
     h = hue if hue in tables.ENUMS["hue"] else preferred_hue(demo.key)
     title = (shipped or {}).get("what")
@@ -270,7 +270,7 @@ def plan(demo: Demo, hue: str | None, shipped: dict | None, names=(), others=())
             # A website in a 16:9 post is a Mac window, not a phone in the middle of a wide frame.
             device, video, timeline = devices.by_id(desk["device"]), demo.dir / "desktop" / "demo.mp4", desk.get("timeline") or []
         fmts.append((fid, device, video, timeline, fr.layout(f, device, title=bool(title))))
-    prev = previous_kit(demo)
+    prev = previous_kit(demo, src)
     return Plan(demo, h, title, fmts, refused, demo.manifest["kind"] == "expo_ios", prev)
 
 
@@ -278,18 +278,31 @@ def history_root(key: str) -> pathlib.Path:
     return paths.out_dir(key) / HISTORY_DIR
 
 
-def previous_kit(demo: Demo) -> pathlib.Path | None:
-    """The newest earlier demo kept in the history whose commit is not this demo's."""
+def is_ancestor(src: pathlib.Path | None, older: str, newer: str) -> bool | None:
+    """Whether `older` is in `newer`'s history; None when git cannot say (no clone, a commit the
+    clone does not have)."""
+    if src is None or not (src / ".git").exists():
+        return None
+    r = subprocess.run(["git", "-C", str(src), "merge-base", "--is-ancestor", older, newer], capture_output=True, timeout=30, check=False)
+    return {0: True, 1: False}.get(r.returncode)
+
+
+def previous_kit(demo: Demo, src: pathlib.Path | None = None) -> pathlib.Path | None:
+    """The newest earlier demo kept in the history whose commit is not this demo's and, when git
+    can tell, is in this demo's history. "Newest" is when it was FILMED, which is not when its code
+    was written: FOUND ON THE MDN KIT, an old commit filmed after HEAD had HEAD as its "before",
+    and the pair read backwards."""
     root = history_root(demo.key)
     if not root.is_dir():
         return None
     entries = sorted((p for p in root.iterdir() if (p / "manifest.json").is_file()), key=lambda p: p.name, reverse=True)
     for p in entries:
         try:
-            if json.loads((p / "manifest.json").read_text())["commit"] != demo.commit:
-                return p
+            commit = json.loads((p / "manifest.json").read_text())["commit"]
         except (ValueError, KeyError):
             continue
+        if commit != demo.commit and is_ancestor(src, commit, demo.commit) is not False:
+            return p
     return None
 
 
@@ -375,7 +388,22 @@ def make_gif(ff: str, square: pathlib.Path, out: pathlib.Path) -> tuple[dict | N
     return None, refusal("loop", "loop_too_large")
 
 
-def before_after(ff: str, demo: Demo, prev: pathlib.Path, device: dict | None, hue_hex: str, work: pathlib.Path, out: pathlib.Path) -> list[dict]:
+def commit_day(src: pathlib.Path | None, sha: str, fallback: str) -> str:
+    """The day a commit was made (YYYY-MM-DD), else `fallback`. A before and after is labelled by
+    when the CODE was written, not when it was filmed: FOUND ON THE MDN KIT, both halves said the
+    same day because both demos were filmed that morning, of commits five years apart."""
+    if src is not None and (src / ".git").exists():
+        r = subprocess.run(["git", "-C", str(src), "show", "-s", "--format=%cs", sha], capture_output=True, text=True, timeout=30, check=False)
+        day = r.stdout.strip()
+        if r.returncode == 0 and len(day) == 10:
+            return day
+    return fallback[:10]
+
+
+def before_after(
+    ff: str, demo: Demo, prev: pathlib.Path, device: dict | None, hue_hex: str, work: pathlib.Path, out: pathlib.Path,
+    src: pathlib.Path | None = None,
+) -> list[dict]:  # fmt: skip
     """The same screen then and now, side by side: stills paired by label (a storyboard's beats
     keep their labels from run to run), else the first still of each. Each half is the square
     format's frame, so the device is at its own shape in both."""
@@ -387,8 +415,8 @@ def before_after(ff: str, demo: Demo, prev: pathlib.Path, device: dict | None, h
     made = []
     lay = fr.layout(devices.fmt("square"), device, title=True)
     mask = fr.draw_mask(lay, work / "ba-mask.png")
-    when_then = old["taken_at"][:10]
-    when_now = demo.manifest["taken_at"][:10]
+    when_then = commit_day(src, old["commit"], old["taken_at"])
+    when_now = commit_day(src, demo.commit, demo.manifest["taken_at"])
     for i, (b, a) in enumerate(pairs[: tables.CAPS["before_after"]], 1):
         halves = []
         for tag, src, when in (("Before", prev / b["file"], when_then), ("Now", demo.dir / a["file"], when_now)):
@@ -409,7 +437,8 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
     pv = demo.manifest["privacy"]
     if not pv["checked"] or pv["refused"]:
         raise CaptureError(tables.REFUSALS["privacy_not_checked"])
-    p = plan(demo, hue, shipped, names, others)
+    src = src or (paths.work_dir(key) / "src")
+    p = plan(demo, hue, shipped, names, others, src)
     formats = [f for f in p.formats if not only or f[0] in only]
     if dry_run:
         return describe(p, formats)
@@ -468,9 +497,11 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
             ring_list = fr.rings(timeline, changes)
             ring = fr.draw_ring(max(8, fr.even(lay.w * fr.RING_SHARE)), work / f"ring-{fid}.png") if ring_list else None
             dur = compose.probe(video)["duration"]
+            # Only a simulator's recording has the system's status bar and island at its top.
+            bar = fr.status_bar_px(lay, device) if demo.manifest["kind"] == "expo_ios" else 0
             raw = work / f"video-{fid}-raw.mp4"
             subprocess.run(fr.render_command(ff, str(video), str(bg), str(mask), str(ring) if ring else None, len(ring_list), dur,
-                                             fr.filter_graph(lay, timeline, ring_list), str(raw)),
+                                             fr.filter_graph(lay, timeline, ring_list, bar=bar), str(raw)),
                            check=True, capture_output=True, timeout=1800)  # fmt: skip
             blank = fr.check_blank(ff, raw, lay, work, device)
             final = out / f"video-{fid}.mp4"
@@ -513,7 +544,7 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
         except fr.FrameError as e:
             refused.append(refusal(f"framed {a['file']}", e.code))
     if p.previous is not None:
-        kit["before_after"] = before_after(ff, demo, p.previous, demo.device, band, work, out)
+        kit["before_after"] = before_after(ff, demo, p.previous, demo.device, band, work, out, src)
     else:
         refused.append(refusal("before_after", "no_previous_demo"))
     sets, why = app_store_set(demo, out / "app-store")
@@ -521,7 +552,7 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
     refused.extend(why)
     # What changed, and the words to post it with.
     since = json.loads((p.previous / "manifest.json").read_text())["commit"] if p.previous else None
-    log = changelog(src or (paths.work_dir(key) / "src"), since, demo.commit)
+    log = changelog(src, since, demo.commit)
     (out / "changelog.json").write_text(json.dumps({"since_commit": since, "until_commit": demo.commit, "commits": log}, indent=1) + "\n")
     (out / "changelog.md").write_text(changelog_md(log, since, demo) + "\n")
     # FOUND ON THE FIRST WEBSITE KIT (2026-09-19): with no earlier demo the changelog is the latest

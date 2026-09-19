@@ -195,15 +195,21 @@ def zoom_terms(timeline: list[dict], zoom: float = ZOOM) -> list[tuple[str, floa
 
 
 def motion_exprs(lay: Layout, timeline: list[dict], zoom: float = ZOOM) -> tuple[str, str, str]:
-    """(scale factor, x, y) expressions: the screen scaled by 1 + zoom * envelope about the tap,
-    which stays where it was on the canvas (pure). Envelopes never overlap (a beat's starts after
-    the one before has eased out), so a sum of terms is the one active term."""
+    """(scale factor, x, y) expressions: the recording scaled by 1 + zoom * envelope about the
+    tap, and where its top left goes INSIDE the screen so the tap stays where it was (pure).
+    Envelopes never overlap (a beat's starts after the one before has eased out), so a sum of
+    terms is the one active term.
+
+    The punch in is the picture moving inside the device, never the device growing. FOUND LOOKING
+    AT THE FIRST KITS' STILLS: scaling the masked screen itself grew it 4% over its own bezel, which
+    is drawn on the backdrop and does not grow, so at every beat's peak the phone lost its edge on
+    the side away from the tap."""
     terms = zoom_terms(timeline, zoom)
     if not terms:
-        return "1", str(lay.x), str(lay.y)
+        return "1", "0", "0"
     z = "1+" + "+".join(f"{zoom}*{e}" for e, _, _ in terms)
-    x = f"{lay.x}-" + "-".join(f"{round(lay.w * px * zoom, 3)}*{e}" for e, px, _ in terms)
-    y = f"{lay.y}-" + "-".join(f"{round(lay.h * py * zoom, 3)}*{e}" for e, _, py in terms)
+    x = "-" + "-".join(f"{round(lay.w * px * zoom, 3)}*{e}" for e, px, _ in terms)
+    y = "-" + "-".join(f"{round(lay.h * py * zoom, 3)}*{e}" for e, _, py in terms)
     return z, x, y
 
 
@@ -232,21 +238,44 @@ def rings(timeline: list[dict], changes: dict[int, float] | None = None) -> list
 # ------------------------------------------------------------------------ the graph
 
 
-def filter_graph(lay: Layout, timeline: list[dict], ring_list: list[Ring], zoom: float = ZOOM) -> str:
+def status_bar_px(lay: Layout, device: dict | None) -> int:
+    """The row's top safe area (the status bar and the island) in the layout's pixels, even (pure)."""
+    return even(lay.h * below_status_bar(device)) if device is not None and device["family"] in ("iphone", "ipad") else 0
+
+
+def filter_graph(lay: Layout, timeline: list[dict], ring_list: list[Ring], zoom: float = ZOOM, bar: int = 0) -> str:
     """The filtergraph for one format (pure; the tests read it). Inputs: 0 the recording, 1 the
-    backdrop, 2 the mask, 3 and on one ring image each."""
+    backdrop, 2 the mask, 3 and on one ring image each.
+
+    `bar`: the top of the recording that is the SYSTEM's (the status bar and the Dynamic Island,
+    `status_bar_px`), held still while the app punches in beneath it, as on a real phone. FOUND ON
+    THE RIDEGT KIT: zoomed about a tap near the bottom, the island slid up 57 pixels and was cut by
+    the screen's edge. Only a simulator's recording has one; a web page's top is the page's."""
     z, x, y = motion_exprs(lay, timeline, zoom)
-    parts = [
-        f"[0:v]fps={FPS},scale={lay.w}:{lay.h}:flags=lanczos,setsar=1,format=rgba[scr]",
+    parts = [f"[0:v]fps={FPS},scale={lay.w}:{lay.h}:flags=lanczos,setsar=1,format=rgba[raw]"]
+    if z == "1":
+        parts.append("[raw]null[scr]")
+    else:
+        # Scaled up about the tap, then laid on a canvas the screen's own size, which crops it:
+        # the screen's shape and place never move, only the picture inside it.
+        src = "[raw]"
+        if bar:
+            parts.append("[raw]split=2[rz][rb]")
+            parts.append(f"[rb]crop={lay.w}:{bar}:0:0[bar]")
+            src = "[rz]"
+        parts.append(f"{src}scale=w='trunc({lay.w}*({z})/2)*2':h='trunc({lay.h}*({z})/2)*2':eval=frame[big]")
+        parts.append(f"color=c=black:s={lay.w}x{lay.h}:r={FPS},format=rgba[cv]")
+        if bar:
+            parts.append(f"[cv][big]overlay=x='{x}':y='{y}':eval=frame:shortest=1[zc]")
+            parts.append("[zc][bar]overlay=x=0:y=0:shortest=1[scr]")
+        else:
+            parts.append(f"[cv][big]overlay=x='{x}':y='{y}':eval=frame:shortest=1[scr]")
+    parts += [
         f"[2:v]format=gray,scale={lay.w}:{lay.h}[m]",
         "[scr][m]alphamerge[dev]",
+        "[1:v]format=rgba[bg]",
+        f"[bg][dev]overlay=x={lay.x}:y={lay.y}:format=auto:shortest=1[v0]",
     ]
-    if z == "1":
-        parts.append("[dev]null[devz]")
-    else:
-        parts.append(f"[dev]scale=w='trunc({lay.w}*({z})/2)*2':h='trunc({lay.h}*({z})/2)*2':eval=frame[devz]")
-    parts.append(f"[1:v]format=rgba[bg]")
-    parts.append(f"[bg][devz]overlay=x='{x}':y='{y}':eval=frame:format=auto:shortest=1[v0]")
     cur = "[v0]"
     rs = max(8, even(lay.w * RING_SHARE))
     for i, r in enumerate(ring_list):

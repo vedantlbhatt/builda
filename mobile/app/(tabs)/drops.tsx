@@ -28,8 +28,9 @@ import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View, useW
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useIsDesktop } from '../../src/desktop/formFactor';
+import { startLine } from '../../src/drops/boardRules';
 import { search } from '../../src/drops/cluster';
-import { drainPending, landShared, pendingCount } from '../../src/drops/intake';
+import { drainPending, pendingCount, sendByHand } from '../../src/drops/intake';
 import { SearchLine } from '../../src/drops/SearchLine';
 import { useBoard } from '../../src/drops/useBoard';
 import { BuildingCard, PairCard, PickCard } from '../../src/drops/wall/Cards';
@@ -135,9 +136,12 @@ export default function DropsScreen() {
 
   const startMove = useCallback(
     (w: WallDrop, moveId: string, title: string) => {
-      void start(w.drop.id, [moveId], null, {});
-      // Said on the island, the app's one voice: the work has gone to the Mac.
-      notice(`Sent to your Mac: ${title}`, 'working', accent.animal, accent.ink);
+      // Said on the island, the app's one voice, once the server has answered: the work has gone
+      // to the Mac, or it has not and the card is back to offered.
+      void start(w.drop.id, [moveId], null, {}).then((went) => {
+        const said = startLine(went, title);
+        if (said) notice(said.text, said.state, accent.animal, accent.ink);
+      });
     },
     [start, accent.animal, accent.ink],
   );
@@ -165,13 +169,17 @@ export default function DropsScreen() {
     return () => sub.remove();
   }, [focused, drain, refresh]);
 
-  // A tapped banner: `builder://drops?open=<id>`.
+  // A tapped banner: `builder://drops?open=<id>`. The drop's route reads the board itself and says
+  // when a drop is not there, so it opens without waiting for this one. FOUND IN REVIEW
+  // (2026-09-19): it opened only a drop already on this board, and on a cold start the board was
+  // still empty, so the tap landed on the wall and the parameter was gone. `''`, not undefined:
+  // expo-router keeps a parameter set to undefined.
   useEffect(() => {
     const id = params.open;
     if (!id) return;
-    router.setParams({ open: undefined });
-    if (drops.some((d) => d.id === id)) router.push(`/drop/${id}`);
-  }, [params.open, drops, router]);
+    router.setParams({ open: '' });
+    router.push(`/drop/${id}`);
+  }, [params.open, router]);
 
   // A link from outside (`builder://drop?url=`) is SHOWN, and sent only when a person says so.
   // FOUND IN REVIEW (2026-09-19): it was sent the moment it arrived, so a link on any web page could
@@ -190,8 +198,19 @@ export default function DropsScreen() {
     setIncoming(null);
     if (!url) return;
     commit();
-    void landShared(url).then(() => refresh());
-  }, [incoming, refresh]);
+    void sendByHand(url).then((line) => {
+      if (line) notice(line, 'error', accent.animal, accent.ink);
+      else void refresh();
+    });
+  }, [incoming, refresh, accent.animal, accent.ink]);
+  const paste = useCallback(
+    async (link: string) => {
+      const line = await sendByHand(link);
+      if (!line) void refresh();
+      return line;
+    },
+    [refresh],
+  );
 
   const inner = width - GUTTER * 2;
   const cell = Math.floor((inner - GAP * (COLUMNS - 1)) / COLUMNS);
@@ -216,10 +235,7 @@ export default function DropsScreen() {
           {incoming ? <Incoming url={incoming} onSend={sendIncoming} onDrop={() => setIncoming(null)} /> : null}
           <Empty
             onRefresh={refresh}
-            onPaste={async (link) => {
-              await landShared(link);
-              await refresh();
-            }}
+            onPaste={paste}
           />
         </View>
       ) : (
@@ -377,10 +393,12 @@ function Incoming({ url, onSend, onDrop }: { url: string; onSend: () => void; on
   );
 }
 
-function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste: (link: string) => Promise<void> }) {
+/** `onPaste` answers null when the link landed, or the line to show under the field. */
+function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste: (link: string) => Promise<string | null> }) {
   const c = useColors();
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState('');
+  const [said, setSaid] = useState<string | null>(null);
   return (
     <ScrollView
       contentContainerStyle={styles.empty}
@@ -408,7 +426,10 @@ function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste
       <View style={styles.paste}>
         <TextField
           value={link}
-          onChangeText={setLink}
+          onChangeText={(v) => {
+            setLink(v);
+            setSaid(null);
+          }}
           placeholder="or paste a link"
           autoCapitalize="none"
           autoCorrect={false}
@@ -418,10 +439,18 @@ function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste
             const v = link.trim();
             if (!v) return;
             commit();
-            setLink('');
-            void onPaste(v);
+            // The field keeps the link until it has landed, so one that did not can be sent again.
+            void onPaste(v).then((line) => {
+              setSaid(line);
+              if (!line) setLink('');
+            });
           }}
         />
+        {said ? (
+          <T role="meta" accessibilityLiveRegion="polite" style={{ color: c.textDim, marginTop: 10, textAlign: 'center' }}>
+            {said}
+          </T>
+        ) : null}
       </View>
     </ScrollView>
   );

@@ -20,8 +20,11 @@ import { BackHandler, StyleSheet, View, useWindowDimensions } from 'react-native
 import Animated, { Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { tokens } from '../../generated/tokens';
+import { notice } from '../../island/feeds';
 import { CONTENT_IN, SPRING } from '../../motion';
+import { useAccent } from '../../theme/accent';
 import { overlay } from '../../ui/overlay';
+import { startLine } from '../boardRules';
 import { DropSheet } from '../DropSheet';
 import type { DropRow, MoveRow } from '../types';
 import { useBoard } from '../useBoard';
@@ -52,10 +55,15 @@ export function Opening({
   // Its own board, because it lives above the tabs (`ui/overlay.tsx`) and a move it starts has to
   // be seen running here, not only on the wall underneath.
   const board = useBoard();
+  const accent = useAccent();
   const drop = board.drops.find((d) => d.id === initial.drop.id) ?? initial.drop;
   const moves = board.drops.length > 0 ? board.moves : initial.moves;
   const onStart = (ids: string[], adjustment: string | null, repoKeys: Record<string, string>) => {
-    void board.start(drop.id, ids, adjustment, repoKeys).then(onChanged);
+    void board.start(drop.id, ids, adjustment, repoKeys).then((went) => {
+      const said = startLine(went, null);
+      if (said) notice(said.text, said.state, accent.animal, accent.ink);
+      onChanged();
+    });
   };
   const onArchive = () => {
     void board.archive(drop.id).then(onChanged);

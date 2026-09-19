@@ -14,8 +14,11 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 
+import { startLine } from '../../src/drops/boardRules';
 import { DropSheet } from '../../src/drops/DropSheet';
 import { useBoard } from '../../src/drops/useBoard';
+import { notice } from '../../src/island/feeds';
+import { useAccent } from '../../src/theme/accent';
 import { T } from '../../src/ui/Text';
 import { useColors } from '../../src/ui/scheme';
 
@@ -24,6 +27,7 @@ export default function DropScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { drops, moves, start, archive, loading } = useBoard();
+  const accent = useAccent();
 
   const drop = useMemo(() => drops.find((d) => d.id === id) ?? null, [drops, id]);
 
@@ -43,7 +47,12 @@ export default function DropScreen() {
         <DropSheet
           drop={drop}
           moves={moves}
-          onStart={(ids, adjustment, repoKeys) => void start(drop.id, ids, adjustment, repoKeys)}
+          onStart={(ids, adjustment, repoKeys) =>
+            void start(drop.id, ids, adjustment, repoKeys).then((went) => {
+              const said = startLine(went, null);
+              if (said) notice(said.text, said.state, accent.animal, accent.ink);
+            })
+          }
           onArchive={() => {
             void archive(drop.id);
             close();

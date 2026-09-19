@@ -31,6 +31,24 @@ export async function landShared(payload: string, extraText = ''): Promise<strin
   return drop.id;
 }
 
+/** The two things a person sending a link by hand is told, when it did not land. */
+export const NOT_A_LINK = 'That is not a link Builda can read.';
+export const NOT_SENT = 'Builda could not send that link. Try it again.';
+
+/**
+ * A link a person sent by hand (the paste field, a link from outside they said Send to): null when
+ * it landed, or the line to show them. FOUND IN REVIEW (2026-09-19): a paste that was not a link,
+ * or that failed to send, cleared the field and said nothing, and the failure was an unhandled
+ * rejection.
+ */
+export async function sendByHand(link: string): Promise<string | null> {
+  try {
+    return (await landShared(link)) ? null : NOT_A_LINK;
+  } catch {
+    return NOT_SENT;
+  }
+}
+
 /**
  * Everything the share extension queued while the app was away, sent, oldest first.
  *

@@ -11,10 +11,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../data/client';
 import { tellThemItFinished, tellThemItWasRead } from './localNotify';
 import { worthSaying } from './news';
+import { pollDelay, startEach } from './boardRules';
 import type { BoardResponse, DropRow, MoveRow } from './types';
 
-/** While something is in flight. Short enough that a resolution feels answered. */
-const BUSY_POLL_MS = 4000;
+export { inFlight } from './boardRules';
 
 export interface BoardState {
   drops: DropRow[];
@@ -22,23 +22,18 @@ export interface BoardState {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  start: (dropId: string, moveIds: string[], adjustment: string | null, repoKeys?: Record<string, string>) => Promise<void>;
+  /** True when every move went (or was already going); false when the server refused one. */
+  start: (dropId: string, moveIds: string[], adjustment: string | null, repoKeys?: Record<string, string>) => Promise<boolean>;
   archive: (dropId: string) => Promise<void>;
-}
-
-/** Is anything going to change without the person doing something? */
-export function inFlight(board: BoardResponse): boolean {
-  return (
-    board.drops.some((d) => d.status === 'waiting' || d.status === 'resolving') ||
-    board.moves.some((m) => m.status === 'queued' || m.status === 'running')
-  );
 }
 
 export function useBoard(): BoardState {
   const [board, setBoard] = useState<BoardResponse>({ drops: [], moves: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped after every read, failed or not, so the next one is scheduled either way.
+  const [reads, setReads] = useState(0);
+  const failed = useRef(false);
 
   const seen = useRef<BoardResponse | null>(null);
 
@@ -56,11 +51,14 @@ export function useBoard(): BoardState {
       seen.current = next;
       setBoard(next);
       setError(null);
+      failed.current = false;
     } catch (e) {
+      failed.current = true;
       if (__DEV__) console.warn('[drops] the board did not load', e instanceof Error ? e.message : e);
       setError(e instanceof Error ? e.message : 'could not load the board');
     } finally {
       setLoading(false);
+      setReads((n) => n + 1);
     }
   }, []);
 
@@ -69,33 +67,25 @@ export function useBoard(): BoardState {
   }, [refresh]);
 
   useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    if (!inFlight(board)) return;
-    timer.current = setTimeout(() => void refresh(), BUSY_POLL_MS);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [board, refresh]);
+    const ms = pollDelay(board, failed.current);
+    if (ms === null) return;
+    const t = setTimeout(() => void refresh(), ms);
+    return () => clearTimeout(t);
+  }, [board, reads, refresh]);
 
   const start = useCallback(
     async (dropId: string, moveIds: string[], adjustment: string | null, repoKeys: Record<string, string> = {}) => {
-      // Optimistic: the row says `queued` the moment the thumb lifts. A 409 means it was
-      // already going, which is not an error and is left alone; anything else puts it back.
+      // Optimistic: the row says `queued` the moment the thumb lifts, and the read after puts
+      // back whatever the server refused. The answer goes to the caller, which says it.
       setBoard((b) => ({
         ...b,
         moves: b.moves.map((m) =>
           moveIds.includes(m.id) ? { ...m, status: 'queued', queued_at: new Date().toISOString() } : m,
         ),
       }));
-      for (const id of moveIds) {
-        try {
-          await api.startMove(dropId, id, { adjustment, repo_key: repoKeys[id] ?? null });
-        } catch (e) {
-          const status = (e as { status?: number }).status;
-          if (status !== 409) setError(e instanceof Error ? e.message : 'could not start it');
-        }
-      }
+      const went = await startEach((d, m, body) => api.startMove(d, m, body), dropId, moveIds, adjustment, repoKeys);
       await refresh();
+      return went;
     },
     [refresh],
   );

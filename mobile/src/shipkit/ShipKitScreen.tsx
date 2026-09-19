@@ -19,7 +19,7 @@ import { api } from '../data/client';
 import { expoVideo } from '../demos/video';
 import type { Platform } from '../generated/shipkit';
 import { preferredHue } from '../projects/model';
-import { SPECTRUM } from '../insights/palette';
+import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
 import {
   captionCount,
@@ -41,6 +41,12 @@ import { useShipKit } from './useKit';
 const GUTTER = 20;
 const COLUMNS = 3;
 const TILE_GAP = 8;
+/**
+ * MEASURED on the iOS 26.5 simulator: the switch draws 63 points wide inside the 51 point box
+ * React Native lays it out in, anchored at its left, so at the end of a row it crossed the page's
+ * gutter by 12. On an earlier iOS this is 12 points of air.
+ */
+const SWITCH_OVERHANG = 12;
 
 export function ShipKitScreen() {
   const params = useLocalSearchParams<{ key?: string; hue?: string }>();
@@ -56,7 +62,7 @@ export function ShipKitScreen() {
       <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={styles.page}>
         {kit.kind === 'unknown' ? <T tone="dim">Reading the kit.</T> : null}
         {kit.kind === 'missing' ? <T tone="dim">This project is not one of yours, or it is excluded.</T> : null}
-        {view ? <KitBody view={view} /> : null}
+        {view ? <KitBody view={view} ink={inkFor(kit.kind === 'ready' ? kit.kit.document.hue : null, hue)} /> : null}
         {kit.kind === 'none' ? (
           <View style={styles.block}>
             <T role="title">No kit yet</T>
@@ -83,7 +89,13 @@ export function ShipKitScreen() {
   );
 }
 
-function KitBody({ view }: { view: KitView }) {
+/** The kit's band colour (the document's hue), else the project's: the switch wears it, as Settings wears the accent. */
+function inkFor(docHue: string | null, pageHue: string | null): string | undefined {
+  const h = [docHue, pageHue].find((x): x is HueName => typeof x === 'string' && x in SPECTRUM);
+  return h ? SPECTRUM[h].ink : undefined;
+}
+
+function KitBody({ view, ink }: { view: KitView; ink?: string }) {
   const [s, dispatch] = useReducer(selectionReducer, view, initialSelection);
   const [sharing, setSharing] = useState(false);
   const [after, setAfter] = useState<string | null>(null);
@@ -146,7 +158,14 @@ function KitBody({ view }: { view: KitView }) {
       {tab.video ? (
         <View style={styles.switchRow}>
           <T>Send the video</T>
-          <Switch value={s.video} onValueChange={(on) => dispatch({ type: 'video', on })} accessibilityLabel="Send the video" />
+          <Switch
+            value={s.video}
+            onValueChange={(on) => dispatch({ type: 'video', on })}
+            trackColor={{ true: ink, false: GROUND.raised }}
+            ios_backgroundColor={GROUND.raised}
+            accessibilityLabel="Send the video"
+            style={{ marginRight: SWITCH_OVERHANG }}
+          />
         </View>
       ) : null}
 
@@ -215,7 +234,7 @@ function KitBody({ view }: { view: KitView }) {
 
       {view.changelog.length ? (
         <View style={styles.block}>
-          <T role="headline">What changed since the last demo</T>
+          <T role="headline">{view.changelogTitle}</T>
           {view.changelog.map((line, i) => (
             <T key={i} role="meta" tone="dim" style={styles.threadLine}>
               {line}

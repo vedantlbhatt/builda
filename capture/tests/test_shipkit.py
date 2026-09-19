@@ -340,6 +340,25 @@ class Queue(unittest.TestCase):
         self.assertEqual(end - start, 3600)
         self.assertIsNone(kq.session_window(None))
 
+    def test_a_commit_already_filmed_is_skipped_unless_a_person_asked(self):
+        """"Make a new demo" on a kit's screen is asked precisely when its commit has a demo."""
+        import subprocess
+
+        from capture.demo import paths
+        from capture.demo import project as pj
+
+        repo = pathlib.Path(self.tmp.name) / "app"
+        repo.mkdir()
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+        for args in (["init", "-q"], ["remote", "add", "origin", "https://github.com/example/app.git"], ["commit", "-q", "--allow-empty", "-m", "one"]):
+            subprocess.run(["git", "-C", str(repo), *args], env=env, check=True, capture_output=True)
+        project = pj.from_checkout(repo)
+        head = pj.resolve_commit(project.checkout, "HEAD")
+        out = paths.private_dir(paths.out_dir(project.key))
+        (out / "manifest.json").write_text(json.dumps({"commit": head}))
+        self.assertEqual(kq.judge({"kind": "session_end", "cwd": str(repo)})[0], "already_filmed")
+        self.assertNotEqual(kq.judge({"kind": "request", "path": str(repo)})[0], "already_filmed")
+
     def test_a_job_outside_a_repository_is_skipped_with_its_code(self):
         skip, _ = kq.judge({"kind": "session_end", "cwd": self.tmp.name})
         self.assertEqual(skip, "not_a_repository")

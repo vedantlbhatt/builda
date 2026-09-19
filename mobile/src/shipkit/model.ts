@@ -51,6 +51,13 @@ export interface KitView {
   appStore: KitFileRow[];
   captions: Partial<Record<Platform, KitCaption>>;
   changelog: string[];
+  /**
+   * What the changelog is: the commits since the last demo, or, on a project's FIRST demo, only
+   * the latest ones. FOUND ON THE SIMULATOR: a first kit said "What changed since the last demo"
+   * over 24 commits when there had never been one. The Mac says which with its `no_previous_demo`
+   * refusal, the one fact the document carries about it.
+   */
+  changelogTitle: string;
   /** What the Mac could not make, each as its sentence. */
   refused: string[];
   published: string;
@@ -78,6 +85,7 @@ export function kitView(kit: ShipKitResponse): KitView {
     appStore: [...bySlot(files, 'app_store_iphone'), ...bySlot(files, 'app_store_ipad')],
     captions,
     changelog: kit.document.changelog ?? [],
+    changelogTitle: (kit.document.refused ?? []).some((r) => r.code === 'no_previous_demo') ? 'The latest commits' : 'What changed since the last demo',
     refused: (kit.document.refused ?? []).map((r) => SHIPKIT_REFUSALS[r.code as keyof typeof SHIPKIT_REFUSALS]).filter((s): s is string => typeof s === 'string'),
     published: kit.published_at,
   };
@@ -198,6 +206,18 @@ export function sharePayload(view: KitView, s: Selection): SharePayload | null {
   const pictures = files.length - (video ? 1 : 0);
   const what = [video ? `the ${tab?.label ?? ''} video`.replace('  ', ' ') : null, pictures ? counted(pictures, 'picture') : null].filter(Boolean).join(' and ');
   return { files, text: captionFor(view, s), label: `Share ${what}` };
+}
+
+/**
+ * What the screen says after the fallback share (a build without `BuilderDrops.shareItems`).
+ * expo-sharing resolves the same way whether the person sent the file or closed the sheet, so this
+ * never says "Shared": FOUND ON THE SIMULATOR, a sheet dismissed with nothing sent read "Shared."
+ * It says what is known: which file the sheet had, and that the words are on the pasteboard.
+ */
+export function fallbackLine(count: number, first: string, copied: boolean): string {
+  const words = copied ? ' The words are copied, to paste into the post.' : '';
+  if (count > 1) return `This build hands the share sheet one file at a time, so it had ${first} only.${words} Update the app to send them together.`;
+  return `The share sheet had ${first}.${words}`;
 }
 
 // ------------------------------------------------------------------ asking the Mac

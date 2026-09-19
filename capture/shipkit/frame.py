@@ -34,7 +34,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import pathlib
-import re
 import subprocess
 
 from capture.demo import devices, tools

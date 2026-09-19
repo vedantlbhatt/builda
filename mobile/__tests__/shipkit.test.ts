@@ -23,6 +23,7 @@ import { PLATFORM_FORMAT, SHIPKIT_REFUSALS } from '../src/generated/shipkit';
 import {
   captionCount,
   captionFor,
+  fallbackLine,
   fileName,
   initialSelection,
   kitView,
@@ -124,6 +125,12 @@ describe('the kit', () => {
     expect(view.refused.some((r) => r.includes('_'))).toBe(false);
   });
 
+  test('a first demo lists the latest commits, never "since the last demo"', () => {
+    expect(view.changelogTitle).toBe('What changed since the last demo');
+    const first = kitView({ ...KIT, document: { ...KIT.document, refused: [{ what: 'before_after', code: 'no_previous_demo' }] } });
+    expect(first.changelogTitle).toBe('The latest commits');
+  });
+
   test('the thread is x only', () => {
     expect(threadFor(view, 'x')).toEqual(['One.', 'Two.']);
     expect(threadFor(view, 'linkedin')).toEqual([]);
@@ -192,6 +199,16 @@ describe('one share', () => {
     expect(p.label).toBe('Share 1 picture');
     expect(p.text).toBe('A bus route finder.');
     expect(fileName(view.framed[0]!)).toBe('screen-01-framed.png');
+  });
+
+  test('the fallback sheet never claims a share it cannot see, and says what it had', () => {
+    for (const line of [fallbackLine(1, 'demo-vertical.mp4', true), fallbackLine(3, 'demo-vertical.mp4', false)]) {
+      expect(line).not.toMatch(/\bShared\b/);
+      expect(line).toContain('demo-vertical.mp4');
+      expect(hasDash(line)).toBe(false);
+    }
+    expect(fallbackLine(1, 'a.png', true)).toContain('copied');
+    expect(fallbackLine(3, 'a.png', false)).toContain('one file at a time');
   });
 
   test('a format with no video sends the stills only', () => {

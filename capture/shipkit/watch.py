@@ -17,6 +17,14 @@ spec/shipkit.v1.json `request_refusal`). A request is never filmed from a checko
 worked in: the transcripts are the evidence that the repository is the person's own (run.py
 `is_own`), which is also what lets the capture run without a sandbox.
 
+A kit stays on the Mac until `kit --publish` and a yes, the demo channel's rule. The one exception
+is opt in, given on the Mac: `watch --publish-requests` sends the kit of a demo the PHONE asked for
+(`kit --publish --yes`, the same listing and the same second privacy read), because a person who
+tapped "Request a demo" and started the worker with that flag has said yes twice already. A kit the
+worker made on its own (a session that ended) is never sent by it. A publish that fails still
+finishes the request `done`: the demo and the kit were made, and the phone's line for a done
+request with no kit says to publish it on the Mac.
+
 `--dry-run` judges every waiting job and prints what it would do; it claims nothing, moves
 nothing and films nothing.
 """
@@ -155,7 +163,7 @@ def run_child(args: list[str], timeout: int, log: pathlib.Path) -> int:
     return r.returncode
 
 
-def work(p: pathlib.Path, no_model: bool, req: Requests | None) -> str:
+def work(p: pathlib.Path, no_model: bool, req: Requests | None, publish_to: str | None = None) -> str:
     """Run one claimed job to its end; returns the state it ended in."""
     job = queue.read(p)
     skip, found = queue.judge(job)
@@ -192,6 +200,9 @@ def work(p: pathlib.Path, no_model: bool, req: Requests | None) -> str:
         if req and job.get("request_id"):
             req.finish(job["request_id"], "failed", "kit_failed")
         return "failed"
+    if publish_to and job.get("kind") == "request":
+        rc = run_child([sys.executable, "-m", "capture", "demo", "kit", path, "--publish", "--yes", "--server", publish_to], KIT_TIMEOUT, log)
+        say(f"  {'published the kit' if rc == 0 else f'the publish ended {rc}; the kit is on this Mac (see {log})'}")
     queue.move(p, "done")
     if req and job.get("request_id"):
         req.finish(job["request_id"], "done")
@@ -226,7 +237,7 @@ def main(a: argparse.Namespace) -> int:
             take_requests(req, dry_run=False)
         p = queue.claim_next()
         if p is not None:
-            work(p, a.no_model, req)
+            work(p, a.no_model, req, server if getattr(a, "publish_requests", False) else None)
             if a.once:
                 return 0
             continue

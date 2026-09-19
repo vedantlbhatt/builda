@@ -18,7 +18,8 @@ judge, never build. Judging is the worker's (`judge`, called by `python -m captu
      attribution) touching a file an app is made of (`UI_FILE`), or the build post's `demo`
      field says there is something to show;
   3. the project is a kind the Mac can run unattended (`expo_ios` or `web`);
-  4. the newest commit is not already filmed, and no demo of it is already waiting.
+  4. the newest commit is not already filmed (unless a person asked), and no demo of it is
+     already waiting.
 
 Each skip is a code (spec/shipkit.v1.json `queue_skip`), kept in `skipped/` with its sentence, so
 "why did it not make a demo" has an answer on disk.
@@ -197,7 +198,10 @@ def judge(job: dict) -> tuple[str | None, dict]:
     head = pj.resolve_commit(project.checkout, "HEAD")
     found["commit"] = head
     m = paths.out_dir(project.key) / "manifest.json"
-    if head and m.is_file():
+    asked = job.get("kind") in ("request", "manual")
+    # A person who asked for a new demo gets one even of a commit already filmed: "Make a new
+    # demo" on a kit's screen is asked precisely when that commit's demo exists.
+    if head and m.is_file() and not asked:
         try:
             if json.loads(m.read_text()).get("commit") == head:
                 return "already_filmed", found
@@ -211,7 +215,7 @@ def judge(job: dict) -> tuple[str | None, dict]:
     found["kind"] = plan.kind
     if plan.refused or plan.kind not in DEMOABLE:
         return "not_demoable", found
-    if job.get("kind") in ("request", "manual"):
+    if asked:
         return None, found
     window = session_window(job.get("transcript"))
     if window is None:

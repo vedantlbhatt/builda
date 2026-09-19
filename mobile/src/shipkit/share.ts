@@ -13,10 +13,12 @@ import * as Sharing from 'expo-sharing';
 
 import BuilderDrops from '../../modules/builder-drops';
 import { api } from '../data/client';
-import type { ShareFile, SharePayload } from './model';
+import { copyText } from '../onboarding/clipboard';
+import { fallbackLine, type ShareFile, type SharePayload } from './model';
 
 export interface ShareOutcome {
-  shared: boolean;
+  /** Null when the sheet cannot say (expo-sharing resolves alike for sent and closed). */
+  shared: boolean | null;
   /** What the screen says after. */
   line: string;
 }
@@ -57,9 +59,8 @@ export async function shareSelection(p: SharePayload): Promise<ShareOutcome> {
   }
   if (!(await Sharing.isAvailableAsync())) return { shared: false, line: 'Sharing is not available on this device.' };
   const first = p.files[0]!;
+  // The words first, so they are on the pasteboard while the sheet is up: this sheet has no text.
+  const copied = p.text ? copyText(p.text) : false;
   await Sharing.shareAsync(paths[0]!, { mimeType: first.contentType, dialogTitle: p.text || undefined });
-  return {
-    shared: true,
-    line: p.files.length > 1 ? `This build shares one file at a time: ${first.name} went. Update the app to send them together.` : 'Shared.',
-  };
+  return { shared: null, line: fallbackLine(p.files.length, first.name, copied) };
 }

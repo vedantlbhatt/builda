@@ -624,21 +624,52 @@ def shipped_for(key: str, explicit: str | None) -> dict | None:
     return None
 
 
-def main(a: argparse.Namespace) -> int:
+def project_for_key(key: str):
+    """The project a bare key names, so its names can be checked for: the demo's own clone when
+    it is a clone of the project's remote (a `--repo URL` demo), else the checkout among the
+    repositories this Mac's transcripts resolved to. None when neither is this key's."""
     from capture.demo import project as pj
+
+    from .watch import known_checkouts
+
+    clone = paths.work_dir(key) / "src"
+    if (clone / ".git").exists():
+        try:
+            p = pj.from_checkout(clone)
+            if p.key == key:
+                return p
+        except pj.ProjectError:
+            pass
+    where = known_checkouts().get(key)
+    return pj.from_checkout(where) if where else None
+
+
+def names_for(project, a: argparse.Namespace) -> tuple[tuple, tuple]:
+    """(this project's names and this Mac's, the Mac's other repositories' names): what no
+    caption, title or picture of the kit may show."""
     from capture.demo import transcripts as tx
 
+    names = tuple(project.names) + tuple(privacy.machine_names())
+    evidence = None if a.no_transcripts else tx.harvest(project.identity, pathlib.Path(a.root).expanduser(), progress=False)
+    return names, tuple(privacy.other_names(evidence.others if evidence else [], project.names))
+
+
+def main(a: argparse.Namespace) -> int:
+    from capture.demo import project as pj
+
     if a.key:
+        # FOUND PUBLISHING THE FIRST KIT: `--key` built with no names at all, so a title naming the
+        # repository would have passed. A key is resolved to its project wherever that is possible.
         key = a.key
-        names: tuple = ()
-        others: tuple = ()
+        project = project_for_key(key)
+        names, others = names_for(project, a) if project else (tuple(privacy.machine_names()), ())
         src = None
+        if project is None:
+            say("  no checkout on this Mac is this key's, so only this Mac's own names are checked for")
     else:
         project = pj.from_checkout(a.project or a.path or ".")
         key = project.key
-        names = tuple(project.names) + tuple(privacy.machine_names())
-        evidence = None if a.no_transcripts else tx.harvest(project.identity, pathlib.Path(a.root).expanduser(), progress=False)
-        others = tuple(privacy.other_names(evidence.others if evidence else [], project.names))
+        names, others = names_for(project, a)
         src = project.checkout
     try:
         kit = build(key, hue=a.hue, shipped=shipped_for(key, a.shipped), src=src, use_model=not a.no_model,

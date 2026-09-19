@@ -33,7 +33,6 @@ import sys
 from capture import client as cl
 from capture.demo import paths, privacy
 from capture.demo import project as pj
-from capture.demo import transcripts as tx
 
 from . import kit as kmod
 from . import tables
@@ -68,7 +67,7 @@ def files_of(kit: dict, kit_dir: pathlib.Path) -> list[dict]:
         if slot is None:
             continue
         for i, s in enumerate(st["files"][: tables.CAPS["app_store_each"]], 1):
-            add(kit_dir.parent / s["file"], slot, i, s["width"], s["height"], label=s["label"])
+            add(kit_dir / s["file"], slot, i, s["width"], s["height"], label=s["label"])
     return out
 
 
@@ -94,16 +93,23 @@ def document(kit: dict, kit_dir: pathlib.Path, publish_id: str, names=(), others
 
 def main(a: argparse.Namespace) -> int:
     server = (a.server or os.environ.get("BUILDER_API_URL") or cl.DEFAULT_SERVER).rstrip("/")
-    project = pj.from_checkout(a.project or a.path or ".")
+    if a.key:
+        # A key alone is published only when its project is found: the pictures are read for the
+        # project's names, and a check with no names to look for would pass anything.
+        project = kmod.project_for_key(a.key)
+        if project is None:
+            print("Not publishing: no checkout on this Mac is this key's, so its pictures cannot be checked for its "
+                  "names. Pass the checkout instead of --key.", file=sys.stderr)  # fmt: skip
+            return 2
+    else:
+        project = pj.from_checkout(a.project or a.path or ".")
     key = project.key
     kit_dir = paths.out_dir(key) / kmod.KIT_DIR
     if not (kit_dir / "kit.json").is_file():
         print(f"No kit for this project at {kit_dir}: make one with `python -m capture demo kit`.", file=sys.stderr)
         return 2
     kit = json.loads((kit_dir / "kit.json").read_text())
-    names = tuple(project.names) + tuple(privacy.machine_names())
-    evidence = None if a.no_transcripts else tx.harvest(project.identity, pathlib.Path(a.root).expanduser(), progress=False)
-    others = tuple(privacy.other_names(evidence.others if evidence else [], project.names))
+    names, others = kmod.names_for(project, a)
     files = files_of(kit, kit_dir)
     pictures = [f["path"] for f in files if f["content_type"] in ("image/png", "image/jpeg")]
     print(f"Reading {len(pictures)} pictures once more for names and keys (Apple Vision)...", file=sys.stderr)

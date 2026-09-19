@@ -124,22 +124,29 @@ export const PASSING_STEPS: readonly string[] = ['drop sent', 'drop reading', 'd
  */
 export function playIslandTour(only?: readonly string[]): void {
   if (running) return;
-  const saved = island.snapshot();
-  island.reset();
+  const saved = island.saveForTour();
   island.setTouring(true);
+  island.runTourStep(() => island.reset());
   const steps = only ? DEMO_STEPS.filter((s) => only.includes(s.label)) : DEMO_STEPS;
   let i = 0;
   const step = () => {
     if (i >= steps.length) {
       running = null;
-      island.reset();
-      for (const a of saved) island.post(a, 0);
-      // Anything the live feeds said during the tour lands now, over what was saved.
+      // What was up comes back with the time it had left (a notice that was leaving still leaves),
+      // then anything the live feeds said during the tour lands over it, in order.
+      island.runTourStep(() => {
+        island.reset();
+        const now = Date.now();
+        for (const { a, until } of saved) {
+          if (until === null) island.post(a, 0);
+          else if (until > now) island.post(a, until - now);
+        }
+      });
       island.setTouring(false);
       return;
     }
     const s = steps[i]!;
-    s.run();
+    island.runTourStep(() => s.run());
     i += 1;
     running = setTimeout(step, s.ms);
   };
@@ -149,5 +156,7 @@ export function playIslandTour(only?: readonly string[]): void {
 export function stopIslandDemo(): void {
   if (running) clearTimeout(running);
   running = null;
-  island.reset();
+  island.runTourStep(() => island.reset());
+  // A tour stopped halfway must not leave the store holding every live post back for good.
+  island.setTouring(false);
 }

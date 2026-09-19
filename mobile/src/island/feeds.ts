@@ -125,8 +125,11 @@ export function trackDrop(dropId: string, url: string): void {
   const started = Date.now();
 
   const tick = async () => {
+    // Signed out (resetIslandFeeds) or already answered: this tracker is done.
+    if (!tracking.has(dropId)) return;
     try {
       const { drop, moves } = await api.drop(dropId);
+      if (!tracking.has(dropId)) return;
       void dropMoved(drop, moves);
       const offered = moves.filter((m) => m.status === 'offered').sort((a, b) => a.position - b.position);
       const hue = drop.kind ? (dropHue(drop.kind)?.ink ?? null) : null;
@@ -161,7 +164,14 @@ export function trackDrop(dropId: string, url: string): void {
  * minutes AFTER you leave that screen: you asked, you went back to what you were doing, and the
  * island tells you when the thing you asked for exists. Tapping it opens the kit.
  */
-const demos = new Set<string>();
+/**
+ * The project's current tracker, as a generation number: a tracker whose number is not the
+ * project's any more stops at its next tick. FOUND IN REVIEW: keyed by project alone, taking a
+ * request back and asking again within a tick brought the old loop back to life beside the new
+ * one, and a new request while the old was still tracked was ignored, so it got no Live Activity.
+ */
+const demos = new Map<string, number>();
+let demoGeneration = 0;
 
 /** Taken back on the phone: the island says nothing more about it, now rather than on the next read. */
 export function untrackDemo(projectKey: string): void {
@@ -177,8 +187,12 @@ export function untrackDemo(projectKey: string): void {
  * in-app island below is the same with or without it.
  */
 export function trackDemo(projectKey: string, title: string, request?: DemoRequestCard, opts?: { sinceMs?: number }): void {
-  if (demos.has(projectKey)) return;
-  demos.add(projectKey);
+  // Already watched, and nothing new to watch (a resume): leave the running tracker alone. A new
+  // request (the ask itself) always takes over.
+  if (demos.has(projectKey) && !request) return;
+  const gen = ++demoGeneration;
+  demos.set(projectKey, gen);
+  const mine = () => demos.get(projectKey) === gen;
   const id = `demo:${projectKey}`;
   const sinceMs = opts?.sinceMs ?? Date.now();
   const base = { kind: 'demo' as const, id, projectKey, title, progress: null, sinceMs };
@@ -186,10 +200,10 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
   if (request) void demoAsked(request, title);
 
   const tick = async () => {
-    if (!demos.has(projectKey)) return;
+    if (!mine()) return;
     try {
       const { requests } = await api.demoRequests(projectKey);
-      if (!demos.has(projectKey)) return;
+      if (!mine()) return;
       const step = demoStepFor(requests[0]?.status);
       // The system island reads the same row through the same rule (`demoStepFor`), so the two
       // cannot say different things about it; with no row at all its card comes down too. A done
@@ -202,10 +216,13 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
         return;
       }
       if (step === 'ready') {
-        demos.delete(projectKey);
         // Done is not the same as up: a Mac that finished without publishing kept the kit, and
-        // "the kit is up, tap to share it" would open a screen with nothing new on it.
-        const kit = await api.shipKit(projectKey).catch(() => null);
+        // "the kit is up, tap to share it" would open a screen with nothing new on it. A kit read
+        // that FAILED decides nothing (FOUND IN REVIEW: it read as "not published" and said so):
+        // the next tick asks again.
+        const kit = await api.shipKit(projectKey);
+        if (!mine()) return;
+        demos.delete(projectKey);
         const publishedAt = kit?.kit?.published_at ?? null;
         // The system card by the same rule: ready with its Share, or made, which says where the
         // kit is and moves on to ready by push if it is published later (docs/demo-island.md).
@@ -230,7 +247,7 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
     }
     if (Date.now() - sinceMs > DEMO_FOR_MS) {
       island.clear(id);
-      demos.delete(projectKey);
+      if (mine()) demos.delete(projectKey);
       return;
     }
     setTimeout(() => void tick(), DEMO_EVERY_MS);
@@ -261,6 +278,21 @@ export async function resumeDemos(names: RepoNames | null, nowMs: number): Promi
     seen.add(r.project_key);
     if (r.status !== 'queued' && r.status !== 'claimed') continue;
     const asked = Date.parse(r.created_at);
+    // Past the island's own limit: tracked again, it showed and was cleared within a tick, every
+    // five minutes for as long as the server kept the row (FOUND IN REVIEW).
+    if (Number.isFinite(asked) && nowMs - asked > DEMO_FOR_MS) continue;
     trackDemo(r.project_key, repoLabel({ repo_key: r.project_key }, names), undefined, { sinceMs: Number.isFinite(asked) ? asked : nowMs });
   }
+}
+
+/**
+ * Signing out: every tracker stops at its next tick and the island takes everything down, so
+ * nothing the last account's feeds said stays up (FOUND IN REVIEW: a demo pill was still up 29
+ * minutes after sign out).
+ */
+export function resetIslandFeeds(): void {
+  tracking.clear();
+  demos.clear();
+  lastResume = -Infinity;
+  island.clearAll();
 }

@@ -13,7 +13,7 @@ import { endAllLiveActivities, syncLiveActivities, type SyncResult } from './act
 import { liveStatesOf } from './mission';
 import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
-import { announceFinished, publishLive, resumeDemos } from '../island/feeds';
+import { announceFinished, publishLive, resetIslandFeeds, resumeDemos } from '../island/feeds';
 import { crewFor } from './crew';
 import { cancelWeekCard, scheduleWeekCard } from '../push/weekly';
 import { weekOf } from '../session/week';
@@ -60,6 +60,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
       lastLive = [];
       void cancelWeekCard();
       resetWeekOffer();
+      resetIslandFeeds();
       await endAllLiveActivities();
       clearWidgetSnapshot();
       publishLive([], nowMs);

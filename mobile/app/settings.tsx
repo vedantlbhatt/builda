@@ -71,6 +71,8 @@ import { refreshAccent, useAccent, type AccentState } from '../src/theme/accent'
 import { forgetProjectsOnThisPhone } from '../src/projects/nicknames';
 import { cancelWeekCard } from '../src/push/weekly';
 import { resetWeekOffer } from '../src/share/weekOffer';
+import { forgetPushBeforeSignOut } from '../src/live/activity';
+import { resetIslandFeeds } from '../src/island/feeds';
 import { Button, Hairline, SHAPE, T, TextField, useReduceMotion } from '../src/ui';
 import { HERE } from '../src/copy/device';
 
@@ -232,9 +234,13 @@ export default function SettingsScreen() {
     // did any week held to be said (src/share/weekOffer.ts).
     void cancelWeekCard();
     resetWeekOffer();
+    // And everything the last account's feeds put on the island.
+    resetIslandFeeds();
   }, [readLocalName]);
 
   const signOut = useCallback(async () => {
+    // First, while the credential still works: the server forgets this phone's push tokens.
+    await forgetPushBeforeSignOut();
     await api.clearTokens();
     // Cached sessions are the user's data, not ours to keep once they leave.
     await cache.clear();
@@ -258,6 +264,7 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              await forgetPushBeforeSignOut();
               const result = await api.deleteAccount();
               await api.clearTokens();
               await cache.clear();

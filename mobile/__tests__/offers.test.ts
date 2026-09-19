@@ -62,6 +62,7 @@ beforeEach(() => {
   gate = null;
   fakeNotifications.reset();
   island.reset();
+  island.setShowsStanding(true);
   kv.clear();
   posted = [];
   opened.length = 0;

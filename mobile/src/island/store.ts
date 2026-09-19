@@ -21,7 +21,16 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const listeners = new Set<() => void>();
 const expandListeners = new Set<() => void>();
 let touring = false;
+/** True while a tour step runs: its posts are the tour's own and go straight through. */
+let tourStep = false;
 const heldKinds = new Map<Activity['kind'], Activity[]>();
+/**
+ * What the live feeds said while the tour played, in order, applied when it ends. FOUND IN REVIEW:
+ * a tracker's post landed in the tour's list and was wiped at its end, or outlived it with no timer.
+ */
+const heldOps: ({ op: 'post'; a: Activity; holdMs?: number } | { op: 'clear'; id: string })[] = [];
+/** When each held activity takes itself down (epoch ms), so a tour can put it back with what is left. */
+const expiry = new Map<string, number>();
 /** Ids already shown once, so a poll that sees the same finished session twice says it once. */
 const said = new Set<string>();
 
@@ -35,13 +44,21 @@ export const island = {
    * takes itself down after its hold; pass `holdMs` to override, or 0 to keep it up.
    */
   post(a: Activity, holdMs?: number) {
+    if (touring && !tourStep) {
+      heldOps.push({ op: 'post', a, holdMs });
+      return;
+    }
     const i = items.findIndex((x) => x.id === a.id);
     items = i >= 0 ? items.map((x, j) => (j === i ? a : x)) : [...items, a];
     const hold = holdMs ?? HOLD_MS[a.kind];
     const old = timers.get(a.id);
     if (old) clearTimeout(old);
     timers.delete(a.id);
-    if (hold && hold > 0) timers.set(a.id, setTimeout(() => island.clear(a.id), hold));
+    expiry.delete(a.id);
+    if (hold && hold > 0) {
+      timers.set(a.id, setTimeout(() => island.clear(a.id), hold));
+      expiry.set(a.id, Date.now() + hold);
+    }
     emit();
   },
 
@@ -53,9 +70,14 @@ export const island = {
   },
 
   clear(id: string) {
+    if (touring && !tourStep) {
+      heldOps.push({ op: 'clear', id });
+      return;
+    }
     const t = timers.get(id);
     if (t) clearTimeout(t);
     timers.delete(id);
+    expiry.delete(id);
     if (!items.some((x) => x.id === id)) return;
     items = items.filter((x) => x.id !== id);
     emit();
@@ -72,7 +94,38 @@ export const island = {
       const held = [...heldKinds.entries()];
       heldKinds.clear();
       for (const [kind, next] of held) island.replaceKind(kind, next);
+      const ops = heldOps.splice(0);
+      for (const o of ops) {
+        if (o.op === 'post') island.post(o.a, o.holdMs);
+        else island.clear(o.id);
+      }
     }
+  },
+
+  /** Run one step of the tour: what it posts and clears is the tour's own. */
+  runTourStep(fn: () => void) {
+    tourStep = true;
+    try {
+      fn();
+    } finally {
+      tourStep = false;
+    }
+  },
+
+  /** What is up now, each with when it takes itself down (null: it stays), for a tour to put back. */
+  saveForTour(): { a: Activity; until: number | null }[] {
+    return items.map((a) => ({ a, until: expiry.get(a.id) ?? null }));
+  },
+
+  /** Take everything down (signing out: nothing the last account's feeds said stays up). */
+  clearAll() {
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear();
+    expiry.clear();
+    heldOps.length = 0;
+    heldKinds.clear();
+    items = [];
+    emit();
   },
 
   /** Replace every activity of one kind at once (the crew, the waiting runs), keeping the rest. */
@@ -125,9 +178,9 @@ export const island = {
   reset() {
     for (const t of timers.values()) clearTimeout(t);
     timers.clear();
+    expiry.clear();
     items = [];
     said.clear();
-    standing = true;
     emit();
   },
 };

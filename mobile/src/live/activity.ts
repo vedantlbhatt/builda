@@ -372,6 +372,28 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
  * that the end then killed, or wrote its memory back over the cleared one, and the next
  * link's run reported "0 started" against a card that no longer existed.
  */
+/**
+ * Before signing out or deleting the account, while the account's credential still works: every
+ * card ends and the server forgets every push token this phone gave it, the session cards', the
+ * drop cards' and the demo cards' (push to start included). FOUND IN REVIEW: sign out cleared the
+ * credential first, so the forgetting calls failed unheard and the server kept pushing the old
+ * account's drops to this phone's Lock Screen under the next account.
+ */
+export async function forgetPushBeforeSignOut(): Promise<void> {
+  await endAllLiveActivities();
+  const mod = native();
+  try {
+    await mod?.setDropPush?.(false, ENVIRONMENT);
+  } catch {
+    // Nothing to forget, or no module in this build.
+  }
+  try {
+    await mod?.setDemoPush?.(false, ENVIRONMENT);
+  } catch {
+    // Same.
+  }
+}
+
 export function endAllLiveActivities(): Promise<void> {
   const run = queue.then(endAll, endAll);
   queue = run.catch(() => undefined);

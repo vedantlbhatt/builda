@@ -294,24 +294,24 @@ export function demoFor(s: DemoState, key: string | null): DemoLoad {
 // ------------------------------------------------------------------ no demo yet
 
 /**
- * A project with no demo shows one empty print that says how to make one, in plain words: never a
- * spinner and never a stock picture (docs/demos.md). The two commands are the Mac's own
- * (`python -m capture demo`, then `--publish`), set in the machine's type so they can be copied.
+ * A project with no demo shows one empty print that says how to get one, in plain words: never a
+ * spinner and never a stock picture (docs/demos.md). The phone can ask the Mac for one now (the
+ * ship kit's request, `ShipKitDoor` right under the print on the project page), so that is what
+ * the print says first; the Mac's own two commands stay on the page for the terminal, set in the
+ * machine's type so they can be copied. The door's print is too small for commands and says only
+ * where to ask: a command printed on a card you cannot type into is homework, not a door.
  */
 export const EMPTY_DEMO = {
   title: 'No demo yet',
-  lead: 'Your Mac makes one: it runs the app, films it, and checks every frame for names and keys before anything leaves. In the project’s folder:',
+  lead: 'Your Mac makes one: it runs the app, films it, and checks every frame for names and keys before anything leaves. Ask for one just below, or in the project’s folder:',
   make: 'python -m capture demo',
   then: 'Then send it here, after it shows you every file:',
   publish: 'python -m capture demo --publish',
-  /** The door's print is small: the same two steps, shorter. */
+  /** The door's print is small: where to ask, and nothing to type. */
   doorTitle: 'No demo yet',
-  doorLead: 'On your Mac:',
-  /** The command on two lines, broken where a narrow print can hold it. */
-  doorMake: ['python -m', 'capture demo'],
-  doorThen: 'then add',
-  doorPublish: '--publish',
-  a11y: 'No demo yet. On your Mac, run python -m capture demo in the project folder, then python -m capture demo --publish.',
+  doorLead: 'Your Mac films one',
+  doorThen: 'when you ask on the project page.',
+  a11y: 'No demo yet. Ask your Mac for one on the project page, or run python -m capture demo in the project folder, then python -m capture demo --publish.',
 } as const;
 
 // ------------------------------------------------------------------ where the video sits

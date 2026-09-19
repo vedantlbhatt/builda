@@ -273,13 +273,18 @@ describe('the gallery', () => {
 // ------------------------------------------------------------------ 3. no demo yet
 
 describe('no demo yet', () => {
-  test('the empty print says how to make one, in the Mac\'s own two commands', () => {
+  test('the empty print says where to ask first, and keeps the Mac\'s own two commands for the terminal', () => {
     expect(EMPTY_DEMO.make).toBe('python -m capture demo');
     expect(EMPTY_DEMO.publish).toBe('python -m capture demo --publish');
-    expect(EMPTY_DEMO.doorMake.join(' ')).toBe(EMPTY_DEMO.make);
-    expect(EMPTY_DEMO.doorPublish).toBe('--publish');
+    expect(EMPTY_DEMO.lead).toContain('Ask for one');
     expect(EMPTY_DEMO.a11y).toContain(EMPTY_DEMO.make);
     expect(EMPTY_DEMO.a11y).toContain(EMPTY_DEMO.publish);
+  });
+
+  test('the door print has nothing to type: a command on a card you cannot type into is homework', () => {
+    const door = [EMPTY_DEMO.doorTitle, EMPTY_DEMO.doorLead, EMPTY_DEMO.doorThen].join(' ');
+    expect(door).not.toMatch(/python|capture demo|--publish/);
+    expect(door).toContain('project page');
   });
 
   test('plain words: no dash, no spinner word, no stock picture', () => {

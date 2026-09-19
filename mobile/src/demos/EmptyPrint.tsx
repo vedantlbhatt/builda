@@ -1,7 +1,7 @@
 /**
  * A project with no demo yet: one empty print that says how to make one, in plain words, never a
  * spinner and never a stock picture (docs/demos.md). On a door it is a blank dark print lying on
- * the band, the two steps written on it. On the page it is an undeveloped print, the project's
+ * the band, saying where to ask for one. On the page it is an undeveloped print, the project's
  * hue as react-bits Dither's field (through its port, `src/ui/bits/backgrounds/FieldDither.tsx`,
  * which keeps David Haz's notice) held still, beside the two commands, each one copyable.
  */
@@ -30,16 +30,8 @@ export function DoorEmptyPrint({ width, height }: { width: number; height: numbe
       <Text allowFontScaling={false} style={styles.doorWords}>
         {EMPTY_DEMO.doorLead}
       </Text>
-      {EMPTY_DEMO.doorMake.map((line) => (
-        <Text key={line} allowFontScaling={false} numberOfLines={1} style={styles.doorCode}>
-          {line}
-        </Text>
-      ))}
-      <Text allowFontScaling={false} style={[styles.doorWords, { marginTop: 4 }]}>
+      <Text allowFontScaling={false} style={styles.doorWords}>
         {EMPTY_DEMO.doorThen}
-      </Text>
-      <Text allowFontScaling={false} numberOfLines={1} style={styles.doorCode}>
-        {EMPTY_DEMO.doorPublish}
       </Text>
     </View>
   );
@@ -82,7 +74,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   doorTitle: { fontSize: 14, lineHeight: 17, fontWeight: '800', letterSpacing: -0.2, color: GROUND.text, marginBottom: 'auto' },
-  doorWords: { fontSize: 11, lineHeight: 14, fontWeight: '500', color: GROUND.dim },
+  doorWords: { fontSize: 12, lineHeight: 15, fontWeight: '500', color: GROUND.dim },
   doorCode: { fontFamily: MONO_FAMILY, fontSize: 10.5, lineHeight: 14, fontWeight: '600', color: GROUND.text },
   page: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   pagePrint: { borderRadius: SHAPE.mark, borderCurve: 'continuous', overflow: 'hidden', transform: [{ rotate: '-3deg' }] },

@@ -28,6 +28,7 @@ import { desktopTabs } from '../src/desktop/tabs';
 import {
   EAR,
   EXPANDED_W,
+  activitiesOf,
   PILL,
   PRIORITY,
   boxFor,
@@ -44,6 +45,8 @@ import {
   type Activity,
 } from '../src/desktop/island/model';
 import * as islandMotion from '../src/desktop/island/motion';
+import { crewFor } from '../src/live/crew';
+import { missionSample } from '../src/live/mission';
 import { STATE_INK } from '../src/desktop/island/palette';
 import { parsePairingCode } from '../src/pairing/parse';
 import { tokens } from '../src/generated/tokens';
@@ -213,6 +216,47 @@ describe('the island', () => {
     expect(lead([])).toBeNull();
   });
 
+  test("over the Now tab's own sample rows: the run that needs you leads, and the crew is everyone still running", () => {
+    const now = Date.parse('2026-09-19T15:00:00Z');
+    const sample = missionSample('grid', now);
+    const acts = activitiesOf({ live: sample.live, crew: crewFor(sample.live), drops: [], moves: [], names: null, finished: [], nowMs: now });
+    const top = lead(acts);
+    expect(top?.kind).toBe('needsYou');
+    const crew = acts.find((a) => a.kind === 'crew') as Extract<Activity, { kind: 'crew' }> | undefined;
+    expect(crew).toBeDefined();
+    // Nothing finished or stale rides in the crew, and the one waiting wears the waiting face.
+    const ids = new Set(sample.live.map((s) => s.id));
+    for (const m of crew!.members) expect(ids.has(m.sessionId)).toBe(true);
+    expect(crew!.members.some((m) => m.state === 'waiting')).toBe(true);
+    // No live rows, no drops: the island has nothing to say, and is not there.
+    expect(lead(activitiesOf({ live: [], crew: new Map(), drops: [], moves: [], names: null, finished: [], nowMs: now }))).toBeNull();
+  });
+
+  test('a reel still being read is the island; one planned an hour ago is not', () => {
+    const now = Date.parse('2026-09-19T15:00:00Z');
+    const drop = (status: 'resolving' | 'planned', resolvedMinAgo: number | null) => ({
+      id: `d-${status}`,
+      url: 'https://www.instagram.com/reel/abc',
+      platform: 'instagram',
+      status,
+      kind: null,
+      title: 'A reel',
+      summary: null,
+      thumbnail_url: null,
+      refusal: null,
+      resolution: null,
+      created_at: new Date(now - 90 * 60_000).toISOString(),
+      resolved_at: resolvedMinAgo === null ? null : new Date(now - resolvedMinAgo * 60_000).toISOString(),
+      archived_at: null,
+    });
+    const reading = activitiesOf({ live: [], crew: new Map(), drops: [drop('resolving', null)] as never, moves: [], names: null, finished: [], nowMs: now });
+    expect(lead(reading)).toMatchObject({ kind: 'drop', phase: 'reading', host: 'instagram.com' });
+    const old = activitiesOf({ live: [], crew: new Map(), drops: [drop('planned', 60)] as never, moves: [], names: null, finished: [], nowMs: now });
+    expect(lead(old)).toBeNull();
+    const fresh = activitiesOf({ live: [], crew: new Map(), drops: [drop('planned', 1)] as never, moves: [], names: null, finished: [], nowMs: now });
+    expect(lead(fresh)).toMatchObject({ kind: 'drop', phase: 'planned' });
+  });
+
   test('on a notched Mac it grows out of the notch; elsewhere it is a pill with room for words', () => {
     const notch = { width: 200, height: 38 };
     expect(boxFor('hidden', notch, 150)).toEqual({ w: 200, h: 38, r: 19 });
@@ -238,7 +282,8 @@ describe('the island', () => {
 
   test('the reel wheel and the crew face', () => {
     const d = drop as Extract<Activity, { kind: 'drop' }>;
-    expect(dropSteps(d)).toEqual({ rows: ['Sent to your Mac', 'Reading instagram.com', '0 moves ready'], index: 1 });
+    expect(dropSteps(d)).toEqual({ rows: ['Sent to your Mac', 'Reading instagram.com', 'What you could do with it'], index: 1 });
+    expect(dropSteps({ ...d, phase: 'planned', moves: 3 }).rows[2]).toBe('3 moves ready');
     expect(dropSteps({ ...d, phase: 'planned', moves: 1 }).rows[2]).toBe('1 move ready');
     expect(dropPhase({ status: 'waiting' })).toBe('sent');
     expect(dropPhase({ status: 'resolving' })).toBe('reading');

@@ -1,6 +1,6 @@
 /**
  * What the desktop island says, and how big it is while it says it. Pure (no React, no clock:
- * every function takes `nowMs`), so `__tests__/desktopIsland.test.ts` holds every rule in bun.
+ * every function takes `nowMs`), so `__tests__/desktop.test.ts` holds every rule in bun.
  *
  * THE RULE (docs/motion.md, "The island is one object, everywhere"): the island carries what is
  * happening somewhere else, on your behalf, that you may need to act on before you would
@@ -79,7 +79,15 @@ export function dropPhase(d: Pick<DropRow, 'status'>): DropPhase {
 
 /** The wheel for a drop being read: the three steps and where it is. */
 export function dropSteps(a: Extract<Activity, { kind: 'drop' }>): { rows: string[]; index: number } {
-  const done = a.phase === 'refused' ? 'Nothing to do with this one' : a.moves === 1 ? '1 move ready' : `${a.moves} moves ready`;
+  // Before the plan lands the last step is what is coming, not a count of nothing.
+  const done =
+    a.phase === 'refused'
+      ? 'Nothing to do with this one'
+      : a.phase !== 'planned'
+        ? 'What you could do with it'
+        : a.moves === 1
+          ? '1 move ready'
+          : `${a.moves} moves ready`;
   const rows = ['Sent to your Mac', `Reading ${a.host}`, done];
   return { rows, index: a.phase === 'sent' ? 0 : a.phase === 'reading' ? 1 : 2 };
 }

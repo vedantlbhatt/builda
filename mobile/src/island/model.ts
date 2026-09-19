@@ -125,6 +125,16 @@ export function lead(activities: readonly Activity[]): Activity | null {
 export type Mode = 'hidden' | 'compact' | 'toast' | 'expanded';
 
 /**
+ * What the drawn island may show. Beside a hardware island, everything. With none to sit beside
+ * (a desktop window, a phone with a notch or none, an SE), only the passing beats: a standing
+ * state sits compact beside the hardware, and with no hardware it was a black pill drawn over the
+ * status bar with the clock inside it (FOUND ON AN iPHONE SE SIMULATOR).
+ */
+export function shownActivities(acts: readonly Activity[], hasHardware: boolean): Activity[] {
+  return hasHardware ? [...acts] : acts.filter((a) => restingMode(a) === 'toast');
+}
+
+/**
  * The size an activity takes when nobody has touched it. A transient beat is a toast: it has a
  * sentence to say and then goes. A standing one sits compact beside the hardware island with its
  * two ears. Expanded is only ever a finger's decision.

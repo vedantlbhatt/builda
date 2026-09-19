@@ -11,11 +11,13 @@ import {
   minutesLabel,
   PRIORITY,
   restingMode,
+  shownActivities,
   spoken,
   type Activity,
   type CrewMember,
 } from '../src/island/model';
 import { island } from '../src/island/store';
+import { islandOf } from '../src/island/hardware';
 
 const hw = { x: 201, y: 29.5, width: 125, height: 37 };
 
@@ -194,5 +196,20 @@ describe("a desktop window's tour", () => {
       // Each step leaves only passing activities up: a toast, never the crew or a wait.
       for (const a of shown) expect(restingMode(a)).toBe('toast');
     }
+  });
+});
+
+describe('a phone with no Dynamic Island', () => {
+  test('an SE or a notched phone has no hardware island; a 16 Pro has one', () => {
+    expect(islandOf(375, 20)).toBeNull();
+    expect(islandOf(390, 47)).toBeNull();
+    expect(islandOf(402, 62)).not.toBeNull();
+  });
+
+  test('with none, only the passing beats: never the crew or a wait drawn as a pill over the clock', () => {
+    const notice: Activity = { kind: 'notice', id: 'n', text: 'hi', state: 'done', animal: 'cat', ink: '#F54BB8' };
+    expect(shownActivities([crew, waiting, notice], false).map((a) => a.kind)).toEqual(['notice']);
+    expect(shownActivities([crew, waiting, notice], true)).toHaveLength(3);
+    expect(lead(shownActivities([crew, waiting], false))).toBeNull();
   });
 });

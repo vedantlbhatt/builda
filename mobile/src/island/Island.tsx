@@ -39,6 +39,7 @@ import {
   lead,
   minutesLabel,
   restingMode,
+  shownActivities,
   spoken,
   type Activity,
   type HardwareIsland,
@@ -94,8 +95,8 @@ export function Island() {
   // sits compact beside a hardware island, and with none to sit beside it was a black pill drawn
   // over the status bar with the clock inside it. FOUND ON AN iPHONE SE SIMULATOR. The running
   // work is on Now and the Lock Screen there, as it is on every such phone.
-  const passingOnly = desk || hardware === null;
-  const shown = useMemo(() => (passingOnly ? acts.filter((a) => restingMode(a) === 'toast') : acts), [acts, passingOnly]);
+  const onHardware = !desk && hardware !== null;
+  const shown = useMemo(() => shownActivities(acts, onHardware), [acts, onHardware]);
   const top = lead(shown);
   const mode: Mode = top ? (expanded && canExpand(top) ? 'expanded' : restingMode(top)) : 'hidden';
 

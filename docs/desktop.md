@@ -285,7 +285,8 @@ An unattended build signs ad hoc (`-c.mac.identity=null`), and a capture run kee
 memory (`tokens.createMemoryStore`). Windows: `--win --dir --x64` rebuilt at 07:15 with tonight's shell (Save image and the kit's Save in
 its `app.asar`); `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
 `Builda.exe`, a 115 MB `Builda Setup 0.1.0.exe`, unsigned); neither has been RUN, because there
-is no Windows machine here. Linux: configured (AppImage), not built.
+is no Windows machine here. Linux: `--linux --dir --x64` builds (07:20, an x86-64 ELF `builda-desktop`),
+not run.
 
 ## Screenshots
 

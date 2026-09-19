@@ -1,3 +1,4 @@
+import BuilderModel
 import SwiftUI
 
 /// The face's state: colour on the character, not a label (docs/motion.md, rule 5).
@@ -34,16 +35,19 @@ public enum FaceState: String, CaseIterable, Sendable {
         }
     }
 
-    /// The soft light behind it.
+    /// The soft light behind it: the state's colour from `DesignTokens.Spectrum.island`, the table
+    /// the phone's `stateColor` reads, so working is the same cobalt in the notch and on the phone.
+    /// Idle has no state colour (on the phone it is the creature's own hue); here it is a pale
+    /// neutral, because the notch face is not tied to one creature.
     public var glow: RGBA {
         switch self {
         case .idle: return RGBA(r: 200, g: 208, b: 220, a: 0.55)
-        case .working: return RGBA(r: 90, g: 160, b: 255, a: 0.75)
-        case .thinking: return RGBA(r: 150, g: 110, b: 255, a: 0.75)
-        case .waiting: return RGBA(r: 255, g: 179, b: 0, a: 0.8)
-        case .error: return RGBA(r: 255, g: 80, b: 70, a: 0.75)
-        case .done: return RGBA(r: 50, g: 215, b: 120, a: 0.7)
-        case .sleep: return RGBA(r: 120, g: 120, b: 160, a: 0.45)
+        case .working: return RGBA(token: "working", a: 0.75)
+        case .thinking: return RGBA(token: "thinking", a: 0.75)
+        case .waiting: return RGBA(token: "waiting", a: 0.8)
+        case .error: return RGBA(token: "error", a: 0.75)
+        case .done: return RGBA(token: "done", a: 0.7)
+        case .sleep: return RGBA(token: "sleep", a: 0.45)
         }
     }
 
@@ -76,6 +80,12 @@ public struct RGBA: VectorArithmetic, Sendable {
     public init(hex: UInt32, a: Double = 1) {
         self.init(
             r: Double((hex >> 16) & 0xFF), g: Double((hex >> 8) & 0xFF), b: Double(hex & 0xFF), a: a)
+    }
+
+    /// An island state's colour from the generated tokens (design/tokens.json `spectrum.island`).
+    init(token state: String, a: Double) {
+        let c = DesignTokens.Spectrum.island[state] ?? SRGB(r: 1, g: 1, b: 1)
+        self.init(unit: c.r, c.g, c.b, a)
     }
 
     private init(unit r: Double, _ g: Double, _ b: Double, _ a: Double) {

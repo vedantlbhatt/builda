@@ -528,7 +528,7 @@ final class AppStore {
             if let title, !title.isEmpty, !chore {
                 headline = title
             } else if lines > 0 {
-                headline = "+\(lines) lines"
+                headline = "+\(lines.formatted()) lines"
             } else {
                 headline = shortDuration(active)
             }

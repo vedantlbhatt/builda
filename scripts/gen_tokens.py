@@ -362,6 +362,19 @@ def gen_swift(t: dict) -> str:
         for name, h in clean(spectrum["hues"]).items()
     )
     creature_lines = ", ".join(f'"{c}": "{h}"' for c, h in clean(spectrum["creature"]).items())
+
+    # The island's states, resolved to the dark ink: the Mac's face glow, wash and aura read the
+    # same table the phone's `stateColor` does, so a state is one colour on every surface.
+    def island_ink(ref: str) -> str:
+        if "." not in ref:
+            return spectrum["hues"][ref]["dark"]
+        group_name, key = ref.split(".")
+        return t[group_name][key]["dark"]
+
+    island_lines = "\n".join(
+        '            "{}": SRGB(r: {}, g: {}, b: {}),'.format(k, *hex_to_rgb(island_ink(v))) + f"  // {v}"
+        for k, v in clean(spectrum.get("island", {})).items()
+    )
     ring = ", ".join(f'"{c}"' for c in spectrum["crew"]["ring"])
     return f"""{BANNER}
 
@@ -458,6 +471,10 @@ public enum DesignTokens {{
         ]
         public static let creature: [String: String] = [{creature_lines}]
         public static let crewRing: [String] = [{ring}]
+        /// An island state's colour: working, thinking, reading, waiting, error, done, sleep.
+        public static let island: [String: SRGB] = [
+{island_lines}
+        ]
     }}
 }}
 """

@@ -16,21 +16,24 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Defs, RadialGradient, Rect, Stop, Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import type { Animal } from '../pixel/animals';
 import { useReduceMotion } from '../ui/motion';
-import { blinkGap, faceCells } from './faceModel';
+import { blinkCells, blinkGap, cellsPath, faceCells } from './faceModel';
 import { BLINK, BREATHE_BACK_MS, BREATHE_OUT_MS } from './spec';
 import { SPRING } from './springs';
 import { EYES_FOR, stateColor, type FaceState } from './states';
 
 const GRID = 16;
+/** Breaths after an arrival or a change of state; then the glow holds still. */
+const BREATHS = 3;
 
 export interface FaceProps {
   animal: Animal;
@@ -50,34 +53,29 @@ export function Face({ animal, state, ink, size, glow = true, alive = true, styl
   const reduced = useReduceMotion();
   const px = Math.max(1, Math.floor(size / GRID));
   const drawn = px * GRID;
-  const [blinking, setBlinking] = useState(false);
-  const cells = useMemo(() => faceCells(animal, EYES_FOR[state], blinking), [animal, state, blinking]);
+  const eyes = EYES_FOR[state];
+  // The body is ONE path (`cellsPath`), and a blink is a second tiny path over the open eye cells
+  // whose opacity a shared value flips: no React render per blink. MEASURED (the simulator, Now
+  // idle, 20 s): with a Rect per cell and a state change per blink the app sat at 3.8% median
+  // with 17% spikes on every blink; the build before the island sat at 0.
+  const body = useMemo(() => cellsPath(faceCells(animal, eyes, false)), [animal, eyes]);
+  const lids = useMemo(() => cellsPath(blinkCells(eyes)), [eyes]);
+  const shut = useSharedValue(0);
 
   // Blink: a random gap, a short close, and sometimes a second one straight after.
   useEffect(() => {
     if (!alive || reduced || state === 'sleep') return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let live = true;
+    const close = BLINK.closeMs + BLINK.openMs / 2;
     const schedule = () => {
       timer = setTimeout(() => {
         if (!live) return;
         const twice = Math.random() < BLINK.double;
-        setBlinking(true);
-        timer = setTimeout(() => {
-          if (!live) return;
-          setBlinking(false);
-          if (twice) {
-            timer = setTimeout(() => {
-              if (!live) return;
-              setBlinking(true);
-              timer = setTimeout(() => {
-                if (!live) return;
-                setBlinking(false);
-                schedule();
-              }, BLINK.closeMs + BLINK.openMs / 2);
-            }, BLINK.openMs * 1.6);
-          } else schedule();
-        }, BLINK.closeMs + BLINK.openMs / 2);
+        shut.value = twice
+          ? withSequence(withTiming(1, { duration: 0 }), withDelay(close, withTiming(0, { duration: 0 })), withDelay(BLINK.openMs * 1.6, withTiming(1, { duration: 0 })), withDelay(close, withTiming(0, { duration: 0 })))
+          : withSequence(withTiming(1, { duration: 0 }), withDelay(close, withTiming(0, { duration: 0 })));
+        schedule();
       }, blinkGap(Math.random(), BLINK.minGapMs, BLINK.maxGapMs));
     };
     schedule();
@@ -85,16 +83,23 @@ export function Face({ animal, state, ink, size, glow = true, alive = true, styl
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [alive, reduced, state]);
+  }, [alive, reduced, state, shut]);
+
+  const lidStyle = useAnimatedStyle(() => ({ opacity: shut.value }));
 
   return (
     <View style={[{ width: drawn, height: drawn, alignItems: 'center', justifyContent: 'center' }, style]}>
       {glow ? <Glow color={stateColor(state, ink)} size={drawn} breathe={alive && !reduced && state !== 'sleep'} reduced={reduced} /> : null}
       <Svg width={drawn} height={drawn} viewBox={`0 0 ${GRID} ${GRID}`} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {cells.map((c) => (
-          <Rect key={`${c.x}.${c.y}`} x={c.x} y={c.y} width={1.02} height={1.02} fill={ink} />
-        ))}
+        <Path d={body} fill={ink} />
       </Svg>
+      {alive && lids ? (
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, lidStyle]}>
+          <Svg width={drawn} height={drawn} viewBox={`0 0 ${GRID} ${GRID}`}>
+            <Path d={lids} fill={ink} />
+          </Svg>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -131,15 +136,20 @@ function Glow({ color, size, breathe, reduced }: { color: string; size: number; 
       breath.value = withTiming(0, { duration: 300 });
       return;
     }
+    // A few breaths after it arrives or changes colour, then rest. MEASURED (2026-09-19, the
+    // simulator, Now idle for 20 s): the app sat at 24.5% of a core with every face and shimmer
+    // looping forever, against 14.4% for the build before them. An island is a thing that moves
+    // when something happens, not a screensaver; the blink keeps it alive for the price of a
+    // state change every few seconds.
     breath.value = withRepeat(
       withSequence(
         withTiming(1, { duration: BREATHE_OUT_MS, easing: Easing.inOut(Easing.quad) }),
         withTiming(0, { duration: BREATHE_BACK_MS, easing: Easing.inOut(Easing.quad) }),
       ),
-      -1,
+      BREATHS,
     );
     return () => cancelAnimation(breath);
-  }, [breathe, breath]);
+  }, [breathe, breath, color]);
 
   const box = size * 2.2;
   const outer = useAnimatedStyle(() => ({

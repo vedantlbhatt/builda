@@ -11,13 +11,15 @@
  */
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, type TextStyle } from 'react-native';
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { useReduceMotion } from '../ui/motion';
 import { SHIMMER_MS } from './spec';
 
 /** How wide the light is, in points. Wide enough to cover two letters at 15 pt. */
 const BAND = 34;
+/** Passes when the line arrives; then it rests, bright. */
+const PASSES = 3;
 
 export function Shimmer({
   text,
@@ -36,25 +38,33 @@ export function Shimmer({
 }) {
   const reduced = useReduceMotion();
   const [w, setW] = useState(0);
+  const [rested, setRested] = useState(false);
   const x = useSharedValue(-BAND);
 
   useEffect(() => {
     cancelAnimation(x);
+    setRested(false);
     if (!active || reduced || w === 0) return;
     x.value = -BAND;
     // A pause between passes: continuous light reads as a progress bar; a pass, a rest, a pass
-    // reads as something alive.
+    // reads as something alive. A few passes when the line arrives, then it rests bright: a line
+    // that shimmers forever costs a frame every frame for news that is minutes old (Face.tsx has
+    // the measurement).
     x.value = withRepeat(
       withDelay(500, withTiming(w + BAND, { duration: SHIMMER_MS, easing: Easing.inOut(Easing.cubic) })),
-      -1,
+      PASSES,
+      false,
+      (done) => {
+        if (done) runOnJS(setRested)(true);
+      },
     );
     return () => cancelAnimation(x);
-  }, [active, reduced, w, x]);
+  }, [active, reduced, w, x, text]);
 
   const windowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   const innerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -x.value }] }));
 
-  const still = !active || reduced;
+  const still = !active || reduced || rested;
   return (
     <View>
       <Text numberOfLines={1} onLayout={(e) => setW(Math.ceil(e.nativeEvent.layout.width))} style={[style, { color: still && active ? bright : dim }]}>

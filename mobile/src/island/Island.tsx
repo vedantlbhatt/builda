@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 
+import { useIslandHost } from '../desktop/islandHost';
 import { islandOf } from './hardware';
 import { tokens } from '../generated/tokens';
 import { Face, RippleItem, Wash, Wheel, Words, stateColor, useMorph, withAlpha, RAIL_STAGGER_MS } from '../motion';
@@ -56,6 +57,13 @@ const DEL = tokens.data.del.dark;
 
 /** Untouched for this long, an expanded island folds back. */
 const FOLD_MS = 7000;
+/**
+ * A desktop window's island hangs this far below the window's top edge: clear of the edge it grows
+ * out of, and above a page's large title (which starts 10 points further down).
+ */
+const DESK_TOP = 8;
+/** The strip a desktop toast is centred in: wider than the widest toast (382) with room to spare. */
+const DESK_SPAN = 440;
 /** The crew's wheel steps to the next session this often while expanded. */
 const CREW_STEP_MS = 2400;
 
@@ -71,10 +79,19 @@ export function Island() {
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+  // Null on a phone (a constant), so everything below is the phone's island exactly.
+  const host = useIslandHost();
+  const desk = host?.kind === 'pane';
   const hardware = islandOf(width, insets.top);
-  const hw: HardwareIsland = hardware ?? { x: width / 2, y: Math.max(14, insets.top / 2), width: 120, height: 34 };
+  // A desktop window has no camera: a zero height "hardware island" under the top edge, so a toast
+  // grows out of a line and its words need no room under a camera.
+  const hw: HardwareIsland = desk
+    ? { x: host.centerX, y: DESK_TOP, width: 120, height: 0 }
+    : (hardware ?? { x: width / 2, y: Math.max(14, insets.top / 2), width: 120, height: 34 });
 
-  const top = lead(acts);
+  // On a desktop only the passing beats: the standing states belong to the desktop island.
+  const shown = useMemo(() => (desk ? acts.filter((a) => restingMode(a) === 'toast') : acts), [acts, desk]);
+  const top = lead(shown);
   const mode: Mode = top ? (expanded && canExpand(top) ? 'expanded' : restingMode(top)) : 'hidden';
 
   // Minutes only, so a quarter minute tick is enough and costs nothing. The clock is read again
@@ -156,13 +173,15 @@ export function Island() {
   const wash = top ? washFor(top) : null;
   const visible = mode !== 'hidden' || hardware !== null;
 
+  if (host?.kind === 'off') return null;
+
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {/* The system island hides the status bar while it is big; so does this one, or the clock
           and the battery are drawn on top of the words. */}
       <StatusBar style="light" hidden={mode === 'toast' || mode === 'expanded'} animated />
       {mode === 'expanded' ? <Pressable accessibilityLabel="Close the island" style={StyleSheet.absoluteFill} onPress={() => setExpanded(false)} /> : null}
-      <View pointerEvents="box-none" style={[styles.anchor, { top: hw.y - hw.height / 2 }]}>
+      <View pointerEvents="box-none" style={[styles.anchor, { top: hw.y - hw.height / 2 }, desk ? { left: hw.x - DESK_SPAN / 2, right: undefined, width: DESK_SPAN } : null]}>
         <Pressable
           disabled={mode === 'hidden'}
           onPress={onPress}
@@ -183,14 +202,14 @@ export function Island() {
             {layers.prev && layers.prev.a ? (
               <Animated.View pointerEvents="none" style={[styles.layer, contentOut]}>
                 <Placed box={layers.prev.box}>
-                  <Content a={layers.prev.a} mode={layers.prev.mode} now={now} accentInk={accent.ink} onOpen={open} />
+                  <Content a={layers.prev.a} mode={layers.prev.mode} now={now} accentInk={accent.ink} onOpen={open} camera={!desk} />
                 </Placed>
               </Animated.View>
             ) : null}
             {top ? (
               <Animated.View style={[styles.layer, contentIn]}>
                 <Placed box={target}>
-                  <Content a={top} mode={mode} now={now} accentInk={accent.ink} onOpen={open} />
+                  <Content a={top} mode={mode} now={now} accentInk={accent.ink} onOpen={open} camera={!desk} />
                 </Placed>
               </Animated.View>
             ) : null}
@@ -258,20 +277,36 @@ function washFor(a: Activity): { color: string; from: 'top' | 'bottom' | 'left' 
   }
 }
 
-function Content({ a, mode, now, accentInk, onOpen }: { a: Activity; mode: Mode; now: number; accentInk: string; onOpen: (a: Activity) => void }) {
+function Content({
+  a,
+  mode,
+  now,
+  accentInk,
+  onOpen,
+  camera,
+}: {
+  a: Activity;
+  mode: Mode;
+  now: number;
+  accentInk: string;
+  onOpen: (a: Activity) => void;
+  /** False on a desktop window: no camera, so a toast's words start at its top. */
+  camera: boolean;
+}) {
+  const flat = camera ? null : styles.toastFlat;
   switch (a.kind) {
     case 'crew':
       return mode === 'expanded' ? <CrewExpanded a={a} now={now} /> : <CrewCompact a={a} now={now} />;
     case 'needsYou':
       return mode === 'expanded' ? <WaitingExpanded a={a} now={now} onOpen={onOpen} /> : <WaitingCompact a={a} now={now} />;
     case 'drop':
-      return <DropToast a={a} />;
+      return <DropToast a={a} flat={flat} />;
     case 'shipped':
-      return <ShippedToast a={a} />;
+      return <ShippedToast a={a} flat={flat} />;
     case 'demo':
       return <DemoContent a={a} mode={mode} />;
     case 'notice':
-      return <NoticeToast a={a} accentInk={accentInk} />;
+      return <NoticeToast a={a} accentInk={accentInk} flat={flat} />;
   }
 }
 
@@ -386,10 +421,12 @@ function WaitingExpanded({ a, now, onOpen }: { a: Extract<Activity, { kind: 'nee
 
 // ─── toasts ──────────────────────────────────────────────────────────────────────────────────
 
-function DropToast({ a }: { a: Extract<Activity, { kind: 'drop' }> }) {
+type Flat = typeof styles.toastFlat | null;
+
+function DropToast({ a, flat }: { a: Extract<Activity, { kind: 'drop' }>; flat: Flat }) {
   const steps = dropSteps(a);
   return (
-    <View style={styles.toast}>
+    <View style={[styles.toast, flat]}>
       {a.thumbnail ? (
         <Image source={{ uri: a.thumbnail }} style={styles.poster} contentFit="cover" />
       ) : (
@@ -406,9 +443,9 @@ function DropToast({ a }: { a: Extract<Activity, { kind: 'drop' }> }) {
   );
 }
 
-function ShippedToast({ a }: { a: Extract<Activity, { kind: 'shipped' }> }) {
+function ShippedToast({ a, flat }: { a: Extract<Activity, { kind: 'shipped' }>; flat: Flat }) {
   return (
-    <View style={styles.toast}>
+    <View style={[styles.toast, flat]}>
       <Face animal={a.animal} state="done" ink={a.ink} size={32} />
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={[styles.kicker, { color: ADD }]}>Shipped</Text>
@@ -418,9 +455,9 @@ function ShippedToast({ a }: { a: Extract<Activity, { kind: 'shipped' }> }) {
   );
 }
 
-function NoticeToast({ a, accentInk }: { a: Extract<Activity, { kind: 'notice' }>; accentInk: string }) {
+function NoticeToast({ a, accentInk, flat }: { a: Extract<Activity, { kind: 'notice' }>; accentInk: string; flat: Flat }) {
   return (
-    <View style={styles.toast}>
+    <View style={[styles.toast, flat]}>
       <Face animal={a.animal} state={a.state} ink={a.ink || accentInk} size={32} />
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Words text={a.text} style={[styles.body, { color: INK }]} />
@@ -485,6 +522,8 @@ const styles = StyleSheet.create({
   openButton: { height: 40, paddingHorizontal: 18, borderRadius: 20, borderCurve: 'continuous', backgroundColor: AMBER, alignItems: 'center', justifyContent: 'center' },
   buttonText: { fontSize: 15, fontWeight: '700' },
   toast: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 34, paddingBottom: 6 },
+  // The same toast with no camera above its words: 6 top and bottom in a 58 point box.
+  toastFlat: { paddingTop: 6 },
   poster: { width: 32, height: 46, borderRadius: 7, borderCurve: 'continuous' },
   chev: { fontSize: 26, fontWeight: '300', marginLeft: 6 },
   demoDot: { width: 8, height: 8, borderRadius: 4, borderCurve: 'continuous' },

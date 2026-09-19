@@ -50,7 +50,8 @@ import { GROUND, ON_HUE } from '../src/insights/palette';
 import { Block, RevealPage, Section, usePageReveal } from '../src/insights/reveal';
 import { useRevealScroll } from '../src/insights/RevealScroll';
 import { AccentButton, WordLink } from '../src/nav/chrome';
-import { playIslandTour } from '../src/island/demo';
+import { PASSING_STEPS, playIslandTour } from '../src/island/demo';
+import { useIsDesktop } from '../src/desktop/formFactor';
 import { getLocalName } from '../src/nav/name';
 import { sendPendingName } from '../src/nav/onboarding';
 import { colourLine, creatureLabel, identityLines, keysCaption } from '../src/nav/settingsCopy';
@@ -110,6 +111,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const accent = useAccent();
+  // Always false on a phone. A desktop window's island shows only the passing states, so its tour
+  // plays only those (`island/demo.ts` PASSING_STEPS).
+  const desktop = useIsDesktop();
   const reduced = useReduceMotion();
   const page = usePageReveal(reduced);
   const { scrollRef, onScroll, onLayout } = useRevealScroll(page, NOTHING);
@@ -363,7 +367,7 @@ export default function SettingsScreen() {
               waiting on you, a reel being read, a demo being cut. This plays each of them once,
               with made up runs, so you know what each one looks like before it means something. */}
           <Chapter title="The island" line="What the black shape at the top of the screen says while you work.">
-            <WordLink title="Play every state once" onPress={() => playIslandTour()} />
+            <WordLink title="Play every state once" onPress={() => playIslandTour(desktop ? PASSING_STEPS : undefined)} />
           </Chapter>
 
           {known ? (

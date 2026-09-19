@@ -23,7 +23,7 @@ import {
   SPIN,
   STAGGER,
 } from '../src/drops/portal';
-import { CARD_H, CARD_W } from '../src/drops/card';
+import { NODE_H, NODE_W } from '../src/drops/force';
 
 describe('the island', () => {
   test('a phone with one gets its measured frame, centred', () => {
@@ -86,14 +86,14 @@ describe('whose turn it is', () => {
 });
 
 describe('what leaves the island', () => {
-  test('a newborn card fits inside the island it came out of', () => {
-    // The whole claim of the effect. A card wider than the slot did not come out of the slot.
-    expect(CARD_W * BORN).toBeLessThan(ISLAND_W);
-    expect(CARD_H * BORN).toBeLessThan(ISLAND_H);
+  test('a newborn node fits inside the island it came out of', () => {
+    // The whole claim of the effect. A frame wider than the slot did not come out of the slot.
+    expect(NODE_W * BORN).toBeLessThan(ISLAND_W);
+    expect(NODE_H * BORN).toBeLessThan(ISLAND_H);
   });
 
-  test('and is still big enough to read as a card', () => {
-    expect(CARD_W * BORN).toBeGreaterThan(8);
+  test('and is still big enough to read as a frame', () => {
+    expect(NODE_W * BORN).toBeGreaterThan(5);
   });
 
   test('it turns more than once, so it reads as a whip and not a wobble', () => {

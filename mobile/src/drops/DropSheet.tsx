@@ -41,7 +41,7 @@ import { T } from '../ui/Text';
 import { TextField } from '../ui/TextField';
 import { commit, select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
-import { hostOf } from './CardView';
+import { hostOf } from './WebNode';
 import { EFFORT_WORD, KIND_WORD, MOVE_TARGET_WORD, PLATFORM_WORD, REFUSAL, readLine, STATUS_LINE } from './copy';
 import { MoveRowView } from './MoveRow';
 import { RecipeSteps } from './RecipeSteps';

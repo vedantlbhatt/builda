@@ -4,10 +4,12 @@
  * The fifth tab, and the only one you arrive at from outside the app: you share a reel in
  * Instagram, Builda opens, and the thumb is already in the middle of the bar.
  *
- * Three things on it and nothing else: the search box, the wall (`Board.tsx`), and the drop you
- * opened (`DropSheet.tsx`). Two ways to see the wall, because the right one depends on how many
- * you have: PILES, which groups them by what they are about, and a GRID, which is every card in
- * order with nothing decided for you. The toggle is two words, not an icon nobody can read.
+ * Three things on it and nothing else: the search line, the web (`WebBoard.tsx`), and the drop you
+ * opened (`DropSheet.tsx`).
+ *
+ * ONE VIEW, no switch. There used to be a PILES / GRID toggle here, which was a decision handed
+ * back to the person twice a day and two half-good boards instead of one good one. The web is the
+ * board now; searching dims what did not match rather than rebuilding it.
  */
 import { useIsFocused } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,36 +18,21 @@ import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } fro
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DropsBoard } from '../../src/drops/Board';
-import { DropCard } from '../../src/drops/CardView';
+import { DropsWeb } from '../../src/drops/WebBoard';
 import { search } from '../../src/drops/cluster';
 import { SearchLine } from '../../src/drops/SearchLine';
 import { drainPending, landShared, pendingCount } from '../../src/drops/intake';
-import { GUTTER } from '../../src/drops/layout';
 import { useBoard } from '../../src/drops/useBoard';
-import { WordToggle } from '../../src/drops/WordToggle';
 import { T } from '../../src/ui/Text';
 import { TextField } from '../../src/ui/TextField';
 import { commit, select } from '../../src/ui/haptics';
 import { useColors } from '../../src/ui/scheme';
 
-type Shape = 'piles' | 'grid';
-
 export default function DropsScreen() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { drops, moves, loading, refresh } = useBoard();
-  const [shape, setShape] = useState<Shape>('piles');
   const [query, setQuery] = useState('');
-  /**
-   * How to put a hand arranged wall back, or null when nobody has moved anything.
-   *
-   * Stored through an updater. `useState`'s setter treats a bare function as "compute the next
-   * state from the last one", so `setUnarrange(fn)` would CALL fn — which here means the board
-   * unarranges itself the instant it reports that it is arranged.
-   */
-  const [unarrange, setUnarrange] = useState<null | (() => void)>(null);
-  const takeUnarrange = useCallback((fn: null | (() => void)) => setUnarrange(() => fn), []);
   const focused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; open?: string }>();
@@ -144,20 +131,6 @@ export default function DropsScreen() {
               <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T>
             ) : null}
           </T>
-          <View style={styles.shape}>
-            {/* Only while there is something to undo. A permanent "reset" on a wall nobody has
-                touched is a control that spends its life telling you about a state you are not
-                in. */}
-            {shape === 'piles' && unarrange ? (
-              <Pressable accessibilityRole="button" hitSlop={10} onPress={unarrange}>
-                <T role="mono" style={{ color: c.textFaint }}>
-                  arranged
-                </T>
-              </Pressable>
-            ) : null}
-            <WordToggle word="PILES" on={shape === 'piles'} onPress={() => setShape('piles')} />
-            <WordToggle word="GRID" on={shape === 'grid'} onPress={() => setShape('grid')} />
-          </View>
         </View>
 
         <View style={styles.search}>
@@ -177,55 +150,11 @@ export default function DropsScreen() {
             await refresh();
           }}
         />
-      ) : shape === 'piles' ? (
-        <DropsBoard
-          drops={drops}
-          moves={moves}
-          onOpenCard={openDrop}
-          only={only}
-          onArranged={takeUnarrange}
-        />
       ) : (
-        <GridWall drops={shown} busy={busy} onOpenCard={openDrop} />
+        <DropsWeb drops={drops} moves={moves} onOpenCard={openDrop} only={only} />
       )}
-    </View>
-  );
-}
 
-/**
- * Every card, in order, two across. The alternative to the piles for anybody who would rather
- * decide for themselves what goes with what.
- */
-function GridWall({
-  drops,
-  busy,
-  onOpenCard,
-}: {
-  drops: ReturnType<typeof useBoard>['drops'];
-  busy: Set<string>;
-  onOpenCard: (id: string) => void;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <ScrollView
-      contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 96 }]}
-      showsVerticalScrollIndicator={false}
-    >
-      {drops.map((d, i) => (
-        <Animated.View key={d.id} entering={FadeIn.duration(200).delay(Math.min(i, 8) * 28)}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={d.title ?? d.url}
-            onPress={() => {
-              select();
-              onOpenCard(d.id);
-            }}
-          >
-            <DropCard drop={d} busy={busy.has(d.id)} scale={1.42} />
-          </Pressable>
-        </Animated.View>
-      ))}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -285,20 +214,15 @@ function Empty({
   );
 }
 
+/** The screen's own side margin. */
+const GUTTER = 16;
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  head: { paddingHorizontal: GUTTER, paddingBottom: 10 },
+  head: { paddingHorizontal: GUTTER, paddingBottom: 12 },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   shape: { flexDirection: 'row', gap: 14 },
   search: { marginTop: 12 },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 16,
-    paddingHorizontal: GUTTER,
-    paddingTop: 4,
-  },
   empty: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32 },
   paste: { marginTop: 26 },
 });

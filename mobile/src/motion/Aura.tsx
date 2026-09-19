@@ -9,7 +9,8 @@
  * It was a sweep through four hues first, the clip's iridescent ring; a multi hue ring turning
  * round a card is the most generated looking thing a screen can wear, and in this app a colour
  * already means a state, so four of them at once said four things. Turned once every
- * `AURA_TURN_MS`. Slow on purpose: a presence, not a spinner. Under Reduce Motion it stands still.
+ * `AURA_TURN_MS`, three times, then it rests. Slow on purpose: a presence, not a spinner. Under
+ * Reduce Motion it stands still.
  */
 import { Canvas, RoundedRect, SweepGradient, vec, BlurMask, Group } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -23,6 +24,14 @@ import { withAlpha } from './states';
 
 /** Where the light sits on the sweep: dark for half the turn, a tail, then the head. */
 const STOPS = [0, 0.45, 0.82, 0.985, 1];
+/**
+ * Turns when it arrives, then the light rests where it began and the faint ring stays. MEASURED
+ * (the simulator, Drops idle with one card being built, 20 one second samples of the app's own
+ * process): a light turning forever cost 8.5% of a core median, and kept costing it from a tab
+ * nobody was looking at, for a move that can wait on the Mac for twenty minutes. The same rule as
+ * the face's breath and the shimmer: it moves when something happens, then it holds still.
+ */
+const TURNS = 3;
 
 export function Aura({
   radius,
@@ -46,7 +55,7 @@ export function Aura({
     cancelAnimation(turn);
     if (!active || reduced) return;
     turn.value = 0;
-    turn.value = withRepeat(withTiming(1, { duration: AURA_TURN_MS, easing: Easing.linear }), -1);
+    turn.value = withRepeat(withTiming(1, { duration: AURA_TURN_MS, easing: Easing.linear }), TURNS);
     return () => cancelAnimation(turn);
   }, [active, reduced, turn]);
 

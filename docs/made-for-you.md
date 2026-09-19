@@ -37,3 +37,13 @@ app's one voice, `src/island/store.ts`), and each opens as a card you can post.
 clipboard, `desktop/src/image.js`). They are made of the app's own pixels: a band in your creature's
 colour with its dithered dissolve, the figure, your creature, and under it the week's days as pixel
 columns or the milestone ladder as pixel squares.
+
+## Not built, and why it matters
+
+Monday's notification is scheduled by the phone, so it exists only if the app was opened at least
+once in a week that already had hours. Someone who builds on the Mac all week and never opens the
+phone gets no notification that Monday (the island still offers the card the next time the app is
+opened, Monday to Wednesday). Closing that needs a server push on Monday morning in each person's
+time zone (the profile has one), once per user per week, through the APNs path `notify.py` already
+uses, with the phone's `week_card` kind (`push/route.ts` routes it). It is a notification a person
+did not ask for, sent from a server, every week: a decision for the owner, not an overnight default.

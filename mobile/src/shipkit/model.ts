@@ -237,6 +237,16 @@ export type RequestView =
  * request. FOUND ON THE SIMULATOR: a request the Mac filmed and did not publish read "The last demo
  * is done." above the OLD kit, which is the kit the person was about to share.
  */
+/**
+ * Whether the published kit is from THIS request: published at or after the Mac took it. A request
+ * the Mac finished without publishing (a worker run without `--publish-requests`) is made, and on
+ * the Mac, and the phone has nothing new to share. One rule for the kit screen and both islands.
+ */
+export function kitFromRequest(request: Pick<DemoRequestRow, 'claimed_at' | 'created_at'>, kitPublishedAt: string | null): boolean {
+  if (kitPublishedAt === null) return false;
+  return Date.parse(kitPublishedAt) >= Date.parse(request.claimed_at ?? request.created_at);
+}
+
 export function requestView(requests: readonly DemoRequestRow[] | null, kitPublishedAt: string | null): RequestView {
   const hasKit = kitPublishedAt !== null;
   const latest = requests?.[0] ?? null;
@@ -247,8 +257,7 @@ export function requestView(requests: readonly DemoRequestRow[] | null, kitPubli
   if (latest.status === 'queued') return { kind: 'waiting', button: 'Asked', line: 'Waiting for your Mac to pick it up. It films one demo at a time.', cancel: 'Take it back' };
   if (latest.status === 'claimed') return { kind: 'waiting', button: 'Filming', line: 'Your Mac is filming it now.', cancel: 'Take it back' };
   if (latest.status === 'done') {
-    const taken = Date.parse(latest.claimed_at ?? latest.created_at);
-    const fresh = hasKit && Date.parse(kitPublishedAt) >= taken;
+    const fresh = kitFromRequest(latest, kitPublishedAt);
     return {
       kind: 'done',
       button: again,

@@ -230,3 +230,13 @@ Not verified, and how to verify on a device:
   killed while a demo is filming, the system card carries on (the server moves it) but the in-app
   island does not pick it up again when Builda reopens; the foreground sweep still ends the card
   when its answer is past the beat.
+
+## Done is not the same as up (added after the merge)
+
+A request the Mac finished WITHOUT publishing (a worker run without `--publish-requests`) comes back
+`done`, and both islands used to say "the kit is up" for it. `shipkit/model.kitFromRequest` is now the
+one rule (a kit published at or after the Mac took the request) for the kit screen and the in-app
+island: when the kit is not from this request the in-app island says "The demo of X is made on your
+Mac. Publish it there to share it." and takes the system card down. The server's push for `done` does
+not know either, so while the app is in the background the system card can still say "kit up" until
+the app next opens; fixing that needs the finish route to ask the same question of `ship_kits`.

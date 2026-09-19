@@ -14,6 +14,7 @@ import type { FaceState } from '../motion/states';
 import { DEFAULT_ANIMAL, type Animal } from '../pixel/animals';
 import { creatureHue, dropHue } from '../theme';
 import { DEMO_EVERY_MS, DEMO_FOR_MS, demoStepFor, DROP_DONE_HOLD_MS, type Activity, type CrewMember } from './model';
+import { kitFromRequest } from '../shipkit/model';
 import { island } from './store';
 
 export const FACE_FOR_TILE: Record<'needsYou' | 'working' | 'stalled' | 'finished', FaceState> = {
@@ -199,8 +200,18 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
         return;
       }
       if (step === 'ready') {
-        island.post({ ...base, filming: false, ready: true }, DROP_DONE_HOLD_MS);
         demos.delete(projectKey);
+        // Done is not the same as up: a Mac that finished without publishing kept the kit, and
+        // "the kit is up, tap to share it" would open a screen with nothing new on it.
+        const kit = await api.shipKit(projectKey).catch(() => null);
+        if (kit && kitFromRequest(requests[0]!, kit.kit?.published_at ?? null)) {
+          island.post({ ...base, filming: false, ready: true }, DROP_DONE_HOLD_MS);
+        } else {
+          island.clear(id);
+          // The system card came down the same way, so it cannot say "kit up" over this notice.
+          void demoTakenBack(projectKey);
+          notice(`The demo of ${title} is made on your Mac. Publish it there to share it.`, 'done', DEFAULT_ANIMAL, creatureHue(DEFAULT_ANIMAL).ink);
+        }
         return;
       }
       if (step === 'failed') {

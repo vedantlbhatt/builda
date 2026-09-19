@@ -29,6 +29,7 @@ import {
   kitView,
   PLATFORM_NAMES,
   PLATFORMS,
+  kitFromRequest,
   requestView,
   selectionReducer,
   sharePayload,
@@ -253,5 +254,17 @@ describe('asking the Mac', () => {
   test('every platform has a name, and every refusal sentence is plain words', () => {
     for (const p of PLATFORMS) expect(PLATFORM_NAMES[p].length).toBeGreaterThan(0);
     for (const s of Object.values(SHIPKIT_REFUSALS)) expect(/[_]/.test(s.replace(/--device ipad-pro-13|python -m capture demo/g, ''))).toBe(false);
+  });
+});
+
+describe('done is not the same as up', () => {
+  test('a kit counts for a request only when it was published after the Mac took it', () => {
+    const r = { created_at: '2026-09-19T06:40:00Z', claimed_at: '2026-09-19T06:41:00Z' };
+    expect(kitFromRequest(r, null)).toBe(false);
+    expect(kitFromRequest(r, '2026-09-19T06:30:00Z')).toBe(false);
+    expect(kitFromRequest(r, '2026-09-19T06:41:00Z')).toBe(true);
+    expect(kitFromRequest(r, '2026-09-19T06:55:00Z')).toBe(true);
+    // Never claimed (a request a person made and finished by hand): its own ask is the bar.
+    expect(kitFromRequest({ created_at: '2026-09-19T06:40:00Z', claimed_at: null }, '2026-09-19T06:45:00Z')).toBe(true);
   });
 });

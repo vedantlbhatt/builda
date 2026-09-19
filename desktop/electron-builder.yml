@@ -1,0 +1,53 @@
+# Packaging for Builda's desktop shell. `npm run web` first (the bundle goes in web/), then:
+#   npx electron-builder --mac --dir      an unpacked Builda.app, what the local checks launch
+#   npx electron-builder --mac            a DMG for Apple silicon and Intel
+#   npx electron-builder --win            an NSIS installer, x64
+#   npx electron-builder --linux          an AppImage
+# Signing and notarization need the Developer ID certificate and an App Store Connect key, which
+# live in a password manager and never in this repository (see docs/desktop.md); without them the
+# Mac build is ad hoc signed and Gatekeeper asks once.
+appId: com.vedantlbhatt.Builda.desktop
+productName: Builda
+copyright: Builda
+directories:
+  output: dist
+  buildResources: assets
+files:
+  - src/**/*
+  - web/**/*
+  - assets/icon.png
+  - package.json
+  - "!**/*.map"
+protocols:
+  - name: Builda
+    schemes:
+      - builder
+mac:
+  category: public.app-category.developer-tools
+  icon: assets/icon.png
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  extendInfo:
+    NSUserNotificationAlertStyle: alert
+    LSUIElement: false
+win:
+  icon: assets/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+linux:
+  icon: assets/icon.png
+  category: Development
+  target:
+    - AppImage

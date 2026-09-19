@@ -1,0 +1,27 @@
+{
+  "name": "builda-desktop",
+  "productName": "Builda",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Builda for Mac, Windows and Linux: the phone app's own screens in a desktop shell, and the island at the top of the screen.",
+  "author": "Builda",
+  "license": "UNLICENSED",
+  "main": "src/main.js",
+  "scripts": {
+    "web": "node scripts/build-web.mjs",
+    "start": "electron .",
+    "dev": "BUILDA_DEV_URL=http://localhost:8081 electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --test test/*.test.js",
+    "pack": "electron-builder --dir",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "qrcode-terminal": "0.12.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  }
+}

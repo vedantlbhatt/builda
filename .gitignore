@@ -54,3 +54,7 @@ mobile/android/
 
 # overnight screenshot runs
 shots/
+
+# The desktop shell: its web bundle is built from mobile/ (desktop/scripts/build-web.mjs).
+desktop/web/
+mobile/dist-desktop/

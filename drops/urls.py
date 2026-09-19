@@ -80,7 +80,9 @@ CANONICAL_HOST: dict[str, str] = {
 
 #: A URL is not a sentence. A share sheet often hands over "look at this <url>", so the first
 #: thing that looks like a link is taken and the rest is kept as the shared text.
-URL_IN_TEXT = re.compile(r"https?://[^\s<>\"'\]\)]+", re.IGNORECASE)
+#: Brackets count when they are balanced, so a Wikipedia link inside text is one link and
+#: `(https://x.com/a)` is the link without the bracket (the phone's `urls.ts` has the same pattern).
+URL_IN_TEXT = re.compile(r"https?://(?:[^\s<>\"'()\]]|\([^\s<>\"'()]*\))+", re.IGNORECASE)
 
 
 class UrlRefused(ValueError):

@@ -57,7 +57,9 @@ public enum BuilderDropsURL {
   public static let maxURL = 500
 
   /// `URL_IN_TEXT`, case insensitive.
-  private static let urlInText = try? NSRegularExpression(pattern: #"https?://[^\s<>"'\])]+"#, options: [.caseInsensitive])
+  private static let urlInText = try? NSRegularExpression(pattern: #"https?://(?:[^\s<>"'()\]]|\([^\s<>"'()]*\))+"#, options: [.caseInsensitive])
+  /// `urls.ts` `whole`: the scheme first and no spaces.
+  private static let wholeLink = try? NSRegularExpression(pattern: #"^https?://\S+$"#, options: [.caseInsensitive])
 
   /// `encodeURIComponent`'s unreserved set.
   private static let componentSafe = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
@@ -112,12 +114,15 @@ public enum BuilderDropsURL {
     let raw = payload.trimmingCharacters(in: .whitespacesAndNewlines)
     if raw.isEmpty { return nil }
     var found: String?
-    // A bare link is taken whole, as `urls.ts` takes it: the pattern stops at the first `)`, which
-    // cut `.../Rust_(programming_language)` short (review, 2026-09-19).
-    if raw.rangeOfCharacter(from: .whitespacesAndNewlines) != nil, let re = urlInText,
-       let m = re.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
-       let r = Range(m.range, in: raw) {
-      var f = String(raw[r])
+    // `urls.ts`: a payload that IS a link is taken whole, anything else is searched, and a
+    // sentence's full stop is never part of the link (review, 2026-09-19).
+    let all = NSRange(raw.startIndex..., in: raw)
+    if wholeLink?.firstMatch(in: raw, range: all) != nil {
+      found = raw
+    } else if let re = urlInText, let m = re.firstMatch(in: raw, range: all), let r = Range(m.range, in: raw) {
+      found = String(raw[r])
+    }
+    if var f = found {
       while let last = f.last, ".,;:".contains(last) { f.removeLast() }
       found = f
     }

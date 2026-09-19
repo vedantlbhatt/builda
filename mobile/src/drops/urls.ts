@@ -43,7 +43,9 @@ const SHARE_PARAMS = new Set([
 ]);
 
 export const MAX_URL = 500;
-const URL_IN_TEXT = /https?:\/\/[^\s<>"'\])]+/i;
+// Brackets are allowed when they are balanced, so `.../Rust_(programming_language)` inside text is
+// one link, and `(https://x.com/a)` is the link without the bracket around it.
+const URL_IN_TEXT = /https?:\/\/(?:[^\s<>"'()\]]|\([^\s<>"'()]*\))+/i;
 
 export interface Shared {
   url: string;
@@ -74,10 +76,13 @@ export function platformOf(host: string): string {
 export function normalizeShared(payload: string): Shared | null {
   const raw = (payload ?? '').trim();
   if (!raw) return null;
-  // A bare link is taken whole, as `drops/urls.py` `normalize` takes it; the pattern is only for
-  // finding a link inside text. FOUND IN REVIEW (2026-09-19): run on a bare link it stopped at the
-  // first `)`, so `.../Rust_(programming_language)` lost its last character and pointed nowhere.
-  const found = /\s/.test(raw) ? URL_IN_TEXT.exec(raw)?.[0]?.replace(/[.,;:]+$/, '') : undefined;
+  // A payload that IS a link (the scheme first, no spaces) is taken whole, as `drops/urls.py`
+  // `normalize` takes it; anything else is searched. FOUND IN REVIEW (2026-09-19), twice: the
+  // search stopped at the first `)`, so `.../Rust_(programming_language)` lost its last character;
+  // and taking every payload with no spaces whole refused `(https://...)`, `<https://...>` and a
+  // link typed straight after other words. A sentence's full stop is never part of the link.
+  const whole = /^https?:\/\/\S+$/i.test(raw);
+  const found = (whole ? raw : URL_IN_TEXT.exec(raw)?.[0])?.replace(/[.,;:]+$/, '');
   const candidate = found ?? (raw.includes('://') ? raw : `https://${raw}`);
   if (candidate.length > MAX_URL) return null;
 

@@ -28,7 +28,7 @@ const path = require('node:path');
 const { ORIGIN, SCHEME, serveBundle } = require('./bundle');
 const { bridgeApi } = require('./cors');
 const { isAppLink, isExternalAllowed } = require('./geometry');
-const { freeDir, freePath, kitFiles, pngFromDataUrl, safeName } = require('./image');
+const { kitFiles, mkdirFresh, pngFromDataUrl, safeName, writeFresh } = require('./image');
 const { createIsland } = require('./island');
 const { buildMenu } = require('./menu');
 const { nativeIslandRunning } = require('./native');
@@ -37,7 +37,16 @@ const { createMemoryStore, createTokenStore } = require('./tokens');
 
 const ROOT = path.join(__dirname, '..');
 const WEB_DIR = path.join(ROOT, 'web');
-const DEV_URL = process.env.BUILDA_DEV_URL || null;
+/**
+ * The settings that change WHAT the app loads or WHERE it sends its tokens are for development
+ * only. FOUND IN REVIEW (2026-09-19): a release build honoured them, so any program running as the
+ * same user could start Builda with its own page (which gets the bridge, and the token store
+ * without a Keychain prompt) or its own API address (which gets every request's bearer token).
+ */
+const DEVELOPMENT = !app.isPackaged;
+/** @param {string} name */
+const devEnv = (name) => (DEVELOPMENT ? process.env[name] : undefined);
+const DEV_URL = devEnv('BUILDA_DEV_URL') || null;
 const APP_ORIGIN = DEV_URL ? new URL(DEV_URL).origin : ORIGIN;
 const MAC = process.platform === 'darwin';
 const BG = '#141210';
@@ -45,9 +54,34 @@ const BG = '#141210';
 const debug = (...a) => {
   if (process.env.BUILDA_DEBUG) console.log('[builda]', ...a);
 };
+/** A link as the debug log may print it: never its query or fragment (Google's id_token rides there). */
+const bare = (/** @type {string} */ url) => String(url).split(/[?#]/)[0];
+
+/**
+ * Whether an IPC message came from the app's own page. Both windows load the app's origin; a frame
+ * that navigated anywhere else gets nothing, the token store least of all.
+ * @param {{ senderFrame?: { url?: string } | null }} e
+ */
+/** @param {string} url @param {string} origin */
+function sameOrigin(url, origin) {
+  try {
+    return new URL(url).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+function fromApp(e) {
+  try {
+    return new URL(e.senderFrame?.url ?? '').origin === APP_ORIGIN;
+  } catch {
+    return false;
+  }
+}
 
 // A separate profile for a test run, so it never touches the installed app's tokens.
-if (process.env.BUILDA_USER_DATA) app.setPath('userData', path.resolve(process.env.BUILDA_USER_DATA));
+const USER_DATA = devEnv('BUILDA_USER_DATA');
+if (USER_DATA) app.setPath('userData', path.resolve(USER_DATA));
 
 /** Where the bundle points, written beside it by `scripts/build-web.mjs`. */
 function readBuildInfo() {
@@ -58,7 +92,7 @@ function readBuildInfo() {
   }
 }
 const BUILD = readBuildInfo();
-const API_BASE = process.env.BUILDA_API_URL || BUILD.apiBaseUrl || 'http://localhost:8000';
+const API_BASE = devEnv('BUILDA_API_URL') || BUILD.apiBaseUrl || 'http://localhost:8000';
 const API_ORIGIN = new URL(API_BASE).origin;
 
 protocol.registerSchemesAsPrivileged([
@@ -77,7 +111,7 @@ const pendingLinks = [];
 let pageListening = false;
 
 function deliverLink(/** @type {string} */ url) {
-  debug('link', url, pageListening ? 'to the page' : 'held');
+  debug('link', bare(url), pageListening ? 'to the page' : 'held');
   if (!isAppLink(url)) return;
   const win = showMain();
   if (pageListening && win) win.webContents.send('deep-link', url);
@@ -100,7 +134,7 @@ app.on('open-url', (event, url) => {
 });
 
 app.on('second-instance', (_event, argv) => {
-  debug('second instance', argv.slice(1).join(' '));
+  debug('second instance', argv.slice(1).map(bare).join(' '));
   const link = argv.find((a) => isAppLink(a));
   if (link) deliverLink(link);
   else showMain();
@@ -191,7 +225,8 @@ function createMain() {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith(APP_ORIGIN)) return;
+    // The origin, not a prefix: `http://localhost:8081@evil.com/` starts with the dev origin.
+    if (sameOrigin(url, APP_ORIGIN)) return;
     event.preventDefault();
     if (isExternalAllowed(url)) void shell.openExternal(url);
   });
@@ -310,8 +345,9 @@ function createTray() {
 // ------------------------------------------------------------------ the bridge
 
 function registerIpc() {
-  ipcMain.handle('store:get', (_e, key) => store?.get(String(key)) ?? null);
+  ipcMain.handle('store:get', (e, key) => (fromApp(e) ? (store?.get(String(key)) ?? null) : null));
   ipcMain.handle('store:set', (e, key, value) => {
+    if (!fromApp(e)) return;
     const k = String(key);
     const had = store?.get(k) ?? null;
     store?.set(k, String(value));
@@ -319,43 +355,46 @@ function registerIpc() {
     if (k === 'builder.refresh' && had === null && e.sender !== island.window?.webContents) island.reload();
   });
   ipcMain.handle('store:remove', (e, key) => {
+    if (!fromApp(e)) return;
     const k = String(key);
     const had = store?.get(k) ?? null;
     store?.remove(k);
     if (k === 'builder.refresh' && had !== null && e.sender !== island.window?.webContents) island.reload();
   });
-  ipcMain.handle('machine-id', () => machineId());
+  ipcMain.handle('machine-id', (e) => (fromApp(e) ? machineId() : null));
   ipcMain.handle('qr', (_e, text) => qrModules(String(text)));
-  ipcMain.on('notify', (_e, n) => {
-    if (!Notification.isSupported() || !n || !n.title) return;
+  ipcMain.on('notify', (e, n) => {
+    if (!fromApp(e) || !Notification.isSupported() || !n || !n.title) return;
     const note = new Notification({ title: String(n.title), body: String(n.body ?? ''), silent: false });
     if (n.url) note.on('click', () => deliverLink(String(n.url)));
     else note.on('click', () => showMain());
     note.show();
   });
-  ipcMain.on('copy', (_e, text) => clipboard.writeText(String(text)));
+  ipcMain.on('copy', (e, text) => {
+    if (fromApp(e)) clipboard.writeText(String(text));
+  });
   // A card from the share preview: to Downloads, onto the clipboard, and shown where it landed.
-  ipcMain.handle('image:save', (_e, dataUrl, name) => {
+  ipcMain.handle('image:save', (e, dataUrl, name) => {
+    if (!fromApp(e)) return null;
     const png = pngFromDataUrl(dataUrl);
     if (!png) return null;
-    const file = freePath(app.getPath('downloads'), safeName(name), fs.existsSync, path.join);
-    fs.writeFileSync(file, png);
+    const file = writeFresh(fs, path.join, app.getPath('downloads'), safeName(name), 'png', png);
     clipboard.writeImage(nativeImage.createFromBuffer(png));
     shell.showItemInFolder(file);
     return file;
   });
   // A ship kit's picked files: one folder in Downloads, shown where it landed (`image.kitFiles`).
-  ipcMain.handle('files:save', (_e, files, folder) => {
+  ipcMain.handle('files:save', (e, files, folder) => {
+    if (!fromApp(e)) return null;
     const list = kitFiles(files);
     if (!list) return null;
-    const dir = freeDir(app.getPath('downloads'), safeName(folder), fs.existsSync, path.join);
-    fs.mkdirSync(dir, { recursive: true });
-    for (const f of list) fs.writeFileSync(path.join(dir, f.name), f.bytes);
+    const dir = mkdirFresh(fs, path.join, app.getPath('downloads'), safeName(folder));
+    for (const f of list) fs.writeFileSync(path.join(dir, f.name), f.bytes, { flag: 'wx' });
     shell.showItemInFolder(path.join(dir, list[0].name));
     return dir;
   });
-  ipcMain.on('open-external', (_e, url) => {
-    if (isExternalAllowed(String(url))) void shell.openExternal(String(url));
+  ipcMain.on('open-external', (e, url) => {
+    if (fromApp(e) && isExternalAllowed(String(url))) void shell.openExternal(String(url));
   });
   ipcMain.on('open-main', (_e, route) => {
     const win = showMain();
@@ -382,9 +421,16 @@ app.whenReady().then(() => {
   // An unattended capture run with its tokens from a file never asks the Keychain (`tokens.js`).
   const unattended = Boolean(process.env.BUILDA_CAPTURE && (process.env.BUILDA_DEV_TOKENS || process.env.BUILDA_DEV_ACCESS));
   store = unattended ? createMemoryStore() : createTokenStore(path.join(app.getPath('userData'), 'tokens.bin'), safeStorage);
-  seedDevTokens();
+  // Dev tokens only in development, or into a capture run's own memory store: a release build
+  // never lets its environment sign the installed app into some other account.
+  if (DEVELOPMENT || unattended) seedDevTokens();
   if (!DEV_URL) serveBundle(protocol, WEB_DIR, API_ORIGIN);
   bridgeApi(session.defaultSession, net, API_ORIGIN, APP_ORIGIN);
+  // The page asks the shell for what it needs (notifications, the clipboard, files). A request for
+  // the camera, the microphone, the location or anything else from a page is refused: FOUND IN
+  // REVIEW, with no handler Electron granted them without asking.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'clipboard-sanitized-write'));
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'clipboard-sanitized-write');
   registerScheme();
   registerIpc();
   Menu.setApplicationMenu(menu());
@@ -393,7 +439,9 @@ app.whenReady().then(() => {
   void superviseIsland();
   setInterval(() => void superviseIsland(), 10_000);
   // A test run: capture every screen and the island from inside the app (`capture.js`).
-  if (process.env.BUILDA_CAPTURE) require('./capture').run({ main, island, send, dir: process.env.BUILDA_CAPTURE, origin: APP_ORIGIN });
+  // In a release build only with its own tokens: a capture run must never photograph the account
+  // that is really signed in on this machine.
+  if (process.env.BUILDA_CAPTURE && (DEVELOPMENT || unattended)) require('./capture').run({ main, island, send, dir: process.env.BUILDA_CAPTURE, origin: APP_ORIGIN });
   // A link that launched the app (Windows and Linux put it in argv).
   const launchLink = process.argv.find((a) => isAppLink(a));
   if (launchLink) pendingLinks.push(launchLink);

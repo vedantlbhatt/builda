@@ -58,10 +58,10 @@ cd desktop && npm run dev
 
 # package
 cd desktop && npx electron-builder --mac --dir          # dist/mac-arm64/Builda.app
-cd desktop && npx electron-builder --mac --dir -c.mac.identity=null   # ad hoc: no Keychain prompt
+cd desktop && npx electron-builder --mac --dir -c.mac.identity=-      # ad hoc: no Keychain prompt
 # offline (github.com not resolving): unpack the cached zip and build from it
 #   ditto -x -k ~/Library/Caches/electron/<hash>/electron-v44.4.3-darwin-arm64.zip /tmp/electron-dist
-#   npx electron-builder --mac --dir --arm64 -c.mac.identity=null -c.electronDist=/tmp/electron-dist
+#   npx electron-builder --mac --dir --arm64 -c.mac.identity=- -c.electronDist=/tmp/electron-dist
 cd desktop && npx electron-builder --mac                # DMGs, arm64 and x64
 cd desktop && npx electron-builder --win                # NSIS installer, x64
 cd desktop && npx electron-builder --linux              # AppImage
@@ -286,8 +286,16 @@ error, 61 to 62 frames per 500 ms on each screen. Two things an unattended build
 around, both found doing it: signing with the developer identity asks the login Keychain for the
 key, and a newly signed app's first `safeStorage` call asks it too; either prompt blocks until a
 person answers (the app's main process hung with no window, the GPU process quit after 15 s).
-An unattended build signs ad hoc (`-c.mac.identity=null`), and a capture run keeps its tokens in
-memory (`tokens.createMemoryStore`). Windows: `--win --dir --x64` rebuilt at 07:08 with tonight's shell (Save image and the kit's Save in
+An unattended build signs ad hoc (`-c.mac.identity=-`, NOT `null`: the fuses rewrite the Electron
+binary, and an unsigned rewrite is killed at launch with exit 137), and a capture run keeps its
+tokens in memory (`tokens.createMemoryStore`).
+
+Hardening, from a security review on 2026-09-19: a release build ignores `BUILDA_DEV_URL`,
+`BUILDA_API_URL` and `BUILDA_USER_DATA`, takes dev tokens and runs a capture only together (and
+then into a memory store, never the real account); the fuses are off for run-as-node, NODE_OPTIONS
+and the inspector, with asar integrity on; every IPC handler answers only the app's own origin;
+the island window opens nothing and navigates nowhere; page permission requests are refused except
+the clipboard; saves to Downloads create files and folders and never replace one. Windows: `--win --dir --x64` rebuilt at 07:08 with tonight's shell (Save image and the kit's Save in
 its `app.asar`); `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
 `Builda.exe`, a 115 MB `Builda Setup 0.1.0.exe`, unsigned); neither has been RUN, because there
 is no Windows machine here. Linux: `--linux --dir --x64` builds (07:11, an x86-64 ELF `builda-desktop`),

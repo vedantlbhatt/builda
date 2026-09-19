@@ -118,4 +118,46 @@ function freeDir(dir, name, exists, join) {
   return p;
 }
 
-module.exports = { MAX_BYTES, pngFromDataUrl, safeName, freePath, kitFiles, freeDir, KIT_MAX_FILES };
+/**
+ * Write `data` to `dir/name.ext`, or `name 2.ext` and upwards, creating the file and never
+ * replacing one: the open itself refuses an existing name (`wx`), so nothing between a check and
+ * a write can make it overwrite, and a dangling symlink is not followed. FOUND IN REVIEW: past
+ * `name 999` the name search gave up and the write replaced it.
+ * @param {typeof import('node:fs')} fsx
+ * @param {(...parts: string[]) => string} join
+ * @param {string} dir @param {string} name @param {string} ext @param {Buffer} data
+ */
+function writeFresh(fsx, join, dir, name, ext, data) {
+  for (let n = 1; n < 10000; n++) {
+    const file = join(dir, n === 1 ? `${name}.${ext}` : `${name} ${n}.${ext}`);
+    try {
+      fsx.writeFileSync(file, data, { flag: 'wx' });
+      return file;
+    } catch (e) {
+      if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EEXIST') throw e;
+    }
+  }
+  throw new Error('no free name');
+}
+
+/**
+ * A folder that did not exist a moment ago: `dir/name`, or `dir/name 2` and upwards, made without
+ * `recursive` so an existing one is refused rather than written into.
+ * @param {typeof import('node:fs')} fsx
+ * @param {(...parts: string[]) => string} join
+ * @param {string} dir @param {string} name
+ */
+function mkdirFresh(fsx, join, dir, name) {
+  for (let n = 1; n < 10000; n++) {
+    const p = join(dir, n === 1 ? name : `${name} ${n}`);
+    try {
+      fsx.mkdirSync(p);
+      return p;
+    } catch (e) {
+      if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'EEXIST') throw e;
+    }
+  }
+  throw new Error('no free name');
+}
+
+module.exports = { MAX_BYTES, pngFromDataUrl, safeName, freePath, kitFiles, freeDir, writeFresh, mkdirFresh, KIT_MAX_FILES };

@@ -12,7 +12,7 @@ const { fileFor, contentSecurityPolicy } = require('../src/bundle');
 const { createMemoryStore, createTokenStore } = require('../src/tokens');
 const { allowHeaders } = require('../src/cors');
 const { qrModules } = require('../src/qr');
-const { MAX_BYTES, pngFromDataUrl, safeName, freePath, kitFiles, freeDir, KIT_MAX_FILES } = require('../src/image');
+const { MAX_BYTES, pngFromDataUrl, safeName, freePath, kitFiles, freeDir, writeFresh, mkdirFresh, KIT_MAX_FILES } = require('../src/image');
 
 // A 14 inch MacBook Pro at its default scaling: the menu bar holds the notch, 37 points.
 const notched = { bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea: { x: 0, y: 37, width: 1512, height: 945 }, internal: true };
@@ -187,4 +187,18 @@ test("a ship kit's files: only the four kit types, checked by their bytes, never
   assert.deepEqual(kitFiles([{ name: 'a.png', bytes: u8(png) }, { name: 'a.png', bytes: u8(png) }])?.map((f) => f.name), ['a.png', 'a-2.png']);
   const taken = new Set(['/d/builda kit']);
   assert.equal(freeDir('/d', 'builda kit', (p) => taken.has(p), path.posix.join), '/d/builda kit 2');
+});
+
+test('a save never replaces a file or writes into a folder that was already there', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'builda-save-'));
+  const a = writeFresh(fs, path.join, dir, 'card', 'png', Buffer.from('one'));
+  const b = writeFresh(fs, path.join, dir, 'card', 'png', Buffer.from('two'));
+  assert.equal(path.basename(a), 'card.png');
+  assert.equal(path.basename(b), 'card 2.png');
+  assert.equal(fs.readFileSync(a, 'utf8'), 'one');
+  const d1 = mkdirFresh(fs, path.join, dir, 'kit');
+  const d2 = mkdirFresh(fs, path.join, dir, 'kit');
+  assert.notEqual(d1, d2);
+  assert.equal(path.basename(d2), 'kit 2');
+  fs.rmSync(dir, { recursive: true, force: true });
 });

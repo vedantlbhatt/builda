@@ -18,6 +18,16 @@ files:
   - assets/icon.png
   - package.json
   - "!**/*.map"
+# FOUND IN REVIEW (2026-09-19): every fuse was at Electron's default, so the packaged app could be
+# run as plain Node (ELECTRON_RUN_AS_NODE), take NODE_OPTIONS, or open an inspector, any of which lets
+# a program running as the same user read the token store without a Keychain prompt.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 protocols:
   - name: Builda
     schemes:

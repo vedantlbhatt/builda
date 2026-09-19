@@ -87,6 +87,17 @@ function createIsland(o) {
         additionalArguments: ['--builda-window=island', ...o.args],
       },
     });
+    // It shows the app's own page and nothing else: it opens no window and navigates nowhere (FOUND
+    // IN REVIEW: unlike the app window, it had neither guard, and it carries the same preload).
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (event, url) => {
+      try {
+        if (new URL(url).origin === o.origin) return;
+      } catch {
+        // Not a URL: refused.
+      }
+      event.preventDefault();
+    });
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     win.setIgnoreMouseEvents(true, { forward: true });

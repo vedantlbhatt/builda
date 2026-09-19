@@ -264,6 +264,39 @@ class Queue(unittest.TestCase):
         self.assertEqual(kq.read(done)["skip"], "nothing_shipped")
         self.assertEqual(kq.jobs("running"), [])
 
+    @unittest.skipUnless(os.uname().sysname == "Darwin", "the served hook queues on a Mac only")
+    def test_the_served_hook_script_queues_the_same_job_with_no_server_configured(self):
+        """hook.sh (routes/ingest.py HOOK_SCRIPT) writes the candidate with printf and sed; the
+        worker reads it with `queue.read`. A folder with a space in its name survives both. (A
+        quote in a path does not reach the queue at all: the script's `field` reads a JSON string
+        up to its first quote, the upload's own rule, and a transcript path is always
+        ~/.claude/projects/<folder>/<uuid>.jsonl.)"""
+        import ast
+        import subprocess
+
+        src = (ROOT / "server/builder/routes/ingest.py").read_text()
+        script = next(
+            ast.literal_eval(n.value) for n in ast.parse(src).body
+            if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "HOOK_SCRIPT"
+        )  # fmt: skip
+        home = pathlib.Path(self.tmp.name) / "home"
+        (home / ".builder" / "demos").mkdir(parents=True)
+        transcript = pathlib.Path(self.tmp.name) / "a session.jsonl"
+        transcript.write_text("{}\n")
+        hook = {"hook_event_name": "SessionEnd", "session_id": "s-9", "transcript_path": str(transcript), "cwd": "/Users/x/my repo"}
+        env = {"HOME": str(home), "PATH": os.environ["PATH"]}
+        r = subprocess.run(["bash", "-c", script], input=json.dumps(hook), text=True, env=env, capture_output=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with mock.patch.dict(os.environ, {"BUILDER_DEMOS_DIR": str(home / ".builder" / "demos")}):
+            (p,) = kq.jobs("pending")
+            job = kq.read(p)
+        self.assertEqual((job["kind"], job["session_id"], job["cwd"]), ("session_end", "s-9", "/Users/x/my repo"))
+        self.assertEqual(job["transcript"], str(transcript))
+        # Not a SessionEnd: nothing is queued.
+        subprocess.run(["bash", "-c", script], input=json.dumps({**hook, "hook_event_name": "Stop"}), text=True, env=env, capture_output=True, timeout=30)
+        with mock.patch.dict(os.environ, {"BUILDER_DEMOS_DIR": str(home / ".builder" / "demos")}):
+            self.assertEqual(len(kq.jobs("pending")), 1)
+
     def test_the_files_an_app_is_made_of(self):
         files = ["mobile/src/drops/Board.tsx", "server/builder/routes/x.py", "docs/demos.md", "mobile/__tests__/a.test.ts",
                  "ios/App/View.swift", "web/styles.css", "scripts/gen.py", "src/components/Button.jsx", "README.md"]  # fmt: skip

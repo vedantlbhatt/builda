@@ -38,6 +38,14 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **05:45 USER CORRECTION**: "do not change the pixel stuff to gradients ... just itemize motion in
+  some new novel way." The pixel diet misread the ask. Restored: full bleed dither bands with the
+  36 point fringe (`insights/Band.tsx`), hue tiles printed in pixels (no wash), the live bar as a
+  printed strip, the creature's cell print, the empty demo dither field, the ship kit's dither band,
+  the away band as a printed green band. NEW: `motion/pixelMotion.ts`, eight arrival orders (rain,
+  scan, ripple, rise, interlace, blocks, spiral, wipe) in JS and in the band shader, one per item by
+  name, distinct within a page (`takeOrder`); four number arrivals (count, scramble, type, tick).
+  Kept: the island's own washes (notch kit), poster shades, the aura.
 - **04:20 to 05:10**: merged `claude/motion-demoisland` (a demo request as a Live Activity, 0032);
   in-app island says "made on your Mac" when a done request's kit was not published
   (`kitFromRequest`, one rule with the kit screen) and resumes pending demos after a relaunch

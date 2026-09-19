@@ -40,6 +40,7 @@ final class IslandController {
     private var shipped: IslandShipped?
     private var shippedQueue: [IslandShipped] = []
     private var drop: DropPhase?
+    private var filming: IslandFilming?
 
     // MARK: Pointer and beats
 
@@ -174,9 +175,28 @@ final class IslandController {
         }
         seenWaiting = waitingNow
         if primed && !fresh.isEmpty { beat(Self.needsYouBeat) }
+        // A demo the worker started since the last pass is news too, once: a simulator just
+        // booted headless and the fans may be the first sign of it.
+        let film = IslandFilming.read(queueRoot: Self.demoQueue)
+        if primed, film != nil, filming == nil { beat(Self.filmingBeat) }
+        filming = film
         primed = true
         apply()
     }
+
+    /// The ship kit worker's queue (`capture/shipkit/queue.py`): `BUILDER_DEMOS_DIR/queue` when
+    /// set, as the worker reads it, else `~/.builder/demos/queue`.
+    static var demoQueue: URL {
+        if let dir = ProcessInfo.processInfo.environment["BUILDER_DEMOS_DIR"], !dir.isEmpty {
+            return URL(fileURLWithPath: dir).appendingPathComponent("queue", isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".builder/demos/queue", isDirectory: true)
+    }
+
+    /// How long the island opens when a demo starts filming: the shipped beat's length, since
+    /// it is one sentence read once.
+    static let filmingBeat: Double = shippedBeat
 
     /// A session finished: the shipped beat.
     func showShipped(_ s: IslandShipped) {
@@ -211,9 +231,9 @@ final class IslandController {
     // MARK: The one place anything changes
 
     private func apply() {
-        let next = IslandSnapshot(agents: agents, ranToday: ranToday, shipped: shipped, drop: drop)
+        let next = IslandSnapshot(agents: agents, ranToday: ranToday, shipped: shipped, drop: drop, filming: filming)
         let mode = next.mode
-        let hoverOpens = (mode == .crew || mode == .needsYou) && hovering
+        let hoverOpens = (mode == .crew || mode == .needsYou || mode == .filming) && hovering
         let open =
             mode == .drop || mode == .shipped
             || (mode != .idle && (pinned || hoverOpens || (beatUntil.map { $0 > Date() } ?? false)))
@@ -311,7 +331,7 @@ final class IslandController {
         switch snapshot.mode {
         case .idle:
             openPopover?()
-        case .shipped, .drop:
+        case .shipped, .drop, .filming:
             break
         case .crew, .needsYou:
             pinned.toggle()

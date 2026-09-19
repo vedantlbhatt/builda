@@ -61,6 +61,11 @@ struct IslandLayoutTests {
         #expect(IslandSnapshot(agents: waiting).mode == .needsYou)
         #expect(IslandSnapshot(agents: waiting, shipped: IslandFixtures.shipped()).mode == .shipped)
         #expect(IslandSnapshot(agents: waiting, shipped: IslandFixtures.shipped(), drop: .zone(valid: true)).mode == .drop)
+        // A demo being filmed outranks the crew it is not part of, and a wait outranks it.
+        let film = IslandFilming(project: "tramline", since: 0)
+        #expect(IslandSnapshot(agents: crew, filming: film).mode == .filming)
+        #expect(IslandSnapshot(agents: waiting, filming: film).mode == .needsYou)
+        #expect(IslandSnapshot(agents: [], filming: film).face == .working)
     }
 
     @Test("the face sleeps only when nothing ran today")
@@ -155,5 +160,22 @@ struct IslandAgentNameTests {
         #expect(GitHead.branch(at: main.appendingPathComponent("Sources/App").path) == "feature/island")
         #expect(GitHead.branch(at: wt.path) == "claude/motion-mac")
         #expect(GitHead.branch(at: det.path) == nil)
+    }
+
+    @Test("the filming job is the worker's running file: its name, else its folder, and a half written file is skipped")
+    func filmingFromTheQueue() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("island-queue-\(UUID().uuidString)")
+        let running = root.appendingPathComponent("running")
+        try FileManager.default.createDirectory(at: running, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(IslandFilming.read(queueRoot: root) == nil)
+        try Data("{\"kind\": \"requ".utf8).write(to: running.appendingPathComponent("a-half.json"))
+        #expect(IslandFilming.read(queueRoot: root) == nil)
+        try Data("{\"kind\": \"request\", \"path\": \"/tmp/some/tramline\"}".utf8).write(to: running.appendingPathComponent("b-job.json"))
+        #expect(IslandFilming.read(queueRoot: root)?.project == "tramline")
+        try Data("{\"kind\": \"request\", \"name\": \"notes-app\", \"path\": \"/tmp/x\"}".utf8).write(to: running.appendingPathComponent("b-job.json"))
+        #expect(IslandFilming.read(queueRoot: root)?.project == "notes-app")
+        let now = Date().timeIntervalSince1970
+        #expect((IslandFilming.read(queueRoot: root)?.since ?? 0) <= now)
     }
 }

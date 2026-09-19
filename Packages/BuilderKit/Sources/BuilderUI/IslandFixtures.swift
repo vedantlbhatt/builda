@@ -54,6 +54,8 @@ public enum IslandFixtures {
             ("drop-zone", IslandSnapshot(agents: [], ranToday: true, drop: .zone(valid: true)), true),
             ("drop-reading", IslandSnapshot(agents: [], ranToday: true, drop: .progress(id: "demo", step: 1, moves: nil)), true),
             ("drop-planned", IslandSnapshot(agents: [], ranToday: true, drop: .progress(id: "demo", step: 2, moves: 3)), true),
+            ("filming-collapsed", IslandSnapshot(agents: crew(now: now), ranToday: true, filming: IslandFilming(project: "tramline", since: now - 190)), false),
+            ("filming", IslandSnapshot(agents: crew(now: now), ranToday: true, filming: IslandFilming(project: "tramline", since: now - 190)), true),
         ]
     }
 }

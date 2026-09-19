@@ -1,3 +1,4 @@
+import BuilderModel
 import SwiftUI
 
 /// Where the island sits: the notch's measured size, or no notch at all.
@@ -71,6 +72,7 @@ public enum IslandLayout {
         case .needsYou: return 70
         case .shipped: return 54
         case .drop: return 74
+        case .filming: return 54
         }
     }
 
@@ -81,6 +83,7 @@ public enum IslandLayout {
         case .needsYou: return 440
         case .shipped: return 420
         case .drop: return 420
+        case .filming: return 420
         }
     }
 
@@ -189,7 +192,16 @@ public struct IslandView: View {
 
     @ViewBuilder
     private var ears: some View {
-        if mode == .needsYou, let w = snapshot.waiting.first?.waiting {
+        if mode == .filming, let f = snapshot.filming {
+            // The compact filming: the record light and how long, where the dots were.
+            HStack(spacing: 5) {
+                Circle().fill(Self.recordRed).frame(width: 7, height: 7)
+                Text(compactWait(since: f.since))
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.86))
+            }
+            .fixedSize()
+        } else if mode == .needsYou, let w = snapshot.waiting.first?.waiting {
             // The compact needs-you: how long, in amber, where the dots were.
             Text(compactWait(since: w.since))
                 .font(.system(size: 11, weight: .bold).monospacedDigit())
@@ -264,6 +276,7 @@ public struct IslandView: View {
             case .needsYou: needsBody
             case .shipped: shippedBody
             case .drop: dropBody
+            case .filming: filmingBody
             case .idle: Color.clear
             }
         }
@@ -323,6 +336,35 @@ public struct IslandView: View {
             WordReveal(s.sentence, size: 14, weight: .semibold)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// The record light: the data red (`spectrum.island.error` resolves to it), the colour a record
+    /// light is everywhere, and the one the phone's island uses while the Mac films.
+    static let recordRed = StripPalette.color(DesignTokens.Spectrum.island["error"] ?? SRGB(r: 0.9, g: 0.28, b: 0.3))
+
+    private var filmingBody: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Filming a demo of \(snapshot.filming?.project ?? "a project")")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("On a headless simulator. Kept here until you publish.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+            .lineLimit(1)
+            .truncationMode(.tail)
+            Spacer(minLength: 8)
+            if let since = snapshot.filming?.since {
+                HStack(spacing: 6) {
+                    Circle().fill(Self.recordRed).frame(width: 8, height: 8)
+                    Text(IslandText.waited(since: since, now: (now ?? Date()).timeIntervalSince1970))
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.86))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

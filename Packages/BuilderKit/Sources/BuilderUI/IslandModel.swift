@@ -20,6 +20,9 @@ public enum IslandMode: String, Sendable, CaseIterable {
     case shipped
     /// A link is being dragged onto the notch, or one was just dropped.
     case drop
+    /// The Mac is filming a demo (the ship kit's worker, `capture demo watch`): a simulator is
+    /// running headless and the fans may say so, so the notch says what it is for.
+    case filming
 }
 
 /// One running agent: one transcript being written to right now.
@@ -137,6 +140,38 @@ public enum DropPhase: Equatable, Sendable {
     public static let steps = ["Sent", "Reading", "Planned"]
 }
 
+/// A demo being filmed on this Mac: the job the worker holds in `~/.builder/demos/queue/running/`.
+public struct IslandFilming: Equatable, Sendable {
+    /// The project's folder name as the worker read it (the job's `name`).
+    public var project: String
+    /// When the worker took the job (the running file's modification time), Unix seconds.
+    public var since: Double
+
+    public init(project: String, since: Double) {
+        self.project = project
+        self.since = since
+    }
+
+    /// The job the one worker holds, if any. The worker keeps at most one job in `running/`
+    /// (it holds `queue/worker.lock` for its whole life), so the first file is THE job; a file
+    /// that does not parse is the worker mid write and is skipped until the next pass.
+    public static func read(queueRoot: URL, now: Double = Date().timeIntervalSince1970) -> IslandFilming? {
+        let dir = queueRoot.appendingPathComponent("running", isDirectory: true)
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
+        for f in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where f.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: f),
+                  let job = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            let name = (job["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? (job["path"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }
+                ?? "a project"
+            let mtime = (try? f.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? now
+            return IslandFilming(project: name, since: min(mtime, now))
+        }
+        return nil
+    }
+}
+
 /// Everything the island draws, in one value, so a demo, a preview and the live app all hand
 /// the same view the same shape.
 public struct IslandSnapshot: Equatable, Sendable {
@@ -145,15 +180,17 @@ public struct IslandSnapshot: Equatable, Sendable {
     public var ranToday: Bool
     public var shipped: IslandShipped?
     public var drop: DropPhase?
+    public var filming: IslandFilming?
 
     public init(
         agents: [IslandAgent] = [], ranToday: Bool = false, shipped: IslandShipped? = nil,
-        drop: DropPhase? = nil
+        drop: DropPhase? = nil, filming: IslandFilming? = nil
     ) {
         self.agents = agents
         self.ranToday = ranToday
         self.shipped = shipped
         self.drop = drop
+        self.filming = filming
     }
 
     /// What to call an agent in a list: its repository, and its branch when another agent in
@@ -186,11 +223,13 @@ public struct IslandSnapshot: Equatable, Sendable {
     }
 
     /// The mode, by precedence: the thing you are doing with your hands (a drag) first, then
-    /// the one-off beat, then what needs you, then what is merely running.
+    /// the one-off beat, then what needs you, then a demo being filmed (the phone's order too:
+    /// a demo outranks the crew it is not part of), then what is merely running.
     public var mode: IslandMode {
         if drop != nil { return .drop }
         if shipped != nil { return .shipped }
         if !waiting.isEmpty { return .needsYou }
+        if filming != nil { return .filming }
         if !agents.isEmpty { return .crew }
         return .idle
     }
@@ -202,6 +241,7 @@ public struct IslandSnapshot: Equatable, Sendable {
         case .crew: return .working
         case .needsYou: return .waiting
         case .shipped: return .done
+        case .filming: return .working
         case .drop:
             if case .failed = drop { return .error }
             if case .unpaired = drop { return .error }

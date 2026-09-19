@@ -28,7 +28,7 @@ const path = require('node:path');
 const { ORIGIN, SCHEME, serveBundle } = require('./bundle');
 const { bridgeApi } = require('./cors');
 const { isAppLink, isExternalAllowed } = require('./geometry');
-const { freePath, pngFromDataUrl, safeName } = require('./image');
+const { freeDir, freePath, kitFiles, pngFromDataUrl, safeName } = require('./image');
 const { createIsland } = require('./island');
 const { buildMenu } = require('./menu');
 const { nativeIslandRunning } = require('./native');
@@ -343,6 +343,16 @@ function registerIpc() {
     clipboard.writeImage(nativeImage.createFromBuffer(png));
     shell.showItemInFolder(file);
     return file;
+  });
+  // A ship kit's picked files: one folder in Downloads, shown where it landed (`image.kitFiles`).
+  ipcMain.handle('files:save', (_e, files, folder) => {
+    const list = kitFiles(files);
+    if (!list) return null;
+    const dir = freeDir(app.getPath('downloads'), safeName(folder), fs.existsSync, path.join);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of list) fs.writeFileSync(path.join(dir, f.name), f.bytes);
+    shell.showItemInFolder(path.join(dir, list[0].name));
+    return dir;
   });
   ipcMain.on('open-external', (_e, url) => {
     if (isExternalAllowed(String(url))) void shell.openExternal(String(url));

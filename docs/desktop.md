@@ -255,7 +255,8 @@ how where it matters. Rows marked "before the merge" were verified on the old UI
 | Drop banners (read, finished) | native notifications from the shell | wired (`localNotify.web.ts`); not observed |
 | The in-app island (passing news: "Sent to your Mac", shipped, a reel being read) | a toast from the window's top edge, centred over the page area; standing states are the desktop island's | verified with the Settings tour, recorded; a real notice from a Start not exercised |
 | Projects: where the hours go (the split), a project's page | same code, list beside page | verified |
-| A project's ship kit (`/ship/<key>`), asking the Mac for a demo | same code, beside the Projects list | verified rendering (no kit yet); the request not exercised |
+| A project's ship kit (`/ship/<key>`), asking the Mac for a demo | same code, beside the Projects list | verified rendering; the request not exercised |
+| The kit's one Share (video and stills, the caption) | Save: the picked files into one new folder in Downloads, shown in Finder or Explorer, the caption on the clipboard (`shipkit/share.web.ts`, `desktop/src/image.js` `kitFiles`: png, jpg, gif, mp4 checked by their bytes, 20 files, 400 MB); a plain browser downloads each. The phone's path threw "no cache directory" on the web. Checked in Chromium: the 16:9 video, 1920 x 1080, 10 s | YES |
 | A live session's page: the island's bar on this run | same code, beside the list | verified on the account's live run |
 | You, Analysis, Wrapped (15 cards), Money, Stack, Dimensions, Glossary; a band growing into its page | same code; the band grows into the 1120 column | verified rendering; the You to Analysis morph recorded |
 | Codebase map, time lapse | same code | verified (the finished-session state only) |

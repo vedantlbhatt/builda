@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld('builda', {
     ipcRenderer.send('notify', { title: String(n?.title ?? ''), body: String(n?.body ?? ''), url: n?.url ? String(n.url) : null }),
   copyText: (/** @type {string} */ text) => ipcRenderer.send('copy', String(text)),
   saveImage: (/** @type {string} */ dataUrl, /** @type {string} */ name) => ipcRenderer.invoke('image:save', String(dataUrl), String(name)),
+  saveFiles: (/** @type {{ name: string, bytes: Uint8Array }[]} */ files, /** @type {string} */ folder) =>
+    ipcRenderer.invoke(
+      'files:save',
+      Array.isArray(files) ? files.map((f) => ({ name: String(f?.name ?? ''), bytes: f?.bytes instanceof Uint8Array ? f.bytes : new Uint8Array(0) })) : [],
+      String(folder),
+    ),
   openExternal: (/** @type {string} */ url) => ipcRenderer.send('open-external', String(url)),
   // Subscribing is also the page saying it is ready: a link that launched the app waits in the
   // main process until something is listening for it.

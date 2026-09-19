@@ -195,7 +195,8 @@ function counted(n: number, one: string): string {
  * the screen shows them, and the platform's caption. Null when nothing is picked (the button is
  * off and says so), never an empty sheet.
  */
-export function sharePayload(view: KitView, s: Selection): SharePayload | null {
+/** `verb`: "Save" on a desktop, where the files go to a folder rather than a share sheet (`share.web.ts`). */
+export function sharePayload(view: KitView, s: Selection, verb: 'Share' | 'Save' = 'Share'): SharePayload | null {
   const files: ShareFile[] = [];
   const tab = view.tabs.find((t) => t.id === s.format) ?? null;
   if (s.video && tab?.video) files.push({ id: tab.video.id, url: tab.video.url, contentType: 'video/mp4', name: fileName(tab.video, tab.id) });
@@ -205,7 +206,7 @@ export function sharePayload(view: KitView, s: Selection): SharePayload | null {
   const video = files.some((f) => f.contentType === 'video/mp4');
   const pictures = files.length - (video ? 1 : 0);
   const what = [video ? `the ${tab?.label ?? ''} video`.replace('  ', ' ') : null, pictures ? counted(pictures, 'picture') : null].filter(Boolean).join(' and ');
-  return { files, text: captionFor(view, s), label: `Share ${what}` };
+  return { files, text: captionFor(view, s), label: `${verb} ${what}` };
 }
 
 /**

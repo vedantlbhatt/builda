@@ -12,7 +12,7 @@ const { fileFor, contentSecurityPolicy } = require('../src/bundle');
 const { createMemoryStore, createTokenStore } = require('../src/tokens');
 const { allowHeaders } = require('../src/cors');
 const { qrModules } = require('../src/qr');
-const { MAX_BYTES, pngFromDataUrl, safeName, freePath } = require('../src/image');
+const { MAX_BYTES, pngFromDataUrl, safeName, freePath, kitFiles, freeDir, KIT_MAX_FILES } = require('../src/image');
 
 // A 14 inch MacBook Pro at its default scaling: the menu bar holds the notch, 37 points.
 const notched = { bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea: { x: 0, y: 37, width: 1512, height: 945 }, internal: true };
@@ -164,4 +164,27 @@ test("a capture run's store never touches safeStorage, and holds what it is give
   assert.equal(m.get('builder.access'), 'A1');
   m.remove('builder.access');
   assert.equal(m.get('builder.access'), null);
+});
+
+test("a ship kit's files: only the four kit types, checked by their bytes, never a path", () => {
+  const png = Buffer.from(DOT, 'base64');
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(12)]);
+  const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
+  const u8 = (/** @type {Buffer} */ b) => new Uint8Array(b);
+  const ok = kitFiles([
+    { name: '01 still.png', bytes: u8(png) },
+    { name: '../../demo 9x16.mp4', bytes: u8(mp4) },
+    { name: 'cover.JPEG', bytes: u8(jpg) },
+  ]);
+  assert.ok(ok);
+  assert.deepEqual(ok.map((f) => f.name), ['01-still.png', 'demo-9x16.mp4', 'cover.jpg']);
+  // A name that lies about its bytes, a type a kit never holds, too many, none.
+  assert.equal(kitFiles([{ name: 'x.mp4', bytes: u8(png) }]), null);
+  assert.equal(kitFiles([{ name: 'x.sh', bytes: u8(Buffer.from('#!/bin/sh')) }]), null);
+  assert.equal(kitFiles(Array.from({ length: KIT_MAX_FILES + 1 }, () => ({ name: 'a.png', bytes: u8(png) }))), null);
+  assert.equal(kitFiles([]), null);
+  // Two files with one name do not overwrite each other.
+  assert.deepEqual(kitFiles([{ name: 'a.png', bytes: u8(png) }, { name: 'a.png', bytes: u8(png) }])?.map((f) => f.name), ['a.png', 'a-2.png']);
+  const taken = new Set(['/d/builda kit']);
+  assert.equal(freeDir('/d', 'builda kit', (p) => taken.has(p), path.posix.join), '/d/builda kit 2');
 });

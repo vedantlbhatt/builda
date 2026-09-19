@@ -12,7 +12,7 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useReducer, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import { Platform as RNPlatform, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
 
 import type { MediaSourceRef } from '../data/api';
 import { api } from '../data/client';
@@ -104,7 +104,7 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
   const inner = width - GUTTER * 2;
   const c = useColors();
   const tab = view.tabs.find((t) => t.id === s.format) ?? view.tabs[0]!;
-  const payload = sharePayload(view, s);
+  const payload = sharePayload(view, s, RNPlatform.OS === 'web' ? 'Save' : 'Share');
   const caption = captionFor(view, s);
   const count = captionCount(caption, s.platform);
   const thread = threadFor(view, s.platform);

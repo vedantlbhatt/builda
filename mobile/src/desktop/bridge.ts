@@ -55,6 +55,12 @@ export interface DesktopBridge {
    * Optional: a shell older than the share cards does not have it, and the page downloads instead.
    */
   saveImage?(dataUrl: string, name: string): Promise<string | null>;
+  /**
+   * A ship kit's picked files (video and stills), written into one new folder in Downloads and
+   * shown in Finder or Explorer. Resolves to the folder, or null when the shell refused them (a
+   * type a kit does not hold, bytes that are not what the name says, too many or too large).
+   */
+  saveFiles?(files: { name: string; bytes: Uint8Array }[], folder: string): Promise<string | null>;
   openExternal(url: string): void;
   /** `builder://` links from the OS (a click in another app, a second launch), and notification clicks. */
   onDeepLink(cb: (url: string) => void): () => void;

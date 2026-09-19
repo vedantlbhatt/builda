@@ -59,4 +59,63 @@ function freePath(dir, name, exists, join) {
   return p;
 }
 
-module.exports = { MAX_BYTES, pngFromDataUrl, safeName, freePath };
+/**
+ * A ship kit's picked files (the demo video, the stills), for the kit's Save on a desktop: the
+ * same door, wider. Only the four types a kit holds, each checked by its first bytes and not by
+ * its name, at most `KIT_MAX_FILES` of them and `KIT_MAX_BYTES` together (a 30 second 1080p kit
+ * video is about 20 MB).
+ */
+const KIT_MAX_FILES = 20;
+const KIT_MAX_BYTES = 400 * 1024 * 1024;
+/** @type {Record<string, (b: Buffer) => boolean>} */
+const KIT_TYPES = {
+  png: (b) => b.length >= 8 && b.subarray(0, 8).equals(PNG_MAGIC),
+  jpg: (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  gif: (b) => b.length >= 6 && b.subarray(0, 4).toString('latin1') === 'GIF8',
+  // An MP4 opens with a box whose type, bytes 4 to 8, is `ftyp`.
+  mp4: (b) => b.length >= 12 && b.subarray(4, 8).toString('latin1') === 'ftyp',
+};
+
+/**
+ * The files to write, or null when any of them is not what it says. Each comes back with a safe
+ * name that keeps its (checked) extension.
+ * @param {unknown} files
+ * @returns {{ name: string, bytes: Buffer }[] | null}
+ */
+function kitFiles(files) {
+  if (!Array.isArray(files) || files.length === 0 || files.length > KIT_MAX_FILES) return null;
+  let total = 0;
+  /** @type {{ name: string, bytes: Buffer }[]} */
+  const out = [];
+  const seen = new Set();
+  for (const f of files) {
+    if (!f || typeof f.name !== 'string' || !(f.bytes instanceof Uint8Array)) return null;
+    const bytes = Buffer.from(f.bytes.buffer, f.bytes.byteOffset, f.bytes.byteLength);
+    total += bytes.length;
+    if (total > KIT_MAX_BYTES) return null;
+    const dot = f.name.lastIndexOf('.');
+    const ext = (dot >= 0 ? f.name.slice(dot + 1) : '').toLowerCase().replace('jpeg', 'jpg');
+    const check = KIT_TYPES[ext];
+    if (!check || !check(bytes)) return null;
+    let name = `${safeName(dot >= 0 ? f.name.slice(0, dot) : f.name)}.${ext}`;
+    for (let n = 2; seen.has(name); n++) name = `${safeName(f.name.slice(0, dot))}-${n}.${ext}`;
+    seen.add(name);
+    out.push({ name, bytes });
+  }
+  return out;
+}
+
+/**
+ * `dir/name`, or `dir/name 2` and upwards: a folder for one save, never merged into another.
+ * @param {string} dir
+ * @param {string} name
+ * @param {(p: string) => boolean} exists
+ * @param {(...parts: string[]) => string} join
+ */
+function freeDir(dir, name, exists, join) {
+  let p = join(dir, name);
+  for (let n = 2; exists(p) && n < 1000; n++) p = join(dir, `${name} ${n}`);
+  return p;
+}
+
+module.exports = { MAX_BYTES, pngFromDataUrl, safeName, freePath, kitFiles, freeDir, KIT_MAX_FILES };

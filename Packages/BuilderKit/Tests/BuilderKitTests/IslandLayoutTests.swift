@@ -123,6 +123,9 @@ struct IslandAgentNameTests {
         #expect(s.label(for: a) == "builder/motion-mac")
         #expect(s.label(for: b) == "builder/motion")
         #expect(s.label(for: c) == "gt-transit")
+        #expect(IslandSnapshot.shortBranch("worktree-agent-a59698c5718d0e2f1") == "agent-a596")
+        #expect(IslandSnapshot.shortBranch("claude/motion-mac") == "motion-mac")
+        #expect(IslandSnapshot.shortBranch("main") == "main")
     }
 
     @Test("the branch is read from a checkout and from a worktree's .git file, and a detached HEAD has none")

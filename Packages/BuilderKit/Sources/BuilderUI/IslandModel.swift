@@ -162,7 +162,21 @@ public struct IslandSnapshot: Equatable, Sendable {
     public func label(for agent: IslandAgent) -> String {
         let twins = agents.filter { $0.repo == agent.repo }.count
         guard twins > 1, let branch = agent.branch, !branch.isEmpty else { return agent.repo }
-        return "\(agent.repo)/\(branch.split(separator: "/").last.map(String.init) ?? branch)"
+        return "\(agent.repo)/\(Self.shortBranch(branch))"
+    }
+
+    /// A branch's last part, readable at a glance. FOUND BY RUNNING IT on this Mac, where the
+    /// agents' worktrees are on branches like `worktree-agent-a59698c5718…`: the wheel printed
+    /// the whole hash and truncated the line. A `worktree-` prefix goes, and a run of hex eight
+    /// or more long keeps its first four ("agent-a596"), as a short commit id does.
+    public static func shortBranch(_ branch: String) -> String {
+        let last = branch.split(separator: "/").last.map(String.init) ?? branch
+        var parts = last.split(separator: "-").map(String.init)
+        if parts.count > 1, parts.first == "worktree" { parts.removeFirst() }
+        parts = parts.map { p in
+            p.count >= 8 && p.allSatisfy(\.isHexDigit) ? String(p.prefix(4)) : p
+        }
+        return parts.joined(separator: "-")
     }
 
     /// Who needs you, longest wait first: the one waiting longest has lost the most.

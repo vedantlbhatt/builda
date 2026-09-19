@@ -101,15 +101,32 @@ From 900 points wide (`rules.DESKTOP_MIN_WIDTH`), on web only:
   whatever it opened (a session, a drop, a project). A row still calls
   `router.push('/session/<id>')`; the frame leaves the list where it is.
 - **Pane widths**: forty screens size themselves from the window's width. A pane tells them its
-  own (`PaneSize`, through react-native-web's `useWindowDimensions`, swapped only where its own
-  index imports it), so a strip or a fitted figure is laid out for the pane it is in.
+  own (`PaneSize`, through react-native-web's `useWindowDimensions`), so a strip or a fitted figure
+  is laid out for the pane it is in. The hook is swapped in TWO places (`metro.config.js`): where
+  react-native-web's index imports it, and the deep import `react-native-web/dist/exports/
+  useWindowDimensions` that babel-plugin-react-native-web writes into every app file on web. Until
+  2026-09-19 only the first was swapped, so 44 app modules read the window, not the pane (see
+  "After the motion merge"); `__tests__/desktopMetro.test.ts` holds both.
 - **Content max width** 1120, centred, on pages with no list. Onboarding sits in a phone-wide
   column.
 - **Keyboard**: Cmd/Ctrl+1..5 the sections, Cmd/Ctrl+, Settings, Cmd/Ctrl+K a palette over the
-  places, the sessions, projects and drops this machine holds, Cmd/Ctrl+\ the sidebar, Esc back.
+  places, the sessions, projects and drops this machine holds, Cmd/Ctrl+\ the sidebar, Esc closes
+  a preview over the window if one is up (`ui/overlay.tsx` `dismiss`) and otherwise goes back.
   The shell's menu carries the same, plus Cmd/Ctrl+Shift+V to drop the link on the clipboard.
 - **Hover and focus**: a 5% wash on anything pressable, a focus ring for the keyboard, quiet
-  scrollbars.
+  scrollbars. The wash is an inset shadow on the pressable and follows ITS corners, so a pressable
+  wrapped round a rounded shape carries that shape's radius (the Now stage 44, a wall card 24 or
+  22), or it draws a square behind it.
+- **Morphs land in the pane** (`src/desktop/morphTarget.web.ts`, rule `rules.morphRectFor`): the
+  phone grows the thing you touched into the whole screen because the page is the whole screen.
+  Here a row grows into the pane beside its list; a tile on Now, whose session brings the Sessions
+  list in with it, covers everything right of the sidebar, because that is what changes; a band on
+  You grows into the centred 1120 column. The frame and the morph read one layout rule
+  (`rules.frameLayout`). A drop does not use the phone's Opening overlay here: its poster's picture
+  grows into the pane and `/drop/<id>` opens there, like every other detail.
+- **The Now stage** drops out of its own top edge (full width, height from nothing, the ISLAND
+  spring, words lagging) instead of growing out of a 125 point pill: a desktop window has no
+  hardware island for it to come from.
 - **Signing in**: the phone approves the desktop (RFC 8628, the Mac agent's flow): a code and a QR
   of `builder://pair?code=…`, which the phone's camera opens into `app/pair.tsx`. The desktop gets
   its own device and token pair, stored with safeStorage. MEASURED end to end on the packaged
@@ -144,9 +161,50 @@ a run starts needing you or ships.
 Motion: one progress value per morph on the ISLAND spring (17, 210, 1); width and height ride it
 past their targets, the radius rides it clamped; the outgoing content is gone by 0.28 and scales
 up, the incoming arrives from 0.34 rising 5 points from 0.92; the face breathes 1500/1700 ms and
-blinks on a random 1.8 to 5 s timer; words arrive 55 ms apart. The constants are a LOCAL COPY of
-`mobile/src/motion/spec.ts` (`island/motion.ts`), pinned by a test, until that file is on this
-branch.
+blinks on a random 1.8 to 5 s timer; words arrive 55 ms apart. The constants are
+`mobile/src/motion/spec.ts`'s, re-exported by `island/motion.ts` since the merge; the test still
+pins the numbers it reads.
+
+**The phone's in-app island in a desktop window** (`src/island/Island.tsx`, host rule in
+`src/desktop/islandHost.web.ts`). The phone draws it fused to the hardware island; a desktop window
+has none. So: in the island window it draws nothing (that page IS an island); in the desktop
+layout the standing states (the crew, a run waiting on you, a demo) are left to this window and to
+the Now stage, and only the app's own passing beats (a notice such as "Sent to your Mac", shipped,
+a reel being read) come down as a 58 point toast from 8 points under the window's top edge,
+centred over the area right of the sidebar, with no camera gap above the words. Under 900 points
+the window is the phone layout and gets the phone's island. Settings' "Play every state once"
+plays only those passing steps on a desktop (`island/demo.ts` `PASSING_STEPS`). This window does
+not hear the main window's notices: they are two pages.
+
+## After the motion merge (2026-09-19)
+
+The motion branch merged the phone's motion overhaul and this shell. The screenshots behind the
+first version of this file were of the phone UI before it. On the merged build, at 1440 x 900,
+found by reading every screenshot and recording each morph:
+
+| what was wrong | why | the fix |
+|---|---|---|
+| Now: the island stage 1424 wide in a 1120 pane, its words cut off at the left, square corners; the tile under it clipped | babel rewrites `useWindowDimensions` from 'react-native' to a deep import, and only the index import was swapped for the pane hook: 44 modules read the window | `metro.config.js` swaps the deep import too (`DEEP_WINDOW_HOOK`), held by `desktopMetro.test.ts` |
+| the wall: a Pick a move poster 450 wide in a 520 column, its words off the right edge | the same | the same |
+| Sessions strips and the Projects split bar running into the column's edge | the same | the same |
+| the Glossary grid 36 points past its gutter (listed as left over before the merge) | the same | the same |
+| a black pill with the crew's face and a clock over every page title, in a Mac's title bar strip | the phone's in-app island, drawn where a hardware island would be | `islandHost.web.ts`: nothing in the island window, passing beats only, as a toast, in the desktop layout |
+| the Now stage opening out of a stray pill in the middle of the page | it grows out of the phone's hardware island | on a desktop it drops from its own top edge |
+| a row, a tile or a band growing over the sidebar and the list that were about to stay | `MorphNav` grows to the window | it grows into the pane the route opens in, or over everything right of the sidebar when the list arrives with it |
+| a poster opening as an overlay over the whole window, with no route under it | the phone's `wall/Opening.tsx` | the poster grows into the pane and `/drop/<id>` opens there |
+| Esc under the pair share preview went back a page and left the preview up | the overlay is not a route | overlays register their own close; Esc asks them first |
+| a grey square behind the Now stage and each wall card on hover | the wash follows the pressable, which was square | the pressables carry their shape's corner |
+| "Blocked call to navigator.vibrate" in the shell's log on opening a project | expo-haptics on web | `ui/haptics.web.ts` does nothing |
+
+Every one of these is web only or behind the form factor: the phone's twins (`morphTarget.ts`,
+`islandHost.ts`, `useIsDesktop()`) are constants, and the few shared lines added (a radius on a
+pressable with no fill, a closer registered with the overlay, an optional argument) draw and do
+nothing different on a phone.
+
+NOT fixed, a design law finding for the owner: the wall's "Being built" card wears `motion/Aura.tsx`,
+a four hue sweep gradient ring (cobalt, iris, orchid, tide) with a glow. That is a multi-hue
+gradient border, which the house rules ban. It is the phone's design as merged, the desktop only
+shows it, and changing it would change the phone, so it is left for whoever owns the motion work.
 
 ## Verifying without a screen
 
@@ -162,46 +220,73 @@ title bar and traffic lights are the system's and are not in them.
 approve and waits for the page to sign itself in.
 
 `scripts/e2e_desktop_web.mjs` screenshots every tab and pushed route of the web build at
-1440 x 900 and fails on a page error, a console error or a blank pane.
+1440 x 900 and fails on a page error, a console error or a blank pane. It does not click, so it
+cannot see a morph or an overlay; those were recorded frame by frame with a scripted Playwright
+page (click, then screenshot as fast as Chromium allows, about one frame per 60 to 100 ms).
 
 ## Parity
 
-Every phone feature, and what the desktop has. "Same code" means the phone's own screen or module
-runs; "verified" means seen working in the desktop build on the local stack.
+Every phone feature, and what the desktop has, on the MERGED UI (the motion overhaul). "Same code"
+means the phone's own screen or module runs; "verified" means seen working in the desktop build on
+the local stack on 2026-09-19, in the web build at 1440 x 900 and in the Electron shell, and says
+how where it matters. Rows marked "before the merge" were verified on the old UI and not again.
 
 | phone | desktop | status |
 |---|---|---|
-| Now: mission control, tiles, needs you order | same code, full width | verified |
-| Sessions list, notable and every, paging | same code, in the list column | verified |
-| A session: hero, strip, numbers, analysis, links | same code, beside the list | verified |
-| Recap sheet (`?recap=1`) | same code; a full-window sheet | verified opening; posting not exercised |
+| Now: the island stage (the crew's face and state, the wheel, needs you in amber), tiles in needs you order | same code in the centred 1120 column; the stage drops from its top edge instead of growing out of a pill | verified: one real live run, the stage's entrance recorded frame by frame; the waiting (amber) and quiet stages not seen on this account |
+| A tile opens its session by growing into it | the tile covers everything right of the sidebar, then the Sessions list and the session appear together | verified, recorded |
+| Sessions list, notable and every, paging | same code, in the list column, strips fitted to the column | verified |
+| A session: hero, strip, numbers, analysis, links | same code, beside the list; a row grows into that pane | verified, recorded |
+| Recap sheet (`?recap=1`) | same code; a full-window sheet | before the merge: opening verified, posting not exercised |
 | Photos and a voice note on a post | same code (expo-image-picker, expo-av on web) | not exercised |
-| Drops wall: the web of strands, search | same code, in the list column | verified |
+| Drops wall: being built, pick a move (Start on the poster), what you made of them, every poster, search | same code, in the list column (520) | verified rendering, scrolled top to bottom; search, Start and the paste field not exercised |
+| A drop opening out of its poster | the poster's picture grows into the pane and `/drop/<id>` opens there (the phone's Opening overlay is not used) | verified, recorded |
 | A drop: the post, its moves, Start, the repo picker | same code, beside the wall | verified reading; Start not exercised |
-| Sharing a reel INTO Builda (iOS share extension) | paste a link on the wall, Cmd/Ctrl+Shift+V, `builder://drop?url=` | wired; the paste field is the phone's; not exercised end to end |
+| The pair (the reel beside what you made) and its share image | same code; the preview is a modal over the window, Esc closes it | preview and Esc verified; Share does nothing useful (expo-sharing has no sheet in Electron) |
+| Sharing a reel INTO Builda (iOS share extension) | paste a link on the wall, Cmd/Ctrl+Shift+V, `builder://drop?url=` | wired; not exercised end to end |
 | Drop banners (read, finished) | native notifications from the shell | wired (`localNotify.web.ts`); not observed |
-| Projects, a project's page | same code, list beside page | verified |
-| You, Analysis, Wrapped (15 cards), Money, Stack, Dimensions, Glossary | same code | verified rendering |
-| Codebase map, time lapse | same code | verified (the finished-session state) |
-| Creature picker | same code | verified |
+| The in-app island (passing news: "Sent to your Mac", shipped, a reel being read) | a toast from the window's top edge, centred over the page area; standing states are the desktop island's | verified with the Settings tour, recorded; a real notice from a Start not exercised |
+| Projects: where the hours go (the split), a project's page | same code, list beside page | verified |
+| You, Analysis, Wrapped (15 cards), Money, Stack, Dimensions, Glossary; a band growing into its page | same code; the band grows into the 1120 column | verified rendering; the You to Analysis morph recorded |
+| Codebase map, time lapse | same code | verified (the finished-session state only) |
+| Creature picker | same code | verified rendering |
 | Settings | same code | verified rendering |
-| Onboarding | same code, phone-wide column | verified rendering |
-| Sign in with Apple | not possible off the phone | replaced by the phone approving the desktop: verified end to end |
+| Onboarding | same code, phone-wide column | before the merge |
+| Sign in with Apple | not possible off the phone | replaced by the phone approving the desktop: before the merge, end to end |
 | Sign in with Google | the redirect is handled when it arrives through the shell | wired; needs a configured client |
 | Connect your Mac (scan the agent's code) | same code; webcam or typing | renders; not exercised with a camera |
 | Push notifications (APNs) | none on a desktop; the island's poll posts needs you and shipped natively while the app runs | partial |
-| Live Activity, Dynamic Island | the desktop island | verified (samples and a real live run) |
+| Live Activity, Dynamic Island | the desktop island window | verified: every sample, compact and open, and the account's real live run, in the shell |
 | Home Screen widget | none | not planned; the island is the glanceable surface |
 | Share a card or Wrapped image | expo-sharing has no share sheet in Electron; view-shot's web capture unverified | NOT YET |
-| Haptics | none | not applicable |
+| Haptics | none (`ui/haptics.web.ts` does nothing) | not applicable |
 | Offline cache | real SQLite in memory, `kv` kept; sessions re-sync each launch | partial: nothing offline across launches |
-| Deep links `builder://…` | OS handler, second launch, notification clicks | verified (second launch opened a session with its recap) |
+| Deep links `builder://…` | OS handler, second launch, notification clicks | before the merge |
 | Social routes (feed, post, factions, profiles) | same code | not exercised (out of scope on the phone too) |
 
-Builds: the Mac app packaged (`--mac --dir`, arm64) and launched, every screen above captured
-from it. Windows: `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
+Builds: before the merge, the Mac app was packaged (`--mac --dir`, arm64) and launched. After the
+merge only the unpackaged shell (`electron .` on the exported bundle) was run; the packaged app
+was NOT rebuilt. Windows: `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
 `Builda.exe`, a 115 MB `Builda Setup 0.1.0.exe`, unsigned); neither has been RUN, because there
 is no Windows machine here. Linux: configured (AppImage), not built.
+
+## Screenshots
+
+Kept under `shots/` (gitignored), from this worktree's build against the local stack:
+
+- `shots/motion/desktop/` (the desktop branch's): BEFORE the merge, the old phone UI (a pink Now
+  band, the web of strands on the wall, the old project bands). They no longer show the app.
+- `shots/motion/desktop2/web-before/`: the merged build as it came, at 1440 x 900, every route
+  (`scripts/e2e_desktop_web.mjs`). All 22 "ok" (no page error, no blank pane), and still broken:
+  the e2e cannot see a layout laid out for the wrong width.
+- `shots/motion/desktop2/web/`: the same routes after the fixes.
+- `shots/motion/desktop2/app/`: the Electron shell's own capture (`BUILDA_CAPTURE`), at 2x, the
+  main window's routes and the island window on the live run and every sample; `capture.log` has
+  no error.
+- `shots/motion/desktop2/motion1/`, `motion2/`: morphs recorded frame by frame (a row, a tile, a
+  poster, a band, the Now stage's entrance, the Settings tour), with contact sheets. Headless
+  Chromium screenshots at roughly one frame per 60 to 100 ms, so they show WHERE things go, not
+  whether the spring feels right; that needs a person at a screen.
 
 ## Shared files this touched
 
@@ -213,16 +298,36 @@ edge, 0 on a phone), `mobile/src/drops/force.ts` (declaration order), `mobile/me
 (web-only resolver rules), `mobile/package.json` (`main: index`, two scripts),
 `mobile/src/web/*` (the web shims), `.gitignore`.
 
+After the motion merge: `mobile/metro.config.js` (the deep window hook, web only);
+`src/motion/MorphNav.tsx` (an optional route and picture; the target is null on a phone, so the
+same math); its callers `src/insights/Band.tsx`, `src/live/MissionTile.tsx`,
+`src/session/SessionsScreen.tsx` (pass the route); `src/live/IslandStage.tsx` (the desktop start
+box behind `useIsDesktop()`, a radius on its fill-less pressable); `src/island/Island.tsx` (the
+host hook, null on a phone); `src/island/demo.ts` (`playIslandTour(only?)`, every step when not
+given); `app/settings.tsx` and `app/(tabs)/drops.tsx` (a desktop branch behind `useIsDesktop()`);
+`src/ui/overlay.tsx` (`onDismiss`, `dismiss`, which only the desktop's Esc calls);
+`src/drops/wall/PairShare.tsx`, `src/drops/wall/Opening.tsx` (register their close);
+`src/drops/wall/Cards.tsx` (radii on fill-less pressables). New, desktop or web only:
+`src/desktop/morphTarget(.web).ts`, `src/desktop/islandHost(.web).ts`, `src/ui/haptics.web.ts`.
+
 ## What is left
 
 - Signing and notarization (a Developer ID certificate and an App Store Connect key, which live in
   a password manager); Windows code signing. Until then Gatekeeper and SmartScreen ask once.
 - Run the Windows build on Windows: the island's `toolbar` window type, the tray, DPAPI.
+- Rebuild and run the PACKAGED Mac app on the merged UI (only `electron .` was run after the merge).
 - Sharing an image from the desktop: save to a file and reveal it, or copy it, through the bridge.
-- The phone's in-app island (`src/island/`, motion branch) and this one should share one model;
-  `island/motion.ts` should become an import of `src/motion/spec.ts`.
+  The pair preview's Share button is the phone's and does nothing useful here.
+- The Aura's four hue ring on the wall's "Being built" card (see "After the motion merge").
+- The in-app island and the desktop island window are two pages: a notice the app posts ("Sent to
+  your Mac") shows in the app's window only. A bridge message would let the window say it too.
+- The Settings tour on a desktop plays only the passing states; the standing ones are the desktop
+  island's, which has samples (`BUILDA_ISLAND_SAMPLE`) but no tour of its own.
+- Not seen on the merged UI: the Now stage waiting (amber) and quiet (asleep), a drop's Start, the
+  repo picker, the wall's search, onboarding, deep links. The morphs were recorded in headless
+  Chromium at about 10 frames a second: where they go is verified, how they feel is not.
 - Reanimated's custom-spring entering animations do not run on web (a warning, and the element
-  simply appears); the Glossary grid overhangs its gutter by about 36 points at 1120 wide.
+  simply appears).
 - Lists kept beside a detail keep polling while hidden; a shared poller would halve the requests.
 - The shell takes every request on the API's scheme to answer the API's preflights (`cors.js`);
   against an https API that is every https request the page makes, images included, passed

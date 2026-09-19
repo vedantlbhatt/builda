@@ -37,6 +37,12 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:45 to 07:53**: the week card link opens every time (ee4473a: `setParams({card: undefined})`
+  left the parameter in place, so a second open showed nothing); card titles shrink before they
+  cut; `docs/made-for-you.md` (the three things Builda makes by itself and their rules); on a
+  desktop with its window hidden the week offer goes to system notifications instead of an unseen
+  toast (09bd01f). CI green on every push since 7423fcd. Phone audit of Settings, Money, Stack,
+  Glossary, Wrapped: nothing broken.
 - **07:37 to 07:45**: CLAUDE.md says the ground truth corpus was garbage collected (Claude Code keeps
   30 days; oldest RideGT file Aug 20, reference measured by Aug 15), so that suite's local failure
   is the truthful result (8a25d98). Monday's notification for last week's card (ee4f3eb): scheduled

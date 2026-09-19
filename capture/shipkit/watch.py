@@ -177,7 +177,7 @@ def work(p: pathlib.Path, no_model: bool, req: Requests | None, publish_to: str 
         return "skipped"
     key, path = found["key"], found["path"]
     log = paths.private_dir(paths.work_dir(key)) / "watch.log"
-    say(f"  filming {found.get('name')} ({found.get('kind')}, {found.get('commits', 0)} commits, {len(found.get('ui_files') or [])} app files); log {log}")
+    say(f"  filming {found.get('name')} ({found.get('project_kind')}, {found.get('commits', 0)} commits, {len(found.get('ui_files') or [])} app files); log {log}")
     rc = run_child([sys.executable, "-m", "capture", "demo", path, "--yes"], CAPTURE_TIMEOUT, log)
     if rc not in (0,):
         code = "privacy_refused" if rc == 3 else "capture_failed"
@@ -219,7 +219,7 @@ def main(a: argparse.Namespace) -> int:
         for p in queue.jobs("pending"):
             job = queue.read(p)
             skip, found = queue.judge(job)
-            verdict = f"skip: {tables.REFUSALS[skip]} ({skip})" if skip else f"film {found.get('path')} ({found.get('kind')})"
+            verdict = f"skip: {tables.REFUSALS[skip]} ({skip})" if skip else f"film {found.get('path')} ({found.get('project_kind')})"
             say(f"  {p.name}: {verdict}")
         say("dry run: nothing was claimed, moved or filmed")
         return 0

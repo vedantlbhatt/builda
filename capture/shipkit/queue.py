@@ -212,7 +212,7 @@ def judge(job: dict) -> tuple[str | None, dict]:
         if other.get("id") != job.get("id") and other.get("key") == project.key:
             return "already_queued", found
     plan = detect.detect(project, project.checkout, head or "HEAD", None)
-    found["kind"] = plan.kind
+    found["project_kind"] = plan.kind  # never "kind": that is the JOB's (request, manual, session_end)
     if plan.refused or plan.kind not in DEMOABLE:
         return "not_demoable", found
     if asked:

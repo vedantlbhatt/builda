@@ -226,13 +226,13 @@ describe('asking the Mac', () => {
 
   test('every state of the server row has its button and its line, and no dash', () => {
     const cases = [
-      requestView(null, false),
-      requestView([], true),
-      requestView([row({ status: 'queued' })], false),
-      requestView([row({ status: 'claimed' })], false),
-      requestView([row({ status: 'done' })], true),
-      requestView([row({ status: 'failed', refusal: 'no_checkout' })], false),
-      requestView([row({ status: 'cancelled' })], false),
+      requestView(null, null),
+      requestView([], KIT.published_at),
+      requestView([row({ status: 'queued' })], null),
+      requestView([row({ status: 'claimed' })], null),
+      requestView([row({ status: 'done' })], KIT.published_at),
+      requestView([row({ status: 'failed', refusal: 'no_checkout' })], null),
+      requestView([row({ status: 'cancelled' })], null),
     ];
     expect(cases.map((c) => c.kind)).toEqual(['none', 'none', 'waiting', 'waiting', 'done', 'failed', 'none']);
     expect(cases[5]!.line).toBe(`It did not work: ${SHIPKIT_REFUSALS.no_checkout}.`);
@@ -240,6 +240,14 @@ describe('asking the Mac', () => {
       expect(hasDash(c.button)).toBe(false);
       expect(hasDash(c.line)).toBe(false);
     }
+  });
+
+  test('a done request is the kit on screen only when that kit came after the Mac took it', () => {
+    const done = row({ status: 'done', claimed_at: '2026-09-19T06:46:30Z', finished_at: '2026-09-19T06:50:00Z' });
+    // Published between the claim and the finish: the worker publishes, then finishes.
+    expect(requestView([done], '2026-09-19T06:49:58Z').line).toBe('The kit above is from the demo you asked for.');
+    expect(requestView([done], '2026-09-19T06:30:00Z').line).toContain('Publish its kit there');
+    expect(requestView([done], null).line).toContain('Publish its kit there');
   });
 
   test('every platform has a name, and every refusal sentence is plain words', () => {

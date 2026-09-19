@@ -357,7 +357,11 @@ class Queue(unittest.TestCase):
         out = paths.private_dir(paths.out_dir(project.key))
         (out / "manifest.json").write_text(json.dumps({"commit": head}))
         self.assertEqual(kq.judge({"kind": "session_end", "cwd": str(repo)})[0], "already_filmed")
-        self.assertNotEqual(kq.judge({"kind": "request", "path": str(repo)})[0], "already_filmed")
+        skip, found = kq.judge({"kind": "request", "path": str(repo)})
+        self.assertNotEqual(skip, "already_filmed")
+        # FOUND ON THE FIRST PHONE REQUEST: the project's kind came back as `kind`, the worker
+        # merged it into the job, the job stopped being a `request`, and its kit was never sent.
+        self.assertNotIn("kind", found)
 
     def test_a_job_outside_a_repository_is_skipped_with_its_code(self):
         skip, _ = kq.judge({"kind": "session_end", "cwd": self.tmp.name})

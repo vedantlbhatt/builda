@@ -73,7 +73,7 @@ export function ShipKitScreen() {
         ) : null}
         {kit.kind === 'none' || view ? (
           <RequestPanel
-            state={requestView(requests, kit.kind === 'ready')}
+            state={requestView(requests, kit.kind === 'ready' ? kit.kit.published_at : null)}
             busy={asking}
             onRequest={() => void request(hue)}
             onCancel={() => requests?.[0] && void cancel(requests[0].id)}

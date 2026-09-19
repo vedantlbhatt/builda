@@ -230,10 +230,15 @@ export type RequestView =
 
 /**
  * What the request button and its line say, from the newest request the server holds for the
- * project (the list is newest first). The Mac films one demo at a time, so waiting is said as
- * waiting, never as a spinner with no words.
+ * project (the list is newest first) and when the kit on screen was published (null: no kit).
+ * The Mac films one demo at a time, so waiting is said as waiting, never as a spinner with no words.
+ *
+ * A done request is the kit on screen only when that kit was published after the Mac took the
+ * request. FOUND ON THE SIMULATOR: a request the Mac filmed and did not publish read "The last demo
+ * is done." above the OLD kit, which is the kit the person was about to share.
  */
-export function requestView(requests: readonly DemoRequestRow[] | null, hasKit: boolean): RequestView {
+export function requestView(requests: readonly DemoRequestRow[] | null, kitPublishedAt: string | null): RequestView {
+  const hasKit = kitPublishedAt !== null;
   const latest = requests?.[0] ?? null;
   const again = hasKit ? 'Make a new demo' : 'Request a demo';
   if (!latest || latest.status === 'cancelled') {
@@ -241,7 +246,15 @@ export function requestView(requests: readonly DemoRequestRow[] | null, hasKit: 
   }
   if (latest.status === 'queued') return { kind: 'waiting', button: 'Asked', line: 'Waiting for your Mac to pick it up. It films one demo at a time.', cancel: 'Take it back' };
   if (latest.status === 'claimed') return { kind: 'waiting', button: 'Filming', line: 'Your Mac is filming it now.', cancel: 'Take it back' };
-  if (latest.status === 'done') return { kind: 'done', button: again, line: hasKit ? 'The last demo is done.' : 'The demo is made on your Mac. Publish its kit there to see it here.' };
+  if (latest.status === 'done') {
+    const taken = Date.parse(latest.claimed_at ?? latest.created_at);
+    const fresh = hasKit && Date.parse(kitPublishedAt) >= taken;
+    return {
+      kind: 'done',
+      button: again,
+      line: fresh ? 'The kit above is from the demo you asked for.' : hasKit ? 'The new demo is made on your Mac. Publish its kit there to see it here.' : 'The demo is made on your Mac. Publish its kit there to see it here.',
+    };
+  }
   const why = latest.refusal ? SHIPKIT_REFUSALS[latest.refusal] : undefined;
   return { kind: 'failed', button: 'Try again', line: why ? `It did not work: ${why}.` : 'It did not work on your Mac.' };
 }

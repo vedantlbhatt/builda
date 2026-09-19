@@ -37,6 +37,10 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **11:39 to 11:42**: Now's running tile shows one figure (the time) and the away band lost its
+  sub-line; the two components that drew the island (`Island.tsx`, `IslandStage.tsx`) are deleted.
+  CI green on 7142473.
+
 - **10:10 to 11:34**: the text cuts the owner asked for on Sessions (number, caption, share),
   Projects (no eyebrow or footnote; doors say "hours" and "of your time") and You (no footnote),
   and a shorter desktop sign in. Capturing the rebuilt Mac app found it BROKEN since the 08:53

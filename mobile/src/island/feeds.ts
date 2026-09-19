@@ -14,7 +14,7 @@ import { creatureHue, dropHue } from '../theme';
 import { DROP_DONE_HOLD_MS, type Activity, type CrewMember } from './model';
 import { island } from './store';
 
-const FACE_FOR_TILE: Record<'needsYou' | 'working' | 'stalled' | 'finished', FaceState> = {
+export const FACE_FOR_TILE: Record<'needsYou' | 'working' | 'stalled' | 'finished', FaceState> = {
   needsYou: 'waiting',
   working: 'working',
   // Not updating: the run may be thinking or the Mac may be asleep. Violet, the thinking colour,

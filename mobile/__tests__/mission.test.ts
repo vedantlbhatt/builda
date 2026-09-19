@@ -1044,17 +1044,19 @@ describe('mission control builds from the kit', () => {
     }
   });
 
-  test('one animating creature: only the top needs you tile, or a bar that needs you, draws PixelAnimal', () => {
+  test('one living creature: only the top tile\'s face breathes and blinks (docs/motion.md)', () => {
     const tile = files.find((f) => f.name.endsWith('MissionTile.tsx'))!.src;
-    expect(tile).toMatch(/\{animate \? \(\s*<PixelAnimal /);
+    expect(tile).toMatch(/<Face [^>]*alive=\{animate\}/);
     const grid = files.find((f) => f.name.endsWith('LiveSessions.tsx'))!.src;
     expect(grid).toMatch(/animate=\{m\.id === top\}/);
   });
 
-  test('the comet wraps only the tile that animates: one StarBorder, behind `animate`', () => {
+  test('the aura wraps only the tile that animates: one Aura, behind `animate`', () => {
+    // The aura means "an agent is driving this one, and it wants you": one per screen.
     const tile = files.find((f) => f.name.endsWith('MissionTile.tsx'))!.src;
-    expect((tile.match(/<StarBorder\b/g) ?? []).length).toBe(1);
-    expect(tile).toMatch(/\{animate && !m\.stale \? \(\s*<StarBorder\b/);
+    expect((tile.match(/<Aura\b/g) ?? []).length).toBe(1);
+    expect(tile).toMatch(/\{animate && !m\.stale \? \(/);
+    expect(tile).not.toMatch(/<StarBorder\b/);
   });
 
   test('nothing is cut short: no line limits and no ellipsis anywhere mission control sets words', () => {

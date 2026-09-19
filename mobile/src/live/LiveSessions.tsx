@@ -77,6 +77,10 @@ import {
   type TileModel,
 } from './mission';
 import { crewFor, crewHashed } from './crew';
+import { IslandStage } from './IslandStage';
+import { FACE_FOR_TILE } from '../island/feeds';
+import type { CrewMember } from '../island/model';
+import { creatureHue } from '../theme';
 import { inked, LiveNum, MissionTile, StandaloneReveal } from './MissionTile';
 import { refreshLiveSurfaces } from './useLiveSurfaces';
 
@@ -429,21 +433,8 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
 
   return (
     <View style={styles.screen}>
-      {/* A radar turning very slowly behind the grid, in two warm greys a step off the ground
-          (react-bits Radar through `ui/bits/backgrounds`): mission control is watching, and it
-          never competes with a tile. Still under Reduce Motion, off when nothing is running. */}
-      {(ready || screen.kind === 'loading') && viewportH > 0 ? (
-        <Radar
-          width={width}
-          height={viewportH}
-          ink={RADAR_INK}
-          partner={RADAR_PARTNER}
-          speed={0.4}
-          scale={1.35}
-          center={{ x: width / 2, y: Math.min(viewportH * 0.4, 320) }}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
+      {/* The radar that turned behind the grid is gone: the island stage says "watching" now,
+          and a texture behind every screen was half of why they all looked alike. */}
       <Animated.ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -516,26 +507,24 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
             </Section>
           ) : null}
 
-          {screen.kind === 'empty' && accent.ready ? (
-            <EmptyBand
-              hue={hue}
-              viewportH={viewportH}
-              stale={screen.stale ? staleLine(screen.stale, now) : null}
-              last={data.lastFinal}
-              onOpen={open}
-              width={width}
-            />
-          ) : null}
-
-          {ready && head && accent.ready ? (
-            <SummaryBand
-              head={head}
-              hue={hue}
-              creatures={shown.map((m) => crew.get(m.id)).filter((c): c is Animal => c !== undefined)}
-              width={width}
-              title={doorway ? 'Mission control' : 'Right now'}
-              onPress={doorway ? openLive : undefined}
-            />
+          {(screen.kind === 'empty' || (ready && head)) && accent.ready ? (
+            <View style={styles.stageWrap}>
+              <IslandStage
+                width={width - 16}
+                head={ready ? head : null}
+                quiet={screen.kind === 'empty'}
+                crew={ready ? shown.filter((m) => m.kind !== 'finished').map((m) => memberOf(m, crew.get(m.id) ?? crewHashed(m.id), now)) : []}
+                you={{ animal: accent.animal, ink: accent.ink }}
+                lastLine={screen.kind === 'empty' && data.lastFinal ? lastFinishedLine(data.lastFinal, (iso) => dayLabel(iso), names) : null}
+                onOpenLast={data.lastFinal ? () => open(data.lastFinal!.id) : undefined}
+                onPress={ready && doorway ? openLive : undefined}
+              />
+              {screen.kind === 'empty' && screen.stale ? (
+                <View style={{ marginTop: 12, paddingHorizontal: 8 }}>
+                  <Refusal>{staleLine(screen.stale, now)}</Refusal>
+                </View>
+              ) : null}
+            </View>
           ) : null}
 
           {ready ? (
@@ -577,9 +566,18 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
   );
 }
 
-/** Two warm greys a step off the ground (tokens: card, then border), so the radar is felt, not seen. */
-const RADAR_PARTNER = GROUND.card;
-const RADAR_INK = GROUND.border;
+/** A tile as one of the island's crew: the same face, state and words the island draws. */
+function memberOf(m: TileModel, animal: Animal, nowMs: number): CrewMember {
+  return {
+    sessionId: m.id,
+    repo: m.repo,
+    animal,
+    ink: creatureHue(animal).ink,
+    state: FACE_FOR_TILE[m.kind],
+    sentence: m.sentence,
+    startedMs: m.elapsedMin !== null ? nowMs - m.elapsedMin * 60_000 : null,
+  };
+}
 
 // ------------------------------------------------------------------ the summary band
 
@@ -870,6 +868,8 @@ export function LiveSessions({
 }
 
 const styles = StyleSheet.create({
+  // 8 a side: the system island's own expanded margin, so the stage reads as that shape.
+  stageWrap: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 14 },
   screen: { flex: 1, backgroundColor: GROUND.bg },
   scroll: { flex: 1, backgroundColor: 'transparent' },
   content: { paddingBottom: 96 },

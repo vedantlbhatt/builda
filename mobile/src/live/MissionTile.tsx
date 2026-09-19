@@ -71,6 +71,8 @@ import { SPOT } from '../ui/bits/components/spec';
 import { StarBorder } from '../ui/bits/effects/StarBorder';
 import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
+import { Aura, Face, Wash } from '../motion';
+import { FACE_FOR_TILE } from '../island/feeds';
 import { fitWords, stateLayout, STATE_GAP, tileMeasures, VARIANT, type TileVariant, type VariantSpec } from './fit';
 import { elapsedLabel, landedCommits, landedParts, TILE_MAX_SCALE, type TileModel, type TileVerdict } from './mission';
 
@@ -104,9 +106,18 @@ interface Inks {
   stamp: string;
 }
 
+/**
+ * The tile is the warm dark card now, not a slab of the hue (docs/motion.md, the pixel diet: a
+ * full screen of hue-filled bands was most of why every screen looked alike). The hue lives where
+ * it means something: the creature, its glow in the run's state, and a wash of it coming in from
+ * the creature's corner. A stale tile loses the wash and the glow, and goes a step up in grey.
+ */
+/** A tile's corners: the container radius, like every card on the dark ground. */
+const TILE_RADIUS = radius.md;
+
 function inksFor(hue: Hue, stale: boolean): Inks {
   if (stale) return { fill: GROUND.raised, text: GROUND.text, dim: GROUND.dim, creature: hue.ink, stamp: GROUND.text };
-  return { fill: hue.fill, text: ON_HUE, dim: ON_HUE, creature: ON_HUE, stamp: hue.ink };
+  return { fill: GROUND.card, text: GROUND.text, dim: GROUND.dim, creature: hue.ink, stamp: hue.ink };
 }
 
 // ------------------------------------------------------------------ the print
@@ -505,10 +516,8 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
           >
             {/* Sized from the props until the tile has laid out, so its first frame is already
                 covered: a flash of the whole colour before the print would be the print undone. */}
-            <PrintMask width={box.w || width} height={box.h || minHeight * 2} delay={delay} />
-            {spotOn && box.w > 0 ? (
-              <SpotlightLayer width={box.w} height={box.h} hue={spotHue} originX={ox} originY={oy} strength={amount} radius={SPOT.radius} />
-            ) : null}
+            {/* The run's hue, painted in from the creature's corner: a wash, never a fill. */}
+            {!m.stale ? <Wash color={hue.ink} from="right" strength={0.2} /> : null}
 
             <Arrive delay={wordsAt} style={{ gap: v.gap }}>
               <View style={[styles.head, { gap: headGap }]}>
@@ -543,11 +552,9 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
             </Arrive>
 
             <View pointerEvents="none" style={[styles.creature, { right: v.pad - 4, bottom: v.pad - 4 + trackH }]}>
-              {animate ? (
-                <PixelAnimal animal={creature} size={v.creature} tone="selected" />
-              ) : (
-                <CreaturePrint animal={creature} size={v.creature} color={ink.creature} delay={delay + 260} />
-              )}
+              {/* The island's face: its eyes and its glow say the state before a word does. Only
+                  the lead tile breathes and blinks; a grid of blinking creatures is noise. */}
+              <Face animal={creature} state={m.stale ? 'sleep' : FACE_FOR_TILE[m.kind]} ink={ink.creature} size={v.creature} glow={!m.stale} alive={animate} />
             </View>
 
             {m.track !== null && box.w > 0 ? <FootTrack track={m.track} width={box.w} height={trackH} color={ink.text} delay={delay + 380} /> : null}
@@ -560,18 +567,11 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
   return (
     <Block enter={false} style={styles.grow}>
       {animate && !m.stale ? (
-        <StarBorder
-          hue={hue}
-          radius={0}
-          thickness={COMET.strokePt}
-          settledThickness={COMET.settledPt}
-          length={COMET.length}
-          head={COMET.head}
-          playKey={m.eta ?? m.sentence}
-          style={[styles.grow, styles.comet]}
-        >
+        // The aura: on this screen it means "an agent is driving this one, and it wants you".
+        <View style={styles.grow}>
           {tile}
-        </StarBorder>
+          <Aura radius={TILE_RADIUS} />
+        </View>
       ) : (
         tile
       )}
@@ -778,7 +778,7 @@ const styles = StyleSheet.create({
   grow: { flexGrow: 1 },
   comet: { margin: -COMET_OUT, padding: COMET_OUT },
   clip: { overflow: 'hidden' },
-  tile: { flexGrow: 1, overflow: 'hidden' },
+  tile: { flexGrow: 1, overflow: 'hidden', borderRadius: TILE_RADIUS, borderCurve: 'continuous' },
   head: { flexDirection: 'row', alignItems: 'center' },
   repo: { flex: 1, fontFamily: MONO_FAMILY },
   stamp: { borderRadius: radius.xs, borderCurve: 'continuous', backgroundColor: ON_HUE, alignItems: 'center', justifyContent: 'center' },

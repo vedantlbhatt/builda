@@ -5,8 +5,8 @@
  * have a sentence, or a build that meets a new code renders a debug string at somebody.
  *
  * WHAT LEFT THIS FILE. It used to open with the pile wall's geometry — packing, fans, seats, the
- * saved arrangement. That board is gone (`WebBoard.tsx` says why) and so are its tests; the web's
- * physics is held by `dropsForce.test.ts` instead.
+ * saved arrangement. That board is gone, and so is the web that replaced it: drops are a wall of
+ * posters now (`src/drops/wall/`, held by `dropsWall.test.ts`; docs/motion.md says why).
  */
 import { describe, expect, test } from 'bun:test';
 

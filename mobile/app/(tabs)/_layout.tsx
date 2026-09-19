@@ -3,6 +3,8 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useIsDesktop } from '../../src/desktop/formFactor';
+import { desktopTabs } from '../../src/desktop/tabs';
 import { SettingsButton, TabHeader, TabIcon } from '../../src/nav/chrome';
 import { isTabSelected, TAB_BAR_GROUND, TAB_BAR_HEIGHT, TAB_LABEL, tabTint } from '../../src/nav/chromeRules';
 import { tabTitle, type TabName } from '../../src/nav/rules';
@@ -31,8 +33,12 @@ export default function TabsLayout() {
   const accent = useAccent();
   const insets = useSafeAreaInsets();
   const tint = tabTint(accent);
+  // Web from 900 wide: the sidebar is the bar (src/desktop/). Always false on a phone, where
+  // `desktopTabs(false)` spreads nothing.
+  const desktop = useIsDesktop();
   return (
     <Tabs
+      {...desktopTabs(desktop)}
       screenOptions={{
         // Each tab root wears the platform's large title, left aligned (src/nav/chrome.tsx),
         // not the tab navigator's centred 17pt one.

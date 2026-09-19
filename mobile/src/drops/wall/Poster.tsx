@@ -2,7 +2,7 @@
  * A drop as the reel it was: 9:16, the platform's own poster frame when it published one.
  *
  * WHY NOT A GENERATED MARK. The board before this drew a pixel sigil grown from each link, and
- * a mark grown from a URL tells you nothing about the post (the note on `WebBoard`). You
+ * a mark grown from a URL tells you nothing about the post (docs/motion.md, drops). You
  * recognise a reel by its frame, so the frame is the drop. Where the platform served no picture
  * (Instagram serves none to anybody), the poster is TYPOGRAPHIC: the post's own first words set
  * big in the kind's hue on the card ground, the way a text post looks on the platform it came

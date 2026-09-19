@@ -907,6 +907,18 @@ function appVersion(): string {
  */
 let refreshing: Promise<void> | null = null;
 
+/**
+ * The same rule across WINDOWS: every page of this origin holds one lock while it refreshes
+ * (the Web Locks API). The desktop shell runs two windows over one token store (the app and the
+ * island, `desktop/`) and a browser can open two tabs; the module-level promise above only covers
+ * one of them. A phone has no second window and no `navigator.locks`, so there `fn` just runs.
+ */
+function acrossWindows<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: { request?: (name: string, cb: () => Promise<T>) => Promise<T> } } }).navigator?.locks;
+  if (typeof locks?.request !== 'function') return fn();
+  return locks.request('builder.refresh', fn);
+}
+
 export class Api {
   private readonly baseUrl: string;
   private readonly storage: TokenStorage;
@@ -1419,7 +1431,7 @@ export class Api {
 
   private refreshTokens(): Promise<void> {
     if (!refreshing) {
-      refreshing = this.doRefresh().finally(() => {
+      refreshing = acrossWindows(() => this.doRefresh()).finally(() => {
         refreshing = null;
       });
     }
@@ -1427,6 +1439,17 @@ export class Api {
   }
 
   private async doRefresh(): Promise<void> {
+    // Another window over the same storage may have rotated the pair while this one held the old
+    // refresh token in memory; redeeming that spent token would be reuse, and the server revokes
+    // the device for it. So what is stored NOW decides: a pair that moved is adopted, not redeemed.
+    const [storedAccess, storedRefresh] = await Promise.all([this.storage.get(ACCESS_KEY), this.storage.get(REFRESH_KEY)]).catch(
+      () => [null, null] as const,
+    );
+    if (storedAccess && storedRefresh && storedRefresh !== this.refresh) {
+      this.access = storedAccess;
+      this.refresh = storedRefresh;
+      return;
+    }
     const token = this.refresh;
     if (!token) throw new ApiError(401, 'not signed in');
     let res: Response;

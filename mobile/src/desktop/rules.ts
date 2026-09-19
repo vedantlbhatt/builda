@@ -64,7 +64,9 @@ export function placeOf(pathname: string): Place {
     place.section = 'projects';
     place.master = 'projects';
     place.masterRoot = true;
-  } else if (head === 'project') {
+  } else if (head === 'project' || head === 'ship') {
+    // A project's ship kit (`/ship/<key>`) is opened from that project's page and is about it, so
+    // it sits where the page did: beside the Projects list, with Projects lit.
     place.section = 'projects';
     place.master = second ? 'projects' : null;
   } else if (head === 'you' || head === 'analysis' || head === 'wrapped' || head === 'icon') place.section = 'you';

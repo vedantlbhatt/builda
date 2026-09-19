@@ -98,6 +98,8 @@ describe('where a path sits', () => {
     expect(placeOf('/session/abc')).toMatchObject({ section: 'sessions', master: 'sessions', masterRoot: false });
     expect(placeOf('/drop/xyz')).toMatchObject({ section: 'drops', master: 'drops', masterRoot: false });
     expect(placeOf('/project/0123abcd')).toMatchObject({ section: 'projects', master: 'projects' });
+    // A project's ship kit is about the project: beside the same list.
+    expect(placeOf('/ship/0123abcd')).toMatchObject({ section: 'projects', master: 'projects', masterRoot: false });
   });
 
   test('pages without a list take the whole pane, and light their own row', () => {

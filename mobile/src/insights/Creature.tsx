@@ -13,8 +13,9 @@
  */
 import React, { useMemo } from 'react';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import Svg, { Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
+import { cellsPath } from '../motion/faceModel';
 import { springAt } from '../motion/spec';
 import { ANIMAL_FRAMES, type Animal } from '../pixel/animals';
 import { useClock, useReducedSV } from './reveal';
@@ -54,14 +55,16 @@ export function CreaturePrint({ animal, size, color, delay = 0 }: { animal: Anim
   );
 }
 
-/** Small and still, beside a rule: whole pixels at 16, 20 or 24 points. */
+/**
+ * Small and still, beside a rule or on a list row: whole pixels at 16, 20 or 24 points. One path,
+ * not a rectangle per cell: the Sessions list draws one of these per row, and ninety native views
+ * a row is what a scroll pays for (`motion/Face.tsx` has the measurement that found it).
+ */
 export function CreatureMark({ animal, size = 16, color }: { animal: Animal; size?: number; color: string }) {
-  const cells = useMemo(() => inked(animal), [animal]);
+  const d = useMemo(() => cellsPath(inked(animal)), [animal]);
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${GRID} ${GRID}`} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {cells.map((c) => (
-        <Rect key={`${c.x}.${c.y}`} x={c.x} y={c.y} width={1.02} height={1.02} fill={color} />
-      ))}
+      <Path d={d} fill={color} />
     </Svg>
   );
 }

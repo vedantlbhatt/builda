@@ -1,13 +1,20 @@
 import Constants from 'expo-constants';
 
-import { Api, type SessionDetail } from './api';
+import BuilderDrops from '../../modules/builder-drops';
+import { mirroredStorage } from '../drops/shareCredential';
+import { Api, secureStorage, type SessionDetail } from './api';
 
 /** Where this build talks to. Settings prints it in the hook recipe. */
 export const API_BASE_URL =
   (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ??
   'http://localhost:8000';
 
-export const api = new Api(API_BASE_URL);
+/**
+ * The keychain, with the ACCESS token (never the refresh token) copied into the App Group's
+ * keychain on every read and write, for the share extension's one route and the island's Start
+ * button (src/drops/shareCredential.ts, docs/drop-island.md).
+ */
+export const api = new Api(API_BASE_URL, mirroredStorage(secureStorage, BuilderDrops, API_BASE_URL));
 
 /**
  * The sample session.

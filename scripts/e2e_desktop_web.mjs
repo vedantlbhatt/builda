@@ -71,7 +71,7 @@ const ROUTES = [
 ];
 
 const browser = await chromium.launch({ args: ['--disable-web-security'], ...(process.env.E2E_CHROME ? { executablePath: process.env.E2E_CHROME } : {}) });
-const context = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1, colorScheme: 'dark' });
+const context = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1, colorScheme: 'dark', acceptDownloads: true });
 await context.addInitScript(({ access, refresh }) => {
   try {
     localStorage.setItem('builder.access', access);
@@ -122,6 +122,42 @@ for (const [id, route, what] of ROUTES) {
   if (bad) failed += 1;
   report.push(`${bad ? 'FAIL' : 'ok  '}  ${file}  ${what}${filled < 3 ? '  (blank pane)' : ''}`);
   for (const p of problems.slice(0, 5)) report.push(`        ${p}`);
+}
+
+// FLOWS: what the routes cannot see because it needs a click. The desktop's Save image was dead
+// all night before 19 September (view-shot's capture throws on the web), and nothing failed: every
+// route drew. So one share is driven to the end, and the file it makes is read.
+/** A PNG's width and height from its IHDR chunk. */
+function pngSize(buf) {
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+if (!ONLY.length || ONLY.includes('flow-week')) {
+  problems = [];
+  try {
+    await page.goto(`${APP}/sessions`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.waitForTimeout(Number(process.env.E2E_SETTLE ?? 4000) + 4000);
+    const open = page.getByText('Share this week', { exact: true }).first();
+    if (!(await open.count())) {
+      report.push('skip  flow-week: no hours this week, so no "Share this week" to press');
+    } else {
+      await open.click();
+      await page.waitForTimeout(2500);
+      const download = page.waitForEvent('download', { timeout: 20_000 });
+      await page.getByText('Save image', { exact: true }).last().click();
+      const d = await download;
+      const file = path.join(OUT, 'flow-week.png');
+      await d.saveAs(file);
+      const size = pngSize(fs.readFileSync(file));
+      const bad = !size || size.w !== 1080 || size.h !== 1350 || problems.length > 0;
+      if (bad) failed += 1;
+      report.push(`${bad ? 'FAIL' : 'ok  '}  flow-week.png  Sessions, Share this week, Save image: ${size ? `${size.w} x ${size.h}` : 'not a PNG'}`);
+      for (const p of problems.slice(0, 5)) report.push(`        ${p}`);
+    }
+  } catch (e) {
+    failed += 1;
+    report.push(`FAIL  flow-week: ${String(e).slice(0, 200)}`);
+  }
 }
 
 const st = await page.evaluate(() => ({ a: localStorage.getItem('builder.access'), r: localStorage.getItem('builder.refresh') }));

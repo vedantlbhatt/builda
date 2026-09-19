@@ -228,8 +228,10 @@ title bar and traffic lights are the system's and are not in them.
 approve and waits for the page to sign itself in.
 
 `scripts/e2e_desktop_web.mjs` screenshots every tab and pushed route of the web build at
-1440 x 900 and fails on a page error, a console error or a blank pane. It does not click, so it
-cannot see a morph or an overlay; those were recorded frame by frame with a scripted Playwright
+1440 x 900 and fails on a page error, a console error or a blank pane. One flow it drives to the
+end (`flow-week`): Sessions, Share this week, Save image, and the PNG that comes out must be
+1080 x 1350, because Save image was dead on the web for a night while every route still drew.
+Otherwise it does not click, so it cannot see a morph or an overlay; those were recorded frame by frame with a scripted Playwright
 page (click, then screenshot as fast as Chromium allows, about one frame per 60 to 100 ms).
 
 ## Parity

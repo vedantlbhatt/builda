@@ -37,6 +37,10 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:15 to 07:20**: hours milestones made by themselves (a808b87): crossing 10, 25, 50, 100, 250,
+  500 or 1000 hours of the profile's total, the island offers a card (band, figure, creature,
+  sessions since the first, a pixel ladder of the seven). Backfill silent: the first reading only
+  remembers (it remembered 50 here). One card a pass; last week's first.
 - **07:09 to 07:15**: `swift test`, 187 tests: the only failures (18 issues) are in the two suites
   that read this machine's LIVE data against frozen reference measurements: "Ground truth" (the
   RideGT transcripts now run to Sep 16; 107 sessions at tau 900 against the reference 84) and

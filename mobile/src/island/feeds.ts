@@ -268,7 +268,16 @@ let lastResume = -Infinity;
  * queued or claimed, tracked again from when it was ASKED (so the ear's clock is right). It does
  * not start a system card: the one started at the tap is still there, carried by push.
  */
-export async function resumeDemos(names: RepoNames | null, nowMs: number): Promise<void> {
+/**
+ * `known`: rows that may carry a project's public name (the saved sessions). A request row has only
+ * the key, and a key alone names a public repository "private repo" (review, 2026-09-19): the pill
+ * the ship kit put up said "builda", and the same demo resumed a minute later said "private repo".
+ */
+export async function resumeDemos(
+  names: RepoNames | null,
+  nowMs: number,
+  known: readonly { repo_key?: string | null; repo_name?: string | null }[] = [],
+): Promise<void> {
   if (nowMs - lastResume < DEMO_RESUME_MS) return;
   lastResume = nowMs;
   const { requests } = await api.allDemoRequests();
@@ -281,7 +290,8 @@ export async function resumeDemos(names: RepoNames | null, nowMs: number): Promi
     // Past the island's own limit: tracked again, it showed and was cleared within a tick, every
     // five minutes for as long as the server kept the row (FOUND IN REVIEW).
     if (Number.isFinite(asked) && nowMs - asked > DEMO_FOR_MS) continue;
-    trackDemo(r.project_key, repoLabel({ repo_key: r.project_key }, names), undefined, { sinceMs: Number.isFinite(asked) ? asked : nowMs });
+    const repo_name = known.find((k) => k.repo_key === r.project_key && k.repo_name)?.repo_name ?? null;
+    trackDemo(r.project_key, repoLabel({ repo_key: r.project_key, repo_name }, names), undefined, { sinceMs: Number.isFinite(asked) ? asked : nowMs });
   }
 }
 

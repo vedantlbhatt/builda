@@ -96,7 +96,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   ]);
   // The island inside the app says what the system island says outside it, from the same rows.
   publishLive(live, nowMs, names);
-  void resumeDemos(names, nowMs).catch(() => null);
+  void resumeDemos(names, nowMs, [...finished, ...saved]).catch(() => null);
   // Made without being asked, each once: last week's card Monday to Wednesday (`share/weekOffer`),
   // else an hours milestone just passed (`share/milestones`). One card a pass, never two at once.
   // And Monday's notification for it, scheduled while this week has hours (`push/weekly`).

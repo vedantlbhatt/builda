@@ -131,6 +131,15 @@ describe('a demo is tracked once per request', () => {
     expect(demoUp()).toBe(false);
   });
 
+  test('a resumed demo is called by its public name when a session knows it', async () => {
+    allRows = [row('r7', 'queued', now - 60_000)];
+    requestRows = allRows;
+    await feeds.resumeDemos(null, now, [{ repo_key: 'cd'.repeat(32), repo_name: 'other' }, { repo_key: KEY, repo_name: 'builda' }]);
+    await flush();
+    const pill = island.snapshot().find((a) => a.kind === 'demo') as { title?: string } | undefined;
+    expect(pill?.title).toBe('builda');
+  });
+
   test('a failed kit read decides nothing: no "not published", and it asks again', async () => {
     requestRows = [row('r5', 'done', now - 60_000)];
     kit = null;

@@ -3,6 +3,7 @@ import BuilderIngest
 import BuilderModel
 import BuilderSchema
 import BuilderUI
+import AppKit
 import Foundation
 
 /// `builder island [--store DIR]` — what the notch island would show right now: every running
@@ -30,6 +31,9 @@ enum IslandCommand {
         for a in agents {
             let ago = Int(now - a.lastEventAt)
             print("  \(a.creature.padding(toLength: 8, withPad: " ", startingAt: 0)) \(a.repo)  (last event \(ago)s ago)")
+            if let app = TerminalFocus.owningApp(of: a) {
+                print("           terminal: \(app.localizedName ?? "?") (pid \(app.processIdentifier))")
+            }
             if let w = a.waiting {
                 print("           waiting: \(w.reason.rawValue) for \(Int(now - w.since))s  \(w.detail ?? "")")
             } else {

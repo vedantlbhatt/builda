@@ -161,7 +161,12 @@ alpha where a black edge lands between pixels), the recordings, and the live pop
 
 - A needs-you on a Codex, Gemini or Cursor session: their stores are not JSONL transcripts, so
   those agents show on the notch without a sentence or a wait.
-- Focusing the exact terminal tab: the click brings the owning app forward (found by walking the
-  `claude` process's parents to the first regular app), not the tab inside it.
+- Focusing the exact terminal tab: the click brings the owning app forward, not the tab inside
+  it. The app is found by walking the Claude Code process's parents to the first regular app.
+  MEASURED: Claude Code's kernel process name is its VERSION ("2.1.276"), not "claude", so it is
+  found by its executable (`~/.local/share/claude/versions/<version>`); all four running here
+  shared one working directory (home), so the process started closest before the transcript's
+  first record is taken. `builder live-tail` on two live transcripts named Terminal for one and
+  cmux for the other, which is right.
 - The engine's full re-derive per pass (above). An incremental derive is the fix, and it is an
   engine change with the boundary rules' correctness riding on it, not an island one.

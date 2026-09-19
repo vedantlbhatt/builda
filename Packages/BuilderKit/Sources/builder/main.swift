@@ -1,5 +1,6 @@
 import BuilderIngest
 import BuilderSchema
+import BuilderUI
 import Foundation
 
 // The agent and the CLI are the same binary. Everything the menu bar app does, this does
@@ -55,6 +56,10 @@ do {
             print("  activity  \(t?.activity ?? "-")")
             print("  waiting   \(t?.waiting?.rawValue ?? "-")\(t?.waitingSince.map { String(format: " for %.0fs", Date().timeIntervalSince1970 - $0) } ?? "")")
             print("  detail    \(t?.detail ?? "-")")
+            let probe = IslandAgent(
+                id: path, sessionID: path, repo: "", creature: "bit", activity: nil, waiting: nil,
+                lastEventAt: 0, transcriptPath: path, cwd: t?.cwd)
+            print("  terminal  \(TerminalFocus.owningApp(of: probe)?.localizedName ?? "-")")
         }
     case "doctor":
         try DoctorCommand.run()

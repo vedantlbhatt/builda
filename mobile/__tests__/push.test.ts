@@ -113,13 +113,13 @@ describe('a drop banner', () => {
   test('opens the board with the drop open, never a session', () => {
     // A move's Claude Code session may not exist yet, and often never will (0029), so a banner
     // that opened one would open nothing.
-    expect(routeForNotification({ kind: 'drop_read', drop_id: 'abc-123' })).toBe('/drops?open=abc-123');
-    expect(routeForNotification({ kind: 'drop_done', drop_id: 'abc-123' })).toBe('/drops?open=abc-123');
+    expect(routeForNotification({ kind: 'drop_read', drop_id: 'abc-123' })).toBe('/drop/abc-123');
+    expect(routeForNotification({ kind: 'drop_done', drop_id: 'abc-123' })).toBe('/drop/abc-123');
   });
 
   test('the url the server also sends carries the id', () => {
     expect(routeForNotification({ kind: 'drop_done', url: 'builder://drops?open=abc-123' })).toBe(
-      '/drops?open=abc-123',
+      '/drop/abc-123',
     );
     expect(dropIdFromUrl('builder://drops?open=abc-123')).toBe('abc-123');
     expect(dropIdFromUrl('builder://drops?other=1&open=abc-123')).toBe('abc-123');

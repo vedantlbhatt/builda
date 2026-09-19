@@ -272,17 +272,25 @@ def mark_refused(db: Session, user_id: str, drop_id: str, refusal: str) -> None:
 def start_move(
     db: Session, user_id: str, move_id: str, *, adjustment: str | None, repo_key: str | None
 ) -> dict | None:
-    """offered -> queued. The ONLY way a move is ever queued.
+    """offered -> queued, or failed -> queued. The ONLY way a move is ever queued.
 
-    The WHERE clause carries `status = 'offered'`, so a double tap queues once and the second
-    request comes back as "already queued" rather than as a second run of the same work.
+    The WHERE clause carries the status, so a double tap queues once and the second request comes
+    back as "already queued" rather than as a second run of the same work.
+
+    FAILED IS STARTABLE AGAIN, by the same tap (2026-09-19). A run that failed said why ("that
+    checkout has uncommitted work; commit or stash it first") and then left the person no way to
+    act on it short of sharing the reel again. The last run's words, times and ids are cleared,
+    so the card says what THIS run is doing; that run's session, if capture uploaded one, is
+    still a session like any other.
     """
     r = db.execute(
         text(
             f"""
             UPDATE drop_moves SET status = 'queued', queued_at = now(),
-                                  adjustment = :adj, repo_key = COALESCE(:repo, repo_key)
-            WHERE user_id = :uid AND id = :id AND status = 'offered'
+                                  adjustment = :adj, repo_key = COALESCE(:repo, repo_key),
+                                  outcome = NULL, started_at = NULL, finished_at = NULL,
+                                  run_uuid = NULL, session_id = NULL
+            WHERE user_id = :uid AND id = :id AND status IN ('offered', 'failed')
             RETURNING {MOVE_COLUMNS.replace("m.", "")}
             """
         ),

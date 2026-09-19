@@ -35,6 +35,7 @@ import { Hairline } from '../ui/Hairline';
 import { T } from '../ui/Text';
 import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
+import { canStart } from './boardRules';
 import { EFFORT_WORD, MOVE_REFUSAL, MOVE_STATUS_LINE, MOVE_VERB } from './copy';
 import { RepoPicker } from './RepoPicker';
 import type { MoveRow as Move } from './types';
@@ -54,7 +55,10 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
   const [picking, setPicking] = React.useState(false);
   const hue = kind ? dropHue(kind) : null;
   const ink = hue?.ink ?? c.text;
-  const live = move.status !== 'offered' && move.status !== 'declined';
+  // A failed move is armed like an offered one: it said why it stopped, and trying it again is the
+  // same tap (`boardRules.canStart`).
+  const again = move.status === 'failed';
+  const live = !canStart(move) && move.status !== 'declined';
   const unverified = move.verification?.refusal === 'source_unverified';
   const verb = unverified && move.move_kind === 'install' ? 'Open it' : MOVE_VERB[move.move_kind];
   /**
@@ -65,7 +69,7 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
    * a sheet over it: the choice belongs to this move and to no other, and the moves around it
    * stay visible while it is made.
    */
-  const needsRepo = move.target === 'existing_repo' && !repoKey && move.status === 'offered';
+  const needsRepo = move.target === 'existing_repo' && !repoKey && canStart(move);
 
   return (
     <View>
@@ -73,7 +77,7 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ selected: armed, disabled: live }}
-        accessibilityLabel={`${verb}. ${move.title}`}
+        accessibilityLabel={again ? `${verb} again. ${move.title}. It did not finish.` : `${verb}. ${move.title}`}
         disabled={live}
         onPress={() => {
           select();
@@ -95,7 +99,7 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
             {verb}
           </T>
           <T role="meta" style={{ color: armed ? c.text : c.textFaint }}>
-            {live ? MOVE_STATUS_LINE[move.status] : armed ? 'armed' : EFFORT_WORD[move.effort]}
+            {live ? MOVE_STATUS_LINE[move.status] : armed ? 'armed' : again ? `${MOVE_STATUS_LINE.failed}, tap to try again` : EFFORT_WORD[move.effort]}
           </T>
         </View>
 
@@ -153,7 +157,7 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
         ) : null}
       </Pressable>
 
-      {picking && move.status === 'offered' ? (
+      {picking && canStart(move) ? (
         <View style={styles.picker}>
           <RepoPicker
             chosen={repoKey ?? null}

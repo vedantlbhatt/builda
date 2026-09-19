@@ -294,11 +294,14 @@ describe('a link that carries a drop', () => {
 });
 
 describe('a tapped drop banner', () => {
-  test('opens the board with the drop open', () => {
-    expect(dropPath('builder://drops?open=abc-123')).toBe('/drops?open=abc-123');
-    expect(redirectSystemPath({ path: 'builder://drops?open=abc-123', initial: false })).toBe(
-      '/drops?open=abc-123',
-    );
+  test('opens the drop itself, never the board and then the drop', () => {
+    expect(dropPath('builder://drops?open=abc-123')).toBe('/drop/abc-123');
+    expect(redirectSystemPath({ path: 'builder://drops?open=abc-123', initial: false })).toBe('/drop/abc-123');
+  });
+
+  test('an id that is not one path segment opens the board', () => {
+    expect(dropPath('builder://drops?open=..')).toBe('/drops');
+    expect(dropPath('builder://drops?open=a%2Fb')).toBe('/drops');
   });
 
   test('a shared link still wins over an open, because a share is the newer intent', () => {

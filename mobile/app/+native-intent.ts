@@ -1,5 +1,6 @@
 import { gateSnapshot } from '../src/nav/gateSnapshot';
 import { pathWhileOnboarding } from '../src/nav/rules';
+import { isSafeId } from '../src/push/route';
 
 /**
  * Rewrites incoming system URLs before expo-router routes them.
@@ -14,7 +15,8 @@ import { pathWhileOnboarding } from '../src/nav/rules';
  * shapes people actually type or paste land on the same screen: the `/recap` suffix form,
  * a stray `session` without the leading slash, `builder:///` with three slashes.
  *
- * `builder://drops?open=<id>` — a tapped drop banner, which opens the board with that drop open.
+ * `builder://drops?open=<id>` — a tapped drop banner, which opens that drop (`/drop/<id>`), over
+ * whatever was on screen, as a session's banner opens its session.
  * A drop banner never opens a session: a move's Claude Code session may not exist yet, and often
  * never will (0029).
  *
@@ -75,9 +77,11 @@ export function dropPath(path: string): string | null {
   const url = q.get('url')?.trim();
   if (url) return `/drops?url=${encodeURIComponent(url)}`;
   // `builder://drops?open=<id>` is what a tapped drop banner carries
-  // (`server/builder/drops_notify.drop_url`). It opens the board with that drop open.
+  // (`server/builder/drops_notify.drop_url`). It opens the drop itself: through the board, a tap
+  // while that drop was up dismissed it and presented it again at once, and UIKit stopped the app
+  // (`push/route.ts` DropRoute). An id that is not one path segment is the board.
   const open = q.get('open')?.trim();
-  if (open) return `/drops?open=${encodeURIComponent(open)}`;
+  if (open && isSafeId(open)) return `/drop/${encodeURIComponent(open)}`;
   return '/drops';
 }
 

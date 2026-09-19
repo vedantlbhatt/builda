@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../data/client';
 import { tellThemItFinished, tellThemItWasRead } from './localNotify';
 import { worthSaying } from './news';
-import { pollDelay, startEach } from './boardRules';
+import { pollDelay, startEach, startTook } from './boardRules';
 import type { BoardResponse, DropRow, MoveRow } from './types';
 
 export { inFlight } from './boardRules';
@@ -37,7 +37,8 @@ export function useBoard(): BoardState {
 
   const seen = useRef<BoardResponse | null>(null);
 
-  const refresh = useCallback(async () => {
+  /** One read of the board: the board it read, or null when the read failed. */
+  const read = useCallback(async (): Promise<BoardResponse | null> => {
     try {
       const next = await api.dropsBoard();
       // The phone is the only thing watching before an APNs key exists, and it is watching
@@ -52,15 +53,20 @@ export function useBoard(): BoardState {
       setBoard(next);
       setError(null);
       failed.current = false;
+      return next;
     } catch (e) {
       failed.current = true;
       if (__DEV__) console.warn('[drops] the board did not load', e instanceof Error ? e.message : e);
       setError(e instanceof Error ? e.message : 'could not load the board');
+      return null;
     } finally {
       setLoading(false);
       setReads((n) => n + 1);
     }
   }, []);
+  const refresh = useCallback(async () => {
+    await read();
+  }, [read]);
 
   useEffect(() => {
     void refresh();
@@ -80,14 +86,15 @@ export function useBoard(): BoardState {
       setBoard((b) => ({
         ...b,
         moves: b.moves.map((m) =>
-          moveIds.includes(m.id) ? { ...m, status: 'queued', queued_at: new Date().toISOString() } : m,
+          // A failed move tried again drops its last run's words, as the server does.
+          moveIds.includes(m.id) ? { ...m, status: 'queued', queued_at: new Date().toISOString(), outcome: null } : m,
         ),
       }));
-      const went = await startEach((d, m, body) => api.startMove(d, m, body), dropId, moveIds, adjustment, repoKeys);
-      await refresh();
-      return went;
+      const sent = await startEach((d, m, body) => api.startMove(d, m, body), dropId, moveIds, adjustment, repoKeys);
+      const after = await read();
+      return sent && (after === null || startTook(moveIds, after));
     },
-    [refresh],
+    [read],
   );
 
   const archive = useCallback(

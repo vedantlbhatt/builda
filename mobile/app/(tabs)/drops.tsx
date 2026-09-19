@@ -169,11 +169,11 @@ export default function DropsScreen() {
     return () => sub.remove();
   }, [focused, drain, refresh]);
 
-  // A tapped banner: `builder://drops?open=<id>`. The drop's route reads the board itself and says
-  // when a drop is not there, so it opens without waiting for this one. FOUND IN REVIEW
-  // (2026-09-19): it opened only a drop already on this board, and on a cold start the board was
-  // still empty, so the tap landed on the wall and the parameter was gone. `''`, not undefined:
-  // expo-router keeps a parameter set to undefined.
+  // `/drops?open=<id>`, typed or kept from an older build: a banner and a `builder://drops?open=`
+  // link open `/drop/<id>` themselves now (`push/route.ts` DropRoute has why). The drop's route
+  // reads the board itself, so this opens it without waiting for the wall's board (FOUND IN
+  // REVIEW: on a cold start the board was empty and the tap landed on the wall). `''`, not
+  // undefined: expo-router keeps a parameter set to undefined.
   useEffect(() => {
     const id = params.open;
     if (!id) return;

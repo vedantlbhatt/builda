@@ -4,8 +4,9 @@ docs/drops.md. The rules this file exists to hold, in the order they matter:
 
   1. A MOVE IS INERT UNTIL A PERSON TAPS IT. There is no route, parameter or setting that can
      queue one, and the only route that can is `:start`, by id, on a move that is still
-     `offered`. This is the rule the whole feature's safety rests on: a caption is a stranger's
-     text, it reaches a planner, and the planner's output is a button.
+     `offered` (or `failed`, tried again by the same tap). This is the rule the whole feature's
+     safety rests on: a caption is a stranger's text, it reaches a planner, and the planner's
+     output is a button.
   2. THE SAME REEL TWICE IS ONE CARD, and the second share does not re plan the first.
   3. A SECOND RESOLUTION CANNOT UNDO WHAT A PERSON DECIDED. Re resolving replaces the offered
      moves and leaves a declined or running one exactly where it was.
@@ -251,6 +252,47 @@ def test_a_move_only_leaves_offered_through_the_tap(client, paired):
     assert started.status_code == 200
     assert started.json()["move"]["status"] == "queued"
     assert started.json()["move"]["queued_at"] is not None
+
+
+def test_a_failed_move_can_be_tried_again_by_a_tap_and_only_by_one(client, paired):
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
+    phone = _phone_for(headers)
+    start = f"/v1/drops/{drop['id']}/moves/{move['id']}:start"
+    assert client.post(start, json={}, headers=phone).status_code == 200
+    client.post("/v1/drops/moves:claim", headers=headers)
+    run = "3f2b0c84-9a1e-4c77-8d55-0a1b2c3d4e5f"
+    failed = client.post(
+        f"/v1/drops/moves/{move['id']}:finish",
+        json={"status": "failed", "outcome": "commit or stash it first", "run_uuid": run},
+        headers=headers,
+    )
+    assert failed.json()["move"]["status"] == "failed"
+
+    # Nothing but the tap moves it: not claiming, not reading, not the Mac.
+    client.post("/v1/drops/moves:claim", headers=headers)
+    client.get("/v1/drops", headers=headers)
+    assert client.post(start, json={}, headers=headers).status_code == 403
+    assert _rows("SELECT status FROM drop_moves")[0].status == "failed"
+
+    again = client.post(start, json={"adjustment": "it is committed now"}, headers=phone)
+    assert again.status_code == 200, again.text
+    m = again.json()["move"]
+    assert m["status"] == "queued"
+    # This run's card: nothing of the last one's words, times or ids.
+    assert (m["outcome"], m["started_at"], m["finished_at"], m["run_uuid"]) == (None,) * 4
+    assert m["adjustment"] == "it is committed now"
+    assert client.post(start, json={}, headers=phone).status_code == 409
+    # Done stays done.
+    client.post("/v1/drops/moves:claim", headers=headers)
+    client.post(
+        f"/v1/drops/moves/{move['id']}:finish",
+        json={"status": "done", "outcome": "ok", "run_uuid": run},
+        headers=headers,
+    )
+    assert client.post(start, json={}, headers=phone).status_code == 409
 
 
 def test_a_double_tap_queues_once(client, paired):

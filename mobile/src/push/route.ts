@@ -26,7 +26,13 @@ export const WEEK_CARD_ROUTE = '/sessions?card=last-week';
 
 /** The route a recap opens on. `[id].tsx` reads `recap=1` and raises the sheet. */
 export type SessionRoute = `/session/${string}` | `/session/${string}?recap=1`;
-export type DropRoute = `/drops?open=${string}`;
+/**
+ * A drop banner opens the drop itself. FOUND ON THE SIMULATOR (2026-09-19): it opened
+ * `/drops?open=`, and the tab then presented the drop; tapped while that drop was already up, the
+ * tab's navigation dismissed it and the tab presented it again in the same moment, and UIKit
+ * stopped the app ("Modally presented controllers are being reshuffled").
+ */
+export type DropRoute = `/drop/${string}`;
 export type TapRoute = SessionRoute | DropRoute | typeof WEEK_CARD_ROUTE;
 
 /**
@@ -46,7 +52,7 @@ export function routeForNotification(data: unknown): TapRoute | null {
   if (kindRaw === WEEK_CARD_KIND) return WEEK_CARD_ROUTE;
   if (kindRaw && DROP_KINDS.has(kindRaw)) {
     const dropId = dropIdFrom(d);
-    return dropId ? `/drops?open=${dropId}` : null;
+    return dropId ? `/drop/${dropId}` : null;
   }
   const id = sessionIdFrom(d);
   if (!id) return null;
@@ -102,8 +108,9 @@ function safeDecode(s: string): string | null {
 }
 
 /** An id is what goes into a route segment: no slashes, no query syntax, not empty. */
-function isSafeId(s: string): boolean {
-  return s.length > 0 && s.length <= 128 && !/[/?#\s]/.test(s);
+/** An id that is one path segment: no separators, and not `.` or `..`, which a router resolves. */
+export function isSafeId(s: string): boolean {
+  return s.length > 0 && s.length <= 128 && !/[/?#\s]/.test(s) && s !== '.' && s !== '..';
 }
 
 /**

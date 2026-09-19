@@ -10,8 +10,9 @@ transcripts writes, and nothing else" true.
 THE ONE RULE THIS FILE ENFORCES THAT NOTHING ELSE CAN. A move is inert until a person taps it.
 There is no route that queues a move in bulk, no query parameter that auto starts, and no
 setting anywhere that turns one on. `POST .../moves/{id}:start` is one move, by id, and it
-moves a row out of `offered` only if it is still in `offered`. A caption that a model turned
-into a convincing move still has to get past a human thumb.
+moves a row only out of `offered`, or out of `failed` (a person trying it again), and only if it
+is still there. A caption that a model turned into a convincing move still has to get past a
+human thumb, every time it runs.
 
 THE URL IS NEVER FETCHED BY THIS SERVER. It is validated as a URL, stored as text, and handed
 back to the Mac that will read it. A server that fetched a link a stranger composed would be a

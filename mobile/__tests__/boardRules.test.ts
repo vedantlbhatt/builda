@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { BUSY_POLL_MS, FAILED_POLL_MS, pollDelay, startEach, startLine } from '../src/drops/boardRules';
+import { BUSY_POLL_MS, canStart, FAILED_POLL_MS, pollDelay, startEach, startLine, startTook } from '../src/drops/boardRules';
 import type { BoardResponse } from '../src/drops/types';
 
 const board = (drop: string, move: string | null): BoardResponse =>
@@ -81,5 +81,31 @@ describe('what the island says', () => {
   test('from the open sheet: only a failure, which the sheet cannot show', () => {
     expect(startLine(true, null)).toBeNull();
     expect(startLine(false, null)?.state).toBe('error');
+  });
+});
+
+describe('what a tap may start', () => {
+  test('a move never started, or one that failed; nothing in flight, finished or passed on', () => {
+    const can = (['offered', 'queued', 'running', 'done', 'failed', 'declined'] as const).filter((status) => canStart({ status }));
+    expect(can).toEqual(['offered', 'failed']);
+  });
+
+  test('the server takes the same two', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const store = readFileSync(join(import.meta.dir, '../../server/builder/drops_store.py'), 'utf8');
+    const start = store.slice(store.indexOf('def start_move'), store.indexOf('def decline_move'));
+    expect(start).toContain("status IN ('offered', 'failed')");
+  });
+});
+
+describe('whether a Start took, from the board after it', () => {
+  test('queued, running or already done: it took', () => {
+    for (const status of ['queued', 'running', 'done']) expect(startTook(['m1'], board('planned', status))).toBe(true);
+  });
+
+  test('still offered or failed after a 409: it did not, and the island says so', () => {
+    expect(startTook(['m1'], board('planned', 'failed'))).toBe(false);
+    expect(startTook(['m1'], board('planned', 'offered'))).toBe(false);
   });
 });

@@ -6,7 +6,7 @@
  * "running" until the person pulled. And a Start the server refused set an error that the read
  * after it wiped, so the wall said "Sent to your Mac" over a move that had flipped back to offered.
  */
-import type { BoardResponse } from './types';
+import type { BoardResponse, MoveRow } from './types';
 
 /** While something is in flight. Short enough that a resolution feels answered. */
 export const BUSY_POLL_MS = 4000;
@@ -61,4 +61,26 @@ export async function startEach(
 export function startLine(went: boolean, title: string | null): { text: string; state: 'working' | 'error' } | null {
   if (went) return title ? { text: `Sent to your Mac: ${title}`, state: 'working' } : null;
   return { text: title ? `${title} did not reach your Mac. Try it again.` : 'That did not reach your Mac. Try it again.', state: 'error' };
+}
+
+/**
+ * Whether a tap may start this move: one never started, or one that failed and can be tried again
+ * (the server's `start_move` takes the same two). Queued, running, done and passed on are not.
+ */
+export function canStart(m: Pick<MoveRow, 'status'>): boolean {
+  return m.status === 'offered' || m.status === 'failed';
+}
+
+/**
+ * Whether the moves a Start sent are going, from the board read after it. A 409 answers both a
+ * double tap ("already queued") and a move that cannot start from where it is (it finished, or a
+ * server from before failed moves could be tried again). FOUND ON THE SIMULATOR (2026-09-19): the
+ * second kind was counted as the first, and a Start that did nothing said nothing. Only the board
+ * after says which; a move no longer on it (the drop was re read) is left to the 404 it got.
+ */
+export function startTook(moveIds: readonly string[], after: BoardResponse): boolean {
+  return moveIds.every((id) => {
+    const m = after.moves.find((x) => x.id === id);
+    return !m || m.status === 'queued' || m.status === 'running' || m.status === 'done';
+  });
 }

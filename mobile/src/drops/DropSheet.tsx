@@ -141,7 +141,12 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
       targets.length === 1 ? targets[0] : 'in a few places',
       effort ? EFFORT_WORD[effort] : null,
     ];
-    return parts.filter(Boolean).join('  ·  ');
+    // Each piece holds together, so a narrow line breaks between them: FOUND ON THE SIMULATOR,
+    // "a session" broke after its "a".
+    return parts
+      .filter((p): p is string => Boolean(p))
+      .map((p) => p.replace(/ /g, '\u00a0'))
+      .join('  ·  ');
   }, [armed, moves]);
 
   return (

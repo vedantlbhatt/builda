@@ -309,10 +309,36 @@ func drawText(_ ctx: CGContext, _ text: String, _ box: CGRect, _ size: CGFloat, 
 // builder-demo-helper backdrop --width W --height H --ground HEX --band HEX --band-top Y
 //     --screen x,y,w,h --radius R [--bezel PX] [--cell PX] [--title T --title-box x,y,w,h
 //     --title-size PT --title-color HEX] [--sub T --sub-size PT --sub-color HEX] --out FILE
-//     The format's still layer: a flat ground, the project's hue as a band from `band-top` to
-//     the bottom whose top edge is an ordered dither in square cells (the app's own texture),
-//     the device's shadow and bezel around the screen rectangle, and the title above. The
-//     screen rectangle itself is left dark: the recording is laid over it.
+//     The format's still layer: a flat ground, the project's hue as a panel rising from
+//     `band-top` past the bottom, inset from the sides with continuous top corners, the device's
+//     shadow and bezel around the screen rectangle, and the title above. The screen rectangle
+//     itself is left dark: the recording is laid over it.
+//
+//     The panel's edge was an ordered dither in square cells first, the app's old texture. The
+//     app stopped fringing its bands with pixels (docs/motion.md, the pixel diet: a fringe on
+//     every card was why every screen looked the same), so the kit that shows the app does too.
+//     `--cell` is still read, as the panel's inset: every format already sizes it to the canvas.
+/// A rounded rectangle with continuous (squircle like) corners, as SwiftUI's `.continuous` and
+/// the app's `borderCurve: 'continuous'` draw them: each corner is a cubic whose handles run past
+/// the quarter circle's, so the curvature ramps in instead of starting at the tangent point.
+func continuousRect(_ r: CGRect, _ radius: CGFloat) -> CGPath {
+    let p = CGMutablePath()
+    let c = min(radius, r.width / 2, r.height / 2)
+    let k: CGFloat = 1.28 // how far past the quarter circle the corner starts (Apple's is ~1.28)
+    let e = min(c * k, r.width / 2, r.height / 2)
+    p.move(to: CGPoint(x: r.minX + e, y: r.minY))
+    p.addLine(to: CGPoint(x: r.maxX - e, y: r.minY))
+    p.addCurve(to: CGPoint(x: r.maxX, y: r.minY + e), control1: CGPoint(x: r.maxX - e * 0.36, y: r.minY), control2: CGPoint(x: r.maxX, y: r.minY + e * 0.36))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - e))
+    p.addCurve(to: CGPoint(x: r.maxX - e, y: r.maxY), control1: CGPoint(x: r.maxX, y: r.maxY - e * 0.36), control2: CGPoint(x: r.maxX - e * 0.36, y: r.maxY))
+    p.addLine(to: CGPoint(x: r.minX + e, y: r.maxY))
+    p.addCurve(to: CGPoint(x: r.minX, y: r.maxY - e), control1: CGPoint(x: r.minX + e * 0.36, y: r.maxY), control2: CGPoint(x: r.minX, y: r.maxY - e * 0.36))
+    p.addLine(to: CGPoint(x: r.minX, y: r.minY + e))
+    p.addCurve(to: CGPoint(x: r.minX + e, y: r.minY), control1: CGPoint(x: r.minX, y: r.minY + e * 0.36), control2: CGPoint(x: r.minX + e * 0.36, y: r.minY))
+    p.closeSubpath()
+    return p
+}
+
 func backdrop(_ args: [String]) {
     let a = argMap(args, "backdrop")
     guard let w = Int(a["width"] ?? ""), let h = Int(a["height"] ?? ""), let out = a["out"] else { fail("backdrop: --width --height --out") }
@@ -323,22 +349,12 @@ func backdrop(_ args: [String]) {
     let cell = max(2, Int(a["cell"] ?? "") ?? 12)
     if let band = a["band"] {
         ctx.setFillColor(hexColor(band))
-        // The dither ramp: six rows of cells above the solid band, each cell inked when the ramp
-        // (0 at the top row, 1 at the band) is STRICTLY above its Bayer threshold.
-        let rows = 6
-        let rampTop = bandTop - CGFloat(rows * cell)
-        ctx.fill(CGRect(x: 0, y: bandTop, width: CGFloat(w), height: CGFloat(h) - bandTop))
-        for r in 0..<rows {
-            let v = Double(r + 1) / Double(rows + 1)
-            let y = rampTop + CGFloat(r * cell)
-            var cx = 0
-            while cx * cell < w {
-                if v > Double(bayer8(cx % 8, (r + 2) % 8)) / 64.0 {
-                    ctx.fill(CGRect(x: CGFloat(cx * cell), y: y, width: CGFloat(cell), height: CGFloat(cell)))
-                }
-                cx += 1
-            }
-        }
+        let inset = CGFloat(cell * 2)
+        let corner = min(CGFloat(w), CGFloat(h)) * 0.06
+        // The bottom corners fall below the canvas: a panel rising from below, not a floating card.
+        let panel = CGRect(x: inset, y: bandTop, width: CGFloat(w) - inset * 2, height: CGFloat(h) - bandTop + corner * 2)
+        ctx.addPath(continuousRect(panel, corner))
+        ctx.fillPath()
     }
     let screen = rectArg(a["screen"])
     let radius = CGFloat(Double(a["radius"] ?? "0") ?? 0)

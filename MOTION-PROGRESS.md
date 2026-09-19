@@ -37,9 +37,11 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
-- **11:39 to 11:42**: Now's running tile shows one figure (the time) and the away band lost its
-  sub-line; the two components that drew the island (`Island.tsx`, `IslandStage.tsx`) are deleted.
-  CI green on 7142473.
+- **11:39 to 11:45**: Now's running tile shows one figure (the time) and the away band lost its
+  sub-line; the two components that drew the island (`Island.tsx`, `IslandStage.tsx`) are deleted;
+  a session's strip key lists only classes that happened. CI green on 7142473. Not redone:
+  `/Applications/Builda.app` is the 11:31 build, before these last cuts (a web export took most of
+  an hour this morning; rebuild with `desktop/scripts/build-web.mjs --local` then the offline pack).
 
 - **10:10 to 11:34**: the text cuts the owner asked for on Sessions (number, caption, share),
   Projects (no eyebrow or footnote; doors say "hours" and "of your time") and You (no footnote),

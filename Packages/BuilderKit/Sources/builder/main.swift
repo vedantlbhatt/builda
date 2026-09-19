@@ -1,3 +1,6 @@
+import BuilderIngest
+import BuilderSchema
+import BuilderUI
 import Foundation
 
 // The agent and the CLI are the same binary. Everything the menu bar app does, this does
@@ -19,6 +22,10 @@ func runAsync(_ body: @escaping @Sendable () async throws -> Void) {
     }
 }
 
+// `--store DIR` runs any command against a copy of the store instead of the real one, so a
+// development build never migrates the real, forward-only state.sqlite.
+if let dir = CLIArgs.value("store") { StorePaths.root = dir }
+
 do {
     switch CLIArgs.command {
     case "sync":
@@ -37,6 +44,23 @@ do {
         try ShareCommand.run()
     case "preview":
         try PreviewCommand.run()
+    case "preview-island":
+        try IslandPreviewCommand.run()
+    case "island":
+        try IslandCommand.run()
+    case "live-tail":
+        // What the notch island makes of a running transcript: working on what, or waiting.
+        for path in CommandLine.arguments.dropFirst(2) where !path.hasPrefix("--") {
+            let t = LiveTail.read(path: path)
+            print("\((path as NSString).lastPathComponent)")
+            print("  activity  \(t?.activity ?? "-")")
+            print("  waiting   \(t?.waiting?.rawValue ?? "-")\(t?.waitingSince.map { String(format: " for %.0fs", Date().timeIntervalSince1970 - $0) } ?? "")")
+            print("  detail    \(t?.detail ?? "-")")
+            let probe = IslandAgent(
+                id: path, sessionID: path, repo: "", creature: "bit", activity: nil, waiting: nil,
+                lastEventAt: 0, transcriptPath: path, cwd: t?.cwd)
+            print("  terminal  \(TerminalFocus.owningApp(of: probe)?.localizedName ?? "-")")
+        }
     case "doctor":
         try DoctorCommand.run()
     case "groundtruth":
@@ -65,6 +89,13 @@ do {
                                             the model. BUILDER_ANALYSIS_MODEL / defaults
                                             BuilderAnalysisModel pick the model (sonnet)
               builder preview [--out DIR]   render the app surfaces to PNG from real data
+              builder preview-island [--out DIR] [--outline] [--pill]
+                                            the notch island in every mode, from fixtures
+              builder island                what the notch island would show now: every running
+                                            agent, and which one is waiting on you
+              builder live-tail TRANSCRIPT...
+                                            what the island makes of a running transcript
+                                            the notch island in every mode, from fixtures
               builder doctor                records, contribution graph, projects, diagnostics
               builder groundtruth           reproduce the published measurements
                 --project <dir>             which ~/.claude/projects directory

@@ -68,12 +68,26 @@ final class AppStore {
     }
 
     var pairing: PairingState = .idle
+    /// Every running agent, as the notch island draws them; the popover's Now card reads the same.
+    var islandAgents: [IslandAgent] = []
     /// The label this Mac was paired under, kept so the row can say which link it is
     /// after a relaunch. The server does not echo it back on approval.
     var pairedLabel: String? = UserDefaults.standard.string(forKey: AppStore.pairedLabelKey)
 
     var onSummaryChange: ((String) -> Void)?
     var notifier: (any Notifier)?
+
+    /// Every running agent, for the notch island, after each pass.
+    var onIsland: (([IslandAgent], Bool) -> Void)?
+    /// A session just finished and was announced: the island's shipped beat.
+    var onShipped: ((IslandShipped) -> Void)?
+    /// Creatures already drawn for a session in this process. A kept creature never changes,
+    /// so an agent's dot does not change colour because a neighbour finished (crew.ts rule).
+    private var keptCreatures: [String: String] = [:]
+    /// The running transcripts the last pass found, re-read between passes (`refreshTails`).
+    private var lastRunning: [LiveAgents.Running] = []
+    private var lastRanToday = false
+    private var tailTimer: Timer?
 
     // MARK: Private
 
@@ -99,7 +113,7 @@ final class AppStore {
         work.async { [weak self] in self?.openStores() }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if await self.sync.isPaired { self.pairing = .paired }
+            if !Self.keychainOff, await self.sync.isPaired { self.pairing = .paired }
         }
     }
 
@@ -133,6 +147,14 @@ final class AppStore {
             })
         daemon.start()
         self.daemon = daemon
+
+        // Between passes, the ends of the running transcripts are re-read on their own. A pass
+        // re-derives the whole corpus, MEASURED on this machine at 5.3 s in a release build and
+        // 18 s in a debug one, so "waiting on you" would otherwise reach the notch up to a pass
+        // late. Reading a few 128 KB tails every 2 s costs nothing a person would notice.
+        tailTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshTails() }
+        }
     }
 
     func refresh(force: Bool) {
@@ -159,6 +181,8 @@ final class AppStore {
             var total = 0
             var names: [Int: String] = [:]
             var analysisSummary: MenuBarPanel.AnalysisSummary?
+            var shippedNow: [IslandShipped] = []
+            var runningNow: [IslandAgents.Read] = []
 
             do {
                 _ = try coordinator.run()
@@ -175,6 +199,15 @@ final class AppStore {
                 for s in pending.runFinished { queue.append((session: s, kind: .runFinished)) }
 
                 for (s, kind) in queue {
+                    let repoName = try? Self.repoName(for: s.clientSessionID, cache: cache, names: names)
+                    let commits = (try? cache.scalarInt(
+                        "SELECT git_commits FROM session WHERE client_session_id = ?",
+                        [.text(s.clientSessionID)])).flatMap { $0 } ?? 0
+                    shippedNow.append(
+                        IslandShipped(
+                            sessionID: s.clientSessionID, repo: repoName ?? "a session",
+                            activeSeconds: s.activeSeconds, commits: commits,
+                            unattended: kind == .runFinished))
                     let alert = SessionAlert(
                         session: s,
                         kind: kind,
@@ -188,7 +221,17 @@ final class AppStore {
                     try? notifier?.deliver(alert)
                 }
 
-                let openSession = try lifecycle.openSession(among: sessions)
+                let openSessions = try lifecycle.openSessions(among: sessions)
+                let openSession = openSessions.first
+
+                // The island's crew: every transcript being written inside an open session, and
+                // what the end of each one says (working on what, or waiting on you). Read
+                // from disk, no network. A failure here costs the island a pass, never the pass.
+                let now = Date().timeIntervalSince1970
+                if let running = try? LiveAgents.running(
+                    state: state, open: openSessions, repoNames: names, now: now) {
+                    runningNow = IslandAgents.read(running, now: now)
+                }
 
                 // Model-written analyses, queued off this pass. A scheduling error is
                 // logged rather than allowed to abort the refresh.
@@ -226,6 +269,8 @@ final class AppStore {
             let capturedTotal = total
             let capturedNames = names
             let capturedAnalysis = analysisSummary
+            let capturedShipped = shippedNow
+            let capturedRunning = runningNow
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -240,8 +285,62 @@ final class AppStore {
                 self.lastScanAt = Date()
                 self.scanning = false
                 self.onSummaryChange?(Self.shortDuration(capturedToday))
+                self.publishIsland(capturedRunning, ranToday: capturedToday > 0)
+                for s in capturedShipped { self.onShipped?(s) }
             }
         }
+    }
+
+    // MARK: The island
+
+    /// Running transcripts to island agents: each wears its session's crew creature, the
+    /// phone's rule, oldest session first.
+    private func refreshTails() {
+        let running = lastRunning
+        guard !running.isEmpty, !isPaused else { return }
+        let ranToday = lastRanToday
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let reads = IslandAgents.read(running, now: Date().timeIntervalSince1970)
+            Task { @MainActor [weak self] in
+                // A pass that landed meanwhile has the newer list; do not overwrite it.
+                guard let self, self.lastRunning == running else { return }
+                self.publishIsland(reads, ranToday: ranToday)
+            }
+        }
+    }
+
+    private func publishIsland(_ running: [IslandAgents.Read], ranToday: Bool) {
+        lastRunning = running.map(\.agent)
+        lastRanToday = ranToday
+        let agents = IslandAgents.make(running, kept: &keptCreatures)
+        if agents != islandAgents { islandAgents = agents }
+        onIsland?(agents, ranToday)
+    }
+
+    /// Whether this Mac holds a token to send a drop with.
+    func isPaired() async -> Bool {
+        if Self.keychainOff { return false }
+        return await sync.isPaired
+    }
+
+    /// A development run against a copy of the store (`BUILDER_STORE_DIR`), or
+    /// `BUILDER_KEYCHAIN=0`, never touches the Keychain. FOUND BY RUNNING IT: a debug build is
+    /// signed ad hoc and signed differently on every build, so its first read of the pairing
+    /// token raised the system's "allow access" dialog, which then sat on screen after the test
+    /// run had ended, waiting for a person.
+    static let keychainOff: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BUILDER_STORE_DIR"] != nil || env["BUILDER_KEYCHAIN"] == "0"
+    }()
+
+    func shareDrop(_ shared: DropLink.Shared) async throws -> SyncClient.DropState {
+        try await sync.shareDrop(
+            url: shared.url, platform: shared.platform,
+            sharedText: shared.text.isEmpty ? nil : String(shared.text.prefix(1000)))
+    }
+
+    func dropState(id: String) async throws -> SyncClient.DropState {
+        try await sync.drop(id: id)
     }
 
     // MARK: Pairing

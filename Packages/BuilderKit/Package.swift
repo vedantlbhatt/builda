@@ -90,7 +90,7 @@ let package = Package(
         // the same strip from the same spec file — see mobile/src/strip/.
         .target(
             name: "BuilderUI",
-            dependencies: ["BuilderModel", "BuilderStore", "BuilderAnalysis"],
+            dependencies: ["BuilderModel", "BuilderStore", "BuilderAnalysis", "BuilderIngest"],
             swiftSettings: [swift5]
         ),
 

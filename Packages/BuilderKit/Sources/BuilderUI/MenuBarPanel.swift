@@ -118,12 +118,14 @@ public struct MenuBarPanel: View {
         /// a checkpoint, otherwise the last notable session. nil renders the quiet
         /// "Analysis runs when a session ends" line.
         public let analysis: AnalysisSummary?
+        /// Every running agent, as the notch island draws them. Empty renders no Now card.
+        public let agents: [IslandAgent]
 
         public init(
             todayActiveSeconds: Double, streakDays: Int, totalSessions: Int,
             allTimeSeconds: Double, live: SessionRow?, recent: [SessionRow],
             graph: [Analysis.GraphDay], phone: PhoneLink? = nil,
-            analysis: AnalysisSummary? = nil
+            analysis: AnalysisSummary? = nil, agents: [IslandAgent] = []
         ) {
             self.todayActiveSeconds = todayActiveSeconds
             self.streakDays = streakDays
@@ -134,6 +136,7 @@ public struct MenuBarPanel: View {
             self.graph = graph
             self.phone = phone
             self.analysis = analysis
+            self.agents = agents
         }
     }
 
@@ -147,11 +150,23 @@ public struct MenuBarPanel: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
+            PopoverHeader(
+                todaySeconds: model.todayActiveSeconds, streakDays: model.streakDays,
+                face: face, alive: false)
+                .padding(16)
             Divider().overlay(StripPalette.border(dark: dark))
 
             VStack(alignment: .leading, spacing: 20) {
-                if let live = model.live { liveCard(live) }
+                if !model.agents.isEmpty {
+                    NowCard(
+                        agents: model.agents,
+                        strip: model.live.flatMap { l in
+                            l.strip.isEmpty ? nil : (l.strip, l.marks, max(1, Int(l.wallSeconds * 1000)))
+                        },
+                        sinceStart: model.live?.activeSeconds, wheelIndex: 0, alive: false)
+                } else if let live = model.live {
+                    liveCard(live)
+                }
                 AnalysisBlock(summary: model.analysis, dark: dark)
                 recentSection
                 graphSection
@@ -169,46 +184,27 @@ public struct MenuBarPanel: View {
         .background(StripPalette.card(dark: dark))
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(duration(model.todayActiveSeconds))
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(StripPalette.text(dark: dark))
-                Text("active today")
-                    .font(.system(size: 12))
-                    .foregroundStyle(StripPalette.textDim(dark: dark))
-            }
-            Spacer()
-            if model.streakDays > 1 {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(model.streakDays)")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .foregroundStyle(StripPalette.accent(dark: dark))
-                    Text("day streak")
-                        .font(.system(size: 11))
-                        .foregroundStyle(StripPalette.textDim(dark: dark))
-                }
-            }
-        }
-        .padding(16)
+    private var face: FaceState {
+        if model.agents.contains(where: { $0.waiting != nil }) { return .waiting }
+        if !model.agents.isEmpty { return .working }
+        return model.todayActiveSeconds > 0 ? .idle : .sleep
     }
 
+    /// An open session with no agent writing: no aura and no big number (the header has one).
     private func liveCard(_ row: SessionRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Circle().fill(StripPalette.accent(dark: dark)).frame(width: 7, height: 7)
-                Text("IN PROGRESS")
-                    .font(.system(size: 10, weight: .bold)).kerning(0.8)
-                    .foregroundStyle(StripPalette.accent(dark: dark))
-                Spacer()
+                Text("Open")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(StripPalette.textDim(dark: dark))
                 Text(row.repo)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(StripPalette.text(dark: dark))
+                Spacer()
+                Text(duration(row.activeSeconds))
+                    .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(StripPalette.textDim(dark: dark))
             }
-            Text(duration(row.activeSeconds))
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundStyle(StripPalette.text(dark: dark))
             if !row.strip.isEmpty {
                 TimelineStripView(
                     columns: row.strip, marks: row.marks,
@@ -216,12 +212,7 @@ public struct MenuBarPanel: View {
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(StripPalette.accent(dark: dark).opacity(0.10)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(StripPalette.accent(dark: dark).opacity(0.35), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black))
     }
 
     private var recentSection: some View {
@@ -236,7 +227,7 @@ public struct MenuBarPanel: View {
                             .lineLimit(1)
                         Spacer(minLength: 8)
                         Text(duration(row.activeSeconds))
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.system(size: 12).monospacedDigit())
                             .foregroundStyle(StripPalette.textDim(dark: dark))
                     }
                     if !row.strip.isEmpty {

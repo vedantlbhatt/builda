@@ -38,10 +38,18 @@ public actor SyncClient {
     private let session: URLSession
     private let clientVersion: String
 
-    public init(baseURL: URL, clientVersion: String = "0.1.0", session: URLSession = .shared) {
+    /// Where the access token comes from. The Keychain, always, outside a test; a test hands
+    /// one in so the request can be checked without writing the machine's Keychain.
+    private let accessToken: @Sendable () -> String?
+
+    public init(
+        baseURL: URL, clientVersion: String = "0.1.0", session: URLSession = .shared,
+        accessToken: @escaping @Sendable () -> String? = { Keychain.get(.accessToken) }
+    ) {
         self.baseURL = baseURL
         self.clientVersion = clientVersion
         self.session = session
+        self.accessToken = accessToken
     }
 
     // MARK: - Pairing
@@ -156,6 +164,48 @@ public actor SyncClient {
         return BatchResult(accepted: accepted, unchanged: unchanged, rejected: rejected)
     }
 
+    // MARK: - Drops
+
+    /// `POST /v1/drops`: a link onto the board, exactly as the phone's share sheet sends one
+    /// (`mobile/src/data/api.ts` shareDrop). Idempotent on the link server side: the same
+    /// reel twice is one card. The body is the route's whole model (`DropIn`, extra="forbid").
+    public func shareDrop(url: String, platform: String, sharedText: String?) async throws -> DropState {
+        struct Body: Encodable {
+            let url: String
+            let platform: String
+            let shared_text: String?
+        }
+        let r: DropEnvelope = try await post(
+            "/v1/drops", body: Body(url: url, platform: platform, shared_text: sharedText))
+        return r.state
+    }
+
+    /// `GET /v1/drops/{id}`: where a drop is, and how many moves it offers once planned.
+    public func drop(id: String) async throws -> DropState {
+        let r: DropEnvelope = try await get("/v1/drops/\(id)")
+        return r.state
+    }
+
+    private struct DropEnvelope: Decodable {
+        struct Row: Decodable {
+            let id: String
+            let status: String
+            let refusal: String?
+        }
+        struct Move: Decodable {
+            let id: String
+        }
+        let drop: Row
+        let moves: [Move]?
+
+        var state: DropState {
+            DropState(
+                id: drop.id, status: drop.status,
+                moves: drop.status == "planned" ? (moves?.count ?? nil) : nil,
+                refusal: drop.refusal)
+        }
+    }
+
     // MARK: - Transport
 
     private func post<B: Encodable, R: Decodable>(
@@ -166,7 +216,7 @@ public actor SyncClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try SessionUpload.encoder().encode(body)
         if authorized {
-            guard let token = Keychain.get(.accessToken) else { throw SyncError.notPaired }
+            guard let token = accessToken() else { throw SyncError.notPaired }
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return try await send(request, retryOn401: authorized)
@@ -174,7 +224,7 @@ public actor SyncClient {
 
     private func get<R: Decodable>(_ path: String) async throws -> R {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        guard let token = Keychain.get(.accessToken) else { throw SyncError.notPaired }
+        guard let token = accessToken() else { throw SyncError.notPaired }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return try await send(request, retryOn401: true)
     }
@@ -192,7 +242,7 @@ public actor SyncClient {
         if status == 401 && retryOn401 {
             try await refreshTokens()
             var retried = request
-            if let token = Keychain.get(.accessToken) {
+            if let token = accessToken() {
                 retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             return try await send(retried, retryOn401: false)

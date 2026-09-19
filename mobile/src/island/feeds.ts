@@ -12,7 +12,7 @@ import { dropLanded, dropMoved } from '../live/dropActivity';
 import type { FaceState } from '../motion/states';
 import { DEFAULT_ANIMAL, type Animal } from '../pixel/animals';
 import { creatureHue, dropHue } from '../theme';
-import { DROP_DONE_HOLD_MS, type Activity, type CrewMember } from './model';
+import { DEMO_EVERY_MS, DEMO_FOR_MS, demoStepFor, DROP_DONE_HOLD_MS, type Activity, type CrewMember } from './model';
 import { island } from './store';
 
 export const FACE_FOR_TILE: Record<'needsYou' | 'working' | 'stalled' | 'finished', FaceState> = {
@@ -153,23 +153,14 @@ export function trackDrop(dropId: string, url: string): void {
   setTimeout(() => void tick(), 800);
 }
 
-const demos = new Set<string>();
-/** A demo takes minutes on the Mac; the island checks at the ship kit screen's own cadence. */
-export const DEMO_EVERY_MS = 20_000;
-/**
- * Stop watching after this. The one phone request run end to end on this Mac (a website, captions
- * included; the ship kit's phone-09 to phone-12 screenshots) went from asked to landed in about
- * thirteen minutes. Half an hour is more than twice that: past it the Mac is asleep, and the kit
- * screen says so better than a pill that never ends.
- */
-export const DEMO_FOR_MS = 30 * 60_000;
-
 /**
  * Watch one demo request from the moment the phone asks until the Mac publishes the kit, refuses,
  * or the request is taken back. It lives here, not on the kit screen, because the point is the
  * minutes AFTER you leave that screen: you asked, you went back to what you were doing, and the
  * island tells you when the thing you asked for exists. Tapping it opens the kit.
  */
+const demos = new Set<string>();
+
 /** Taken back on the phone: the island says nothing more about it, now rather than on the next read. */
 export function untrackDemo(projectKey: string): void {
   demos.delete(projectKey);
@@ -189,24 +180,24 @@ export function trackDemo(projectKey: string, title: string): void {
     try {
       const { requests } = await api.demoRequests(projectKey);
       if (!demos.has(projectKey)) return;
-      const r = requests[0];
-      if (!r || r.status === 'cancelled') {
+      const step = demoStepFor(requests[0]?.status);
+      if (step === 'clear') {
         island.clear(id);
         demos.delete(projectKey);
         return;
       }
-      if (r.status === 'done') {
+      if (step === 'ready') {
         island.post({ ...base, filming: false, ready: true }, DROP_DONE_HOLD_MS);
         demos.delete(projectKey);
         return;
       }
-      if (r.status === 'failed') {
+      if (step === 'failed') {
         island.clear(id);
         demos.delete(projectKey);
         notice(`Your Mac could not film ${title}. The kit page says why.`, 'error', DEFAULT_ANIMAL, creatureHue(DEFAULT_ANIMAL).ink);
         return;
       }
-      island.post({ ...base, filming: r.status === 'claimed', ready: false }, 0);
+      island.post({ ...base, filming: step === 'filming', ready: false }, 0);
     } catch {
       // Offline for a moment: keep what the island shows and try again on the next tick.
     }

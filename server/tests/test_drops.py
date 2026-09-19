@@ -332,6 +332,30 @@ def test_claiming_takes_a_drop_once(client, paired):
     assert _rows("SELECT status FROM drops")[0].status == "resolving"
 
 
+def test_a_claim_goes_stale_from_when_it_was_taken_not_when_it_was_shared(client, paired):
+    """A reel shared while every Mac slept is older than the stale window before it is claimed;
+    it must not be claimable again seconds after one Mac took it (review, 2026-09-19)."""
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    with owner_engine().begin() as c:
+        c.execute(
+            text("UPDATE drops SET created_at = now() - interval '2 hours' WHERE id = :i"),
+            {"i": drop["id"]},
+        )
+    first = client.post("/v1/drops:claim", headers=headers).json()["drops"]
+    second = client.post("/v1/drops:claim", headers=headers).json()["drops"]
+    assert [d["id"] for d in first] == [drop["id"]]
+    assert second == []
+    # And a claim that really is stale is still taken back.
+    with owner_engine().begin() as c:
+        c.execute(
+            text("UPDATE drops SET claimed_at = now() - interval '11 minutes' WHERE id = :i"),
+            {"i": drop["id"]},
+        )
+    third = client.post("/v1/drops:claim", headers=headers).json()["drops"]
+    assert [d["id"] for d in third] == [drop["id"]]
+
+
 def test_the_runner_finishes_a_move_and_points_it_at_its_session(client, paired):
     _uid, headers = paired
     drop = _share(client, headers).json()["drop"]

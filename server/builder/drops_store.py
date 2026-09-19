@@ -145,9 +145,10 @@ def claim_waiting(db: Session, user_id: str, *, limit: int = CLAIM_LIMIT) -> lis
 
     `FOR UPDATE SKIP LOCKED` is what makes two Macs on one account safe: the second one steps
     over the rows the first is holding instead of blocking on them or, worse, resolving the
-    same link twice and paying for two plans. A row that has been `resolving` longer than
-    STALE_CLAIM_MINUTES is taken back, because a Mac that closed its lid mid claim must not
-    strand a drop forever.
+    same link twice and paying for two plans. A row CLAIMED longer than STALE_CLAIM_MINUTES ago
+    and still `resolving` is taken back, because a Mac that closed its lid mid claim must not
+    strand a drop forever. From the claim, not the share (0034): a drop shared an hour before any
+    Mac woke was otherwise claimable again seconds after it was first taken.
     """
     rows = db.execute(
         text(
@@ -157,12 +158,13 @@ def claim_waiting(db: Session, user_id: str, *, limit: int = CLAIM_LIMIT) -> lis
               WHERE d.user_id = :uid AND d.archived_at IS NULL
                 AND (d.status = 'waiting'
                      OR (d.status = 'resolving'
-                         AND d.created_at < now() - interval '{STALE_CLAIM_MINUTES} minutes'))
+                         AND COALESCE(d.claimed_at, d.created_at)
+                             < now() - interval '{STALE_CLAIM_MINUTES} minutes'))
               ORDER BY d.created_at
               LIMIT :lim
               FOR UPDATE SKIP LOCKED
             )
-            UPDATE drops d SET status = 'resolving'
+            UPDATE drops d SET status = 'resolving', claimed_at = now()
             FROM claimable c WHERE d.id = c.id
             RETURNING d.id, d.url, d.platform, d.shared_text, d.created_at
             """

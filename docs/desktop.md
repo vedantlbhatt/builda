@@ -295,7 +295,16 @@ Hardening, from a security review on 2026-09-19: a release build ignores `BUILDA
 then into a memory store, never the real account); the fuses are off for run-as-node, NODE_OPTIONS
 and the inspector, with asar integrity on; every IPC handler answers only the app's own origin;
 the island window opens nothing and navigates nowhere; page permission requests are refused except
-the clipboard; saves to Downloads create files and folders and never replace one. Windows: `--win --dir --x64` rebuilt at 07:08 with tonight's shell (Save image and the kit's Save in
+the clipboard; saves to Downloads create files and folders and never replace one.
+
+Two things that hardening broke in the PACKAGED app, found at 11:30 by capturing it, both fixed:
+the IPC origin check compared `new URL('app://builda/...').origin`, which Node answers "null", so
+the app refused its own page (`src/origin.js` reads scheme and host instead); and the
+`enableCookieEncryption` fuse made every request wait on a Keychain key nobody granted, so the
+page said "Builda took too long to answer" (the fuse is off; the app keeps no cookies). A dev run
+(`npm run dev`) shows neither: check a packaged build with `BUILDA_CAPTURE` after a shell change.
+
+Windows: `--win --dir --x64` rebuilt at 07:08 with tonight's shell (Save image and the kit's Save in
 its `app.asar`); `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
 `Builda.exe`, a 115 MB `Builda Setup 0.1.0.exe`, unsigned); neither has been RUN, because there
 is no Windows machine here. Linux: `--linux --dir --x64` builds (07:11, an x86-64 ELF `builda-desktop`),

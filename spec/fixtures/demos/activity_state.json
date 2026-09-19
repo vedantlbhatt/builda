@@ -1,0 +1,67 @@
+{
+  "_comment": [
+    "The demo Live Activity's ContentState for a demo request row (docs/demo-island.md).",
+    "Written by hand, and held on BOTH sides: server/tests/test_demo_island.py runs",
+    "demo_push.content_state over every case and mobile/__tests__/demoActivity.test.ts runs",
+    "src/live/demoState.ts demoState, so the card the server pushes and the card the phone draws",
+    "from its own poll are one card. The request is the route's own shape (`created_at` as",
+    "`isoformat()` writes it, microseconds and all); `now` is Unix seconds; `expect: null` is a",
+    "request no card shows. The phase is `demoStepFor`, the in-app island's rule, renamed."
+  ],
+  "cases": [
+    {
+      "name": "queued_is_asked_and_counts_from_the_ask",
+      "now": 1757750460,
+      "request": {"status": "queued", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": {"phase": "asked", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750460}
+    },
+    {
+      "name": "claimed_is_filming_and_still_counts_from_the_ask_not_the_claim",
+      "now": 1757750700.4,
+      "request": {"status": "claimed", "refusal": null, "created_at": "2025-09-13T08:00:00.499999+00:00"},
+      "expect": {"phase": "filming", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750700}
+    },
+    {
+      "name": "done_is_ready_rounding_the_half_second_up_on_both_clocks",
+      "now": 1757751180.5,
+      "request": {"status": "done", "refusal": null, "created_at": "2025-09-13T08:00:00.500000+00:00"},
+      "expect": {"phase": "ready", "sinceEpoch": 1757750401, "failure": null, "updatedEpoch": 1757751181}
+    },
+    {
+      "name": "failed_carries_the_kit_screens_words_for_its_code",
+      "now": 1757750760,
+      "request": {"status": "failed", "refusal": "capture_failed", "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": "the Mac could not film it", "updatedEpoch": 1757750760}
+    },
+    {
+      "name": "failed_with_the_longest_words",
+      "now": 1757750760,
+      "request": {"status": "failed", "refusal": "privacy_refused", "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": "the Mac found a name or a key on screen and kept the demo to itself", "updatedEpoch": 1757750760}
+    },
+    {
+      "name": "failed_with_no_code_says_nothing_it_does_not_know",
+      "now": 1757750760,
+      "request": {"status": "failed", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": {"phase": "failed", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757750760}
+    },
+    {
+      "name": "a_code_on_a_request_that_did_not_fail_is_not_shown",
+      "now": 1757751180,
+      "request": {"status": "done", "refusal": "kit_failed", "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": {"phase": "ready", "sinceEpoch": 1757750400, "failure": null, "updatedEpoch": 1757751180}
+    },
+    {
+      "name": "taken_back_has_no_card",
+      "now": 1757750460,
+      "request": {"status": "cancelled", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": null
+    },
+    {
+      "name": "a_status_this_build_does_not_know_has_no_card",
+      "now": 1757750460,
+      "request": {"status": "archived", "refusal": null, "created_at": "2025-09-13T08:00:00+00:00"},
+      "expect": null
+    }
+  ]
+}

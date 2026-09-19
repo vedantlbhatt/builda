@@ -105,6 +105,10 @@ def assert_policies_present() -> None:
         "demo_requests",
         "ship_kits",
         "ship_kit_media",
+        # 0031 and 0032. Where a drop's and a demo's Live Activity pushes go: another viewer's
+        # token is another person's Lock Screen, as for 0022.
+        "drop_activity_tokens",
+        "demo_activity_tokens",
     }
     with engine().connect() as conn:
         rows = conn.execute(

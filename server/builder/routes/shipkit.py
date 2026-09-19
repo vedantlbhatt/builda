@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from .. import objectstore, ship_kit
+from .. import demo_push, objectstore, ship_kit
 from .. import project_media as pm
 from ..auth import CurrentDevice, current_device
 from ..builder_profile import excluded_keys
@@ -167,6 +167,10 @@ def claim_requests(device: CurrentDevice = Depends(current_device)):
             ),
             {"u": uid, "d": str(device.device_id), "n": CLAIM_MAX},
         ).all()
+    # After the commit: the phone's cards for these say the Mac is filming, and any answer that
+    # has been in the island for its hold comes down (docs/demo-island.md). This poll is the one
+    # clock the server has, as the drops claim is for the drop cards.
+    demo_push.after_claim(uid, [str(r.id) for r in rows])
     return {"requests": [_req(r) for r in sorted(rows, key=lambda r: r.created_at)]}
 
 
@@ -204,6 +208,8 @@ def finish_request(
         if exists is None:
             raise HTTPException(404, "not found")
         raise HTTPException(409, f"this request is {exists.status}, not claimed")
+    # After the commit: the kit is up, or why not, on the phone's card with the alert.
+    demo_push.after_transition(uid, [rid])
     return {"request": _req(row)}
 
 
@@ -226,6 +232,8 @@ def cancel_request(request_id: str, device: CurrentDevice = Depends(current_devi
         ).first()
     if row is None:
         raise HTTPException(404, "no request of yours is waiting with that id")
+    # Taken back: its cards have nothing left to say, on this phone or any other.
+    demo_push.after_cancel(uid, rid)
     return {"request": _req(row)}
 
 

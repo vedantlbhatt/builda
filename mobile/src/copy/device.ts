@@ -18,12 +18,14 @@ export interface DeviceWords {
   tryAgain: string;
   /** The same as a clause after "then": "pull down here", or "press Cmd+R". */
   thenRetry: string;
+  /** "Tap" on a phone, "Click" on a desktop, to start a sentence. */
+  tap: string;
 }
 
 export function wordsFor(where: { web: boolean; mac: boolean }): DeviceWords {
-  if (!where.web) return { here: 'this phone', hereUp: 'This phone', tryAgain: 'Pull down to try again.', thenRetry: 'pull down here' };
+  if (!where.web) return { here: 'this phone', hereUp: 'This phone', tryAgain: 'Pull down to try again.', thenRetry: 'pull down here', tap: 'Tap' };
   const key = where.mac ? 'Cmd+R' : 'Ctrl+R';
-  return { here: 'this computer', hereUp: 'This computer', tryAgain: `Press ${key} to try again.`, thenRetry: `press ${key}` };
+  return { here: 'this computer', hereUp: 'This computer', tryAgain: `Press ${key} to try again.`, thenRetry: `press ${key}`, tap: 'Click' };
 }
 
 const onWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -40,3 +42,4 @@ export const HERE = WORDS.here;
 export const HERE_UP = WORDS.hereUp;
 export const TRY_AGAIN = WORDS.tryAgain;
 export const THEN_RETRY = WORDS.thenRetry;
+export const TAP = WORDS.tap;

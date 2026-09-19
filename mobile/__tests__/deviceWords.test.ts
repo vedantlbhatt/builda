@@ -17,6 +17,8 @@ describe('where Builda is running, in words', () => {
     expect(wordsFor({ web: true, mac: true }).tryAgain).toBe('Press Cmd+R to try again.');
     expect(wordsFor({ web: true, mac: false }).thenRetry).toBe('press Ctrl+R');
     expect(wordsFor({ web: true, mac: true }).here).toBe('this computer');
+    expect(wordsFor({ web: false, mac: false }).tap).toBe('Tap');
+    expect(wordsFor({ web: true, mac: false }).tap).toBe('Click');
   });
 
   test('under test (no window) the words are the phone words the other suites read', () => {

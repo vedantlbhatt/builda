@@ -7,6 +7,7 @@
  */
 import type { Me } from '../data/api';
 import { ANIMAL_LABELS, type Animal } from '../pixel/animals';
+import { TAP } from '../copy/device';
 
 export interface Identity {
   /** The band's small title: whether this phone is signed in. */
@@ -40,7 +41,7 @@ export function identityLines({
 /** The rule, said once, where it can be changed. */
 export function colourLine(animal: Animal, hueName: string): string {
   const who = ANIMAL_LABELS[animal];
-  return `Builda wears your creature's colour, the ${who}'s ${hueName}. Tap the ${who} to change it.`;
+  return `Builda wears your creature's colour, the ${who}'s ${hueName}. ${TAP} the ${who} to change it.`;
 }
 
 /** What VoiceOver says for the creature on the band. */

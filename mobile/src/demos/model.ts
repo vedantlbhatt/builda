@@ -13,7 +13,7 @@
 import type { MediaSourceRef, ProjectMediaItem } from '../data/api';
 import { count } from '../copy/numbers';
 import { DEFAULT_PHONE, DEVICES } from '../generated/devices';
-import { HERE } from '../copy/device';
+import { HERE, TAP } from '../copy/device';
 
 // ------------------------------------------------------------------ where a file came from
 
@@ -176,7 +176,7 @@ export function demoWords(entries: readonly GalleryEntry[]): DemoWords | null {
     stills: stills.length,
     stillsCaption: `${stills.length === 1 ? 'still' : 'stills'} ${recorded(stills.length ? stills : entries)}`,
     videoCaption: video ? `${video.duration ? `${video.duration}, ` : ''}${video.source === null ? 'recorded from the running app' : lowerFirst(video.source.replace(/\.$/, ''))}.` : null,
-    tap: video && stills.length ? 'Tap the video to watch it with sound, or the stack to see them all.' : video ? 'Tap the video to watch it with sound.' : stills.length === 1 ? 'Tap it to see it whole.' : 'Tap the stack to see them all.',
+    tap: video && stills.length ? `${TAP} the video to watch it with sound, or the stack to see them all.` : video ? `${TAP} the video to watch it with sound.` : stills.length === 1 ? `${TAP} it to see it whole.` : `${TAP} the stack to see them all.`,
   };
 }
 

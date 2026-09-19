@@ -61,6 +61,7 @@ import { projectLabels, type ProjectRegistry } from '../projects/model';
 import { listOf } from '../stack/model';
 import { everyPricedSessionCounted } from './counted';
 import { apportion, columnUnits, dollarsOf, dollarUnit, roundRows, roundTable, shownUnits, type TableCell } from './round';
+import { TAP } from '../copy/device';
 
 // ------------------------------------------------------------------ what the flow is made of
 
@@ -639,7 +640,7 @@ export function moneyFlow(
     tokens,
     grey,
     notes,
-    summary: `${totalText} at list prices, followed from ${tokens ? 'token' : 'model'} to commit. Tap a stream or a name to read what it carries.`,
+    summary: `${totalText} at list prices, followed from ${tokens ? 'token' : 'model'} to commit. ${TAP} a stream or a name to read what it carries.`,
     readOn: day,
   };
 }

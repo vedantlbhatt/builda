@@ -34,6 +34,7 @@ import { tokens } from '../generated/tokens';
 import { formatWith, numSpec, type NumSpec } from '../insights/format';
 import { cardHue, type CardId, type Hue, type HueName } from '../theme';
 import { UNWORDED_REFUSAL, type Face } from './face';
+import { TAP } from '../copy/device';
 
 // ─── hues ───────────────────────────────────────────────────────────────────────────────
 
@@ -463,7 +464,7 @@ export const STORY_COPY = {
   everyCard: 'Show every card',
   oneAtATime: 'Show one card at a time',
   close: 'Close',
-  gridHint: 'Tap a card to open it.',
+  gridHint: `${TAP} a card to open it.`,
   reading: 'Reading your cards.',
   shareTitle: 'Share this card',
   shareAction: 'Share image',

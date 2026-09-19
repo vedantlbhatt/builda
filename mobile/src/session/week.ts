@@ -15,6 +15,7 @@
  */
 
 import { n } from '../copy/numbers';
+import { TAP } from '../copy/device';
 import { spoken } from '../copy/plain';
 import { numSpec, type NumSpec } from '../insights/format';
 import type { SessionDetail } from '../data/api';
@@ -159,7 +160,7 @@ export function weekOfferLine(w: WeekModel): string {
   const f = weekFigure(w);
   if (!f) return '';
   const amount = f.caption.startsWith('hours') ? `${f.num.final} hours` : f.num.final;
-  return `Last week's card is made: ${amount}. Tap to see it.`;
+  return `Last week's card is made: ${amount}. ${TAP} to see it.`;
 }
 
 /** Said when the week has nothing finished yet. */

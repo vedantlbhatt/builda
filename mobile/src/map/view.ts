@@ -31,7 +31,7 @@ import { timeOfDay } from '../copy/time';
 import { dayOf } from '../you/numbers';
 import { cleanFrames, MAX_FRAMES, spanOf } from './frames';
 import type { Burst, Knot } from './knot';
-import { HERE } from '../copy/device';
+import { HERE, TAP } from '../copy/device';
 
 /** The replay's length: the roadmap's "replay it in fifteen seconds" (2.8). */
 export const REPLAY_MS = 15_000;
@@ -442,7 +442,7 @@ export const ROLES_NOTE = 'Each colour is a kind of file:';
 export const ISLANDS_NOTE = 'Each island is a folder. The top of the repository sits in the middle and deeper folders further out.';
 
 /** Under the map until a cell is picked. */
-export const TAP_HINT = 'Tap a square for what happened to that file.';
+export const TAP_HINT = `${TAP} a square for what happened to that file.`;
 
 // ------------------------------------------------------------------ the ledger under the map
 

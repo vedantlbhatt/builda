@@ -13,6 +13,8 @@
  * offered only for one crossed after that.
  */
 
+import { TAP } from '../copy/device';
+
 /** In hours. Spaced so each one is further than the last, and the first comes in a week or two. */
 export const MILESTONE_HOURS = [10, 25, 50, 100, 250, 500, 1000] as const;
 
@@ -43,7 +45,7 @@ export function milestoneStep(seconds: number, remembered: number | null): Miles
 
 /** The island's line for a milestone card. */
 export function milestoneLine(hours: number): string {
-  return `${hours} hours of building. Your card is made. Tap to see it.`;
+  return `${hours} hours of building. Your card is made. ${TAP} to see it.`;
 }
 
 /** The card's small line: "132 sessions since Aug 11". The start is the earliest project's first session. */

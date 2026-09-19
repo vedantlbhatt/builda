@@ -13,6 +13,8 @@ import { endAllLiveActivities, syncLiveActivities, type SyncResult } from './act
 import { liveStatesOf } from './mission';
 import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
+import { announceFinished, publishLive } from '../island/feeds';
+import { crewFor } from './crew';
 
 /**
  * The app's foreground poll for the Lock Screen, the Dynamic Island and the Home Screen widget
@@ -54,6 +56,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
       lastLive = [];
       await endAllLiveActivities();
       clearWidgetSnapshot();
+      publishLive([], nowMs);
     }
     return null;
   }
@@ -84,6 +87,12 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
     // repository is fixed for its life, so it is read before any card starts.
     loadRepoNames().catch(() => null),
   ]);
+  // The island inside the app says what the system island says outside it, from the same rows.
+  publishLive(live, nowMs, names);
+  if (finished.length > 0) {
+    const crew = crewFor([...finished, ...saved]);
+    for (const s of finished) announceFinished(s, crew.get(s.id) ?? resolveAnimal(animal), names);
+  }
   last = await syncLiveActivities(live, liveStatesOf(live), {
     creature: resolveAnimal(animal),
     around: saved,

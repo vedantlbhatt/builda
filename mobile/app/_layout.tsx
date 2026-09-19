@@ -13,6 +13,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { handleIncomingUrl } from '../src/auth/googleFlow';
 import { api } from '../src/data/client';
 import { useLiveSurfaces } from '../src/live/useLiveSurfaces';
+import { Island } from '../src/island/Island';
 import { HeaderRule } from '../src/nav/chrome';
 import { leftCreaturePicker } from '../src/nav/chromeRules';
 import { usePendingNameSync, useOnboarded } from '../src/nav/onboarding';
@@ -172,6 +173,8 @@ export default function RootLayout() {
               </Stack.Protected>
             </Stack>
           )}
+          {/* The island, above every screen: the app's one voice (src/island/Island.tsx). */}
+          {onboarded !== null && accent.ready ? <Island /> : null}
         </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

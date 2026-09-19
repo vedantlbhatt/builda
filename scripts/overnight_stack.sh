@@ -13,6 +13,7 @@
 #   scripts/overnight_stack.sh lan [stop]  a second API on this Mac's Wi-Fi address, for a real iPhone
 #   scripts/overnight_stack.sh link [stop] the API through ngrok at your account's own address, for a phone anywhere
 #   scripts/overnight_stack.sh iphone ID [--onboarded]  sign the app on iPhone ID in with a freshly minted device
+#   scripts/overnight_stack.sh sim [UDID] [--onboarded]  the same on a simulator (default: the booted one)
 #   scripts/overnight_stack.sh down      stop the API (and the Wi-Fi one)
 #   scripts/overnight_stack.sh restart   down + up
 #   scripts/overnight_stack.sh logs      tail the API log
@@ -350,6 +351,23 @@ print("builder://dev-auth?" + urllib.parse.urlencode({"access": d["access_token"
   say "launched"
 }
 
+# The same for a SIMULATOR: `devicectl` launches on hardware only, so the signed-in URL goes
+# through `simctl openurl` instead, which the app's `builder://dev-auth` route takes the same way.
+cmd_sim() {
+  require_api
+  local id="${1:-booted}"
+  local onboarded=""; [ "${2:-}" = "--onboarded" ] && onboarded="&onboarded=1"
+  say "minting a device for the simulator ($id) and opening the app signed in"
+  local url
+  url="$(mint "Simulator (overnight)" ios "sim-$id" | "$PY" -c '
+import json, sys, urllib.parse
+d = json.load(sys.stdin)
+print("builder://dev-auth?" + urllib.parse.urlencode({"access": d["access_token"], "refresh": d["refresh_token"]}) + sys.argv[1])
+' "$onboarded")" || die "minting the simulator device failed"
+  xcrun simctl openurl "$id" "$url" || die "openurl failed; is the app installed on $id?"
+  say "opened"
+}
+
 cmd_down() {
   cmd_lan stop
   local pid; pid="$(api_pid)"
@@ -587,5 +605,6 @@ case "${1:-}" in
   lan) shift; cmd_lan "$@" ;;
   link) shift; cmd_link "$@" ;;
   iphone) shift; cmd_iphone "$@" ;;
+  sim) shift; cmd_sim "$@" ;;
   *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -210,6 +210,12 @@ def validate_spectrum(t: dict) -> list[str]:
         hue_ref(f"archetype.{k}", v)
     for k, v in spec.get("dimension", {}).items():
         hue_ref(f"dimension.{k}", v)
+    for k, v in spec.get("island", {}).items():
+        if v not in TOKEN_REFS + ("surface.textFaint",) and v not in hues:
+            problems.append(f"spectrum.island.{k} is {v!r}; an island state is one of the nine hues or one of {TOKEN_REFS}")
+    missing = {"working", "thinking", "waiting", "error", "done", "reading", "sleep"} - set(spec.get("island", {}))
+    if spec.get("island") is not None and missing:
+        problems.append(f"spectrum.island is missing {sorted(missing)}")
     for k, v in spec.get("verdict", {}).items():
         if v not in TOKEN_REFS:
             problems.append(f"spectrum.verdict.{k} is {v!r}; a verdict is a state colour, one of {TOKEN_REFS}")

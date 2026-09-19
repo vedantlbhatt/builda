@@ -454,6 +454,15 @@ export const tokens = {
       "project": "orchid",
       "tool": "brass",
       "recipe": "coral"
+    },
+    "island": {
+      "working": "cobalt",
+      "thinking": "iris",
+      "waiting": "amber",
+      "error": "data.del",
+      "done": "data.add",
+      "reading": "tide",
+      "sleep": "surface.textFaint"
     }
   },
   "card": {

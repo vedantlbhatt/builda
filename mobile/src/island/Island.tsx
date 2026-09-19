@@ -162,6 +162,13 @@ export function Island() {
         <Pressable
           disabled={mode === 'hidden'}
           onPress={onPress}
+          // FOUND ON THE SIMULATOR: a compact island is ENTIRELY inside the status bar's strip
+          // (11 to 48 points on a 54 point inset), and iOS gives a touch there to the status bar
+          // for scroll to top, never to the app, so a tap on the compact island did nothing. The
+          // touch area reaches 22 points below the strip, under the island, where nothing else
+          // on any screen takes a tap (the large titles start at the gutter, the back button and
+          // the gear sit outside the island's width).
+          hitSlop={mode === 'compact' ? { top: 0, bottom: 22, left: 6, right: 6 } : undefined}
           accessibilityRole="button"
           accessibilityLabel={spoken(top, now)}
           accessibilityElementsHidden={mode === 'hidden'}
@@ -209,7 +216,8 @@ function canExpand(a: Activity): boolean {
 function expandedHeight(a: Activity): number {
   switch (a.kind) {
     case 'crew':
-      return 150;
+      // The camera's 44 points, the card's three lines, and the island's own bottom margin.
+      return a.members.length > 1 ? 150 : 132;
     case 'needsYou':
       return 150;
     case 'demo':
@@ -316,17 +324,25 @@ function CrewExpanded({ a, now }: { a: Extract<Activity, { kind: 'crew' }>; now:
     const t = setInterval(() => setI((x) => (x + 1) % a.members.length), CREW_STEP_MS);
     return () => clearInterval(t);
   }, [a.members.length]);
+  const { width: screenW } = useWindowDimensions();
   const cur = a.members[Math.min(i, a.members.length - 1)];
   if (!cur) return null;
-  const rows = a.members.map((m) => ({ key: m.sessionId, text: `${m.repo} · ${m.sentence}` }));
+  // The repo is its own line and the wheel carries only what each run is doing, so neither is
+  // cut: "Private project 2 · Running a command" did not fit one line of an island.
+  const rows = a.members.map((m) => ({ key: m.sessionId, text: m.sentence }));
+  const wheelW = screenW - 16 - 28 - 24 - 56 - (a.members.length > 1 ? 50 : 0);
   return (
     <View style={styles.expandedRow}>
       <View style={[styles.card, { flex: 1 }]}>
         <Face animal={cur.animal} state={cur.state} ink={cur.ink} size={44} />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.kicker, { color: FAINT }]}>{a.members.length === 1 ? 'Running' : `${a.members.length} running`}</Text>
-          <Wheel rows={rows} index={Math.min(i, rows.length - 1)} width={190} rowHeight={20} visible={3} textStyle={styles.wheelText} dim={DIM} bright={INK} />
-          <Text style={[styles.mono, { color: FAINT, marginTop: 2 }]}>{cur.startedMs ? minutesLabel(now - cur.startedMs) : ''}</Text>
+          <Text numberOfLines={1} style={[styles.kicker, { color: FAINT }]}>
+            {`${a.members.length === 1 ? 'Running' : `${a.members.length} running`}${cur.startedMs ? ` · ${minutesLabel(now - cur.startedMs)}` : ''}`}
+          </Text>
+          <Text numberOfLines={1} style={[styles.title, { color: INK }]}>
+            {cur.repo}
+          </Text>
+          <Wheel rows={rows} index={Math.min(i, rows.length - 1)} width={wheelW} rowHeight={20} visible={1} textStyle={styles.wheelText} dim={DIM} bright={INK} />
         </View>
       </View>
       {a.members.length > 1 ? (

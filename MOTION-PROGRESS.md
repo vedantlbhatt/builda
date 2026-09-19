@@ -37,6 +37,13 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:20 to 07:30**: `swift test`, 187 tests: the only failures (18 issues) are in the two suites
+  that read this machine's LIVE data against frozen reference measurements: "Ground truth" (the
+  RideGT transcripts now run to Sep 16; 107 sessions at tau 900 against the reference 84) and
+  "Cursor IDE" (the real Cursor database). No engine code changed tonight; the reference numbers
+  are left alone (a number is moved only with a measurement). Idle CPU after tonight's changes,
+  20 one second samples each: Now median 0.3%, Sessions 0.5%, Drops 0.4%. The island's no hardware
+  rule is `island/model.shownActivities`, tested (2961b3e). Linux cross builds.
 - **07:08 to 07:16**: desktop ship kit Save (0bea4a3): the kit's Share threw "no cache directory" on
   the web; now the picked files go to one new folder in Downloads through the shell (`files:save`,
   `image.kitFiles`: the four kit types checked by their bytes) and the caption to the clipboard;

@@ -37,6 +37,16 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **10:10 to 11:37**: the text cuts the owner asked for on Sessions (number, caption, share),
+  Projects (no eyebrow or footnote; doors say "hours" and "of your time") and You (no footnote),
+  and a shorter desktop sign in. Capturing the rebuilt Mac app found it BROKEN since the 08:53
+  hardening, in the packaged build only: the IPC origin check read Node's "null" origin for
+  `app://builda` and refused the app's own page, and the cookie encryption fuse hung every request
+  on an unanswered Keychain key. Both fixed (`desktop/src/origin.js`, the fuse off), the packaged
+  app signs in and loads every tab (shots in `shots/motion/desktop3`), and
+  `/Applications/Builda.app` is the fixed build (replaced at 11:33; a copy the owner opened at
+  11:32 was the broken one). Report republished short.
+
 - **09:45, the owner's feedback, and what changed (to 10:15).** Their words: the island work is
   horrible, no one wants agent status in it, take it all away, write stats ideas down but do not
   build them; no glows; no accent buttons with black text; no big, small, grey text pattern; far
@@ -254,7 +264,7 @@ keep the URL; from a new conversation pass the URL.
   `design/tokens.json` `spectrum.island`.
 - The brief and the design (`brief-motion.md`, `docs/motion.md`).
 
-## Next (for the owner, as of 10:15)
+## Next (for the owner, as of 11:37)
 
 0. Say whether the Mac notch island goes too, and which island idea (if any) to build.
 1. Merge `claude/motion`: `main` has been red since 2026-09-14 and turns green only with 31a1131

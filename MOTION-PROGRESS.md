@@ -38,6 +38,13 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **04:00 to 04:20**: merged `claude/motion-desktop2` (eleven desktop fixes: pane sized layout via one
+  metro resolver rule, island toasts only on desktop, morphs into the pane, drops open in the pane);
+  its metro test now loads the config in a child process (in process it broke five Python parity
+  tests). The Mac notch has a `filming` state read from the ship kit worker's `queue/running/`.
+  Re-recorded the island tour (Settings) with the demo states. FOUND: a second simulator window
+  ("Builda Drops Island", left booted by a helper) sat over the upper part of the main one and ate
+  taps; scroll targets below it or shut it down when no helper needs it.
 - **03:30 to 03:55**: the ship kit re-filmed Builda from tonight's build (`capture demo . --app`
   with a minted device, `BUILDER_DEMO_ACCESS`/`REFRESH`), its band a plain panel now; the project
   page's empty demo asks the Mac (and says Asked once asked); the island carries a demo request
@@ -45,8 +52,7 @@ keep the URL; from a new conversation pass the URL.
   island opened on the run; a session made from a reel links back to it; an open drop closes
   when a deep link navigates; creature marks are one path. Server pytest passes on
   `builder_overnight_motion_test` (0031); `make check-gen` and `make lint` clean.
-- Helpers running: `claude/motion-desktop2` (desktop on tonight's screens), `claude/motion-demoisland`
-  (the demo request as a system Live Activity).
+- Helper running: `claude/motion-demoisland` (the demo request as a system Live Activity).
 - **Merges** (03:00): Mac notch (SNAP spring aligned to the phone's 33 by the cross check test),
   desktop (its spring copy became a re-export of `src/motion/spec.ts`, its state inks resolve via
   `stateColor`; `force.ts` stays deleted), drop island (Live Activity, share extension direct POST).

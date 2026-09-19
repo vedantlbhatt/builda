@@ -14,6 +14,7 @@ import { handleIncomingUrl } from '../src/auth/googleFlow';
 import { api } from '../src/data/client';
 import { useLiveSurfaces } from '../src/live/useLiveSurfaces';
 import { Island } from '../src/island/Island';
+import { OverlayHost } from '../src/ui/overlay';
 import { HeaderRule } from '../src/nav/chrome';
 import { leftCreaturePicker } from '../src/nav/chromeRules';
 import { usePendingNameSync, useOnboarded } from '../src/nav/onboarding';
@@ -173,7 +174,9 @@ export default function RootLayout() {
               </Stack.Protected>
             </Stack>
           )}
-          {/* The island, above every screen: the app's one voice (src/island/Island.tsx). */}
+          {/* What grows out of a screen to cover the whole phone (a drop opening out of its
+              poster), then the island above everything: the app's one voice. */}
+          <OverlayHost />
           {onboarded !== null && accent.ready ? <Island /> : null}
         </ThemeProvider>
       </KeyboardProvider>

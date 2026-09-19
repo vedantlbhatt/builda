@@ -1,0 +1,208 @@
+/**
+ * The wall's three kinds of card, one per band that asks something of you or shows you something.
+ *
+ *   PickCard      read, moves offered: the poster, the creator's own words the move rests on, and
+ *                 the one move a thumb can start right here. Everything else is one tap away.
+ *   BuildingCard  a move running on your Mac: the poster small, the step it is on as a wheel,
+ *                 and the aura, which on this screen means "an agent is driving this one".
+ *   PairCard      the payoff: the reel you sent beside what you made of it, and the way to make
+ *                 a reel of THAT (the ship kit). Seen, built, shown.
+ *
+ * No chips, no pale fills of a hue with a border of the same hue, no uppercase labels: a word in
+ * the kind's hue is how a kind is said.
+ */
+import React, { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { undash } from '../../copy/plain';
+import { tokens } from '../../generated/tokens';
+import { Aura, Wheel } from '../../motion';
+import { dropHue } from '../../theme';
+import { PressableScale } from '../../ui/PressableScale';
+import { commit, select } from '../../ui/haptics';
+import { EFFORT_WORD, KIND_WORD, MOVE_TARGET_WORD, MOVE_VERB } from '../copy';
+import type { MoveRow } from '../types';
+import { runningFor, startsFromPoster, type WallDrop } from './model';
+import { Poster } from './Poster';
+
+const S = tokens.surface;
+const TEXT = S.text.dark;
+const DIM = S.textDim.dark;
+const FAINT = S.textFaint.dark;
+const CARD = S.card.dark;
+const AMBER = S.accent.dark;
+const ON_AMBER = S.text.light;
+
+export function PickCard({
+  w,
+  width,
+  onOpen,
+  onStart,
+}: {
+  w: WallDrop;
+  width: number;
+  onOpen: () => void;
+  onStart: (m: MoveRow) => void;
+}) {
+  const hue = w.drop.kind ? dropHue(w.drop.kind) : null;
+  const posterW = Math.round(width * 0.32);
+  const more = w.moves.filter((m) => m.status === 'offered').length - 1;
+  const lead = w.lead;
+  const direct = startsFromPoster(lead);
+  return (
+    <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}>
+      <View style={[styles.card, { width }]}>
+        <Poster drop={w.drop} width={posterW} />
+        <View style={styles.body}>
+          <Text style={[styles.kind, { color: hue?.ink ?? DIM }]}>{w.drop.kind ? KIND_WORD[w.drop.kind] : 'a drop'}</Text>
+          <Text numberOfLines={3} style={styles.title}>
+            {w.drop.title ?? 'Untitled'}
+          </Text>
+          {lead?.evidence ? (
+            // The creator's own words: why this move exists at all. Verbatim, so it is quoted,
+            // and quoted in the platform's voice rather than ours.
+            <Text numberOfLines={2} style={styles.quote}>
+              {`“${lead.evidence.trim()}”`}
+            </Text>
+          ) : null}
+          <View style={{ flex: 1 }} />
+          {lead ? (
+            <View>
+              <Text numberOfLines={2} style={styles.moveTitle}>
+                {lead.title}
+              </Text>
+              <Text style={styles.moveWhere}>{`${MOVE_TARGET_WORD[lead.target]} · ${EFFORT_WORD[lead.effort]}`}</Text>
+              <View style={styles.actions}>
+                <Pressable
+                  accessibilityRole="button"
+                  hitSlop={6}
+                  onPress={() => {
+                    if (direct) {
+                      commit();
+                      onStart(lead);
+                    } else {
+                      select();
+                      onOpen();
+                    }
+                  }}
+                  style={({ pressed }) => [styles.go, pressed && { backgroundColor: S.accentPressed.dark }]}
+                >
+                  <Text style={styles.goText}>{direct ? MOVE_VERB[lead.move_kind] : 'Choose a repo'}</Text>
+                </Pressable>
+                {more > 0 ? <Text style={styles.more}>{`${more} more`}</Text> : null}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </PressableScale>
+  );
+}
+
+/** The steps a running move walks through, as the wheel shows them. */
+function buildSteps(m: MoveRow, nowMs: number): { rows: { key: string; text: string }[]; index: number } {
+  const mins = runningFor(m, nowMs);
+  const rows = [
+    { key: 'queued', text: 'Waiting for your Mac' },
+    { key: 'running', text: mins !== null && m.status === 'running' ? `Claude Code, ${mins < 1 ? 'just started' : `${mins}m in`}` : 'Claude Code is on it' },
+    { key: 'done', text: 'Done' },
+  ];
+  return { rows, index: m.status === 'queued' ? 0 : m.status === 'running' ? 1 : 2 };
+}
+
+export function BuildingCard({ w, width, aura, onOpen }: { w: WallDrop; width: number; aura: boolean; onOpen: () => void }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 20000);
+    return () => clearInterval(t);
+  }, []);
+  const m = w.active;
+  if (!m) return null;
+  const steps = buildSteps(m, now);
+  return (
+    <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${m.title}, ${steps.rows[steps.index]!.text}`}>
+      <View style={[styles.building, { width }]}>
+        {aura ? <Aura radius={22} /> : null}
+        <Poster drop={w.drop} width={64} />
+        <View style={[styles.body, { justifyContent: 'center' }]}>
+          <Text numberOfLines={1} style={styles.kindDim}>
+            {w.drop.title ?? 'A drop'}
+          </Text>
+          <Text numberOfLines={2} style={styles.moveTitle}>
+            {m.title}
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Wheel rows={steps.rows} index={steps.index} width={width - 64 - 44} rowHeight={20} visible={1} textStyle={styles.wheel} dim="rgba(245,241,234,0.56)" bright={TEXT} />
+          </View>
+        </View>
+      </View>
+    </PressableScale>
+  );
+}
+
+export function PairCard({ w, width, onOpen, onSession }: { w: WallDrop; width: number; onOpen: () => void; onSession: (id: string) => void }) {
+  const m = w.active;
+  if (!m) return null;
+  const posterW = Math.round(width * 0.3);
+  return (
+    <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}>
+      <View style={[styles.pair, { width }]}>
+        <View>
+          <Poster drop={w.drop} width={posterW} foot="Seen" />
+        </View>
+        <View style={styles.arrow}>
+          <Text style={styles.arrowText}>→</Text>
+        </View>
+        <View style={[styles.built, { height: Math.round(posterW * (16 / 9)) }]}>
+          <Text style={[styles.kind, { color: tokens.data.add.dark }]}>Built</Text>
+          <Text numberOfLines={3} style={styles.title}>
+            {m.title}
+          </Text>
+          {m.outcome ? (
+            <Text numberOfLines={3} style={styles.outcome}>
+              {undash(m.outcome)}
+            </Text>
+          ) : null}
+          <View style={{ flex: 1 }} />
+          {m.session_id ? (
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => {
+                select();
+                onSession(m.session_id!);
+              }}
+            >
+              <Text style={styles.link}>Open the session →</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.moveWhere}>The session lands once your Mac uploads it</Text>
+          )}
+        </View>
+      </View>
+    </PressableScale>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: { flexDirection: 'row', gap: 14, padding: 10, borderRadius: 24, borderCurve: 'continuous', backgroundColor: CARD },
+  building: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 22, borderCurve: 'continuous', backgroundColor: CARD },
+  pair: { flexDirection: 'row', alignItems: 'center' },
+  body: { flex: 1, minWidth: 0, paddingVertical: 4 },
+  kind: { fontSize: 13, fontWeight: '600' },
+  kindDim: { fontSize: 13, fontWeight: '500', color: DIM },
+  title: { fontSize: 17, fontWeight: '700', color: TEXT, marginTop: 3, lineHeight: 21 },
+  quote: { fontSize: 13, color: DIM, marginTop: 6, fontStyle: 'italic', lineHeight: 17 },
+  moveTitle: { fontSize: 15, fontWeight: '600', color: TEXT, lineHeight: 19 },
+  moveWhere: { fontSize: 12, color: FAINT, marginTop: 2 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10 },
+  go: { height: 38, paddingHorizontal: 16, borderRadius: 19, borderCurve: 'continuous', backgroundColor: AMBER, alignItems: 'center', justifyContent: 'center' },
+  goText: { fontSize: 15, fontWeight: '700', color: ON_AMBER },
+  more: { fontSize: 13, color: DIM, fontWeight: '500' },
+  wheel: { fontSize: 13, fontWeight: '500' },
+  arrow: { width: 28, alignItems: 'center' },
+  arrowText: { color: FAINT, fontSize: 18 },
+  built: { flex: 1, padding: 12, borderRadius: 18, borderCurve: 'continuous', backgroundColor: CARD },
+  outcome: { fontSize: 13, color: DIM, marginTop: 6, lineHeight: 17 },
+  link: { fontSize: 14, fontWeight: '600', color: TEXT },
+});

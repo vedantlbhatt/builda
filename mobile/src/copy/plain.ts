@@ -60,6 +60,20 @@ export function hasDash(text: string): boolean {
 }
 
 /**
+ * Words this app did not write (a Claude Code run's own outcome line, a creator's caption) made
+ * to follow the rule before they are shown: a dash between clauses becomes a comma, and a minus
+ * sign a hyphen. The run that wrote "Done — created README.md" meant "Done, created README.md".
+ */
+export function undash(text: string): string {
+  return text
+    .replace(/\s*[—–―]\s*/g, ', ')
+    .replace(/\s-{1,2}\s/g, ', ')
+    .replace(/−/g, '-')
+    .replace(/,\s*,/g, ',')
+    .replace(/^,\s*/, '');
+}
+
+/**
  * THE ONE WAY FACTS SHARE A LINE: "gt-transit · yesterday · on its own". The space before each
  * dot is a no break space (U+00A0), so the dot stays at the end of the fact before it and a line
  * that wraps breaks after "· ", never before it: no line can start with a dot. FOUND IN THE

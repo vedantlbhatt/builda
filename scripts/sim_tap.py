@@ -28,10 +28,18 @@ import Quartz
 DEVICE = (1179, 2556)
 
 
+#: Which Simulator window, by a piece of its title ("iPhone 16 Pro"). With two simulators booted
+#: `window 1` is whichever was focused last, and a tap aimed at the phone landed on an iPad.
+WINDOW = ""
+
+
 def window_frame() -> tuple[int, int, int, int]:
+    target = (
+        f'(first window whose name contains "{WINDOW}")' if WINDOW else "window 1"
+    )
     out = subprocess.run(
         ["osascript", "-e",
-         'tell application "System Events" to tell process "Simulator" to get {position, size} of window 1'],
+         f'tell application "System Events" to tell process "Simulator" to get {{position, size}} of {target}'],
         capture_output=True, text=True, check=True,
     ).stdout.strip()
     x, y, w, h = (int(v) for v in out.split(", "))
@@ -93,9 +101,19 @@ def main() -> None:
     ap.add_argument("--drag", nargs=2, type=float, metavar=("X2", "Y2"))
     ap.add_argument("--device", nargs=2, type=int, default=DEVICE)
     ap.add_argument("--hold", type=float, default=0.0, help="seconds pressed before the drag moves")
+    ap.add_argument("--window", default="", help="a piece of the Simulator window's title, e.g. 'iPhone 16 Pro'")
     args = ap.parse_args()
+    global WINDOW
+    WINDOW = args.window
 
     subprocess.run(["osascript", "-e", 'tell application "Simulator" to activate'], check=False)
+    if WINDOW:
+        # Raise that window, so the synthesized events land on it and not on one in front of it.
+        subprocess.run(
+            ["osascript", "-e",
+             f'tell application "System Events" to tell process "Simulator" to perform action "AXRaise" of (first window whose name contains "{WINDOW}")'],
+            check=False, capture_output=True,
+        )
     time.sleep(0.3)
     sx, sy = to_screen(args.x, args.y, tuple(args.device))
     if args.drag:

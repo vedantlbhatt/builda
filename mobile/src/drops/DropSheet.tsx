@@ -191,18 +191,20 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
             />
             <Animated.View style={[styles.grabClose, sheetChromeStyle]}>
               <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={20}>
-                <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
-                  CLOSE
+                <T role="meta" weight={600} style={{ color: c.textDim }}>
+                  Close
                 </T>
               </Pressable>
             </Animated.View>
           </View>
 
           <View style={styles.head}>
-            <T role="label" style={{ color: ink, letterSpacing: 1.4 }}>
-              {(drop.kind ? KIND_WORD[drop.kind] : 'unread').toUpperCase()}
+            {/* The kind is a word in its hue, in sentence case: an uppercase, letterspaced label
+                over every block is the template look the owner asked to lose. */}
+            <T role="meta" weight={600} style={{ color: ink }}>
+              {drop.kind ? KIND_WORD[drop.kind] : 'unread'}
             </T>
-            <T role="mono" numberOfLines={1} style={{ color: 'rgba(245,241,234,0.45)' }}>
+            <T role="meta" numberOfLines={1} style={{ color: 'rgba(245,241,234,0.5)' }}>
               {source?.author ? `@${source.author}` : hostOf(drop.url)}
             </T>
           </View>
@@ -399,8 +401,8 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
       >
         <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={16}>
           <View style={styles.chip}>
-            <T role="label" style={styles.chipText}>
-              CLOSE
+            <T role="meta" weight={600} style={styles.chipText}>
+              Close
             </T>
           </View>
         </Pressable>
@@ -411,8 +413,8 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
           hitSlop={16}
         >
           <View style={styles.chip}>
-            <T role="label" style={styles.chipText}>
-              {`OPEN ON ${PLATFORM_WORD[drop.platform].toUpperCase()}`}
+            <T role="meta" weight={600} style={styles.chipText}>
+              {`Open on ${PLATFORM_WORD[drop.platform]}`}
             </T>
           </View>
         </Pressable>
@@ -441,7 +443,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderCurve: 'continuous',
   },
-  chipText: { color: '#F5F1EA', letterSpacing: 1.3 },
+  chipText: { color: '#F5F1EA' },
   sheet: {
     position: 'absolute',
     left: 0,

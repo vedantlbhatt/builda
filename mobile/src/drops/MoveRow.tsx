@@ -91,10 +91,10 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
       >
         {armed ? <View style={[styles.rail, { backgroundColor: ink }]} /> : null}
         <View style={styles.head}>
-          <T role="label" style={{ color: ink, letterSpacing: 1.2 }}>
-            {verb.toUpperCase()}
+          <T role="meta" weight={600} style={{ color: ink }}>
+            {verb}
           </T>
-          <T role="mono" style={{ color: armed ? c.text : c.textFaint }}>
+          <T role="meta" style={{ color: armed ? c.text : c.textFaint }}>
             {live ? MOVE_STATUS_LINE[move.status] : armed ? 'armed' : EFFORT_WORD[move.effort]}
           </T>
         </View>

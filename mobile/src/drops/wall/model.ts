@@ -1,0 +1,132 @@
+/**
+ * The wall's shape: which drops go in which band, in what order. PURE, so
+ * `__tests__/dropsWall.test.ts` holds it.
+ *
+ * WHY BANDS BY WHAT HAPPENS NEXT, not by topic (docs/motion.md, "Drops: seen, built, shown"). The
+ * web and the piles before it grouped drops by what they were ABOUT, which answered a question
+ * nobody opening this tab is asking. What you want to know is what is waiting on you, what is
+ * being built, and what came of the reels you sent. A drop's life is seen, picked, built, shown,
+ * and the wall is that life read top to bottom:
+ *
+ *   building   a move is queued or running on your Mac right now. First, because it is live.
+ *   pick       read, with moves offered and none started: waiting on your thumb.
+ *   built      a move finished: the reel that started it beside what you made of it.
+ *   reading    shared, and the Mac has not answered yet.
+ *   kept       everything else: refused, passed on, a recipe you filed, done with.
+ *
+ * A drop sits in exactly one band: the first of these it qualifies for.
+ */
+import type { DropRow, MoveRow } from '../types';
+
+export type Band = 'building' | 'pick' | 'built' | 'reading' | 'kept';
+
+export const BAND_ORDER: readonly Band[] = ['building', 'pick', 'built', 'reading', 'kept'];
+
+export interface WallDrop {
+  drop: DropRow;
+  moves: MoveRow[];
+  band: Band;
+  /** The move a Start on the poster would start: the planner's first offered one. */
+  lead: MoveRow | null;
+  /** The move that is running or finished, for the building and built bands. */
+  active: MoveRow | null;
+}
+
+export interface Wall {
+  bands: Record<Band, WallDrop[]>;
+  /** Every drop on the wall, newest first, for the grid and for search. */
+  all: WallDrop[];
+  counts: { pick: number; building: number; built: number; reading: number };
+}
+
+function byNewest(a: { created_at: string }, b: { created_at: string }): number {
+  return Date.parse(b.created_at) - Date.parse(a.created_at);
+}
+
+export function bandOf(drop: DropRow, moves: readonly MoveRow[]): Band {
+  if (moves.some((m) => m.status === 'queued' || m.status === 'running')) return 'building';
+  if (drop.status === 'waiting' || drop.status === 'resolving') return 'reading';
+  // A move that produced something is the payoff; a `keep` or a `card` that "finished" made
+  // nothing to show beside the reel, so it does not earn the built band.
+  if (moves.some((m) => m.status === 'done' && m.move_kind !== 'keep' && m.move_kind !== 'card')) return 'built';
+  if (drop.status === 'planned' && moves.some((m) => m.status === 'offered')) return 'pick';
+  return 'kept';
+}
+
+export function wallOf(drops: readonly DropRow[], moves: readonly MoveRow[]): Wall {
+  const bands: Record<Band, WallDrop[]> = { building: [], pick: [], built: [], reading: [], kept: [] };
+  const all: WallDrop[] = [];
+  const byDrop = new Map<string, MoveRow[]>();
+  for (const m of moves) {
+    const list = byDrop.get(m.drop_id) ?? [];
+    list.push(m);
+    byDrop.set(m.drop_id, list);
+  }
+  for (const d of [...drops].sort(byNewest)) {
+    if (d.archived_at) continue;
+    const mine = (byDrop.get(d.id) ?? []).sort((a, b) => a.position - b.position);
+    const band = bandOf(d, mine);
+    const lead = mine.find((m) => m.status === 'offered') ?? null;
+    const active =
+      mine.find((m) => m.status === 'running') ??
+      mine.find((m) => m.status === 'queued') ??
+      mine.find((m) => m.status === 'done' && m.move_kind !== 'keep' && m.move_kind !== 'card') ??
+      null;
+    const w: WallDrop = { drop: d, moves: mine, band, lead, active };
+    bands[band].push(w);
+    all.push(w);
+  }
+  return {
+    bands,
+    all,
+    counts: {
+      pick: bands.pick.length,
+      building: bands.building.length,
+      built: bands.built.length,
+      reading: bands.reading.length,
+    },
+  };
+}
+
+/**
+ * The line under the title, in words, never as a row of numbers with labels: "2 to pick, 1 being
+ * built". Nothing is said about a band that is empty, and an empty wall says nothing at all.
+ */
+export function wallLine(c: Wall['counts']): string {
+  const parts: string[] = [];
+  if (c.building) parts.push(`${c.building} being built`);
+  if (c.pick) parts.push(`${c.pick} to pick`);
+  if (c.reading) parts.push(`${c.reading} being read`);
+  if (c.built) parts.push(`${c.built} built`);
+  return parts.join(', ');
+}
+
+/**
+ * Whether a move can start from the poster with one tap. A move whose target is one of your repos
+ * needs the repo picked first, and a keep does nothing worth a button: both open the drop instead.
+ */
+export function startsFromPoster(m: MoveRow | null): boolean {
+  if (!m) return false;
+  return m.target !== 'existing_repo' && m.move_kind !== 'keep';
+}
+
+/**
+ * The poster's first line when the platform gave no picture (Instagram serves none): the title if
+ * the Mac read one, else the host, trimmed to what fits five lines at 22 points.
+ */
+export function posterWords(d: DropRow): string {
+  const t = (d.title ?? '').trim();
+  if (t) return t.length > 90 ? `${t.slice(0, 88).trimEnd()}…` : t;
+  try {
+    return new URL(d.url).host.replace(/^www\./, '');
+  } catch {
+    return d.url;
+  }
+}
+
+/** Minutes since a move started, as the wall says it. Null when it has not started. */
+export function runningFor(m: MoveRow, nowMs: number): number | null {
+  const s = Date.parse(m.started_at ?? m.queued_at ?? '');
+  if (!Number.isFinite(s)) return null;
+  return Math.max(0, Math.floor((nowMs - s) / 60000));
+}

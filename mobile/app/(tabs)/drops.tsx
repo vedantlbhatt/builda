@@ -1,80 +1,110 @@
 /**
- * Drops: everything you have shared into Builda, as its own frame, piled by what it is about.
+ * Drops: every reel and link you sent yourself, read top to bottom as what happens next.
  *
  * The fifth tab, and the only one you arrive at from outside the app: you share a reel in
  * Instagram, Builda opens, and the thumb is already in the middle of the bar.
  *
- * Three things on it and nothing else: the search line, the web (`WebBoard.tsx`), and the drop you
- * opened (`DropSheet.tsx`).
+ * WHAT THIS REPLACED, three times over. A pixel sigil per drop on a dotted field; then piles with
+ * a PILES / GRID switch; then a web of strands settled by forces. All three grouped drops by what
+ * they were ABOUT, which is a question nobody opening this tab is asking, and all three drew the
+ * drop as something other than the reel it was. The owner's verdict on the last one was that it
+ * did not work, and that reels in a build app need a reason to be there beyond "build something
+ * off a reel" (docs/motion.md, "Drops: seen, built, shown").
  *
- * ONE VIEW, no switch. There used to be a PILES / GRID toggle here, which was a decision handed
- * back to the person twice a day and two half-good boards instead of one good one. The web is the
- * board now; searching dims what did not match rather than rebuilding it.
+ * So the wall is the drop's LIFE: what is being built right now, what is waiting on your thumb,
+ * what came of the reels you sent (the reel beside what you made of it, and the way to make a
+ * reel of that), and then everything you ever sent, as the posters they were. A drop opens out of
+ * its own poster (`wall/Opening.tsx`).
  */
 import { useIsFocused } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions, type View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DropsWeb } from '../../src/drops/WebBoard';
 import { search } from '../../src/drops/cluster';
-import { SearchLine } from '../../src/drops/SearchLine';
 import { drainPending, landShared, pendingCount } from '../../src/drops/intake';
+import { SearchLine } from '../../src/drops/SearchLine';
 import { useBoard } from '../../src/drops/useBoard';
+import { BuildingCard, PairCard, PickCard } from '../../src/drops/wall/Cards';
+import { wallLine, wallOf, type WallDrop } from '../../src/drops/wall/model';
+import { Opening, type Rect as Origin } from '../../src/drops/wall/Opening';
+import { Poster } from '../../src/drops/wall/Poster';
+import { GUTTER, TopFade, WallBand, WallHeader } from '../../src/drops/wall/Chrome';
+import { tokens } from '../../src/generated/tokens';
+import { notice } from '../../src/island/feeds';
+import { RippleItem } from '../../src/motion';
+import { useAccent } from '../../src/theme/accent';
 import { T } from '../../src/ui/Text';
 import { TextField } from '../../src/ui/TextField';
 import { commit, select } from '../../src/ui/haptics';
+import { overlay } from '../../src/ui/overlay';
 import { useColors } from '../../src/ui/scheme';
+
+/** Between posters in the grid. */
+const GAP = 6;
+const COLUMNS = 3;
 
 export default function DropsScreen() {
   const c = useColors();
+  const accent = useAccent();
   const insets = useSafeAreaInsets();
-  const { drops, moves, loading, refresh } = useBoard();
+  const { width } = useWindowDimensions();
+  const { drops, moves, loading, refresh, start, archive } = useBoard();
   const [query, setQuery] = useState('');
   const focused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; open?: string }>();
   const consumed = useRef<string | null>(null);
   const [waiting, setWaiting] = useState<number | null>(null);
+  const posters = useRef(new Map<string, RNView | null>());
 
-  const openDrop = useCallback((id: string) => router.push(`/drop/${id}`), [router]);
+  const wall = useMemo(() => wallOf(drops, moves), [drops, moves]);
 
   /** What the search box narrowed to, or null for all of them (`cluster.search`). */
   const only = useMemo(() => {
     const hits = search(
       query,
-      drops.map((d) => ({
-        kind: d.kind,
-        title: d.title,
-        summary: d.summary,
-        tags: d.resolution?.plan?.tags ?? [],
-      })),
+      wall.all.map((w) => ({ kind: w.drop.kind, title: w.drop.title, summary: w.drop.summary, tags: w.drop.resolution?.plan?.tags ?? [] })),
     );
-    return hits ? new Set(hits.map((i) => drops[i]?.id).filter(Boolean) as string[]) : null;
-  }, [query, drops]);
+    return hits ? new Set(hits.map((i) => wall.all[i]?.drop.id).filter(Boolean) as string[]) : null;
+  }, [query, wall]);
 
-  const shown = useMemo(() => (only ? drops.filter((d) => only.has(d.id)) : drops), [drops, only]);
-  const todo = useMemo(() => moves.filter((m) => m.status === 'offered').length, [moves]);
-  const going = useMemo(
-    () => moves.filter((m) => m.status === 'queued' || m.status === 'running').length,
-    [moves],
+  const openDrop = useCallback(
+    (id: string) => {
+      const node = posters.current.get(id);
+      if (!node) {
+        router.push(`/drop/${id}`);
+        return;
+      }
+      const row = drops.find((d) => d.id === id);
+      node.measureInWindow((x, y, w, h) => {
+        if (!w || !h || !row) {
+          router.push(`/drop/${id}`);
+          return;
+        }
+        const origin: Origin = { x, y, w, h, r: Math.max(10, Math.round(w * 0.07)) };
+        overlay.show((hide) => (
+          <Opening origin={origin} initial={{ drop: row, moves }} onClosed={hide} onChanged={() => void refresh()} />
+        ));
+      });
+    },
+    [router, drops, moves, refresh],
   );
-  const busy = useMemo(() => {
-    const ids = new Set<string>();
-    for (const m of moves) if (m.status === 'running' || m.status === 'queued') ids.add(m.drop_id);
-    return ids;
-  }, [moves]);
+
+  const startMove = useCallback(
+    (w: WallDrop, moveId: string, title: string) => {
+      void start(w.drop.id, [moveId], null, {});
+      // Said on the island, the app's one voice: the work has gone to the Mac.
+      notice(`Sent to your Mac: ${title}`, 'working', accent.animal, accent.ink);
+    },
+    [start, accent.animal, accent.ink],
+  );
 
   /**
-   * The queue the share extension writes into, emptied.
-   *
-   * ON FOCUS **AND ON FOREGROUND**, because those are two different events and only one of them
-   * used to be handled. Share a reel from Safari while Builda is already sitting on this tab,
-   * come back, and `useIsFocused` never changes: the screen was focused the whole time. The drop
-   * would then sit in the App Group until the person tabbed away and back, which is the one thing
-   * nobody does when they have just shared something and are waiting to see it land.
+   * The queue the share extension writes into, emptied, on focus AND on foreground: share a reel
+   * from Safari while Builda already sits on this tab and focus never changes (the note this
+   * replaced had the full story).
    */
   const drain = useCallback(() => {
     setWaiting(pendingCount());
@@ -86,8 +116,6 @@ export default function DropsScreen() {
 
   useEffect(() => {
     if (!focused) return;
-    // The board does not poll while nothing is in flight (`useBoard`), so arriving on this tab
-    // is the moment to ask: the Mac may have finished a run while you were on another screen.
     void refresh();
     drain();
     const sub = AppState.addEventListener('change', (state) => {
@@ -96,13 +124,13 @@ export default function DropsScreen() {
     return () => sub.remove();
   }, [focused, drain, refresh]);
 
-  // A tapped banner: `builder://drops?open=<id>`. It opens the drop's own screen.
+  // A tapped banner: `builder://drops?open=<id>`.
   useEffect(() => {
     const id = params.open;
     if (!id) return;
     router.setParams({ open: undefined });
-    if (drops.some((d) => d.id === id)) openDrop(id);
-  }, [params.open, drops, router, openDrop]);
+    if (drops.some((d) => d.id === id)) router.push(`/drop/${id}`);
+  }, [params.open, drops, router]);
 
   useEffect(() => {
     const url = params.url;
@@ -113,58 +141,135 @@ export default function DropsScreen() {
       .finally(() => router.setParams({ url: undefined }));
   }, [params.url, refresh, router]);
 
+  const inner = width - GUTTER * 2;
+  const cell = Math.floor((inner - GAP * (COLUMNS - 1)) / COLUMNS);
+  const grid = only ? wall.all.filter((w) => only.has(w.drop.id)) : wall.all;
+  const line = wallLine(wall.counts);
+  let section = 0;
+
+  const register = (id: string) => (n: RNView | null) => {
+    posters.current.set(id, n);
+  };
+
   return (
     <View style={[styles.fill, { backgroundColor: c.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.head, { paddingTop: insets.top + 6 }]}>
-        <View style={styles.headRow}>
-          <T role="label" style={{ color: c.textDim, letterSpacing: 1.6 }}>
-            {`DROPS  ·  ${drops.length}`}
-            {todo ? (
-              <T role="label" style={{ color: c.textFaint, letterSpacing: 1.6 }}>{`   ${todo} TO DO`}</T>
-            ) : null}
-            {going ? (
-              <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${going} GOING`}</T>
-            ) : null}
-            {waiting ? (
-              <T role="label" style={{ color: c.accent, letterSpacing: 1.6 }}>{`   ${waiting} WAITING`}</T>
-            ) : null}
-          </T>
-        </View>
-
-        <View style={styles.search}>
-          <SearchLine
-            value={query}
-            onChangeText={setQuery}
-            hits={only ? { shown: only.size, total: drops.length } : null}
+      {drops.length === 0 && !loading ? (
+        <View style={{ flex: 1, paddingTop: insets.top }}>
+          <WallHeader line={waiting ? `${waiting} arriving` : ''} />
+          <Empty
+            onRefresh={refresh}
+            onPaste={async (link) => {
+              await landShared(link);
+              await refresh();
+            }}
           />
         </View>
-      </View>
-
-      {drops.length === 0 && !loading ? (
-        <Empty
-          onRefresh={refresh}
-          onPaste={async (link) => {
-            await landShared(link);
-            await refresh();
-          }}
-        />
       ) : (
-        <DropsWeb drops={drops} moves={moves} onOpenCard={openDrop} only={only} />
+        <ScrollView
+          contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom + 110 }}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          refreshControl={<RefreshControl refreshing={false} tintColor={c.textDim} onRefresh={() => void refresh()} />}
+        >
+          <WallHeader line={[line, waiting ? `${waiting} arriving` : ''].filter(Boolean).join(', ')} />
+          <View style={styles.search}>
+            <SearchLine value={query} onChangeText={setQuery} hits={only ? { shown: only.size, total: wall.all.length } : null} />
+          </View>
+
+          {!only && wall.bands.building.length > 0 ? (
+            <RippleItem i={section++}>
+              <WallBand title="Being built">
+                {wall.bands.building.map((w, i) => (
+                  <View key={w.drop.id} ref={register(w.drop.id)} collapsable={false} style={{ marginBottom: 10 }}>
+                    <BuildingCard w={w} width={inner} aura={i === 0} onOpen={() => openDrop(w.drop.id)} />
+                  </View>
+                ))}
+              </WallBand>
+            </RippleItem>
+          ) : null}
+
+          {!only && wall.bands.pick.length > 0 ? (
+            <RippleItem i={section++}>
+              <WallBand title="Pick a move">
+                {wall.bands.pick.map((w) => (
+                  <View key={w.drop.id} ref={register(w.drop.id)} collapsable={false} style={{ marginBottom: 12 }}>
+                    <PickCard w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onStart={(m) => startMove(w, m.id, m.title)} />
+                  </View>
+                ))}
+              </WallBand>
+            </RippleItem>
+          ) : null}
+
+          {!only && wall.bands.built.length > 0 ? (
+            <RippleItem i={section++}>
+              <WallBand title="What you made of them">
+                {wall.bands.built.map((w) => (
+                  <View key={w.drop.id} ref={register(w.drop.id)} collapsable={false} style={{ marginBottom: 14 }}>
+                    <PairCard w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onSession={(id) => router.push(`/session/${id}`)} />
+                  </View>
+                ))}
+              </WallBand>
+            </RippleItem>
+          ) : null}
+
+          <RippleItem i={section++}>
+            <WallBand title={only ? `${grid.length} of ${wall.all.length}` : 'Everything you sent'}>
+              <View style={styles.grid}>
+                {grid.map((w) => (
+                  <Pressable
+                    key={w.drop.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={w.drop.title ?? 'A drop'}
+                    onPress={() => {
+                      select();
+                      openDrop(w.drop.id);
+                    }}
+                  >
+                    {/* The grid is where search lands, so every drop registers here too; the
+                        card above, when there is one, is measured first. */}
+                    <View ref={wall.bands.building.includes(w) || wall.bands.pick.includes(w) || wall.bands.built.includes(w) ? undefined : register(w.drop.id)} collapsable={false}>
+                      <Poster drop={w.drop} width={cell} foot={footOf(w)} footTone={w.band === 'built' ? 'add' : w.band === 'pick' ? 'hue' : 'dim'} reading={w.band === 'reading'} />
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </WallBand>
+          </RippleItem>
+        </ScrollView>
       )}
 
+      {/* The wall scrolls under the status bar; the clock sits on the ground, not on a poster. */}
+      <TopFade height={insets.top + 8} />
     </View>
   );
 }
 
-function Empty({
-  onRefresh,
-  onPaste,
-}: {
-  onRefresh: () => Promise<void>;
-  onPaste: (link: string) => Promise<void>;
-}) {
+
+/** The one line at a grid poster's foot: where this drop is in its life. */
+function footOf(w: WallDrop): string {
+  switch (w.band) {
+    case 'building':
+      return 'Being built';
+    case 'pick': {
+      const n = w.moves.filter((m) => m.status === 'offered').length;
+      return n === 1 ? '1 move' : `${n} moves`;
+    }
+    case 'built':
+      return 'Built';
+    case 'reading':
+      return w.drop.status === 'resolving' ? 'Reading' : 'Waiting for your Mac';
+    case 'kept':
+      if (w.drop.status === 'refused') return 'Nothing to do';
+      // A recipe whose method was fetched is not "kept", it is ready to cook from.
+      return w.drop.resolution?.plan?.recipe ? 'Recipe' : 'Kept';
+  }
+}
+
+
+
+function Empty({ onRefresh, onPaste }: { onRefresh: () => Promise<void>; onPaste: (link: string) => Promise<void> }) {
   const c = useColors();
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState('');
@@ -186,11 +291,11 @@ function Empty({
         Send yourself something to build
       </T>
       <T role="body" style={{ color: c.textDim, marginTop: 10, textAlign: 'center' }}>
-        In Instagram or TikTok, hit share and pick Builda. Your Mac reads the post and works out
-        what you could do with it, and you pick which of those actually happens.
+        In Instagram or TikTok, hit share and pick Builda. Your Mac reads the post and works out what you could do with it,
+        and when you build it, Builda cuts a reel of what you made.
       </T>
-      <T role="mono" style={{ color: c.textFaint, marginTop: 22, textAlign: 'center' }}>
-        nothing runs until you tap it
+      <T role="meta" style={{ color: c.textFaint, marginTop: 22, textAlign: 'center' }}>
+        Nothing runs until you tap it.
       </T>
       <View style={styles.paste}>
         <TextField
@@ -214,15 +319,10 @@ function Empty({
   );
 }
 
-/** The screen's own side margin. */
-const GUTTER = 16;
-
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  head: { paddingHorizontal: GUTTER, paddingBottom: 12 },
-  headRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  shape: { flexDirection: 'row', gap: 14 },
-  search: { marginTop: 12 },
+  search: { marginTop: 14, paddingHorizontal: GUTTER },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
   empty: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32 },
   paste: { marginTop: 26 },
 });

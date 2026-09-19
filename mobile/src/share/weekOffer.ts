@@ -16,10 +16,12 @@ import type { SessionDetail } from '../data/api';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { island } from '../island/store';
+import { WEEK_CARD_NOTIFICATION } from '../push/localCopy';
 import { weekCardDelivered } from '../push/weekly';
 import type { Animal } from '../pixel/animals';
 import { lastWeekIsNews, lastWeekOf, weekOfferLine, weekRows, weekToOffer, WEEK_OFFERED_KEY, type WeekModel } from '../session/week';
 import { creatureHue } from '../theme';
+import { desktopNoticeInstead } from './desktopNotice';
 import { showWeekShare } from './WeekShare';
 
 /** Long enough to read the line and reach for it; a plain notice holds 2.6 s. */
@@ -56,6 +58,8 @@ export async function offerLastWeek(animal: Animal, nowMs: number): Promise<bool
   await cache.setKv(WEEK_OFFERED_KEY, monday);
   // Never both: Monday's notification already said it (`push/weekly`).
   if (await weekCardDelivered()) return false;
+  // A desktop with its window hidden hears it from the system instead (`desktopNotice`).
+  if (desktopNoticeInstead(WEEK_CARD_NOTIFICATION.title, weekOfferLine(week), 'builder://sessions?card=last-week')) return true;
   const ink = creatureHue(animal).ink;
   const id = `week:${monday}`;
   island.post(

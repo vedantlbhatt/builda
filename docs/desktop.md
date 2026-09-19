@@ -59,6 +59,9 @@ cd desktop && npm run dev
 # package
 cd desktop && npx electron-builder --mac --dir          # dist/mac-arm64/Builda.app
 cd desktop && npx electron-builder --mac --dir -c.mac.identity=null   # ad hoc: no Keychain prompt
+# offline (github.com not resolving): unpack the cached zip and build from it
+#   ditto -x -k ~/Library/Caches/electron/<hash>/electron-v44.4.3-darwin-arm64.zip /tmp/electron-dist
+#   npx electron-builder --mac --dir --arm64 -c.mac.identity=null -c.electronDist=/tmp/electron-dist
 cd desktop && npx electron-builder --mac                # DMGs, arm64 and x64
 cd desktop && npx electron-builder --win                # NSIS installer, x64
 cd desktop && npx electron-builder --linux              # AppImage

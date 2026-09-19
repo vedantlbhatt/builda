@@ -37,6 +37,9 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **08:19 to 08:28**: final web export; desktop e2e 23 of 23; the packaged Mac app rebuilt from it
+  (github.com stopped resolving, so it was built from the cached Electron zip, `docs/desktop.md`)
+  and self-captured: five screens, every island state, no page error. CI green on every push.
 - **08:10 to 08:18**: a second review of the fix commit found five more (a tap not stopping a check
   already waiting on the network; a held week surviving sign out; a held week said after
   Wednesday; the wait rule counting a run the island never draws on notch phones and desktops; an

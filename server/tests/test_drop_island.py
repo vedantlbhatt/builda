@@ -447,7 +447,9 @@ def test_no_push_ever_reaches_somebody_who_did_not_share_it(client, paired, crea
     client.post("/v1/drops:claim", headers=mac)
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=mac)
     move = client.get(f"/v1/drops/{drop['id']}", headers=mac).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(mac))
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(mac)
+    )
 
     sent = apns.posts[before:]
     assert [p for p in sent if "0a" * 40 in p["url"] or "0b" * 40 in p["url"]] == []

@@ -303,8 +303,12 @@ def test_a_second_resolution_leaves_a_decided_move_alone(client, paired):
         headers=headers,
     )
     moves = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"]
-    client.post(f"/v1/drops/{drop['id']}/moves/{moves[0]['id']}:start", json={}, headers=_phone_for(headers))
-    client.post(f"/v1/drops/{drop['id']}/moves/{moves[1]['id']}:decline", headers=_phone_for(headers))
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{moves[0]['id']}:start", json={}, headers=_phone_for(headers)
+    )
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{moves[1]['id']}:decline", headers=_phone_for(headers)
+    )
 
     client.put(
         f"/v1/drops/{drop['id']}/resolution",
@@ -333,7 +337,9 @@ def test_the_runner_finishes_a_move_and_points_it_at_its_session(client, paired)
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers)
+    )
 
     claimed = client.post("/v1/drops/moves:claim", headers=headers).json()["moves"]
     assert len(claimed) == 1 and claimed[0]["id"] == move["id"]
@@ -358,7 +364,9 @@ def test_a_run_id_that_is_not_a_uuid_is_refused(client, paired):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers)
+    )
     client.post("/v1/drops/moves:claim", headers=headers)
     r = client.post(
         f"/v1/drops/moves/{move['id']}:finish",
@@ -379,7 +387,9 @@ def test_the_claim_carries_the_drops_own_title(client, paired):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers)
+    )
     claimed = client.post("/v1/drops/moves:claim", headers=headers).json()["moves"][0]
     assert claimed["drop_title"] == "5 beginner Claude Skills to install"
     assert claimed["drop_kind"] == "skill"
@@ -544,7 +554,9 @@ def test_a_finished_move_says_what_it_did(client, paired, monkeypatch):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
+    client.post(
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers)
+    )
     client.post("/v1/drops/moves:claim", headers=headers)
     client.post(
         f"/v1/drops/moves/{move['id']}:finish",

@@ -9,7 +9,6 @@ from ..auth import (
     SIGN_IN,
     CurrentDevice,
     ProviderIdentity,
-    current_device,
     current_person,
     issue_access_token,
     issue_refresh_token,

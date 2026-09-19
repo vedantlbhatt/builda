@@ -27,6 +27,7 @@ const path = require('node:path');
 
 const { ORIGIN, SCHEME, serveBundle } = require('./bundle');
 const { bridgeApi } = require('./cors');
+const { sameOrigin } = require('./origin');
 const { isAppLink, isExternalAllowed } = require('./geometry');
 const { kitFiles, mkdirFresh, pngFromDataUrl, safeName, writeFresh } = require('./image');
 const { createIsland } = require('./island');
@@ -62,21 +63,9 @@ const bare = (/** @type {string} */ url) => String(url).split(/[?#]/)[0];
  * that navigated anywhere else gets nothing, the token store least of all.
  * @param {{ senderFrame?: { url?: string } | null }} e
  */
-/** @param {string} url @param {string} origin */
-function sameOrigin(url, origin) {
-  try {
-    return new URL(url).origin === origin;
-  } catch {
-    return false;
-  }
-}
 
 function fromApp(e) {
-  try {
-    return new URL(e.senderFrame?.url ?? '').origin === APP_ORIGIN;
-  } catch {
-    return false;
-  }
+  return sameOrigin(e.senderFrame?.url ?? '', APP_ORIGIN);
 }
 
 // A separate profile for a test run, so it never touches the installed app's tokens.

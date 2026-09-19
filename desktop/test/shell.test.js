@@ -202,3 +202,16 @@ test('a save never replaces a file or writes into a folder that was already ther
   assert.equal(path.basename(d2), 'kit 2');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the app origin is its own: app://builda is not "null"', () => {
+  const { originOf, sameOrigin } = require('../src/origin');
+  // Node's URL answers "null" for a scheme it does not know; the app's page must still match.
+  assert.equal(new URL('app://builda/now').origin, 'null');
+  assert.equal(originOf('app://builda/now?x=1'), 'app://builda');
+  assert.equal(sameOrigin('app://builda/island', 'app://builda'), true);
+  assert.equal(sameOrigin('app://evil/island', 'app://builda'), false);
+  assert.equal(sameOrigin('https://builda.example/now', 'app://builda'), false);
+  assert.equal(sameOrigin('http://localhost:8081/now', 'http://localhost:8081'), true);
+  assert.equal(sameOrigin('not a url', 'app://builda'), false);
+  assert.equal(sameOrigin('', 'app://builda'), false);
+});

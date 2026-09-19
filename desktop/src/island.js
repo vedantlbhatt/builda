@@ -16,6 +16,7 @@
 const { BrowserWindow, screen } = require('electron');
 
 const { islandGeometry, overPill } = require('./geometry');
+const { sameOrigin } = require('./origin');
 
 const POINTER_MS = 33;
 
@@ -91,11 +92,7 @@ function createIsland(o) {
     // IN REVIEW: unlike the app window, it had neither guard, and it carries the same preload).
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (event, url) => {
-      try {
-        if (new URL(url).origin === o.origin) return;
-      } catch {
-        // Not a URL: refused.
-      }
+      if (sameOrigin(url, o.origin)) return;
       event.preventDefault();
     });
     win.setAlwaysOnTop(true, 'screen-saver');

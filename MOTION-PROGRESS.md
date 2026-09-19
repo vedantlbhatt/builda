@@ -37,6 +37,14 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **08:31 to 08:53**: two more review agents, on the desktop shell's security and on the island and
+  Live Activity code. Fixed: a `builder://pair?code=` link approved pairings with no tap (account
+  takeover, since 2026-09-05; d7e99fa); a `builder://drop?url=` link sent drops unasked (d7e99fa);
+  sign out left the old account's push tokens on the server and island pills up, a demo tracker ran
+  twice, old requests flashed every 5 minutes, a failed kit read said "not published", the tour lost
+  or froze live posts (5165fc2, `__tests__/islandFeeds.test.ts`); the shell honoured dev settings in
+  release builds, had default fuses, unchecked IPC senders and could overwrite in Downloads
+  (870d7e1). Packaged app with fuses must be signed ad hoc (`identity -`), or macOS kills it.
 - **08:19 to 08:28**: final web export; desktop e2e 23 of 23; the packaged Mac app rebuilt from it
   (github.com stopped resolving, so it was built from the cached Electron zip, `docs/desktop.md`)
   and self-captured: five screens, every island state, no page error. CI green on every push.

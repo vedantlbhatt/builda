@@ -104,6 +104,8 @@ export interface Selection {
   edits: Partial<Record<Platform, string>>;
   /** The person chose a format by hand: a platform's pick no longer moves it. */
   formatByHand: boolean;
+  /** The formats this kit has a video for, so a platform's pick never lands on one without. */
+  filmed: readonly KitFormat[];
 }
 
 export type SelectionAction =
@@ -119,7 +121,8 @@ export function initialSelection(view: KitView | null): Selection {
   const platform = PLATFORMS.find((p) => view?.captions[p]) ?? 'x';
   const want = PLATFORM_FORMAT[platform];
   const format = view?.tabs.find((t) => t.id === want && t.video)?.id ?? view?.tabs.find((t) => t.video)?.id ?? want;
-  return { format, video: Boolean(view?.tabs.some((t) => t.video)), picked: [], platform, edits: {}, formatByHand: false };
+  const filmed = (view?.tabs ?? []).filter((t) => t.video).map((t) => t.id);
+  return { format, video: filmed.length > 0, picked: [], platform, edits: {}, formatByHand: false, filmed };
 }
 
 export function selectionReducer(s: Selection, a: SelectionAction): Selection {
@@ -130,8 +133,13 @@ export function selectionReducer(s: Selection, a: SelectionAction): Selection {
       return { ...s, video: a.on };
     case 'toggle':
       return { ...s, picked: s.picked.includes(a.id) ? s.picked.filter((x) => x !== a.id) : [...s.picked, a.id] };
-    case 'platform':
-      return { ...s, platform: a.platform, format: s.formatByHand ? s.format : PLATFORM_FORMAT[a.platform] };
+    case 'platform': {
+      // FOUND IN REVIEW (2026-09-19): reading LinkedIn's caption on a kit with no 4:5 video moved
+      // the format to 4:5, and the video the person had on left the share without a word.
+      const want = PLATFORM_FORMAT[a.platform];
+      const keep = s.formatByHand || (s.filmed.length > 0 && !s.filmed.includes(want));
+      return { ...s, platform: a.platform, format: keep ? s.format : want };
+    }
     case 'edit':
       return { ...s, edits: { ...s.edits, [a.platform]: a.text } };
     case 'revert': {
@@ -152,6 +160,19 @@ export function captionCount(text: string, platform: Platform): { words: string;
   const limit = PLATFORM_LIMITS[platform];
   const n = [...text].length;
   return { words: `${n} of ${limit}`, over: n > limit };
+}
+
+/**
+ * Why the share button is off although something is picked, or null. A caption over its
+ * platform's limit is cut or refused on the other side, and the count above the button is already
+ * red, so the button says what to do rather than sharing words that will not fit (review,
+ * 2026-09-19).
+ */
+export function shareHeldBack(view: KitView, s: Selection): string | null {
+  const text = captionFor(view, s);
+  const n = [...text].length - PLATFORM_LIMITS[s.platform];
+  if (n <= 0) return null;
+  return `The ${PLATFORM_NAMES[s.platform]} caption is ${n} over. Shorten it to share.`;
 }
 
 /** The thread variant, X only: each post numbered the way it would be pasted. */

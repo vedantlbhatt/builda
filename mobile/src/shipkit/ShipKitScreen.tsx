@@ -21,6 +21,7 @@ import type { Platform } from '../generated/shipkit';
 import { preferredHue } from '../projects/model';
 import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
+import { useReduceMotion } from '../ui/motion';
 import {
   captionCount,
   captionFor,
@@ -30,6 +31,7 @@ import {
   PLATFORMS,
   requestView,
   selectionReducer,
+  shareHeldBack,
   sharePayload,
   threadFor,
   type KitView,
@@ -105,13 +107,14 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
   const c = useColors();
   const tab = view.tabs.find((t) => t.id === s.format) ?? view.tabs[0]!;
   const payload = sharePayload(view, s, RNPlatform.OS === 'web' ? 'Save' : 'Share');
+  const heldBack = payload ? shareHeldBack(view, s) : null;
   const caption = captionFor(view, s);
   const count = captionCount(caption, s.platform);
   const thread = threadFor(view, s.platform);
   const edited = s.edits[s.platform] !== undefined;
 
   const share = async () => {
-    if (!payload) return;
+    if (!payload || heldBack) return;
     setSharing(true);
     setAfter(null);
     try {
@@ -226,7 +229,7 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
         ) : null}
       </View>
 
-      <Button label={payload?.label ?? 'Pick the video or a picture to share'} onPress={() => void share()} disabled={!payload} busy={sharing} busyLabel="Getting the files ready" style={styles.block} />
+      <Button label={heldBack ?? payload?.label ?? 'Pick the video or a picture to share'} onPress={() => void share()} disabled={!payload || Boolean(heldBack)} busy={sharing} busyLabel="Getting the files ready" style={styles.block} />
       {after ? (
         <T role="meta" tone="dim" style={styles.gap}>
           {after}
@@ -302,9 +305,15 @@ function Player({ mod, src, width, height }: { mod: NonNullable<ReturnType<typeo
     p.loop = true;
     p.muted = true;
     p.audioMixingMode = 'mixWithOthers';
-    p.play();
   });
-  return <mod.VideoView player={player} style={{ width, height, alignSelf: 'center' }} contentFit="contain" nativeControls={false} />;
+  // Under Reduce Motion it does not play by itself: the first frame stands, with the player's own
+  // controls to play it on purpose, as `demos/LoopVideo.tsx` keeps its poster (review, 2026-09-19).
+  const reduce = useReduceMotion();
+  useEffect(() => {
+    if (reduce) player.pause();
+    else player.play();
+  }, [player, reduce]);
+  return <mod.VideoView player={player} style={{ width, height, alignSelf: 'center' }} contentFit="contain" nativeControls={reduce} />;
 }
 
 function Tile({ file, size, picked, onPress }: { file: KitFileRow; size: number; picked: boolean; onPress: () => void }) {

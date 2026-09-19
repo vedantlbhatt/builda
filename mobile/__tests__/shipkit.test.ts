@@ -32,6 +32,7 @@ import {
   kitFromRequest,
   requestView,
   selectionReducer,
+  shareHeldBack,
   sharePayload,
   threadFor,
 } from '../src/shipkit/model';
@@ -168,6 +169,35 @@ describe('the selection', () => {
     s = selectionReducer(s, { type: 'revert', platform: 'x' });
     expect(captionFor(view, s)).toBe('A bus route finder.');
     expect(captionFor(view, s, 'threads')).toBe('');
+  });
+
+  test('reading another platform caption never moves the format to one with no video', () => {
+    // KIT has no 4:5 video; LinkedIn's own format is 4:5.
+    expect(PLATFORM_FORMAT.linkedin).toBe('feed');
+    let s = initialSelection(view);
+    const before = sharePayload(view, s)!.files.map((f) => f.id);
+    s = selectionReducer(s, { type: 'platform', platform: 'linkedin' });
+    expect(s.format).not.toBe('feed');
+    expect(sharePayload(view, s)!.files.map((f) => f.id)).toEqual(before);
+    // A platform whose format was filmed still moves it.
+    s = selectionReducer(s, { type: 'platform', platform: 'tiktok' });
+    expect(s.format).toBe('vertical');
+  });
+
+  test('a kit with no video at all still follows the platform', () => {
+    const bare = kitView({ ...KIT, files: KIT.files.filter((f) => !f.slot.startsWith('video_')) });
+    const s = selectionReducer(initialSelection(bare), { type: 'platform', platform: 'linkedin' });
+    expect(s.format).toBe('feed');
+    expect(s.video).toBe(false);
+  });
+
+  test('a caption over its limit holds the share back and says by how much', () => {
+    let s = initialSelection(view);
+    expect(shareHeldBack(view, s)).toBeNull();
+    s = selectionReducer(s, { type: 'edit', platform: 'x', text: 'y'.repeat(292) });
+    expect(shareHeldBack(view, s)).toBe('The X caption is 12 over. Shorten it to share.');
+    s = selectionReducer(s, { type: 'edit', platform: 'x', text: 'y'.repeat(280) });
+    expect(shareHeldBack(view, s)).toBeNull();
   });
 
   test('the count is against the platform limit', () => {

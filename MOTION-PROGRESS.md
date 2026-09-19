@@ -36,6 +36,17 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **05:25 to 06:10**: onboarding steps each print their band a different order (`STEP_MOTION`; one
+  order program `orderSksl` over each shader's hash; a CanvasKit test holds all eight to the JS
+  twin); the eight orders rendered offline into `shots/motion/web/pixel-orders.mp4`; the tile's pixel
+  spotlight under the finger is back; the Projects split bar prints in pixels; `docs/motion.md`
+  rewritten ("The pixels stay"); built reels can "Film it for sharing" (ship kit of the move's
+  project); Sessions has "Share this week" (`src/share/WeekShare.tsx`, a 1080 x 1350 pixel card,
+  share preview shared with the pair card in `src/share/SharePreview.tsx`).
+- **Two macOS dialogs are open over the Simulator** (`universalAccessAuthWarn`, an accessibility
+  prompt, and an Automation prompt from an `osascript` attempt to move the Simulator window). They
+  need a person; they swallow simulator taps in the phone's left half between roughly y 420 and 1370
+  device pixels. Tap targets there look dead: scroll them elsewhere or use a dev trigger.
 - **05:45 USER CORRECTION**: "do not change the pixel stuff to gradients ... just itemize motion in
   some new novel way." The pixel diet misread the ask. Restored: full bleed dither bands with the
   36 point fringe (`insights/Band.tsx`), hue tiles printed in pixels (no wash), the live bar as a

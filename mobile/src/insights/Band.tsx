@@ -16,16 +16,18 @@
  * container on the island. A second tone of the hue washes in from the far corner, so the card
  * has light in it instead of being one flat fill.
  */
+import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import React, { useCallback, useState, type ReactNode } from 'react';
+import React, { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { morphOpen } from '../motion/MorphNav';
 import { springAt } from '../motion/spec';
 import { MONO_FAMILY } from '../theme';
 import { ease, phase, RISE } from './motion';
-import { ON_HUE, type Hue } from './palette';
+import { GROUND, ON_HUE, type Hue } from './palette';
 import { Block, useClock, useReducedSV } from './reveal';
 
 /** The space under a band before whatever follows it, in points (the dithered fringe's old slot). */
@@ -85,18 +87,28 @@ export interface BandProps {
    * house style's navigation is words and bands, never a row with a chevron.
    */
   onPress?: () => void;
+  /**
+   * A doorway to a route: the card itself grows into the page it opens (`motion/MorphNav.tsx`),
+   * in its own hue, instead of the page sliding in beside it. Wins over `onPress`.
+   */
+  href?: string;
   /** What VoiceOver reads for a doorway band: where it goes and the number on it. */
   accessibilityLabel?: string;
 }
 
-export function Band({ hue, index, title, children, onPress, accessibilityLabel }: BandProps) {
+export function Band({ hue, index, title, children, onPress: press, href, accessibilityLabel }: BandProps) {
+  const router = useRouter();
+  const cardRef = useRef<View>(null);
+  const onPress = href
+    ? () => morphOpen(cardRef.current, () => router.push(`${href}${href.includes('?') ? '&' : '?'}morph=1` as never), { color: hue.ink, radius: BAND_RADIUS, ground: GROUND.bg })
+    : press;
   const [h, setH] = useState(0);
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const next = e.nativeEvent.layout.height;
     setH((v) => (Math.abs(v - next) < 0.5 ? v : next));
   }, []);
   const body = (
-    <View style={styles.outer}>
+    <View ref={cardRef} collapsable={false} style={styles.outer}>
       <BandGround height={h} hue={hue} />
       <View onLayout={onLayout} style={styles.band}>
         <BandWords>

@@ -20,7 +20,6 @@
  * on it, is Spotify's playlist tile (design-md/music/spotify: "the art is the only colour, the
  * chrome recedes"); the press that settles it a hair smaller is the band's own (0.985).
  */
-import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -81,7 +80,6 @@ export function ProjectDoorBand({
   onOpenDemo?: (key: string, id: string | null) => void;
   onDemoError?: () => void;
 }) {
-  const router = useRouter();
   const inner = width - GUTTER * 2;
   const prints = demo !== undefined && onOpenDemo !== undefined;
   const room = prints ? DOOR_PRINTS.width + PRINTS_GAP - (GUTTER - PRINTS_RIGHT) : 0;
@@ -94,7 +92,7 @@ export function ProjectDoorBand({
   const a11y = recent?.newer ? [`${door.label.text}.`, `${title}.`, recent.doorLine, recent.doorReport, 'Opens the project.'].filter(Boolean).join(' ') : door.a11y;
   return (
     <Section style={styles.section}>
-      <Band hue={SPECTRUM[door.hue]} index={String(door.rank).padStart(2, '0')} title={title} onPress={() => router.push(`/project/${door.key}`)} accessibilityLabel={a11y}>
+      <Band hue={SPECTRUM[door.hue]} index={String(door.rank).padStart(2, '0')} title={title} href={`/project/${door.key}`} accessibilityLabel={a11y}>
         <View onLayout={(e) => setTop(Math.round(e.nativeEvent.layout.y))} style={{ paddingRight: room, minHeight: prints ? DOOR_PRINTS.height : undefined }}>
           <BandName text={door.label.text} width={inner - room} />
           {door.hours ? (

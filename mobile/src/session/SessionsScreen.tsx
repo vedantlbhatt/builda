@@ -1,7 +1,7 @@
 /**
- * The Sessions tab, in the house style (design-refs/HOUSE-STYLE.md): a band in the builder's own
- * hue (the accent is their creature's colour) with this week's hours counting up and the week
- * drawn as seven bars in its ink, then the sessions as OPEN rows, no card round any of them, each
+ * The Sessions tab, in the house style (design-refs/HOUSE-STYLE.md): this week's hours on the
+ * ground in the builder's own ink (no hue slab: docs/motion.md, the pixel diet) with the week drawn
+ * as seven bars, then the sessions as OPEN rows, no card round any of them, each
  * marked by its creature in its hue, its title, its active time, the tool's real logo and the
  * repository, and its strip drawn on once.
  *
@@ -274,7 +274,7 @@ export function SessionsScreen() {
   const shown = stage >= 1 ? sessions : sessions.slice(0, FIRST_ROWS);
   const inner = width - GUTTER * 2;
   const stripWidth = inner - MARK - MARK_GAP;
-  const rowRefs = useRef(new Map<string, View | null>());
+  const rowRefs = useRef(rowViews());
   // The project names, read once for the whole list rather than once a row (`data/repoNames`).
   const names = useRepoNames();
   // The end of the list, once every row is on screen: what it holds, how far back, and the door on.
@@ -567,3 +567,8 @@ const styles = StyleSheet.create({
   endNote: { marginTop: 6, marginBottom: 4 },
 });
 
+
+/** Each row's view by session id, so a row can grow into its page (`motion/MorphNav.tsx`). */
+function rowViews(): Map<string, View | null> {
+  return new Map();
+}

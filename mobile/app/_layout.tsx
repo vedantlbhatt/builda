@@ -94,7 +94,11 @@ export default function RootLayout() {
           <AccentFollowsCreature onboarded={onboarded} />
           {onboarded !== null && accent.ready && (
             <Stack
-              screenOptions={{
+              screenOptions={({ route }) => ({
+                // A page something grew into (`motion/MorphNav.tsx`, `?morph=1`) is already on
+                // screen under the grown window when it is pushed, so it takes no slide of its
+                // own. Every other push is the platform's.
+                ...((route.params as { morph?: string } | undefined)?.morph === '1' ? { animation: 'none' as const } : null),
                 // The bar is the canvas with one warm hairline under it, the same rule the tab
                 // roots draw (src/nav/chrome.tsx). UIKit's own shadow is the system separator,
                 // a cool grey the palette does not have, and with no rule at all a scrolled
@@ -103,7 +107,7 @@ export default function RootLayout() {
                 headerTintColor: c.text,
                 headerTitleStyle: { fontWeight: '600' },
                 contentStyle: { backgroundColor: c.bg },
-              }}
+              })}
             >
               {/* The app. Every screen is listed so none of them exists before onboarding:
                   an unlisted route would be added to the stack whatever the guard says. The
@@ -118,16 +122,7 @@ export default function RootLayout() {
                     title: tabTitle(getFocusedRouteNameFromRoute(route)),
                   })}
                 />
-                {/* Opened by a tile growing into it (`motion/MorphNav.tsx`, `?morph=1`), the page
-                    is already on screen under the grown window when it is pushed, so it takes no
-                    slide of its own. Opened any other way, the platform's push. */}
-                <Stack.Screen
-                  name="session/[id]"
-                  options={({ route }) => ({
-                    title: '',
-                    animation: (route.params as { morph?: string } | undefined)?.morph === '1' ? 'none' : 'default',
-                  })}
-                />
+                <Stack.Screen name="session/[id]" options={{ title: '' }} />
                 {/* A drop takes the whole screen: the post is the screen and the sheet is over
                     it, so a tab bar sitting on top would make a full bleed frame not full
                     bleed. Fades in, because the card it came from is already on screen. */}

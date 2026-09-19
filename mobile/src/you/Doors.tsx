@@ -7,7 +7,6 @@
  *
  * Every door says why when it has no number, in a sentence, and still opens its page.
  */
-import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -28,13 +27,12 @@ function doorLabel(d: Door, masked: boolean): string {
 
 /** A door as a band: the page's name as the title, its number huge, what it counts beside it. */
 export function DoorBand({ door, hue, index, width, masked }: { door: Door; hue: Hue; index?: string; width: number; masked: boolean }) {
-  const router = useRouter();
   const inner = width - GUTTER * 2;
   // A short figure sits beside its words; a long one (a dollar amount) takes the line.
   const side = door.num !== null && door.digits === null && door.num.final.length <= 3;
   return (
     <Section style={styles.bandSection}>
-      <Band hue={hue} index={index} title={door.title} onPress={() => router.push(door.href)} accessibilityLabel={doorLabel(door, masked)}>
+      <Band hue={hue} index={index} title={door.title} href={door.href} accessibilityLabel={doorLabel(door, masked)}>
         {door.num ? (
           <>
             <View style={side ? styles.side : null}>

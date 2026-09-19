@@ -92,7 +92,14 @@ public enum IslandLayout {
             return IslandGeometry(w: collapsedW, h: collapsedH, r: r)
         }
         return IslandGeometry(
-            w: max(width(mode), collapsedW), h: collapsedH + bodyHeight(mode), r: expandedRadius)
+            w: max(width(mode), collapsedW), h: band(notch) + bodyHeight(mode), r: expandedRadius)
+    }
+
+    /// The strip along the top that the camera occupies: nothing may be drawn in it. A pill
+    /// under the menu bar has no camera, so its body starts a few points from its own top
+    /// (found in the first pill render: 30 pt of empty black above the content).
+    public static func band(_ notch: NotchMetrics) -> CGFloat {
+        notch.hasNotch ? notch.height : 4
     }
 
     /// The largest the island can be, overshoot included, plus the rail: what the window
@@ -427,11 +434,12 @@ private struct IslandBody<Content: View, Face: View, Ears: View>: View, Animatab
         let r = min(max(CGFloat(geometry.r), IslandLayout.collapsedRadius), IslandLayout.expandedRadius)
         let top: CGFloat = notch.hasNotch ? 0 : r
         let shape = IslandShape(bottomRadius: r, topRadius: top, flare: notch.hasNotch ? IslandLayout.flare : 0)
-        let band = notch.height
+        let band = IslandLayout.band(notch)
+        let earY = notch.height / 2
         let earW = IslandLayout.ear
         // 0 collapsed to 1 open, read off the animated height, so everything that moves with
         // the opening rides the one spring. Clamped: the face should not fly past its seat.
-        let t = min(1, max(0, (h - band) / 54))
+        let t = min(1, max(0, (h - notch.height) / 54))
 
         ZStack(alignment: .topLeading) {
             shape.fill(Color.black)
@@ -465,11 +473,11 @@ private struct IslandBody<Content: View, Face: View, Ears: View>: View, Animatab
             face(24 + 8 * t)
                 .position(
                     x: earW / 2 + 1 + (34 - earW / 2 - 1) * t,
-                    y: band / 2 + ((band + (h - band) / 2) - band / 2) * t)
+                    y: earY + ((band + (h - band) / 2) - earY) * t)
 
             // The right ear. The dots are the crew at a glance; open, the rail has them.
             ears
-                .position(x: w - earW / 2 - 1, y: band / 2)
+                .position(x: w - earW / 2 - 1, y: earY)
                 .opacity(Double(max(0, 1 - 2 * t)))
         }
         .frame(width: w, height: h, alignment: .topLeading)

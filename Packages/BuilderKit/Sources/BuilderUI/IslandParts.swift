@@ -104,10 +104,11 @@ private struct WheelLine: View {
         .truncationMode(.tail)
         if shimmer {
             // The sweep sized to the line, the two as one layer, masked by the line: the light
-            // exists only where there are letters. Two versions were caught wrong in recorded
-            // frames: the band blended with plusLighter escaped the mask and drew a hairline at
-            // the island's edge mid morph, and a sweep in a ZStack beside the line widened the
-            // row, so the centred mask cut the line in half.
+            // exists only where there are letters. A sweep in a ZStack beside the line widened
+            // the row, so the centred mask cut the line in half (caught in a recorded frame).
+            // A hairline beside the rail in other frames was NOT this: it is one column the
+            // capture leaves at 62% alpha where a black edge lands between pixels, invisible
+            // on screen, and the stills in shots/ are flattened onto black for that reason.
             line
                 .overlay { ShimmerSweep() }
                 .compositingGroup()

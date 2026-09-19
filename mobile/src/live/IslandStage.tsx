@@ -92,7 +92,10 @@ export function IslandStage({
 
   return (
     <View style={styles.anchor}>
-      <Pressable disabled={!onPress} onPress={() => { select(); onPress?.(); }} accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={head?.label ?? 'All quiet. Nothing needs you.'}>
+      {/* The stage's own corners on the pressable too: a desktop's hover wash is laid on the
+          pressable (`desktop/css.ts`) and showed as a grey square behind the rounded stage. It
+          has no fill, so on a phone it draws nothing. */}
+      <Pressable style={styles.press} disabled={!onPress} onPress={() => { select(); onPress?.(); }} accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={head?.label ?? 'All quiet. Nothing needs you.'}>
         <Animated.View style={[styles.stage, box]}>
           <Wash color={waiting ? AMBER : null} from="top" strength={0.3} />
           <Animated.View style={[{ width, height: h }, contentIn]}>
@@ -152,6 +155,7 @@ export function IslandStage({
 const styles = StyleSheet.create({
   anchor: { alignItems: 'center' },
   stage: { backgroundColor: '#000', borderCurve: 'continuous', overflow: 'hidden' },
+  press: { borderRadius: 44, borderCurve: 'continuous' },
   quiet: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   row: { flex: 1, flexDirection: 'row', padding: 12, gap: 10 },
   card: { borderRadius: 32, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.05)', padding: 16, justifyContent: 'center' },

@@ -52,7 +52,7 @@ export function PickCard({
   const lead = w.lead;
   const direct = startsFromPoster(lead);
   return (
-    <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}>
+    <PressableScale style={styles.pickPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}>
       <View style={[styles.card, { width }]}>
         <Poster drop={w.drop} width={posterW} frameRef={posterRef} />
         <View style={styles.body}>
@@ -122,7 +122,7 @@ export function BuildingCard({ w, width, aura, onOpen, posterRef }: { w: WallDro
   if (!m) return null;
   const steps = buildSteps(m, now);
   return (
-    <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${m.title}, ${steps.rows[steps.index]!.text}`}>
+    <PressableScale style={styles.buildingPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${m.title}, ${steps.rows[steps.index]!.text}`}>
       <View style={[styles.building, { width }]}>
         {aura ? <Aura radius={22} /> : null}
         <Poster drop={w.drop} width={64} frameRef={posterRef} />
@@ -161,7 +161,7 @@ export function PairCard({
   if (!m) return null;
   const posterW = Math.round(width * 0.3);
   return (
-    <PressableScale onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}>
+    <PressableScale style={styles.pairPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}>
       <View style={[styles.pair, { width }]}>
         <View>
           <Poster drop={w.drop} width={posterW} foot="Seen" frameRef={posterRef} />
@@ -215,6 +215,12 @@ export function PairCard({
 }
 
 const styles = StyleSheet.create({
+  // Each card's corner on its pressable as well: a desktop's hover wash is laid on the pressable
+  // (`desktop/css.ts`) and drew a square behind every rounded card. No fill, so a phone sees
+  // nothing. The pair is two shapes, so its wash takes the smaller corner of the two (18).
+  pickPress: { borderRadius: 24, borderCurve: 'continuous' },
+  buildingPress: { borderRadius: 22, borderCurve: 'continuous' },
+  pairPress: { borderRadius: 18, borderCurve: 'continuous' },
   card: { flexDirection: 'row', gap: 14, padding: 10, borderRadius: 24, borderCurve: 'continuous', backgroundColor: CARD },
   building: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 22, borderCurve: 'continuous', backgroundColor: CARD },
   pair: { flexDirection: 'row', alignItems: 'center' },

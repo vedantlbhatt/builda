@@ -37,6 +37,10 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:21 to 07:27**: the desktop e2e drives Save image to the end and reads the PNG (74137b1);
+  the offers' glue tested (fb60b76, dca4e2f). fb60b76 BROKE the suite for one commit (it patched
+  the shared island store; nine tests in other files failed) and went in because the commit was
+  chained on a grep; fixed in dca4e2f, 2802 pass. Commit only on the test command's exit code.
 - **07:15 to 07:20**: hours milestones made by themselves (a808b87): crossing 10, 25, 50, 100, 250,
   500 or 1000 hours of the profile's total, the island offers a card (band, figure, creature,
   sessions since the first, a pixel ladder of the seven). Backfill silent: the first reading only

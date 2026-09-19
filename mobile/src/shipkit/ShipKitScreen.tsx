@@ -49,7 +49,8 @@ const TILE_GAP = 8;
 const SWITCH_OVERHANG = 12;
 
 export function ShipKitScreen() {
-  const params = useLocalSearchParams<{ key?: string; hue?: string }>();
+  const params = useLocalSearchParams<{ key?: string; hue?: string; name?: string }>();
+  const name = typeof params.name === 'string' && params.name ? params.name : 'your project';
   const key = typeof params.key === 'string' ? params.key.toLowerCase() : '';
   const hue = typeof params.hue === 'string' && params.hue ? params.hue : key.length === 64 ? preferredHue(key) : null;
   const { kit, requests, error, asking, request, cancel } = useShipKit(key.length === 64 ? key : null);
@@ -75,7 +76,7 @@ export function ShipKitScreen() {
           <RequestPanel
             state={requestView(requests, kit.kind === 'ready' ? kit.kit.published_at : null)}
             busy={asking}
-            onRequest={() => void request(hue)}
+            onRequest={() => void request(hue, name)}
             onCancel={() => requests?.[0] && void cancel(requests[0].id)}
           />
         ) : null}

@@ -174,7 +174,7 @@ export function ProjectPage() {
                   onDemoError={reloadDemo}
                   onDemoDeleted={demoDeleted}
                 />
-                <ShipKitDoor projectKey={page.detail.key} color={own.ink} hue={page.hue} always />
+                <ShipKitDoor projectKey={page.detail.key} color={own.ink} hue={page.hue} name={page.detail.label.text} always />
                 {page.time && stage >= 1 ? <TimeChapter page={page} hue={SPECTRUM[timeHue!]} inner={inner} /> : null}
                 {page.build && stage >= 2 ? <BuildChapter page={page} hue={SPECTRUM[buildHue!]} inner={inner} /> : null}
                 {page.shipping && stage >= 3 ? <ShippingChapter page={page} hue={SPECTRUM[shipHue!]} spark={page.hue} inner={inner} /> : null}

@@ -11,7 +11,7 @@ import { StyleSheet, View } from 'react-native';
 import { api } from '../data/client';
 import { Door } from '../session/parts';
 
-export function ShipKitDoor({ projectKey, color, always = false, hue }: { projectKey: string; color: string; always?: boolean; hue?: string | null }) {
+export function ShipKitDoor({ projectKey, color, always = false, hue, name }: { projectKey: string; color: string; always?: boolean; hue?: string | null; name?: string }) {
   const router = useRouter();
   const [has, setHas] = useState<boolean | null>(null);
   useFocusEffect(
@@ -33,7 +33,7 @@ export function ShipKitDoor({ projectKey, color, always = false, hue }: { projec
   const line = has ? 'The demo in every shape, its screens, and a post for each platform.' : 'Ask your Mac to film it and make the kit.';
   return (
     <View style={styles.row}>
-      <Door title={title} line={line} color={color} onPress={() => router.push({ pathname: '/ship/[key]', params: { key: projectKey, ...(hue ? { hue } : {}) } })} />
+      <Door title={title} line={line} color={color} onPress={() => router.push({ pathname: '/ship/[key]', params: { key: projectKey, ...(hue ? { hue } : {}), ...(name ? { name } : {}) } })} />
     </View>
   );
 }

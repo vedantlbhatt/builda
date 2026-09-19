@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../data/api';
 import { api } from '../data/client';
+import { trackDemo } from '../island/feeds';
 import type { DemoRequestRow, ShipKitResponse } from './types';
 
 /** How often a waiting request is read again. The Mac films in minutes; this is a glance. */
@@ -64,13 +65,16 @@ export function useShipKit(key: string | null) {
   }, [requests, waiting, read]);
 
   const request = useCallback(
-    async (hue: string | null) => {
+    async (hue: string | null, name = 'your project') => {
       if (!key) return;
       setAsking(true);
       try {
         const r = await api.requestDemo(key, hue);
         setRequests((rs) => [r.request, ...(rs ?? []).filter((x) => x.id !== r.request.id)]);
         setError(null);
+        // The island carries it from here, past this screen: it says when the Mac starts filming
+        // and when the kit is up, wherever you are in the app by then.
+        trackDemo(key, name);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'The request did not reach the server.');
       } finally {

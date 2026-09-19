@@ -73,6 +73,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      # Some phone ports are pinned to the engine by running it (`__tests__/pythonRef.ts`), and a
+      # machine with python3 must run those cleanly. `builder.drops_notify` reads its enums from
+      # the generated Pydantic spec, so the runner's python3 needs Pydantic, at the server's pin.
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install "pydantic==2.12.5"
       - working-directory: mobile
         run: bun install --frozen-lockfile
       - name: typecheck

@@ -39,8 +39,8 @@ export function StepPager({ count, step, ink, onStep }: StepPagerProps) {
         onPress={() => go(Math.max(0, step - 1))}
         style={styles.half}
       >
-        <T role="label" style={{ color: step === 0 ? c.textFaint : c.textDim, letterSpacing: 1.4 }}>
-          BACK
+        <T role="headline" style={{ color: step === 0 ? c.textFaint : c.textDim }}>
+          Back
         </T>
       </Pressable>
 
@@ -58,8 +58,8 @@ export function StepPager({ count, step, ink, onStep }: StepPagerProps) {
         onPress={() => go(Math.min(count - 1, step + 1))}
         style={[styles.half, styles.right]}
       >
-        <T role="label" style={{ color: step >= count - 1 ? c.textFaint : ink, letterSpacing: 1.4 }}>
-          NEXT
+        <T role="headline" style={{ color: step >= count - 1 ? c.textFaint : ink }}>
+          Next
         </T>
       </Pressable>
     </View>

@@ -52,8 +52,8 @@ export function RecipeSteps({ recipe, step, onStageY }: RecipeStepsProps) {
   return (
     <View>
       <View style={styles.headRow}>
-        <T role="label" style={{ color: hue.ink, letterSpacing: 1.2 }}>
-          INGREDIENTS
+        <T role="headline" style={{ color: hue.ink }}>
+          Ingredients
         </T>
         <T role="mono" style={{ color: c.textFaint }}>
           {[recipe.serves ? `serves ${recipe.serves}` : null, recipe.total_minutes ? `${recipe.total_minutes} min` : null]
@@ -92,8 +92,8 @@ export function RecipeSteps({ recipe, step, onStageY }: RecipeStepsProps) {
       {steps.length ? (
         <>
           <View style={[styles.headRow, { marginTop: 28 }]}>
-            <T role="label" style={{ color: hue.ink, letterSpacing: 1.2 }}>
-              METHOD
+            <T role="headline" style={{ color: hue.ink }}>
+              Method
             </T>
             <T role="mono" style={{ color: c.textFaint }}>
               {`${step + 1} of ${steps.length}`}

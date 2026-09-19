@@ -73,8 +73,8 @@ export function RepoPicker({ chosen, onChoose, ink, onFill }: RepoPickerProps) {
 
   return (
     <View style={styles.list}>
-      <T role="label" style={{ color: c.textFaint, letterSpacing: 1.2, marginBottom: 2 }}>
-        WHICH REPO
+      <T role="meta" weight={600} style={{ color: c.textDim, marginBottom: 2 }}>
+        Which repo
       </T>
       {choices.map((p) => {
         const on = p.key === chosen;

@@ -15,6 +15,7 @@
  * Blocks must be direct children of a `Section`, and sections direct children of the scroll
  * content: each position is read from `onLayout`, which is relative to the parent.
  */
+import { takeOrder } from '../motion/pixelMotion';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import Animated, {
@@ -77,8 +78,29 @@ export function usePageReveal(reduced: boolean): Page {
   return useMemo(() => ({ scrollY, viewport, reduced: reducedSV, armed, counted }), [scrollY, viewport, reducedSV, armed, counted]);
 }
 
+/**
+ * The pixel orders already taken on this page (`motion/pixelMotion.ts`): a band starts from its
+ * own name's order and moves on to the next free one, so two chapters of one page never print the
+ * same way (Build and Shipping both hashed to `rise`). Filled in render order, which is the page's
+ * reading order, once per band per mount.
+ */
+const OrdersCtx = createContext<Set<number> | null>(null);
+
 export function RevealPage({ page, children }: { page: Page; children: ReactNode }) {
-  return <PageCtx.Provider value={page}>{children}</PageCtx.Provider>;
+  const taken = useRef<Set<number>>(new Set()).current;
+  return (
+    <PageCtx.Provider value={page}>
+      <OrdersCtx.Provider value={taken}>{children}</OrdersCtx.Provider>
+    </PageCtx.Provider>
+  );
+}
+
+/** This band's order on its page: its own from its name, or the next one nobody here has used. */
+export function usePageOrder(own: number, count: number): number {
+  const taken = useContext(OrdersCtx);
+  const got = useRef<number | null>(null);
+  if (got.current === null) got.current = taken ? takeOrder(taken, own, count) : own;
+  return got.current;
 }
 
 /** A chapter of the page. Its children that play are `Block`s. */

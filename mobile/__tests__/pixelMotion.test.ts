@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { cellOrder, modeOf, motionFor, PIXEL_MOTIONS, type PixelMotion } from '../src/motion/pixelMotion';
+import { cellOrder, modeOf, motionFor, PIXEL_MOTIONS, takeOrder, type PixelMotion } from '../src/motion/pixelMotion';
 
 const COLS = 40;
 const ROWS = 24;
@@ -48,5 +48,18 @@ describe('each pixel surface arrives its own way', () => {
     expect(branches.length).toBe(PIXEL_MOTIONS.length - 1);
     expect(modeOf('rain')).toBe(0);
     expect(modeOf('wipe')).toBe(PIXEL_MOTIONS.length - 1);
+  });
+});
+
+describe('one page, no two bands alike', () => {
+  test('a band gets its own order when free, the next free one when not, and repeats only past eight', () => {
+    const taken = new Set<number>();
+    const rise = modeOf('rise');
+    expect(takeOrder(taken, rise)).toBe(rise);
+    expect(takeOrder(taken, rise)).toBe((rise + 1) % 8);
+    const all = [takeOrder(taken, 0), takeOrder(taken, 0), takeOrder(taken, 0), takeOrder(taken, 0), takeOrder(taken, 0), takeOrder(taken, 0)];
+    expect(new Set([...all, rise, (rise + 1) % 8]).size).toBe(8);
+    // A ninth band: every order is on the page already, so it keeps its own.
+    expect(takeOrder(taken, 5)).toBe(5);
   });
 });

@@ -3,11 +3,11 @@
  * number in dark ink on it, and under it a dissolve where the hue breaks up into the warm dark
  * ground through the app's 1-bit ordered dither. No gradient: every point is ink or ground.
  *
- * It PRINTS ITSELF when its block plays, and HOW is the band's own (`motion/pixelMotion.ts`): the
- * Time band scans in row by row, Money rises column by column like a meter, another opens from
- * the centre, another lands as blocks, and so on through eight orders, picked from the band's
- * title so a band always arrives the same way and the bands of one screen almost never share
- * one. The print used to be one order everywhere (random cells biased downwards), and 52 bands
+ * It PRINTS ITSELF when its block plays, and HOW is the band's own (`motion/pixelMotion.ts`): one
+ * scans in row by row, one rises column by column like a meter, one opens from the centre, one
+ * lands as blocks, and so on through eight orders, picked from the band's title so a band always
+ * arrives the same way, with the page handing out the next free one so no two bands of one page
+ * share an order. The print used to be one order everywhere (random cells biased downwards), and 52 bands
  * arriving identically across 30 screens was the sameness, not the pixels. Then the words fade
  * up, and the band is still.
  *
@@ -24,11 +24,11 @@ import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react
 import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated';
 
 import { morphOpen } from '../motion/MorphNav';
-import { modeOf, motionFor, type PixelMotion } from '../motion/pixelMotion';
+import { modeOf, motionFor, PIXEL_MOTIONS, type PixelMotion } from '../motion/pixelMotion';
 import { MONO_FAMILY } from '../theme';
 import { ease, phase, RISE } from './motion';
 import { GROUND, ON_HUE, type Hue } from './palette';
-import { Block, useClock, useReducedSV } from './reveal';
+import { Block, useClock, usePageOrder, useReducedSV } from './reveal';
 
 /**
  * The same orders as `pixelMotion.cellOrder`, cell for cell (its `cellHash` with seed 0 is this
@@ -206,7 +206,9 @@ export interface BandProps {
 export function Band({ hue, index, title, children, onPress: press, href, motion, accessibilityLabel }: BandProps) {
   const router = useRouter();
   const bandRef = useRef<View>(null);
-  const own = useMemo(() => motion ?? motionFor(title), [motion, title]);
+  const mine = useMemo(() => modeOf(motion ?? motionFor(title)), [motion, title]);
+  const onPage = usePageOrder(mine, PIXEL_MOTIONS.length);
+  const own = motion ?? PIXEL_MOTIONS[onPage]!;
   const onPress = href
     ? () => morphOpen(bandRef.current, () => router.push(`${href}${href.includes('?') ? '&' : '?'}morph=1` as never), { color: hue.ink, radius: 0, ground: GROUND.bg }, href)
     : press;

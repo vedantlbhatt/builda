@@ -5,9 +5,9 @@
  * dissolve, creatures in whole cells, prints. What made every screen look the same was never the
  * pixels, it was that every one of them arrived THE SAME WAY (the same half second of random
  * cells biased downwards, on 52 bands across 30 screens). So each item gets its own arrival from a
- * small set of orders that each read as a different physical thing, chosen by the item's own name,
- * so the Time band always scans in, Money always rises like a meter, and two bands on one screen
- * almost never share one.
+ * small set of orders that each read as a different physical thing, chosen by the item's own name
+ * (so a band always arrives the same way), and a page hands out the next free order when two of
+ * its bands would share one (`takeOrder`, through `insights/reveal.RevealPage`).
  *
  * Every order maps a cell to a number in [0, 1]: when in the arrival it switches on. The band's
  * shader (`insights/Band.tsx`) carries the same formulas in SkSL; the creature and tile prints use
@@ -107,4 +107,17 @@ export function cellOrder(m: PixelMotion, x: number, y: number, cols: number, ro
     case 'wipe':
       return clamp01(u * 0.82 + h * 0.18);
   }
+}
+
+/**
+ * A page's next order for a band whose own is `own`: its own when free, else the next free one,
+ * and marked taken. Once every order is taken (a page of nine bands) they repeat from `own`.
+ */
+export function takeOrder(taken: Set<number>, own: number, count: number = PIXEL_MOTIONS.length): number {
+  let o = own % count;
+  if (taken.size < count) {
+    while (taken.has(o)) o = (o + 1) % count;
+    taken.add(o);
+  }
+  return o;
 }

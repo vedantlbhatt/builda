@@ -4,7 +4,7 @@
  * and that a tap opens the card. The cache, the API and the two card modules are faked; the rules
  * (`session/week.ts`, `share/milestones.ts`) and the island store are the real ones.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import type { Profile } from '../src/data/api';
 
@@ -40,17 +40,22 @@ const { WEEK_OFFERED_KEY } = await import('../src/session/week');
 const { MILESTONE_KEY } = await import('../src/share/milestones');
 
 type Notice = { kind: 'notice'; id: string; text: string; action?: () => void };
+/** What the offers put on the island: the real store, read, never patched (it is shared by every test file). */
 let posted: Notice[] = [];
-island.post = ((a: Notice) => {
-  posted.push(a);
-}) as unknown as typeof island.post;
-island.clear = (() => undefined) as typeof island.clear;
+const unsubscribe = island.subscribe(() => {
+  for (const a of island.snapshot()) if (a.kind === 'notice' && !posted.some((p) => p.id === a.id)) posted.push(a as Notice);
+});
+afterAll(() => {
+  unsubscribe();
+  island.reset();
+});
 
 const H = 3600;
 const profile = (hours: number): Profile =>
   ({ graph: [], totals: { sessions: 132, active_seconds: hours * H }, projects: [{ key: 'k', name: null, sessions: 1, active_seconds: 1, first_at: '2026-08-12T10:00:00Z', last_at: '2026-09-12T10:00:00Z' }] }) as unknown as Profile;
 
 beforeEach(() => {
+  island.reset();
   kv.clear();
   posted = [];
   opened.length = 0;

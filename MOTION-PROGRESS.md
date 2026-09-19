@@ -37,7 +37,7 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
-- **07:55 to 08:05**: web export rebuilt with everything tonight; full desktop e2e 23 of 23 (22
+- **07:55 to 08:02**: web export rebuilt with everything tonight; full desktop e2e 23 of 23 (22
   routes and the Save image flow). The e2e scripts re-injected the token file's pair on every
   navigation, so a run that outlived its access token put a spent refresh token back and got the
   test device revoked (54b6eec: inject once; one refresh across a whole run, checked in the API

@@ -46,7 +46,12 @@ export function useAwayFrom(): { from: number | null; done: () => void } {
       sub.remove();
     };
   }, []);
-  const done = useCallback(() => setFrom(null), []);
+  // Read is read: written back as "now", so a Now that remounts (a tab re-created, a reload) does
+  // not bring the same band back before the next time away.
+  const done = useCallback(() => {
+    setFrom(null);
+    void setKv(KEY, String(Date.now())).catch(() => null);
+  }, []);
   return { from, done };
 }
 

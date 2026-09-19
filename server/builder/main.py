@@ -14,6 +14,7 @@ from .routes import (
     privacy,
     push,
     sessions,
+    shipkit,
     social,
     sync,
     users,
@@ -57,6 +58,9 @@ app.include_router(drops.router)
 # `GET /v1/projects/{key}`, or the literal "media:preview" is handed to the project route as
 # a key and refused as one.
 app.include_router(media.router)
+# shipkit BEFORE sessions too: `/v1/demos/requests:claim` and `/v1/projects/{key}/kit:presign`
+# are literals a `{something}/{id}` route would otherwise take as ids.
+app.include_router(shipkit.router)
 app.include_router(sessions.router)
 app.include_router(push.router)
 app.include_router(privacy.router)

@@ -291,6 +291,35 @@
         "quotes_version"
       ]
     },
+    "ship_kit": {
+      "route": "POST /v1/projects/{key}/kit:presign",
+      "document_route": "PUT /v1/projects/{key}/kit",
+      "default": "off",
+      "leaf_paths": [
+        "bytes",
+        "content_type",
+        "duration_ms",
+        "height",
+        "label",
+        "position",
+        "publish_id",
+        "slot",
+        "width"
+      ],
+      "document_leaf_paths": [
+        "captions.platform",
+        "captions.source",
+        "captions.text",
+        "captions.thread",
+        "changelog",
+        "device",
+        "hue",
+        "publish_id",
+        "refused.code",
+        "refused.what",
+        "shipkit_version"
+      ]
+    },
     "project_media": {
       "route": "POST /v1/projects/{key}/media:presign",
       "default": "off",

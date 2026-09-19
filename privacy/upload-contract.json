@@ -1214,9 +1214,18 @@
       "times the worst. Video length, 31,000 ms: the design's 30 s cut plus one second for frame rounding (a 29.97 fps cut of 30 s is 30.03 s)."
     ],
     "content_types": {
-      "image/png": {"kind": "image", "max_bytes": 6291456},
-      "image/jpeg": {"kind": "image", "max_bytes": 6291456},
-      "video/mp4": {"kind": "video", "max_bytes": 41943040}
+      "image/png": {
+        "kind": "image",
+        "max_bytes": 6291456
+      },
+      "image/jpeg": {
+        "kind": "image",
+        "max_bytes": 6291456
+      },
+      "video/mp4": {
+        "kind": "video",
+        "max_bytes": 41943040
+      }
     },
     "caps": {
       "images": 8,
@@ -1328,5 +1337,20 @@
         "doc": "the video's still frame, shown before it plays and under Reduce Motion. Null for an image"
       }
     ]
+  },
+  "ship_kit": {
+    "doc": [
+      "SHIP KITS (docs/ship-kit.md). What the Mac makes beside a demo so it can be posted: the demo in four social",
+      "formats, a GIF, framed stills, before and after pairs, App Store screenshots, a caption per platform and the",
+      "commit subjects since the last demo. Made on the Mac, kept there, and sent only by `python -m capture demo kit",
+      "--publish`, which lists every file and waits for a yes. Owner only, in the demos' private store; never in a",
+      "post, feed, share, push or activity. Its shapes are spec/shipkit.v1.json (KitPresign per file, KitDocument once).",
+      "A request for a demo from the phone (`POST /v1/demos/requests`) carries only the project's key and its hue."
+    ],
+    "route": "POST /v1/projects/{key}/kit:presign",
+    "document_route": "PUT /v1/projects/{key}/kit",
+    "request_route": "POST /v1/demos/requests",
+    "default": "off",
+    "spec": "spec/shipkit.v1.json"
   }
 }

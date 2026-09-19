@@ -985,7 +985,12 @@ def main(argv: list[str] | None = None) -> int:
     # own, answered before `make_parser` so the `demo` subcommand stays the generator's
     # (capture/demo/, making a demo) and the two never define one flag twice.
     from . import demo_publish
+    from .shipkit import cli as shipkit_cli
 
+    # `demo kit|queue|watch|hook` are the ship kit's (capture/shipkit/cli.py), answered first:
+    # `demo kit --publish` is the kit's publish, not the demo's.
+    if shipkit_cli.claims(args):
+        return shipkit_cli.main(args[1:])
     if demo_publish.claims(args):
         return demo_publish.main(args[1:])
     a = make_parser().parse_args(args)

@@ -394,14 +394,14 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
         job = {
             "base": base,
             "viewport": viewport_of(phone),
-            "scale": phone["scale"],
+            "scale": phone["native_scale"],
             "color_scheme": (story.get("device") or {}).get("appearance"),
             "video_dir": str(run_dir / "video"),
             "run_dir": str(run_dir),
             "block_hosts": list(BLOCK_HOSTS),
             "beats": [b for b in story["beats"] if b["video"]],
             "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect"), "viewport": b.get("viewport"), "optional": b.get("optional")} for b in story["beats"] if not b["video"]] + story["stills"],
-            "desktop": {"viewport": viewport_of(desktop), "scale": desktop["scale"], "video_dir": str(run_dir / "desktop-video")} if desktop else None,
+            "desktop": {"viewport": viewport_of(desktop), "scale": desktop["native_scale"], "video_dir": str(run_dir / "desktop-video")} if desktop else None,
         }
         jp, rp = run_dir / "web-job.json", run_dir / "web-result.json"
         jp.write_text(json.dumps(job))

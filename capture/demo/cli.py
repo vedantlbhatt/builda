@@ -5,6 +5,7 @@
     python -m capture demo --repo https://github.com/owner/name
     python -m capture demo PATH --app Some.app    film an iOS app built elsewhere
     python -m capture demo PATH --sim NAME|UDID   which simulator (default "Builda Demos")
+    python -m capture demo PATH --device ROW      which row of spec/devices.v1.json to film on
     python -m capture demo PATH --until build     stop after the build (or `workspace`)
 """
 
@@ -37,6 +38,12 @@ def add_parser(sub) -> argparse.ArgumentParser:
     d.add_argument("--storyboard", help="the flow to replay (default: the one in the work dir, else a new one)")
     d.add_argument("--app", help="expo_ios: film this already built .app instead of building one")
     d.add_argument("--sim", help="expo_ios: the simulator, a name or UDID (default 'Builda Demos', created when missing)")
+    d.add_argument(
+        "--device",
+        help="expo_ios: a row of spec/devices.v1.json to film on (iphone-air, ipad-pro-13, ...); default: the "
+        "project's own most used simulator from its transcripts, else iphone-17-pro",
+    )
+    d.add_argument("--dry-run", action="store_true", help="the same as --plan: print how it would run, run nothing")
     d.add_argument("--configuration", choices=("Debug", "Release"), help="expo_ios build configuration (default: the storyboard's, else Release)")
     d.add_argument("--until", choices=("workspace", "build"), help="stop after this stage")
     d.add_argument("--yes", action="store_true", help="answer yes to running the project's steps; required with no terminal")
@@ -61,4 +68,5 @@ def cmd_demo(a: argparse.Namespace) -> int:
         print("give the checkout once: PATH or --project, not two different ones")
         return 2
     a.path = a.project or a.path or "."
+    a.plan = a.plan or a.dry_run
     return run.main(a)

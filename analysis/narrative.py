@@ -204,8 +204,10 @@ def build_input(
     return "\n".join(lines)
 
 
-def numbers_in(text: str) -> set[str]:
-    """Every number in a string, normalised, ignoring the trivially small ones.
+def numbers_in(text: str, trivial_max: int = _TRIVIAL_MAX) -> set[str]:
+    """Every number in a string, normalised, ignoring the trivially small ones (at most
+    `trivial_max`; the ship kit's captions pass -1 and check every number, because a caption
+    is a public post and "3 screens" is as much a claim there as "1,211 calls").
 
     Normalisation is exact, not float-formatted: `1211` and `1,211` are the same number
     and `1234567` and `1234568` are not. `%g` would round both of the latter to
@@ -217,13 +219,13 @@ def numbers_in(text: str) -> set[str]:
         whole, _, frac = tok.partition(".")
         frac = frac.rstrip("0")
         whole = whole.lstrip("0") or "0"
-        if not frac and int(whole) <= _TRIVIAL_MAX:
+        if not frac and int(whole) <= trivial_max:
             continue
         out.add(f"{whole}.{frac}" if frac else whole)
     return out
 
 
-def known_numbers(source: str) -> set[str]:
+def known_numbers(source: str, trivial_max: int = _TRIVIAL_MAX) -> set[str]:
     """Every number the model is allowed to write, given what it was shown.
 
     Two things count as known, and the second is here because of a MEASURED false
@@ -238,7 +240,7 @@ def known_numbers(source: str) -> set[str]:
     nobody could check by eye (1,211 tool calls, 4,089 lines, a 484-call run), and a check
     that deletes correct sentences is worse than no check at all (CLAUDE.md).
     """
-    known = numbers_in(source)
+    known = numbers_in(source, trivial_max)
     for tok in list(known):
         value = float(tok)
         if 0.0 <= value <= 1.0:

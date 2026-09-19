@@ -39,6 +39,7 @@
         956
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1320,
         2868
@@ -68,6 +69,7 @@
         912
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1260,
         2736
@@ -98,6 +100,7 @@
         874
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1206,
         2622
@@ -130,6 +133,7 @@
         932
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1290,
         2796
@@ -162,6 +166,7 @@
         852
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1179,
         2556
@@ -194,6 +199,7 @@
         844
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1170,
         2532
@@ -224,6 +230,7 @@
         667
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         750,
         1334
@@ -254,6 +261,7 @@
         926
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1284,
         2778
@@ -281,10 +289,11 @@
         "iPhone 12 mini"
       ],
       "points": [
-        360,
-        780
+        375,
+        812
       ],
       "scale": 3,
+      "native_scale": 2.88,
       "pixels": [
         1080,
         2340
@@ -315,6 +324,7 @@
         896
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1242,
         2688
@@ -345,6 +355,7 @@
         896
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         828,
         1792
@@ -376,6 +387,7 @@
         812
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1125,
         2436
@@ -406,6 +418,7 @@
         736
       ],
       "scale": 3,
+      "native_scale": 3,
       "pixels": [
         1242,
         2208
@@ -433,6 +446,7 @@
         568
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         640,
         1136
@@ -460,6 +474,7 @@
         1376
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         2064,
         2752
@@ -490,6 +505,7 @@
         1210
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         1668,
         2420
@@ -520,6 +536,7 @@
         1366
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         2048,
         2732
@@ -550,6 +567,7 @@
         1180
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         1640,
         2360
@@ -579,6 +597,7 @@
         1180
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         1640,
         2360
@@ -607,6 +626,7 @@
         1133
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         1488,
         2266
@@ -636,14 +656,15 @@
         1194
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         1668,
         2388
       ],
       "corner_radius": 18,
       "safe_area": {
-        "top": 24,
-        "bottom": 20
+        "top": 32,
+        "bottom": 25
       },
       "dynamic_island": false,
       "simulator_types": [
@@ -666,13 +687,14 @@
         1080
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         1620,
         2160
       ],
       "corner_radius": 0,
       "safe_area": {
-        "top": 20,
+        "top": 32,
         "bottom": 0
       },
       "dynamic_island": false,
@@ -694,6 +716,7 @@
         800
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         2560,
         1600
@@ -720,6 +743,7 @@
         900
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         2880,
         1800
@@ -746,6 +770,7 @@
         982
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         3024,
         1964
@@ -772,6 +797,7 @@
         1117
       ],
       "scale": 2,
+      "native_scale": 2,
       "pixels": [
         3456,
         2234
@@ -853,5 +879,6 @@
     "corner_radius": 40,
     "_why": "A CLI or a library has no device: VHS types into a terminal the size of the vertical format, so the reel needs no scaling at all, and the square, feed and landscape posts draw it as a card with this radius, in pixels of that canvas. A drawing choice, not a measurement."
   },
-  "_same_screen": "Two rows may share one pixel size, and only exactly (the iPad Air 11-inch and the iPad (A16): 1640x2360, MEASURED corner radius 18 and 25). A capture is checked against the row it was filmed on, which it names; `devices.match_pixels`, used only for a demo made before the table, answers the first row listed."
+  "_same_screen": "Two rows may share one pixel size, and only exactly (the iPad Air 11-inch and the iPad (A16): 1640x2360, MEASURED corner radius 18 and 25). A capture is checked against the row it was filmed on, which it names; `devices.match_pixels`, used only for a demo made before the table, answers the first row listed.",
+  "_native_scale": "`scale` is UIKit's (UIScreen.scale), `native_scale` the panel's (UIScreen.nativeScale). They differ on one row: MEASURED, the iPhone 13 and 12 mini lay out 375x812 points at 3x and the panel is 1080x2340, 2.88 pixels a point, so a screenshot is the panel's pixels and a table that multiplied points by scale would have expected 1125x2436, a phone 4% too tall."
 }

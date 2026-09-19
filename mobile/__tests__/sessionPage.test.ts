@@ -178,6 +178,14 @@ describe('a row in the list', () => {
     expect(rowOf({ ...FINAL, unattended: true }, NOW).meta.endsWith(' · on its own')).toBe(true);
   });
 
+  test('two sittings of one day with one title differ by the time each started', () => {
+    const a = rowOf({ ...FINAL, id: 'a', started_at: '2026-09-12T19:30:00Z' }, NOW);
+    const b = rowOf({ ...FINAL, id: 'b', started_at: '2026-09-12T21:05:00Z' }, NOW);
+    expect(a.title).toBe(b.title);
+    expect(a.meta).not.toBe(b.meta);
+    expect(a.meta).toMatch(/, \d{1,2}:\d{2}(am|pm)$/);
+  });
+
   test('no engine title falls back to the harness\'s, then to the day and its part, the way Strava names a run', () => {
     expect(rowOf({ ...FINAL, title_ids: null }, NOW).title).toBe(BASE.title);
     const untitled = rowOf({ ...FINAL, title_ids: null, title: null }, NOW).title;

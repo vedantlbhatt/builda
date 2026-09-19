@@ -20,6 +20,7 @@
 
 import { commas } from '../copy/numbers';
 import { repoLabel, type RepoNames } from '../copy/repoLabel';
+import { timeOfDay } from '../copy/time';
 import { renderTitle } from '../copy/title';
 import type { SessionDetail } from '../data/api';
 import { numSpec, type NumSpec } from '../insights/format';
@@ -174,6 +175,12 @@ export function untitledName(iso: string, now: number): string {
 
 export function rowOf(s: SessionDetail, now: number, names?: RepoNames | null): RowModel {
   const title = renderTitle(s.title_ids) ?? (s.title?.trim() || null) ?? untitledName(s.started_at, now);
-  const meta = [repoLabel(s, names), dayLabel(s.started_at, now), s.unattended ? 'on its own' : null].filter(Boolean).join(' · ');
+  // The day AND the time it started: FOUND ON THE DESKTOP, four rows in a row read "Debugged a
+  // failing test suite / Private project 1 · Sep 12", the same two lines four times, because the
+  // title rule has no count to vary. The start time is what tells four sittings of one day apart.
+  const start = Date.parse(s.started_at);
+  const day = dayLabel(s.started_at, now);
+  const when = day && Number.isFinite(start) ? `${day}, ${timeOfDay(start)}` : day;
+  const meta = [repoLabel(s, names), when, s.unattended ? 'on its own' : null].filter(Boolean).join(' · ');
   return { id: s.id, title, figure: duration(s.active_seconds), meta, harness: s.harness, harnessName: harnessLabel(s.harness) };
 }

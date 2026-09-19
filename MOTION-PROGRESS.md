@@ -42,7 +42,7 @@ keep the URL; from a new conversation pass the URL.
   build them; no glows; no accent buttons with black text; no big, small, grey text pattern; far
   less text; do not change the font; use React Bits; they never saw the Mac app. Done: the in-app
   island, the Now stage, the reel and demo cards and the desktop island window are out, the
-  session Live Activity is off by default (38b5e0c and after); `docs/island-ideas.md` has seven
+  session Live Activity is off by default (1f106c7 and after); `docs/island-ideas.md` has seven
   stats ideas, unbuilt; auras and the face glow are gone, primary buttons are the raised surface
   with the text colour; Drops' "Pick a move" is a React Bits Stack of the reels' posters with one
   line and two buttons, and the cards lost their kind words, quotes and grey notes; the Mac app

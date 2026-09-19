@@ -59,7 +59,7 @@ re-expressed there; the eleven ad hoc springs are gone.
 | `CONTENT` | damping 22, stiffness 320, mass 0.9 | what rides inside a container |
 | `POP` | damping 14, stiffness 260, mass 0.7 | small things arriving: chips, faces, badges |
 | `WHEEL` | damping 20, stiffness 190, mass 1 | the status wheel and anything list-like that moves as one |
-| `SNAP` | damping 26, stiffness 300, mass 1 | a finger let go: settle with no bounce |
+| `SNAP` | damping 33, stiffness 300, mass 1 | a finger let go: settle with no bounce (ζ 0.95; 0.75 still wobbles under a thumb) |
 
 ## The island is one object, everywhere
 

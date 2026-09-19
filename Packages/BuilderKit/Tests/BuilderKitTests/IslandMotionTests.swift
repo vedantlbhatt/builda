@@ -26,7 +26,7 @@ struct IslandMotionTests {
         #expect(IslandMotion.content == SpringSpec(mass: 0.9, stiffness: 320, damping: 22))
         #expect(IslandMotion.pop == SpringSpec(mass: 0.7, stiffness: 260, damping: 14))
         #expect(IslandMotion.wheel == SpringSpec(mass: 1, stiffness: 190, damping: 20))
-        #expect(IslandMotion.snap == SpringSpec(mass: 1, stiffness: 300, damping: 26))
+        #expect(IslandMotion.snap == SpringSpec(mass: 1, stiffness: 300, damping: 33))
         #expect(IslandMotion.chipStaggerMs == 45)
         #expect(IslandMotion.railStaggerMs == 60)
         #expect(IslandMotion.wordStaggerMs == 55)

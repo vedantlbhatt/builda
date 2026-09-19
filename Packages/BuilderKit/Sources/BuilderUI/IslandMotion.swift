@@ -105,8 +105,9 @@ public enum IslandMotion {
     public static let pop = SpringSpec(mass: 0.7, stiffness: 260, damping: 14)
     /// The status wheel, and anything list-like that moves as one. Heavier, so a step weighs.
     public static let wheel = SpringSpec(mass: 1, stiffness: 190, damping: 20)
-    /// A finger (or a cursor) let go: settle with no visible bounce.
-    public static let snap = SpringSpec(mass: 1, stiffness: 300, damping: 26)
+    /// A finger (or a cursor) let go: settle with no visible bounce. ζ 0.95, not 0.75: at 0.75 a
+    /// thing placed under a thumb still wobbles back past where it was put (mobile/src/motion/spec.ts).
+    public static let snap = SpringSpec(mass: 1, stiffness: 300, damping: 33)
 
     // MARK: stagger in, never out
 

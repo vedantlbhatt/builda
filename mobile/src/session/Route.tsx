@@ -15,7 +15,7 @@ import { GROUND } from '../insights/palette';
 import { Block, useClock } from '../insights/reveal';
 import type { SessionDetail } from '../data/api';
 import { decodeMarks } from '../strip/decode';
-import { legendOf } from '../strip/layout';
+import { legendOf, legendShown } from '../strip/layout';
 import { StripDraw } from '../strip/StripDraw';
 import { colors } from '../theme';
 import { timeOfDay } from '../copy/time';
@@ -42,7 +42,7 @@ function Drawn({ session, width, live }: { session: SessionDetail; width: number
   const clock = useClock();
   const s = session.strip!;
   const marks = React.useMemo(() => decodeMarks(s.marks), [s.marks]);
-  const legend = React.useMemo(() => legendOf(s.cols), [s.cols]);
+  const legend = React.useMemo(() => legendShown(legendOf(s.cols)), [s.cols]);
   const start = Date.parse(session.started_at);
   const end = Date.parse(session.ended_at);
   return (

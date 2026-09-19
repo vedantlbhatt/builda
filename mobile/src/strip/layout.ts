@@ -207,3 +207,12 @@ export function legendOf(cols: string | null | undefined): LegendEntry[] {
     return { klass, label, share };
   });
 }
+
+/**
+ * The entries worth a line under the strip: a class that never happened is left out (2026-09-19,
+ * the owner: say less). "under 1%" stays, because it did happen; a malformed strip keeps every
+ * entry so the key still says what the colours are.
+ */
+export function legendShown(entries: readonly LegendEntry[]): LegendEntry[] {
+  return entries.filter((e) => e.share !== '0%');
+}

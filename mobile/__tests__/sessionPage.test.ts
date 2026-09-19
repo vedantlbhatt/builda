@@ -15,7 +15,7 @@ import { sampleOutcome } from '../src/session/samples';
 import { sessionTitle, summarySentences, timeSentence } from '../src/session/summary';
 import { timeOfDay } from '../src/copy/time';
 import { whenLabel } from '../src/session/when';
-import { CORNER, HERO, layoutStrip, legendOf, MINI, TRACK_HEIGHT } from '../src/strip/layout';
+import { CORNER, HERO, layoutStrip, legendOf, legendShown, MINI, TRACK_HEIGHT } from '../src/strip/layout';
 
 const BASE = {
   id: 'abc123',
@@ -291,5 +291,9 @@ describe('the strip, laid out once for every drawing', () => {
     bytes[0] = StripClass.prompting;
     expect(legendOf(Buffer.from(bytes).toString('base64'))[1]!.share).toBe('under 1%');
     expect(legendOf(null).every((x) => x.share === null)).toBe(true);
+    // Under the strip: a class at 0% is left out, "under 1%" is kept, a malformed strip keeps all.
+    expect(legendShown(legendOf(Buffer.from(bytes).toString('base64'))).some((x) => x.share === 'under 1%')).toBe(true);
+    expect(legendShown(legendOf(Buffer.from(bytes).toString('base64'))).every((x) => x.share !== '0%')).toBe(true);
+    expect(legendShown(legendOf(null))).toHaveLength(4);
   });
 });

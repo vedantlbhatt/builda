@@ -59,7 +59,7 @@ export function IslandStage({
 }) {
   const waiting = crew.find((m) => m.state === 'waiting') ?? null;
   const lead = waiting ?? crew[0] ?? null;
-  const h = quiet ? 250 : crew.length > 1 ? 214 : 196;
+  const h = quiet ? 250 : crew.length > 1 ? 214 : 112;
   // First the pill, then the stage: the screen opens by growing out of the island.
   const [grown, setGrown] = useState(false);
   useEffect(() => {
@@ -100,7 +100,9 @@ export function IslandStage({
               </View>
             ) : (
               <View style={styles.row}>
-                <View style={[styles.card, { flex: 1 }]}>
+                {/* Tiles on the black only when there are two things to set side by side: one tile
+                    filling the whole stage read as a second black frame around the card. */}
+                <View style={[crew.length > 1 ? styles.card : styles.bare, { flex: 1 }]}>
                   <View style={styles.top}>
                     <Face animal={cur!.animal} state={cur!.state} ink={cur!.ink} size={48} />
                     <View style={{ marginLeft: 14, flex: 1 }}>
@@ -110,9 +112,13 @@ export function IslandStage({
                       {head?.lines[0] ? <Text style={styles.sub}>{head.lines.join(', ')}</Text> : null}
                     </View>
                   </View>
-                  <View style={{ marginTop: 16 }}>
-                    <Wheel rows={rows} index={index} width={width - (crew.length > 1 ? 118 : 60)} rowHeight={22} visible={crew.length > 2 ? 3 : Math.max(1, crew.length)} textStyle={styles.wheel} dim={DIM} bright={INK} />
-                  </View>
+                  {/* One run: its tile right below already says what it is doing, so the stage does
+                      not say it twice. The wheel earns its place when it steps between runs. */}
+                  {crew.length > 1 ? (
+                    <View style={{ marginTop: 16 }}>
+                      <Wheel rows={rows} index={index} width={width - 118} rowHeight={22} visible={crew.length > 2 ? 3 : 2} textStyle={styles.wheel} dim={DIM} bright={INK} />
+                    </View>
+                  ) : null}
                 </View>
                 {crew.length > 1 ? (
                   <View style={styles.rail}>
@@ -138,6 +144,7 @@ const styles = StyleSheet.create({
   quiet: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   row: { flex: 1, flexDirection: 'row', padding: 12, gap: 10 },
   card: { borderRadius: 32, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.05)', padding: 16, justifyContent: 'center' },
+  bare: { padding: 16, justifyContent: 'center' },
   top: { flexDirection: 'row', alignItems: 'center' },
   rail: { width: 44, borderRadius: 22, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', gap: 10 },
   sub: { color: DIM, fontSize: 15, marginTop: 4 },

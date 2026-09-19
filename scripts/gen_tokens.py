@@ -226,8 +226,8 @@ def validate_spectrum(t: dict) -> list[str]:
     # own hue already colours its title on the same card.
     demo = spec.get("demo")
     if demo is not None:
-        if set(demo) != {"asked", "filming", "ready", "failed"}:
-            problems.append(f"spectrum.demo must be exactly asked, filming, ready and failed, not {sorted(demo)}")
+        if set(demo) != {"asked", "filming", "made", "ready", "failed"}:
+            problems.append(f"spectrum.demo must be exactly asked, filming, made, ready and failed, not {sorted(demo)}")
         for k, v in demo.items():
             if v not in TOKEN_REFS + ("surface.textFaint",):
                 problems.append(f"spectrum.demo.{k} is {v!r}; a record light is one of {TOKEN_REFS + ('surface.textFaint',)}")
@@ -723,8 +723,9 @@ enum BuilderPalette {{
   }}
 
   /// spectrum.demo: a demo request's record light (docs/demo-island.md), one per card phase:
-  /// faint while it waits for the Mac, the data red while the Mac films, the data green once the
-  /// kit is up, the data red again (drawn as a cross) for one that could not be made.
+  /// faint while it waits for the Mac, the data red while the Mac films, the dim grey for a demo
+  /// made and kept on the Mac, the data green once the kit is up, the data red again (drawn as a
+  /// cross) for one that could not be made.
   enum DemoState: String, CaseIterable {{
     case {demo_names}
   }}

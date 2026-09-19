@@ -150,7 +150,7 @@ public final class BuilderPreviewRenderer: NSObject {
 
 extension BuilderPreviewRenderer {
   /// A demo you asked your Mac for, every state its card draws (docs/demo-island.md): the walk
-  /// from asked to the kit, a failure in the spec's shortest and longest words, a long project
+  /// from asked to the kit, a demo made and kept on the Mac, a failure in the spec's shortest and longest words, a long project
   /// name with no hue, a run past an hour (the timer's box must hold hours), and the Mac going
   /// quiet past the stale date, asked and filming. Timers are frozen at `LiveFixtures.now`.
   @available(iOS 17.0, *)
@@ -160,6 +160,8 @@ extension BuilderPreviewRenderer {
     let states: [(String, BuilderDemoAttributes, BuilderDemoAttributes.ContentState, Bool)] = [
       ("asked", D.builda, D.asked, false),
       ("filming", D.builda, D.filming, false),
+      ("made", D.builda, D.made, false),
+      ("made-long-name", D.longName, D.made, false),
       ("ready", D.builda, D.ready, false),
       ("failed", D.builda, D.failed, false),
       ("failed-long", D.longName, D.failedLong, false),

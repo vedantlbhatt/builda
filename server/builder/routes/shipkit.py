@@ -426,6 +426,9 @@ def put_kit(key: str, body: KitDocument, device: CurrentDevice = Depends(current
     if replaced:
         pm.delete_objects(replaced)
         ship_kit.sweep(uid, key)
+    # After the commit: a demo the Mac made and kept is up now, so a card still saying "made"
+    # moves to "the kit is up" with its Share (docs/demo-island.md).
+    demo_push.after_publish(uid, key)
     return {"publish_id": body.publish_id, "files": len(files), "replaced": len(replaced)}
 
 

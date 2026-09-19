@@ -190,10 +190,12 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
     try {
       const { requests } = await api.demoRequests(projectKey);
       if (!demos.has(projectKey)) return;
-      // The system island reads the same row through the same rule (`demoStepFor`), so the two
-      // cannot say different things about it; with no row at all its card comes down too.
-      void (requests[0] ? demoMoved(requests[0]) : demoTakenBack(projectKey));
       const step = demoStepFor(requests[0]?.status);
+      // The system island reads the same row through the same rule (`demoStepFor`), so the two
+      // cannot say different things about it; with no row at all its card comes down too. A done
+      // row waits for the kit below: the card's ready needs the same answer the island's does.
+      if (!requests[0]) void demoTakenBack(projectKey);
+      else if (step !== 'ready') void demoMoved(requests[0]);
       if (step === 'clear') {
         island.clear(id);
         demos.delete(projectKey);
@@ -204,12 +206,14 @@ export function trackDemo(projectKey: string, title: string, request?: DemoReque
         // Done is not the same as up: a Mac that finished without publishing kept the kit, and
         // "the kit is up, tap to share it" would open a screen with nothing new on it.
         const kit = await api.shipKit(projectKey).catch(() => null);
-        if (kit && kitFromRequest(requests[0]!, kit.kit?.published_at ?? null)) {
+        const publishedAt = kit?.kit?.published_at ?? null;
+        // The system card by the same rule: ready with its Share, or made, which says where the
+        // kit is and moves on to ready by push if it is published later (docs/demo-island.md).
+        void demoMoved(requests[0]!, { kitPublishedAt: publishedAt });
+        if (kit && kitFromRequest(requests[0]!, publishedAt)) {
           island.post({ ...base, filming: false, ready: true }, DROP_DONE_HOLD_MS);
         } else {
           island.clear(id);
-          // The system card came down the same way, so it cannot say "kit up" over this notice.
-          void demoTakenBack(projectKey);
           notice(`The demo of ${title} is made on your Mac. Publish it there to share it.`, 'done', DEFAULT_ANIMAL, creatureHue(DEFAULT_ANIMAL).ink);
         }
         return;

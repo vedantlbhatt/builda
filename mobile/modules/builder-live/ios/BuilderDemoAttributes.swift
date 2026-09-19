@@ -25,8 +25,10 @@ import Foundation
 @available(iOS 16.1, *)
 public struct BuilderDemoAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
-    /// "asked" | "filming" | "ready" | "failed": the request's status as the server holds it
-    /// (queued, claimed, done, failed), through `demoStepFor`, the rule the in-app island reads.
+    /// "asked" | "filming" | "made" | "ready" | "failed": the request's status as the server holds
+    /// it (queued, claimed, done, failed), through `demoStepFor`, the rule the in-app island reads.
+    /// A done request is "ready" only when a kit was published at or after the Mac took it
+    /// (`kitFromRequest`); otherwise the Mac made it and kept it, "made".
     public var phase: String
     /// Unix seconds the phone asked (the request's `created_at`): the clock the compact island
     /// counts up from while the Mac has not finished.

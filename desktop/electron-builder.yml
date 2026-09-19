@@ -23,7 +23,11 @@ files:
 # a program running as the same user read the token store without a Keychain prompt.
 electronFuses:
   runAsNode: false
-  enableCookieEncryption: true
+  # OFF: encrypting the cookie store needs a Keychain key before the network stack can use it, so a
+  # packaged app whose Keychain prompt nobody answered hung every request (FOUND ON THE PACKAGED APP,
+  # 2026-09-19: "Builda took too long to answer", a SecurityAgent prompt open since the build). The
+  # app keeps no cookies; its tokens are in safeStorage.
+  enableCookieEncryption: false
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
   enableEmbeddedAsarIntegrityValidation: true

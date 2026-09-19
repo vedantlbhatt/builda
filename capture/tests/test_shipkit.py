@@ -288,7 +288,7 @@ class Pins(unittest.TestCase):
         m = re.search(r"PROJECT_HUES: readonly HueName\[\] = \[([^\]]+)\]", src)
         self.assertEqual(re.findall(r"'(\w+)'", m.group(1)), kmod.PROJECT_HUES)
         # The phone's preferredHue: the key's first eight hex digits round the ring.
-        self.assertEqual(kmod.preferred_hue("03624fb1" + "0" * 56), kmod.PROJECT_HUES[0x03624FB1 % 8])
+        self.assertEqual(kmod.preferred_hue("7a1c0e59" + "0" * 56), kmod.PROJECT_HUES[0x7A1C0E59 % 8])
 
     def test_the_ground_and_the_ink_are_the_tokens(self):
         tokens = json.loads((ROOT / "design/tokens.json").read_text())

@@ -226,10 +226,7 @@ Not verified, and how to verify on a device:
   `--publish-requests`, or a publish that failed); the kit screen then says to publish it on the
   Mac. Making both islands say so would mean the request carrying whether its kit was published,
   a server and worker change beyond this branch.
-- **The in-app island after a relaunch.** `trackDemo`'s watch lives in memory, so if Builda is
-  killed while a demo is filming, the system card carries on (the server moves it) but the in-app
-  island does not pick it up again when Builda reopens; the foreground sweep still ends the card
-  when its answer is past the beat.
+- **The in-app island after a relaunch.** FIXED after the merge: the root poll (`resumeDemos`, at most every five minutes) reads every project's requests and tracks the newest queued or claimed one per project again, from when it was asked. Checked on the simulator: request, kill the app, relaunch, and the island shows it.
 
 ## Done is not the same as up (added after the merge)
 

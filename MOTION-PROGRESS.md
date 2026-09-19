@@ -38,6 +38,15 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **04:20 to 05:10**: merged `claude/motion-demoisland` (a demo request as a Live Activity, 0032);
+  in-app island says "made on your Mac" when a done request's kit was not published
+  (`kitFromRequest`, one rule with the kit screen) and resumes pending demos after a relaunch
+  (`resumeDemos`); the aura turns three times then rests (8.5% to 0.6% CPU on Drops); Now has a
+  "while you were away" band (`live/away.ts`, after an hour away, tested); the kit screen shows
+  eight changelog lines then "and N more"; published tonight's Builda kit to the local stack
+  (separate minted credentials, `BUILDER_API_URL=http://127.0.0.1:8788`); packaged the desktop
+  app for Mac (`dist/mac-arm64`) and Windows (`dist/win-unpacked`); the packaged app's self
+  capture stalled before loading a page (not chased; `electron .` capture is verified).
 - **04:00 to 04:20**: merged `claude/motion-desktop2` (eleven desktop fixes: pane sized layout via one
   metro resolver rule, island toasts only on desktop, morphs into the pane, drops open in the pane);
   its metro test now loads the config in a child process (in process it broke five Python parity
@@ -52,7 +61,7 @@ keep the URL; from a new conversation pass the URL.
   island opened on the run; a session made from a reel links back to it; an open drop closes
   when a deep link navigates; creature marks are one path. Server pytest passes on
   `builder_overnight_motion_test` (0031); `make check-gen` and `make lint` clean.
-- Helper running: `claude/motion-demoisland` (the demo request as a system Live Activity).
+- No helpers running.
 - **Merges** (03:00): Mac notch (SNAP spring aligned to the phone's 33 by the cross check test),
   desktop (its spring copy became a re-export of `src/motion/spec.ts`, its state inks resolve via
   `stateColor`; `force.ts` stays deleted), drop island (Live Activity, share extension direct POST).

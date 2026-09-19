@@ -4,11 +4,9 @@
 it first when resuming. Newest at the top of each section.
 
 Branch `claude/motion`, worktree `~/Downloads/projects/builda-motion`. Pushed to
-`origin/claude/motion` (the repo is `vedantlbhatt/builda`). Helper branches, built by subagents in
-their own worktrees: `claude/motion-mac` (MERGED 41fdf64), `claude/motion-desktop` (MERGED
-feab2dd), `claude/motion-dropisland` (MERGED after 3f/aura commit), `claude/motion-shipkit` (the
-demo ship kit, still running at 03:05), `claude/motion-desktop2` (desktop parity with the merged
-UI, started 02:50).
+`origin/claude/motion` (the repo is `vedantlbhatt/builda`). Every helper branch is merged (mac,
+desktop, desktop2, dropisland, shipkit, demoisland, demoisland2). When github.com does not resolve,
+push with `git -c http.curloptResolve="github.com:443:$(dig +short github.com @1.1.1.1 | head -1)" push`.
 
 ## The report
 
@@ -107,12 +105,10 @@ keep the URL; from a new conversation pass the URL.
 
 ## Next
 
-1. Merge `claude/motion-shipkit` when it reports; connect "Make the reel" on the pair card and the
-   shipped island beat to its demo request.
-2. Merge `claude/motion-desktop2`; screenshots of the desktop on the merged UI into the report.
-3. Native rebuild on the simulator (widget moods, drop activity); screenshots of the system island.
-4. The report: republish with the merges, the perf numbers, Mac and desktop shots.
-5. Then: tests, UI audit for anything that still looks generated, new features.
+1. Itemize motion everywhere a pixel surface still arrives one way for all: onboarding step bands,
+   Wrapped card art, the pixel fields (contribution grid, glossary collection, count marks).
+2. Recordings of the eight orders for the report.
+3. Then: tests, UI audit, new features. Pixels stay (memory: builda-pixels-stay).
 
 ## Measured
 

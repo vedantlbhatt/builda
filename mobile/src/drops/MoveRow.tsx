@@ -36,7 +36,7 @@ import { T } from '../ui/Text';
 import { select } from '../ui/haptics';
 import { useColors } from '../ui/scheme';
 import { canStart } from './boardRules';
-import { EFFORT_WORD, MOVE_REFUSAL, MOVE_STATUS_LINE, MOVE_VERB } from './copy';
+import { MOVE_REFUSAL, MOVE_STATUS_LINE, MOVE_VERB } from './copy';
 import { RepoPicker } from './RepoPicker';
 import type { MoveRow as Move } from './types';
 
@@ -99,7 +99,9 @@ export function MoveRowView({ move, kind, armed, onToggle, repoKey, onChooseRepo
             {verb}
           </T>
           <T role="meta" style={{ color: armed ? c.text : c.textFaint }}>
-            {live ? MOVE_STATUS_LINE[move.status] : armed ? 'armed' : again ? `${MOVE_STATUS_LINE.failed}, tap to try again` : EFFORT_WORD[move.effort]}
+            {/* No effort word on an idle row: the line over Start says how long the armed set takes
+                (2026-09-19, the owner: less small grey text). */}
+            {live ? MOVE_STATUS_LINE[move.status] : armed ? 'armed' : again ? `${MOVE_STATUS_LINE.failed}, tap to try again` : ''}
           </T>
         </View>
 

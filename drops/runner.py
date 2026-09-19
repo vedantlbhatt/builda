@@ -84,8 +84,14 @@ def outbound(outcome: str | None) -> str | None:
     if not outcome:
         return None
     home = os.path.expanduser("~")
-    line = " ".join(outcome.replace(home, "~").split())
-    return line[:OUTCOME_MAX] or None
+    line = " ".join(outcome.replace(home, "~").split())[:OUTCOME_MAX]
+    # A line that arrived already cut can end in the first part of the home path: drop that tail,
+    # when it holds any of the account name (`/Users/` alone says nothing).
+    for n in range(len(home) - 1, len(os.path.dirname(home)) + 1, -1):
+        if line.endswith(home[:n]):
+            line = line[: -n].rstrip()
+            break
+    return line or None
 
 
 #: The server's `FinishMoveRequest.outcome` max_length.
@@ -297,8 +303,10 @@ class Runner:
         except json.JSONDecodeError:
             return "failed", "claude returned something that was not JSON", session_id
         if env_out.get("is_error"):
-            return "failed", str(env_out.get("result"))[:300], session_id
-        summary = " ".join(str(env_out.get("result") or "").split())[:300]
+            # Whole: `outbound` hides the home path and THEN cuts. Cut here first and a path split
+            # at character 300 no longer matches, and part of it leaves (review, 2026-09-19).
+            return "failed", str(env_out.get("result")), session_id
+        summary = " ".join(str(env_out.get("result") or "").split())
         return "done", summary or f"ran {note}", session_id
 
     def task_prompt(self, move: dict) -> str:

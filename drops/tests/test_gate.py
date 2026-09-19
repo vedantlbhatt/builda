@@ -212,6 +212,20 @@ class OutcomeTests(unittest.TestCase):
         self.assertEqual(line, "ran in a new project at ~/.builder/drops/projects/menu-bar-app")
         self.assertNotIn(home, line)
 
+    def test_a_path_split_by_the_cut_does_not_leave_half_of_it(self):
+        import os
+
+        from drops.runner import OUTCOME_MAX, outbound
+
+        home = os.path.expanduser("~")
+        # Claude's words, long, with the home path running over the cap.
+        words = "x" * (OUTCOME_MAX - 10) + " at " + home + "/.builder/drops/projects/app"
+        line = outbound(words)
+        self.assertNotIn(home[: len(home) // 2 + 2], line)
+        # Already cut upstream, mid path.
+        cut = ("done in " + home)[: len("done in ") + len(home) - 3]
+        self.assertEqual(outbound(cut), "done in")
+
     def test_one_line_within_the_servers_cap(self):
         import pathlib
         import re

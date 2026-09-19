@@ -99,18 +99,15 @@ export function DesktopSignIn({ onSkip }: { onSkip: () => void }) {
         <T role="display" style={{ color: nav.text, marginTop: space.md }}>
           Sign in with your phone
         </T>
-        <T role="body" style={{ color: nav.textDim, marginTop: space.sm }}>
-          Point your phone&apos;s camera at the code, or open Builda on it and go to You, then Settings, then Connect your Mac, and type it.
-        </T>
+        {/* One title, the code, one line. The paragraph of steps and the label over the code were
+            the big, small, grey pattern (2026-09-19, the owner); typing the code is in the phone's
+            Settings for whoever needs it. */}
 
         <View style={styles.pair}>
           <View style={styles.qrBox}>
             {phase.kind === 'waiting' && phase.qr ? <Qr modules={phase.qr} size={QR_SIZE} /> : <View style={{ width: QR_SIZE, height: QR_SIZE }} />}
           </View>
           <View style={styles.codeCol}>
-            <T role="label" style={{ color: nav.textFaint }}>
-              {phase.kind === 'done' ? 'approved' : 'your code'}
-            </T>
             <T role="hero" style={{ color: phase.kind === 'done' ? accent.text : nav.text }} selectable>
               {phase.kind === 'waiting' ? phase.grant.user_code : phase.kind === 'done' ? 'Signed in' : '····-····'}
             </T>
@@ -118,7 +115,7 @@ export function DesktopSignIn({ onSkip }: { onSkip: () => void }) {
               {phase.kind === 'starting'
                 ? 'Asking for a code…'
                 : phase.kind === 'waiting'
-                  ? 'Waiting for your phone. The code lasts fifteen minutes.'
+                  ? 'Scan it with your phone.'
                   : phase.kind === 'done'
                     ? 'Opening your sessions.'
                     : `That did not work: ${phase.message}.`}

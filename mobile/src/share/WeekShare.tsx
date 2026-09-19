@@ -72,7 +72,9 @@ export function WeekCard({ week, rows, you }: { week: WeekModel; rows: WeekCardR
       <View style={styles.rows}>
         {rows.map((r) => (
           <View key={r.id} style={styles.row}>
-            <Text numberOfLines={1} style={styles.rowTitle}>
+            {/* Shrinks a little before it cuts: "Shipped changes to four source files" is the
+                engine's own title and lost its last word at 15 points. */}
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={styles.rowTitle}>
               {r.title}
             </Text>
             <Text style={styles.rowTime}>{r.active}</Text>

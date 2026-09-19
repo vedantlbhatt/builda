@@ -298,11 +298,19 @@ export function SessionsScreen() {
   const { card } = useLocalSearchParams<{ card?: string }>();
   const cardShown = useRef(false);
   useEffect(() => {
-    if (card !== 'last-week' || !profile || cardShown.current) return;
+    // The tab stays mounted for the life of the app, so the guard resets once the parameter is
+    // cleared: FOUND ON THE SIMULATOR, a second open of the same route did nothing.
+    if (card !== 'last-week') {
+      cardShown.current = false;
+      return;
+    }
+    if (!profile || cardShown.current) return;
     cardShown.current = true;
     const last = lastWeekOf(profile.graph, Date.now());
     void cache.setKv(WEEK_OFFERED_KEY, last.days[0]!.date).catch(() => undefined);
-    router.setParams({ card: undefined });
+    // An empty value, not undefined: FOUND ON THE SIMULATOR, `setParams({ card: undefined })` left
+    // `last-week` in place, so the same link opened again changed nothing and showed nothing.
+    router.setParams({ card: '' });
     if (last.seconds > 0) void shareWeek(last);
   }, [card, profile, router, shareWeek]);
   const shown = stage >= 1 ? sessions : sessions.slice(0, FIRST_ROWS);

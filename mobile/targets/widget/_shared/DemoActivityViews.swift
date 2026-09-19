@@ -84,7 +84,8 @@ struct DemoDisplay {
     [DemoCopy.wordAsked, DemoCopy.wordFilming, phase == .failed ? DemoCopy.wordNoKit : DemoCopy.wordKitUp]
   }
 
-  /// The line that says where it stands, the in-app island's kicker.
+  /// The sentence for where it stands, the in-app island's kicker: what VoiceOver reads for the
+  /// walk, and the line a quiet Mac gets. Not drawn over the walk, which says the same thing.
   var kicker: String {
     if waitingOnMac {
       // Asked and never picked up is still exactly "waiting"; filming and then silence is not,
@@ -224,6 +225,19 @@ struct DemoAnswerRow: View {
   }
 }
 
+/// Past the stale date with no answer, the one line that is news: "Waiting for your Mac" for a
+/// request nobody picked up, "Not updating since 9:41pm" for one that went quiet while filming.
+@available(iOS 17.0, *)
+struct DemoQuietLine: View {
+  let d: DemoDisplay
+  var body: some View {
+    Text(d.kicker)
+      .font(LiveType.font(13, .semibold))
+      .foregroundStyle(BuilderPalette.textDim)
+      .lineLimit(1)
+  }
+}
+
 // MARK: - Lock Screen
 
 @available(iOS 17.0, *)
@@ -232,14 +246,16 @@ struct DemoLockScreenView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // The light and where it stands, and on the right how long since you asked while the Mac
+      // The light and what this card is, and on the right how long since you asked while the Mac
       // has not finished: a system timer, because a "12m" written into the state froze on the
-      // Lock Screen for as long as the app was away (LiveMarks.swift `ElapsedTimer`).
+      // Lock Screen for as long as the app was away (LiveMarks.swift `ElapsedTimer`). Not the
+      // state's sentence: the walk says where it stands, and the first render said "The kit is
+      // up" over "kit up" a line apart (2026-09-19), the drop card's "3 moves" twice again.
       HStack(alignment: .center, spacing: 8) {
         DemoRecordDot(d: d, size: 8)
-        Text(d.kicker)
+        Text(DemoCopy.label)
           .font(LiveType.font(14, .semibold))
-          .foregroundStyle(d.kickerInk)
+          .foregroundStyle(BuilderPalette.textDim)
           .lineLimit(1)
         Spacer(minLength: 8)
         if !d.answered {
@@ -257,6 +273,9 @@ struct DemoLockScreenView: View {
       if d.answered {
         DemoAnswerRow(d: d)
           .padding(.top, 10)
+      } else if d.waitingOnMac {
+        DemoQuietLine(d: d)
+          .padding(.top, 8)
       }
     }
     .padding(14)
@@ -348,7 +367,7 @@ struct DemoExpandedTrailing: View {
   }
 }
 
-/// Expanded bottom: the project, where it stands, the walk, and Share or why not. Lifted off the
+/// Expanded bottom: the project, the walk, and Share or why not. Lifted off the
 /// bottom and inset, for the clipping `IslandExpandedBottom` records: the system rounds this
 /// region's lower corners and a row sitting low in them loses its first letter.
 @available(iOS 17.0, *)
@@ -361,14 +380,12 @@ struct DemoExpandedBottom: View {
         .foregroundStyle(d.titleInk)
         .lineLimit(1)
         .truncationMode(.middle)
-      Text(d.kicker)
-        .font(LiveType.font(13, .semibold))
-        .foregroundStyle(d.kickerInk)
-        .lineLimit(1)
       DemoWalk(d: d, size: 13)
       if d.answered {
         DemoAnswerRow(d: d)
           .padding(.top, 2)
+      } else if d.waitingOnMac {
+        DemoQuietLine(d: d)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)

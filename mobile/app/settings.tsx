@@ -366,7 +366,7 @@ export default function SettingsScreen() {
           ) : null}
 
           {known && signedIn ? (
-            <Chapter title="Profile" line="The name and handle on your account.">
+            <Chapter title="Profile">
               {me ? (
                 <ProfileFields me={me} onChange={setMe} accent={accent} />
               ) : (
@@ -378,7 +378,7 @@ export default function SettingsScreen() {
           ) : null}
 
           {known ? (
-            <Chapter title="Privacy" line={`What leaves your Mac, and what ${HERE} shows.`}>
+            <Chapter title="Privacy">
               <PrivacySwitches signedIn={signedIn} accent={accent} />
               <View style={styles.promise}>
                 <T role="body">Your prompts, your code, your diffs and your file names stay on your machine.</T>

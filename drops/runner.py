@@ -71,6 +71,27 @@ Check what the source actually is before assuming. If the link turns out to be a
 a skill rather than a skill, say so and install nothing."""
 
 
+def outbound(outcome: str | None) -> str | None:
+    """The one line about a finished move that leaves this Mac, as the server receives it.
+
+    It is shown on the move's card, and it is free text: Claude's own last words about the run, a
+    recipe's host, or why it failed. FOUND IN REVIEW (2026-09-19): it went out as written, so a
+    failure carried the last 200 characters of claude's stderr and a scaffold said "in a new project
+    at /Users/<name>/.builder/drops/projects/...", the account name in every path. The home
+    directory is `~` here, whitespace is one line, and the length is the server's own cap (300).
+    What the run printed in full stays in this terminal (`_say`).
+    """
+    if not outcome:
+        return None
+    home = os.path.expanduser("~")
+    line = " ".join(outcome.replace(home, "~").split())
+    return line[:OUTCOME_MAX] or None
+
+
+#: The server's `FinishMoveRequest.outcome` max_length.
+OUTCOME_MAX = 300
+
+
 class Runner:
     def __init__(self, client: Client, *, model: str = dp.DEFAULT_MODEL, verbose: bool = True):
         self.client = client
@@ -154,12 +175,13 @@ class Runner:
             try:
                 status, outcome, run_uuid = self.run_move(move)
             except Exception as e:  # noqa: BLE001 — a move that blew up is a failed move, not a dead runner
-                outcome = f"{type(e).__name__}: {e}"[:300]
+                self._say(f"    {type(e).__name__}: {e}")
+                outcome = f"the runner stopped with {type(e).__name__}"
+            self._say(f"    {status}: {outcome}")
             self._post(
                 f"/v1/drops/moves/{move['id']}:finish",
-                {"status": status, "outcome": outcome, "run_uuid": run_uuid},
+                {"status": status, "outcome": outbound(outcome), "run_uuid": run_uuid},
             )
-            self._say(f"    {status}: {outcome}")
         return len(moves)
 
     def run_move(self, move: dict) -> tuple[str, str | None, str | None]:
@@ -266,7 +288,10 @@ class Runner:
         except subprocess.TimeoutExpired:
             return "failed", f"the run passed {RUN_TIMEOUT_S // 60} minutes and was stopped", session_id
         if proc.returncode != 0:
-            return "failed", f"claude exit {proc.returncode}: {proc.stderr[-200:]}", session_id
+            # What claude printed stays in this terminal: a stderr tail is whatever the run was
+            # doing, paths and file contents included, and the card only needs to say it failed.
+            self._say(f"    claude stderr: {proc.stderr[-400:]}")
+            return "failed", f"claude stopped with exit code {proc.returncode}", session_id
         try:
             env_out = json.loads(proc.stdout)
         except json.JSONDecodeError:

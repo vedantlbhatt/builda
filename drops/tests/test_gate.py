@@ -197,3 +197,54 @@ class TaskPromptTests(unittest.TestCase):
 
         for kind in ("apply", "scaffold", "evaluate"):
             self.assertNotIn(INSTALL_SURFACES, self.r.task_prompt(move(move_kind=kind)))
+
+
+class OutcomeTests(unittest.TestCase):
+    """The one line about a finished move that leaves the Mac (review, 2026-09-19)."""
+
+    def test_the_home_directory_never_leaves(self):
+        import os
+
+        from drops.runner import outbound
+
+        home = os.path.expanduser("~")
+        line = outbound(f"ran in a new project at {home}/.builder/drops/projects/menu-bar-app")
+        self.assertEqual(line, "ran in a new project at ~/.builder/drops/projects/menu-bar-app")
+        self.assertNotIn(home, line)
+
+    def test_one_line_within_the_servers_cap(self):
+        import pathlib
+        import re
+
+        from drops.runner import OUTCOME_MAX, outbound
+
+        route = pathlib.Path(__file__).resolve().parents[2] / "server/builder/routes/drops.py"
+        cap = re.search(r"outcome: str \| None = Field\(default=None, max_length=(\d+)\)", route.read_text())
+        self.assertIsNotNone(cap, "the finish route's outcome field moved")
+        self.assertEqual(OUTCOME_MAX, int(cap.group(1)))
+        line = outbound("Added the parser.\n\n  Tests pass.\t" + "x" * 400)
+        self.assertTrue(line.startswith("Added the parser. Tests pass. x"))
+        self.assertEqual(len(line), OUTCOME_MAX)
+        self.assertIsNone(outbound(None))
+        self.assertIsNone(outbound("  \n "))
+
+    def test_a_failed_run_says_it_failed_and_keeps_stderr_here(self):
+        import subprocess
+        from unittest import mock
+
+        from capture.client import Client
+
+        from drops import runner
+
+        said: list[str] = []
+        r = runner.Runner(Client("http://127.0.0.1:1"), verbose=False)
+        r._say = said.append
+        failed = subprocess.CompletedProcess([], 1, stdout="", stderr="Error reading /Users/someone/.env: KEY=abc")
+        with (
+            mock.patch.object(runner.shutil, "which", return_value="/usr/bin/claude"),
+            mock.patch.object(runner.subprocess, "run", return_value=failed),
+            mock.patch.object(runner.ws, "scratch", return_value="/tmp"),
+        ):
+            status, outcome, _run = r._run_claude(move(target="this_machine", drop_id="d1"))
+        self.assertEqual((status, outcome), ("failed", "claude stopped with exit code 1"))
+        self.assertTrue(any("KEY=abc" in line for line in said))

@@ -144,3 +144,10 @@ Three walls:
 And the smaller one that is easy to miss: a shared URL goes to the server before anything has
 looked at it, so the URL itself is validated at the door (scheme, host allowlist, length) and
 stored as text, never fetched by the server.
+
+What comes BACK from a run is one line, the move's `outcome`, shown on its card: Claude's own last
+words about the run, a recipe's host, or why it failed. It is free text from your machine, so it
+goes out through `drops/runner.outbound`: one line, the server's 300 character cap, and your home
+directory written `~`, because the first version sent `/Users/<name>/...` in every scaffold's line
+and the last 200 characters of claude's stderr in every failure. The stderr stays in the terminal
+running `drops watch`. Excluding a repository clears the outcome of every move that ran in it.

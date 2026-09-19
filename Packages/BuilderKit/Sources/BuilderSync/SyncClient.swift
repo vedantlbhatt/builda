@@ -156,6 +156,48 @@ public actor SyncClient {
         return BatchResult(accepted: accepted, unchanged: unchanged, rejected: rejected)
     }
 
+    // MARK: - Drops
+
+    /// `POST /v1/drops`: a link onto the board, exactly as the phone's share sheet sends one
+    /// (`mobile/src/data/api.ts` shareDrop). Idempotent on the link server side: the same
+    /// reel twice is one card. The body is the route's whole model (`DropIn`, extra="forbid").
+    public func shareDrop(url: String, platform: String, sharedText: String?) async throws -> DropState {
+        struct Body: Encodable {
+            let url: String
+            let platform: String
+            let shared_text: String?
+        }
+        let r: DropEnvelope = try await post(
+            "/v1/drops", body: Body(url: url, platform: platform, shared_text: sharedText))
+        return r.state
+    }
+
+    /// `GET /v1/drops/{id}`: where a drop is, and how many moves it offers once planned.
+    public func drop(id: String) async throws -> DropState {
+        let r: DropEnvelope = try await get("/v1/drops/\(id)")
+        return r.state
+    }
+
+    private struct DropEnvelope: Decodable {
+        struct Row: Decodable {
+            let id: String
+            let status: String
+            let refusal: String?
+        }
+        struct Move: Decodable {
+            let id: String
+        }
+        let drop: Row
+        let moves: [Move]?
+
+        var state: DropState {
+            DropState(
+                id: drop.id, status: drop.status,
+                moves: drop.status == "planned" ? (moves?.count ?? nil) : nil,
+                refusal: drop.refusal)
+        }
+    }
+
     // MARK: - Transport
 
     private func post<B: Encodable, R: Decodable>(

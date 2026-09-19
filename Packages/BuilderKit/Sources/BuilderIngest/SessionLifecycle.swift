@@ -225,11 +225,17 @@ public final class SessionLifecycle {
 
     /// The session currently in progress, if any.
     public func openSession(among sessions: [DetectedSession]) throws -> DetectedSession? {
+        try openSessions(among: sessions).first
+    }
+
+    /// Every session in progress, the most recently active first. The menu bar shows the
+    /// first; the notch island shows them all, because several at once is its whole job.
+    public func openSessions(among sessions: [DetectedSession]) throws -> [DetectedSession] {
         var openIDs = Set<String>()
         try db.query("SELECT client_session_id FROM session_lifecycle WHERE state IN ('open','idle')") { s in
             if let id = s.text(0) { openIDs.insert(id) }
         }
         return sessions.filter { openIDs.contains($0.clientSessionID) }
-            .max { $0.endedAt < $1.endedAt }
+            .sorted { $0.endedAt > $1.endedAt }
     }
 }

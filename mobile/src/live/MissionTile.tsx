@@ -65,7 +65,6 @@ import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
 import { Aura, Face, stateColor, Wash } from '../motion';
 import { morphOpen } from '../motion/MorphNav';
-import { springAt } from '../motion/spec';
 import { FACE_FOR_TILE } from '../island/feeds';
 import { fitWords, stateLayout, STATE_GAP, tileMeasures, VARIANT, type TileVariant, type VariantSpec } from './fit';
 import { elapsedLabel, landedCommits, landedParts, TILE_MAX_SCALE, type TileModel, type TileVerdict } from './mission';
@@ -117,36 +116,11 @@ function inksFor(hue: Hue, stale: boolean): Inks {
 // ------------------------------------------------------------------ the print
 
 /**
- * A block arriving: the ground covers it and draws back UP from its foot on the island spring,
- * so the fill grows down from the top the way every band does now (`insights/Band.tsx`). It used
- * to PRINT, cell by cell in a random order through a shader, which was the same half second of
- * pixels as every band on nine screens (docs/motion.md, the pixel diet).
+ * How long a block takes to arrive, for callers timing their words after it. The block used to
+ * PRINT cell by cell and then to be uncovered by a mask drawing up; neither is on any screen now
+ * (docs/motion.md, the pixel diet), and the words keep the same beat.
  */
-/** Kept for callers timing their words after the block has arrived. */
 export const PRINT_MS = 440;
-
-export function PrintMask({ width, height, delay, ground = GROUND.bg }: { width: number; height: number; delay: number; ground?: string }) {
-  const clock = useClock();
-  const reduced = useReducedSV();
-  const [done, setDone] = useState(false);
-  const cover = useAnimatedStyle(() => {
-    const p = reduced.value ? 1 : Math.max(0, springAt(clock.value - delay));
-    // Overshoot past 1 would uncover nothing more; clamp so the cover never grows back.
-    return { height: height * (1 - Math.min(1, p)) };
-  });
-  useAnimatedReaction(
-    () => clock.value >= delay + PRINT_MS,
-    (over, was) => {
-      if (over && !was) runOnJS(setDone)(true);
-    },
-  );
-  if (done || width <= 0 || height <= 0) return null;
-  return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.clip]}>
-      <Animated.View style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: ground }, cover]} />
-    </View>
-  );
-}
 
 /** Words on a printed block fade up once its cells have landed (`insights/Band.BandWords`). */
 export function Arrive({ delay, children, style }: { delay: number; children: ReactNode; style?: StyleProp<ViewStyle> }) {

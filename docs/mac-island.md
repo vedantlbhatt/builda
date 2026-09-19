@@ -142,7 +142,7 @@ drop target makes. The request itself is held to the server's contract by `DropC
 | `scripts/island_demo.sh OUT [SECONDS] [--edge]` | the demo cycle filmed from inside the app: `OUT/island.mp4` and a still per mode |
 | `BUILDER_ISLAND_DEMO=1` | cycle every mode on fixtures; the store is not opened |
 | `BUILDER_ISLAND_DEMO_HOLD=<step>` | hold one step, to measure what it costs |
-| `BUILDER_ISLAND_RECORD=<dir>` | film the top of the screen, demo or live |
+| `BUILDER_ISLAND_RECORD=<dir>` | film the top of the screen, demo or live (`BUILDER_ISLAND_RECORD_AFTER_PASS=1` waits for the first pass) |
 | `BUILDER_ISLAND_EDGE=1` | a hairline round the black shape, for recordings on a black menu bar |
 | `BUILDER_POPOVER_SHOT=<png>` | open the popover after the first pass and photograph it |
 | `BUILDER_STORE_DIR=<dir>` | run against a copy of the store; also keeps off the Keychain and notifications |

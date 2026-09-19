@@ -95,9 +95,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     /// `BUILDER_ISLAND_RECORD=<dir>`: film the top of the screen around the island
-    /// (IslandRecorder), in the demo or on live data.
-    private func recordIfAsked(_ env: [String: String]) {
+    /// (IslandRecorder), in the demo or on live data. With `BUILDER_ISLAND_RECORD_AFTER_PASS=1`
+    /// filming starts when the first pass lands, which on a busy machine is a minute or more.
+    private func recordIfAsked(_ env: [String: String], afterPass: Bool = false) {
         guard let dir = env["BUILDER_ISLAND_RECORD"] else { return }
+        guard (env["BUILDER_ISLAND_RECORD_AFTER_PASS"] == "1") == afterPass else { return }
         if env["BUILDER_ISLAND_DEMO"] == "1" { island.start() }
         guard let p = island.placement ?? NotchPlacement.current() else { return }
         // The top of the screen around the notch, in CG's top-left coordinates.
@@ -158,9 +160,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 NSLog("builder: status summary = %@", summary)
                 self?.statusItem.button?.title = summary.isEmpty ? "" : " \(summary)"
                 self?.shootPopoverIfAsked()
+                if self?.firstPassSeen == false {
+                    self?.firstPassSeen = true
+                    self?.recordIfAsked(ProcessInfo.processInfo.environment, afterPass: true)
+                }
             }
         }
     }
+
+    private var firstPassSeen = false
 
     /// `BUILDER_POPOVER_SHOT=<file.png>`: after the first pass, open the popover and save a
     /// picture of it, the app photographing its own window (IslandRecorder says why it has to).

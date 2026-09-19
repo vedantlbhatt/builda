@@ -14,7 +14,7 @@
  */
 import { Canvas, createPicture, PaintStyle, Picture, Skia, StrokeCap, type SkCanvas } from '@shopify/react-native-skia';
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import Animated, { useDerivedValue } from 'react-native-reanimated';
 
 import { ease, phase, spring } from '../insights/motion';

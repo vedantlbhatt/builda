@@ -26,20 +26,20 @@
 import { useIsFocused } from '@react-navigation/native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
-import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
+import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from 'react-native-reanimated';
 
 import type { SessionDetail } from '../data/api';
 import { useRepoNames } from '../data/repoNames';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
-import { Band, BandWords, FRINGE } from '../insights/Band';
+import { Band, BandWords } from '../insights/Band';
 import { CreaturePrint } from '../insights/Creature';
 import { fitSize } from '../insights/format';
 import { figure, GUTTER, Refusal, type as kitType } from '../insights/kit';
 import { GROUND, ON_HUE, type Hue as BandHue } from '../insights/palette';
-import { Block, RevealPage, Section, useClock, usePageReveal } from '../insights/reveal';
+import { Block, RevealPage, Section, usePageReveal } from '../insights/reveal';
 import { useRevealScroll } from '../insights/RevealScroll';
 import { ANIMAL_KEY } from '../onboarding/keys';
 import { resolveAnimal, type Animal } from '../pixel/animals';
@@ -47,9 +47,7 @@ import { PixelSprite } from '../pixel/PixelSprite';
 import { dayLabel, layout } from '../theme';
 import { useAccent, type AccentState } from '../theme/accent';
 import { T, useReduceMotion } from '../ui';
-import { Radar } from '../ui/bits/backgrounds';
 import { AnimatedList } from '../ui/bits/components/AnimatedList';
-import { SplitText } from '../ui/bits/text';
 import { staleLine } from '../you/load';
 import {
   EMPTY_HOLD,
@@ -73,7 +71,6 @@ import {
   type HeldOrder,
   type MissionInputs,
   type SampleKind,
-  type SummaryHead,
   type TileModel,
 } from './mission';
 import { crewFor, crewHashed } from './crew';
@@ -367,18 +364,6 @@ function bandHue(a: AccentState): BandHue {
   return { ink: a.ink, partner: a.partner, light: a.light };
 }
 
-/** Plays `children(true)` once the block this sits in has run `at` ms of its clock. */
-function WhenClock({ at, children }: { at: number; children: (play: boolean) => ReactNode }) {
-  const clock = useClock();
-  const [play, setPlay] = useState(false);
-  useAnimatedReaction(
-    () => clock.value >= at,
-    (now, was) => {
-      if (now && !was) runOnJS(setPlay)(true);
-    },
-  );
-  return <>{children(play)}</>;
-}
 
 const noop = () => undefined;
 
@@ -407,15 +392,8 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
   const page = usePageReveal(reduce);
   const { scrollRef, onScroll, onLayout: onRevealLayout } = useRevealScroll(page, noop);
   const { width, fontScale } = useWindowDimensions();
-  const [viewportH, setViewportH] = useState(0);
-  const onLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      onRevealLayout(e);
-      const h = e.nativeEvent.layout.height;
-      setViewportH((v) => (Math.abs(v - h) < 1 ? v : h));
-    },
-    [onRevealLayout],
-  );
+  // The empty band measured the viewport to fill it; the stage that replaced it does not.
+  const onLayout = useCallback((e: LayoutChangeEvent) => onRevealLayout(e), [onRevealLayout]);
 
   const rows = useMemo(
     () => (data.live === null ? null : visibleRows(data.live, data.finals, data.seen, now)),
@@ -455,7 +433,6 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
 
   const signedIn = data.inputs.signedIn;
   const ready = screen.kind === 'ready';
-  const hue = useMemo(() => bandHue(accent), [accent]);
   const halfMin = tileHeight(fontScale);
 
   return (
@@ -607,64 +584,7 @@ function memberOf(m: TileModel, animal: Animal, nowMs: number): CrewMember {
   };
 }
 
-// ------------------------------------------------------------------ the summary band
-
-/**
- * "1 needs you", or "3 running": the one number that matters, counted up from 0, the word beside
- * it at the same size, one idea a line under it, and the running crew printed along the band's
- * foot in mission order. On the Now tab the band is a doorway into `/live` (its title carries
- * the arrow and the whole band is the tap target, the house's navigation); on `/live` it is the
- * chapter's opening.
- */
-const SummaryBand = React.memo(SummaryBandImpl, (a, b) =>
-  a.head.label === b.head.label &&
-  a.hue === b.hue &&
-  a.creatures.join() === b.creatures.join() &&
-  a.width === b.width &&
-  a.title === b.title &&
-  a.onPress === b.onPress,
-);
-
-function SummaryBandImpl({
-  head,
-  hue,
-  creatures,
-  width,
-  title,
-  onPress,
-}: {
-  head: SummaryHead;
-  hue: BandHue;
-  creatures: readonly Animal[];
-  width: number;
-  title: string;
-  onPress?: () => void;
-}) {
-  const inner = width - GUTTER * 2;
-  const line = `${head.figure} ${head.word}`;
-  const size = fitSize(line, inner, 64, 34);
-  const big = figure(size, ON_HUE);
-  return (
-    <Section>
-      <Band hue={hue} title={title} onPress={onPress} accessibilityLabel={onPress ? `${head.label}. Opens mission control` : head.label}>
-        <BandWords delay={240}>
-          <View style={styles.headline} accessible accessibilityLabel={`${head.figure} ${head.word}`}>
-            <LiveNum value={head.figure} final={String(head.figure)} figure={{ kind: 'count' }} textStyle={big} delay={300} />
-            <T allowFontScaling={false} style={big}>{` ${head.word}`}</T>
-          </View>
-        </BandWords>
-        {head.lines.map((l, i) => (
-          <BandWords key={l} delay={340 + i * 60}>
-            <T maxFontSizeMultiplier={1.3} style={i === 0 ? kitType.bandCaption : kitType.bandNote}>
-              {l}
-            </T>
-          </BandWords>
-        ))}
-        <CrewRow creatures={creatures} delay={420} />
-      </Band>
-    </Section>
-  );
-}
+// ------------------------------------------------------------------ small parts
 
 /** The crew, printed along a band's foot in order: one creature per session, in the dark ink. */
 function CrewRow({ creatures, delay }: { creatures: readonly Animal[]; delay: number }) {
@@ -679,92 +599,7 @@ function CrewRow({ creatures, delay }: { creatures: readonly Animal[]; delay: nu
   );
 }
 
-// ------------------------------------------------------------------ the empty state
 
-/**
- * Nothing needs you: the reward. The whole screen is the builder's band; Bit asleep on it; the
- * line set huge and arriving a word at a time once the band has printed (react-bits SplitText);
- * "Go do something else." under it; and at the foot, the session that finished last, as one line
- * that opens it. Still under Reduce Motion: the band at rest, the words at rest, Bit asleep.
- */
-const EmptyBand = React.memo(EmptyBandImpl);
-
-function EmptyBandImpl({
-  hue,
-  viewportH,
-  stale,
-  last,
-  onOpen,
-  width,
-}: {
-  hue: BandHue;
-  viewportH: number;
-  stale: string | null;
-  last: SessionDetail | null;
-  onOpen: (id: string) => void;
-  width: number;
-}) {
-  const inner = width - GUTTER * 2;
-  const size = fitSize('needs you.', inner, 60, 40);
-  // The band fills what the scroll view shows: its padding, its title and the dissolve under it
-  // come off the viewport's height.
-  const fill = Math.max(420, viewportH - FRINGE - 44 - 30);
-  const names = useRepoNames();
-  const lastLine = last ? lastFinishedLine(last, (iso) => dayLabel(iso), names) : null;
-  return (
-    <Section>
-      <Band hue={hue} title="All quiet">
-        <View style={[styles.empty, { minHeight: fill }]}>
-          <BandWords delay={200}>
-            <PixelSprite state="sleeping" size={96} tone="selected" />
-          </BandWords>
-          <WhenClock at={280}>
-            {(play) => (
-              <SplitText
-                text="Nothing needs you."
-                by="words"
-                play={play}
-                color={ON_HUE}
-                textStyle={{ fontSize: size, lineHeight: Math.round(size * 1.04), fontWeight: '800', letterSpacing: -Math.round(size * 0.035 * 10) / 10 }}
-                accessibilityRole="header"
-                style={styles.emptyHead}
-              />
-            )}
-          </WhenClock>
-          <BandWords delay={620}>
-            <T maxFontSizeMultiplier={1.3} style={inked(22, '700', ON_HUE, 27)}>
-              Go do something else.
-            </T>
-          </BandWords>
-          <View style={styles.spacer} />
-          {stale ? (
-            <BandWords delay={700}>
-              <Refusal onHue>{stale}</Refusal>
-            </BandWords>
-          ) : null}
-          {last && lastLine ? (
-            <BandWords delay={760}>
-              <Pressable
-                onPress={() => onOpen(last.id)}
-                accessibilityRole="link"
-                accessibilityLabel={`${lastLine}. Opens the session`}
-                hitSlop={8}
-                style={({ pressed }) => [styles.lastLine, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-              >
-                <T maxFontSizeMultiplier={1.4} style={[kitType.bandNote, styles.shrink]}>
-                  {lastLine}
-                </T>
-                <SymbolView name="arrow.right" tintColor={ON_HUE} weight="bold" size={14} style={styles.arrow} />
-              </Pressable>
-            </BandWords>
-          ) : null}
-        </View>
-      </Band>
-    </Section>
-  );
-}
-
-// ------------------------------------------------------------------ small parts
 
 /** Navigation as words: a line of text in the accent with an arrow after it (the house style). */
 function WordLink({ label, color, onPress }: { label: string; color: string; onPress: () => void }) {

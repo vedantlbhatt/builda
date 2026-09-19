@@ -1079,7 +1079,10 @@ describe('mission control builds from the kit', () => {
     expect(literals.filter((l) => hasDash(l.replace(/\$\{[^}]*\}/g, '')))).toEqual([]);
     // Not a scan of nothing: the copy is in there.
     expect(literals.some((l) => l.includes('Checking what is running.'))).toBe(true);
-    expect(literals.some((l) => l.includes('Go do something else.'))).toBe(true);
+    // The empty state's words moved to the island stage with the band they were in.
+    const stage = readFileSync(join(import.meta.dir, '..', 'src/live/IslandStage.tsx'), 'utf8');
+    expect(stage).toContain('Go do something else.');
+    expect(hasDash((stage.match(/'[^'\n]*'|`[^`\n]*`/g) ?? []).join(' ').replace(/\$\{[^}]*\}/g, ''))).toBe(false);
     expect(literals.some((l) => l.includes('not updating'))).toBe(true);
   });
 

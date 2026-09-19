@@ -38,6 +38,7 @@ import type { SessionDetail } from '../data/api';
 import { useRepoNames } from '../data/repoNames';
 import { describeEnd } from '../analysis/format';
 import { AnalysisView } from '../analysis/AnalysisView';
+import { FromYourDrops } from '../drops/wall/FromYourDrops';
 import { DiffBar } from '../insights/Bars';
 import { figure, GUTTER, Kicker, Refusal, type, Words } from '../insights/kit';
 import { COUNT_MS } from '../insights/motion';
@@ -174,6 +175,9 @@ export function SessionPage(props: SessionPageProps) {
               </Section>
             )
           ) : null}
+
+          {/* Reels you saved about what this session did (`drops/context.ts`). Nothing when none. */}
+          {stage >= 4 && s.analysis ? <FromYourDrops analysis={s.analysis} /> : null}
 
           {stage >= 5 ? (
             <ShareChapter

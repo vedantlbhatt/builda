@@ -37,6 +37,19 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **09:45, the owner's feedback, and what changed (to 10:15).** Their words: the island work is
+  horrible, no one wants agent status in it, take it all away, write stats ideas down but do not
+  build them; no glows; no accent buttons with black text; no big, small, grey text pattern; far
+  less text; do not change the font; use React Bits; they never saw the Mac app. Done: the in-app
+  island, the Now stage, the reel and demo cards and the desktop island window are out, the
+  session Live Activity is off by default (38b5e0c and after); `docs/island-ideas.md` has seven
+  stats ideas, unbuilt; auras and the face glow are gone, primary buttons are the raised surface
+  with the text colour; Drops' "Pick a move" is a React Bits Stack of the reels' posters with one
+  line and two buttons, and the cards lost their kind words, quotes and grey notes; the Mac app
+  was rebuilt and copied to /Applications/Builda.app; the report is rewritten short. Still true:
+  the Mac notch app (`build/Builder.app`) keeps its island, pending the owner's word.
+  Memory: `builda-island-direction`, and `ui-no-ai-slop` carries the new bans.
+
 - **09:05 to 09:21**: two more review agents, on the server and on Drops and the ship kit.
   Server (8b8ff49, 1155168, 02690ca, `server/tests/test_review_fixes.py`): a paired Mac could write
   a move and start it itself, so only a person's app (phone or desktop) starts a move, asks for a
@@ -241,8 +254,9 @@ keep the URL; from a new conversation pass the URL.
   `design/tokens.json` `spectrum.island`.
 - The brief and the design (`brief-motion.md`, `docs/motion.md`).
 
-## Next (for the owner, as of 09:21)
+## Next (for the owner, as of 10:15)
 
+0. Say whether the Mac notch island goes too, and which island idea (if any) to build.
 1. Merge `claude/motion`: `main` has been red since 2026-09-14 and turns green only with 31a1131
    and 7423fcd. Every job is green on this branch.
 2. Decide on a server push for Monday's week card (`docs/made-for-you.md`, "Not built"): the phone

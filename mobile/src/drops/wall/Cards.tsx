@@ -22,7 +22,8 @@ import { PressableScale } from '../../ui/PressableScale';
 import { commit, select } from '../../ui/haptics';
 import { EFFORT_WORD, KIND_WORD, MOVE_TARGET_WORD, MOVE_VERB } from '../copy';
 import type { MoveRow } from '../types';
-import { runningFor, startsFromPoster, type WallDrop } from './model';
+import { pairActions, pickActions, runningFor, startsFromPoster, type CardAction } from './model';
+import type { WallDrop } from './model';
 import { Poster } from './Poster';
 
 const S = tokens.surface;
@@ -51,8 +52,24 @@ export function PickCard({
   const more = w.moves.filter((m) => m.status === 'offered').length - 1;
   const lead = w.lead;
   const direct = startsFromPoster(lead);
+  const go = () => {
+    if (!lead) return;
+    if (direct) {
+      commit();
+      onStart(lead);
+    } else {
+      select();
+      onOpen();
+    }
+  };
   return (
-    <PressableScale style={styles.pickPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}>
+    <PressableScale
+      style={styles.pickPress}
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}
+      {...voiceOver(pickActions(lead), onOpen, { start: go })}
+    >
       <View style={[styles.card, { width }]}>
         <Poster drop={w.drop} width={posterW} frameRef={posterRef} />
         <View style={styles.body}>
@@ -78,15 +95,7 @@ export function PickCard({
                 <Pressable
                   accessibilityRole="button"
                   hitSlop={6}
-                  onPress={() => {
-                    if (direct) {
-                      commit();
-                      onStart(lead);
-                    } else {
-                      select();
-                      onOpen();
-                    }
-                  }}
+                  onPress={go}
                   style={({ pressed }) => [styles.go, pressed && { backgroundColor: S.accentPressed.dark }]}
                 >
                   <Text style={styles.goText}>{direct ? MOVE_VERB[lead.move_kind] : 'Choose a repo'}</Text>
@@ -166,8 +175,19 @@ export function PairCard({
   // one out, filling in a card or keeping the reel leave nothing a demo could show.
   const filmable = m.session_id !== null && (m.move_kind === 'scaffold' || m.move_kind === 'apply');
   const posterW = Math.round(width * 0.3);
+  const actions = pairActions({ session: m.session_id !== null, film: Boolean(onFilm && filmable), share: Boolean(onShare) });
   return (
-    <PressableScale style={styles.pairPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}>
+    <PressableScale
+      style={styles.pairPress}
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}
+      {...voiceOver(actions, onOpen, {
+        session: () => m.session_id && onSession(m.session_id),
+        film: () => m.session_id && onFilm?.(m.session_id),
+        share: () => onShare?.(),
+      })}
+    >
       <View style={[styles.pair, { width }]}>
         <View>
           <Poster drop={w.drop} width={posterW} foot="Seen" frameRef={posterRef} />
@@ -232,6 +252,21 @@ export function PairCard({
       </View>
     </PressableScale>
   );
+}
+
+/**
+ * The card's buttons as its VoiceOver actions (`model.ts` pickActions). `activate`, the double tap,
+ * is handled here too, so it opens the drop rather than tapping whatever sits at the card's centre.
+ */
+function voiceOver(actions: CardAction[], open: () => void, run: Partial<Record<CardAction['name'], () => unknown>>) {
+  return {
+    accessibilityActions: [{ name: 'activate' }, ...actions],
+    onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
+      const name = e.nativeEvent.actionName;
+      if (name === 'activate') open();
+      else run[name as CardAction['name']]?.();
+    },
+  };
 }
 
 const styles = StyleSheet.create({

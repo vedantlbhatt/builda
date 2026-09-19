@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import { undash } from '../src/copy/plain';
-import { bandOf, factsLine, factsOf, posterWords, runningFor, startsFromPoster, wallLine, wallOf } from '../src/drops/wall/model';
+import { bandOf, factsLine, factsOf, pairActions, pickActions, posterWords, runningFor, startsFromPoster, wallLine, wallOf } from '../src/drops/wall/model';
+import { MOVE_VERB } from '../src/drops/copy';
 import type { DropRow, MoveRow } from '../src/drops/types';
 
 function drop(id: string, over: Partial<DropRow> = {}): DropRow {
@@ -96,6 +97,17 @@ describe('the wall reads a drop\'s life, not its topic', () => {
     expect(startsFromPoster(move('a', '1', { target: 'existing_repo', move_kind: 'apply' }))).toBe(false);
     expect(startsFromPoster(move('a', '1', { move_kind: 'keep', target: 'none' }))).toBe(false);
     expect(startsFromPoster(null)).toBe(false);
+  });
+
+  test('VoiceOver reaches every button on a card as one of its actions, named as the button is', () => {
+    expect(pickActions(move('a', '1', { title: 'The app' }))).toEqual([{ name: 'start', label: `${MOVE_VERB.scaffold}: The app` }]);
+    expect(pickActions(move('a', '1', { target: 'existing_repo', move_kind: 'apply' }))).toEqual([{ name: 'start', label: 'Choose a repo' }]);
+    expect(pickActions(null)).toEqual([]);
+    expect(pairActions({ session: true, film: true, share: true }).map((a) => a.name)).toEqual(['session', 'film', 'share']);
+    expect(pairActions({ session: false, film: false, share: true })).toEqual([{ name: 'share', label: 'Share what you made of it' }]);
+    // Never 'activate': the card handles its own double tap.
+    const every = [...pickActions(move('a', '1')), ...pairActions({ session: true, film: true, share: true })];
+    expect(every.some((a) => (a.name as string) === 'activate')).toBe(false);
   });
 
   test('a poster with no picture says the post\'s words, or its host', () => {

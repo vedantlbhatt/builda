@@ -17,6 +17,7 @@
  * A drop sits in exactly one band: the first of these it qualifies for.
  */
 import type { SessionDetail } from '../../data/api';
+import { MOVE_VERB } from '../copy';
 import type { DropRow, MoveRow } from '../types';
 
 export type Band = 'building' | 'pick' | 'built' | 'reading' | 'kept';
@@ -109,6 +110,31 @@ export function wallLine(c: Wall['counts']): string {
 export function startsFromPoster(m: MoveRow | null): boolean {
   if (!m) return false;
   return m.target !== 'existing_repo' && m.move_kind !== 'keep';
+}
+
+/** A button inside a card, offered to VoiceOver as one of the card's actions. */
+export interface CardAction {
+  name: 'start' | 'session' | 'film' | 'share';
+  label: string;
+}
+
+/**
+ * A card is ONE element to VoiceOver, so a screen of them is not five stops a card, and the buttons
+ * inside it are its actions (swipe up or down, then double tap). FOUND IN REVIEW (2026-09-19): the
+ * card's own label swallowed its children, and a VoiceOver user could open a drop but never start
+ * its move, open the session, film it or share it from the wall.
+ */
+export function pickActions(lead: MoveRow | null): CardAction[] {
+  if (!lead) return [];
+  return [{ name: 'start', label: startsFromPoster(lead) ? `${MOVE_VERB[lead.move_kind]}: ${lead.title}` : 'Choose a repo' }];
+}
+
+export function pairActions(has: { session: boolean; film: boolean; share: boolean }): CardAction[] {
+  const out: CardAction[] = [];
+  if (has.session) out.push({ name: 'session', label: 'Open the session' });
+  if (has.film) out.push({ name: 'film', label: 'Film it for sharing' });
+  if (has.share) out.push({ name: 'share', label: 'Share what you made of it' });
+  return out;
 }
 
 /**

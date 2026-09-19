@@ -288,25 +288,7 @@ export function DropSheet({ drop, moves, onStart, onArchive, onClose }: DropShee
               </View>
             ) : null}
 
-            {/* The method's control, pinned. `paddingBottom` on the scroller above leaves it room. */}
-          {recipe && tab === 'recipe' && steps.length > 1 ? (
-            <StepBar bottom={insets.bottom}>
-              <StepPager
-                count={steps.length}
-                step={step}
-                ink={ink}
-                onStep={(next) => {
-                  setStep(next);
-                  // Full height, and that step at the top of the scroller. You asked for the next
-                  // instruction; the next instruction is what should be on the screen.
-                  top.value = withSpring(tallTop, { damping: 20, stiffness: 180 });
-                  scroller.current?.scrollTo({ y: Math.max(0, stageY.current - 12), animated: true });
-                }}
-              />
-            </StepBar>
-          ) : null}
-
-          {armed.length && (!recipe || tab === 'do') ? (
+            {armed.length && (!recipe || tab === 'do') ? (
               <Animated.View entering={FadeIn.duration(150)} style={styles.say}>
                 {saying ? (
                   <TextField

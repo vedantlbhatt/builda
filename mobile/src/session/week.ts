@@ -48,6 +48,11 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** "1 hour", "7.2 hours": the noun agrees with the number as PRINTED ("1" is one hour, "1.1" is not). */
+function hoursWord(printed: string): string {
+  return printed === '1' ? 'hour' : 'hours';
+}
+
 /** The week `now` falls in, Monday first, on the Builda clock, with the graph's seconds per day. */
 export function weekOf(graph: readonly { date: string; active_seconds: number }[], now: number): WeekModel {
   const day = new Date(now - DAY_BOUNDARY_HOUR * 3_600_000);
@@ -92,7 +97,7 @@ export function weekFigure(w: WeekModel): WeekFigure | null {
     return { num: numSpec(w.seconds, duration(w.seconds), { kind: 'duration' }), caption: which, note };
   }
   const h = w.seconds / 3600;
-  return { num: numSpec(h, n(h)), caption: `hours ${which}`, note };
+  return { num: numSpec(h, n(h)), caption: `${hoursWord(n(h))} ${which}`, note };
 }
 
 /** The week before the one `now` is in: all seven days over, none of them today. */
@@ -139,7 +144,7 @@ export function sameDaysLastWeek(graph: readonly { date: string; active_seconds:
   const seconds = last.days.slice(0, row + 1).reduce((s, d) => s + d.seconds, 0);
   if (seconds <= 0) return null;
   // A no-break space: on an iPhone SE the line wrapped as "...: 13.7" / "hours".
-  const amount = seconds < 3600 ? duration(seconds) : `${n(seconds / 3600)}\u00a0hours`;
+  const amount = seconds < 3600 ? duration(seconds) : `${n(seconds / 3600)}\u00a0${hoursWord(n(seconds / 3600))}`;
   return row === 6 ? `Last week: ${amount}` : `Same days last week: ${amount}`;
 }
 
@@ -159,7 +164,7 @@ export function weekToOffer(graph: readonly { date: string; active_seconds: numb
 export function weekOfferLine(w: WeekModel): string {
   const f = weekFigure(w);
   if (!f) return '';
-  const amount = f.caption.startsWith('hours') ? `${f.num.final} hours` : f.num.final;
+  const amount = f.caption.startsWith('hour') ? `${f.num.final} ${hoursWord(f.num.final)}` : f.num.final;
   return `Last week's card is made: ${amount}. ${TAP} to see it.`;
 }
 

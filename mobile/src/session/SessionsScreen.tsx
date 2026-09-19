@@ -48,6 +48,7 @@ import { TRACK_HEIGHT } from '../strip/layout';
 import { StripDraw, stripDoneAt, useOwnClock } from '../strip/StripDraw';
 import { useAccent } from '../theme/accent';
 import { WordLink } from '../nav/chrome';
+import { markWeekOffered } from '../share/weekOffer';
 import { showWeekShare } from '../share/WeekShare';
 import { AnimatedList } from '../ui/bits/components';
 import { useReduceMotion } from '../ui/motion';
@@ -56,7 +57,7 @@ import { extendReach, LIST_MAX, LIST_PAGE, listEnd, mergeReach, reachOfPage, sen
 import { rowOf } from './page';
 import { Door } from './parts';
 import { ROW_FIGURE } from './type';
-import { lastWeekOf, lastWeekShown, QUIET_WEEK, sameDaysLastWeek, WEEK_OFFERED_KEY, weekFigure, weekOf, weekRows, type WeekModel } from './week';
+import { lastWeekOf, lastWeekShown, QUIET_WEEK, sameDaysLastWeek, weekFigure, weekOf, weekRows, type WeekModel } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
 import { HERE, TRY_AGAIN } from '../copy/device';
 
@@ -304,14 +305,30 @@ export function SessionsScreen() {
       cardShown.current = false;
       return;
     }
-    if (!profile || cardShown.current) return;
+    if (cardShown.current) return;
     cardShown.current = true;
-    const last = lastWeekOf(profile.graph, Date.now());
-    void cache.setKv(WEEK_OFFERED_KEY, last.days[0]!.date).catch(() => undefined);
+    const now = Date.now();
+    // Counted as offered at the tap, before anything loads, so the island says nothing beside it.
+    markWeekOffered(lastWeekOf([], now).days[0]!.date);
     // An empty value, not undefined: FOUND ON THE SIMULATOR, `setParams({ card: undefined })` left
     // `last-week` in place, so the same link opened again changed nothing and showed nothing.
     router.setParams({ card: '' });
-    if (last.seconds > 0) void shareWeek(last);
+    // The week from a fresh profile, not the one this tab kept from an earlier visit: FOUND IN REVIEW,
+    // a card opened on Monday from Saturday's profile left Sunday out and disagreed with the band.
+    void (async () => {
+      let graph = profile?.graph ?? null;
+      try {
+        const fresh = await api.profile();
+        await cache.putProfile(fresh);
+        setProfile(fresh);
+        graph = fresh.graph;
+      } catch {
+        // Offline: the saved profile's week, which is the best this phone has.
+      }
+      if (!graph) return;
+      const last = lastWeekOf(graph, now);
+      if (last.seconds > 0) await shareWeek(last);
+    })();
   }, [card, profile, router, shareWeek]);
   const shown = stage >= 1 ? sessions : sessions.slice(0, FIRST_ROWS);
   const inner = width - GUTTER * 2;

@@ -122,6 +122,15 @@ export function lead(activities: readonly Activity[]): Activity | null {
   return best;
 }
 
+/**
+ * Whether something on the island now outranks a notice (a run waiting on you, a session that just
+ * shipped). A notice posted under it never leads and is taken down after its hold, unseen: FOUND IN
+ * REVIEW, an offer marked as said while an agent was waiting was lost for good. Offers wait instead.
+ */
+export function noticeWouldWait(acts: readonly Activity[]): boolean {
+  return acts.some((a) => PRIORITY[a.kind] > PRIORITY.notice);
+}
+
 export type Mode = 'hidden' | 'compact' | 'toast' | 'expanded';
 
 /**

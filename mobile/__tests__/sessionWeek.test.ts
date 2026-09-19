@@ -133,3 +133,14 @@ describe('against last week, fairly', () => {
     expect(sameDaysLastWeek([{ date: '2026-09-07', active_seconds: 1800 }], new Date(2026, 8, 14, 12).getTime())).toBe('Same days last week: 30m');
   });
 });
+
+describe('one hour is one hour', () => {
+  const MON = new Date(2026, 8, 14, 10).getTime();
+  test('the offer, the comparison and the figure say hour, not hours, for 1', () => {
+    const g = [{ date: '2026-09-09', active_seconds: 3600 }];
+    expect(weekOfferLine(lastWeekOf(g, MON))).toBe("Last week's card is made: 1 hour. Tap to see it.");
+    expect(weekFigure(lastWeekOf(g, MON))!.caption).toBe('hour last week');
+    expect(sameDaysLastWeek([{ date: '2026-09-07', active_seconds: 3600 }], MON)).toBe('Same days last week: 1\u00a0hour');
+    expect(weekFigure(lastWeekOf([{ date: '2026-09-09', active_seconds: 4000 }], MON))!.caption).toBe('hours last week');
+  });
+});

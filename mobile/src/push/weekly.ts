@@ -43,6 +43,21 @@ export async function scheduleWeekCard(thisWeekSeconds: number, nowMs: number): 
   }
 }
 
+/**
+ * Take Monday's notification back: signing out and deleting the account both call it (through
+ * Settings' `afterLeaving`), and so does the poll the first time it finds nobody signed in. FOUND IN
+ * REVIEW: a notification scheduled mid week still said "Your week in builds is made" to a phone
+ * with nobody signed in, and its tap opened an empty Sessions.
+ */
+export async function cancelWeekCard(): Promise<void> {
+  scheduledFor = null;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(WEEK_CARD_ID);
+  } catch {
+    // Nothing scheduled, or no notifications on this platform.
+  }
+}
+
 /** Whether Monday's notification is sitting in Notification Center: then the island stays quiet. */
 export async function weekCardDelivered(): Promise<boolean> {
   try {

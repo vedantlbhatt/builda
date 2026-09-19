@@ -175,7 +175,8 @@ export function untitledName(iso: string, now: number): string {
 
 export function rowOf(s: SessionDetail, now: number, names?: RepoNames | null): RowModel {
   const title = renderTitle(s.title_ids) ?? (s.title?.trim() || null) ?? untitledName(s.started_at, now);
-  // The day AND the time it started: FOUND ON THE DESKTOP, four rows in a row read "Debugged a
+  // The day AND the time it started (the day is the Builda day, as the hero's `when.whenLabel` says
+  // it: a sitting begun at 00:30 is filed under the evening before): FOUND ON THE DESKTOP, four rows in a row read "Debugged a
   // failing test suite / Private project 1 · Sep 12", the same two lines four times, because the
   // title rule has no count to vary. The start time is what tells four sittings of one day apart.
   const start = Date.parse(s.started_at);

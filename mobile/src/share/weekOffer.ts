@@ -15,6 +15,7 @@
 import type { SessionDetail } from '../data/api';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
+import { noticeWouldWait } from '../island/model';
 import { island } from '../island/store';
 import { WEEK_CARD_NOTIFICATION } from '../push/localCopy';
 import { weekCardDelivered } from '../push/weekly';
@@ -29,37 +30,65 @@ export const WEEK_OFFER_HOLD_MS = 8000;
 /** Sessions read for the card's rows, as Sessions' own "Share this week" reads them. */
 const WEEK_READ = 200;
 
-/** The Monday checked this launch, so a quiet last week is not fetched for every minute. */
+/**
+ * The Monday handled this launch, claimed BEFORE the first await: the root poll and Now's own poll
+ * can run a pass at the same moment, and two passes that both got past the check would say it twice.
+ */
 let checked: string | null = null;
+/** A week found and not yet said, because the island was busy with something that outranks it. */
+let pending: WeekModel | null = null;
+
+/**
+ * The week counts as offered from this moment: a tap on Monday's notification (Sessions opens the
+ * card) calls it at once, before any profile loads, so a pass running at the same time says nothing.
+ */
+export function markWeekOffered(monday: string): void {
+  checked = monday;
+  pending = null;
+  void cache.setKv(WEEK_OFFERED_KEY, monday).catch(() => undefined);
+}
 
 /** True when it put the card up, so the milestone card waits for the next pass. */
 export async function offerLastWeek(animal: Animal, nowMs: number): Promise<boolean> {
   const monday = lastWeekOf([], nowMs).days[0]!.date;
+  if (pending && pending.days[0]!.date === monday) return say(pending, monday, animal);
   if (checked === monday) return false;
-  const offered = await cache.getKv(WEEK_OFFERED_KEY).catch(() => null);
-  if (offered === monday || !lastWeekIsNews(nowMs)) {
-    // Already offered, or past Wednesday: nothing to fetch.
-    checked = monday;
-    return false;
-  }
   checked = monday;
+  const offered = await cache.getKv(WEEK_OFFERED_KEY).catch(() => null);
+  // Already offered, or past Wednesday: nothing to fetch.
+  if (offered === monday || !lastWeekIsNews(nowMs)) return false;
   let graph: readonly { date: string; active_seconds: number }[];
   try {
     const fresh = await api.profile();
     await cache.putProfile(fresh);
     graph = fresh.graph;
   } catch {
-    // No answer: try again on the next launch rather than offer a week read from an old profile.
+    // No answer: try again on the next pass rather than offer a week read from an old profile.
     checked = null;
     return false;
   }
   const week = weekToOffer(graph, nowMs, offered);
   if (!week) return false;
-  await cache.setKv(WEEK_OFFERED_KEY, monday);
   // Never both: Monday's notification already said it (`push/weekly`).
-  if (await weekCardDelivered()) return false;
-  // A desktop with its window hidden hears it from the system instead (`desktopNotice`).
-  if (desktopNoticeInstead(WEEK_CARD_NOTIFICATION.title, weekOfferLine(week), 'builder://sessions?card=last-week')) return true;
+  if (await weekCardDelivered()) {
+    markWeekOffered(monday);
+    return false;
+  }
+  return say(week, monday, animal);
+}
+
+/** Say it where it will be seen, and only then count it as said. */
+async function say(week: WeekModel, monday: string, animal: Animal): Promise<boolean> {
+  // A desktop whose window is behind another app hears it from the system (`desktopNotice`).
+  if (desktopNoticeInstead(WEEK_CARD_NOTIFICATION.title, weekOfferLine(week), 'builder://sessions?card=last-week')) {
+    markWeekOffered(monday);
+    return true;
+  }
+  if (noticeWouldWait(island.snapshot())) {
+    pending = week;
+    return false;
+  }
+  markWeekOffered(monday);
   const ink = creatureHue(animal).ink;
   const id = `week:${monday}`;
   island.post(

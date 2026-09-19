@@ -156,9 +156,11 @@ describe("last week's card, by notification", () => {
     const at = (y: number, m: number, d: number, h: number, min = 0) => new Date(y, m - 1, d, h, min).getTime();
     // Saturday 19 September 2026 -> Monday the 21st at 9.
     expect(nextWeekCardAt(at(2026, 9, 19, 7, 40)).getTime()).toBe(at(2026, 9, 21, 9));
-    // Monday before nine -> that morning; at or after nine -> the Monday after.
-    expect(nextWeekCardAt(at(2026, 9, 21, 8, 59)).getTime()).toBe(at(2026, 9, 21, 9));
+    // Monday after 04:00 is the new Builda week: its card is next Monday's, never this morning's.
+    expect(nextWeekCardAt(at(2026, 9, 21, 6, 0)).getTime()).toBe(at(2026, 9, 28, 9));
     expect(nextWeekCardAt(at(2026, 9, 21, 9, 0)).getTime()).toBe(at(2026, 9, 28, 9));
+    // Monday before 04:00 is still Sunday on the Builda clock: this morning at nine.
+    expect(nextWeekCardAt(at(2026, 9, 21, 3, 0)).getTime()).toBe(at(2026, 9, 21, 9));
     // Sunday night -> the next morning.
     expect(nextWeekCardAt(at(2026, 9, 27, 23, 30)).getTime()).toBe(at(2026, 9, 28, 9));
   });

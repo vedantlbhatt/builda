@@ -15,7 +15,7 @@ import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
 import { announceFinished, publishLive, resumeDemos } from '../island/feeds';
 import { crewFor } from './crew';
-import { scheduleWeekCard } from '../push/weekly';
+import { cancelWeekCard, scheduleWeekCard } from '../push/weekly';
 import { weekOf } from '../session/week';
 import { offerMilestone } from '../share/milestoneOffer';
 import { offerLastWeek } from '../share/weekOffer';
@@ -58,6 +58,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
     if (wasSignedIn) {
       wasSignedIn = false;
       lastLive = [];
+      void cancelWeekCard();
       await endAllLiveActivities();
       clearWidgetSnapshot();
       publishLive([], nowMs);

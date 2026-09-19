@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 
 import { fakeNotifications as fake } from './fakeNotifications';
 
-const { scheduleWeekCard, WEEK_CARD_ID } = await import('../src/push/weekly');
+const { cancelWeekCard, scheduleWeekCard, WEEK_CARD_ID } = await import('../src/push/weekly');
 const { hasDash } = await import('../src/copy/plain');
 const { WEEK_CARD_NOTIFICATION } = await import('../src/push/localCopy');
 
@@ -30,6 +30,14 @@ describe("Monday's notification", () => {
     expect(fake.cancelled).toEqual([WEEK_CARD_ID]);
     await scheduleWeekCard(1800, at(2026, 9, 22, 20));
     expect(fake.scheduled.map((s) => s.date.getTime())).toEqual([at(2026, 9, 28, 9)]);
+  });
+
+  test('signing out takes it back, and the next account schedules its own', async () => {
+    await scheduleWeekCard(3600, at(2026, 10, 7, 8));
+    await cancelWeekCard();
+    expect(fake.cancelled).toEqual([WEEK_CARD_ID]);
+    await scheduleWeekCard(3600, at(2026, 10, 7, 9));
+    expect(fake.scheduled).toHaveLength(2);
   });
 
   test('no permission: nothing scheduled, and nothing asked', async () => {

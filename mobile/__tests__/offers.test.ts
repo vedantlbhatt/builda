@@ -34,7 +34,7 @@ mock.module('../src/share/WeekShare', () => ({ showWeekShare: () => opened.push(
 mock.module('../src/share/MilestoneShare', () => ({ showMilestoneShare: (h: number) => opened.push(`milestone ${h}`) }));
 
 // Dynamic, after the mocks, so the modules see them.
-const { offerLastWeek } = await import('../src/share/weekOffer');
+const { markWeekOffered, offerLastWeek } = await import('../src/share/weekOffer');
 const { offerMilestone } = await import('../src/share/milestoneOffer');
 const { island } = await import('../src/island/store');
 const { WEEK_OFFERED_KEY } = await import('../src/session/week');
@@ -106,6 +106,41 @@ describe('last week, offered once', () => {
   });
 });
 
+describe('said where it will be seen, and only once', () => {
+  const MON_OCT_12 = new Date(2026, 9, 12, 10).getTime(); // last week: Oct 5 to Oct 11
+  const MON_OCT_19 = new Date(2026, 9, 19, 10).getTime(); // last week: Oct 12 to Oct 18
+  const MON_OCT_26 = new Date(2026, 9, 26, 10).getTime(); // last week: Oct 19 to Oct 25
+  const waiting = { kind: 'needsYou' as const, id: 'wait:a', sessionId: 'a', repo: 'a', animal: 'cat' as const, ink: '#000000', sentence: 'asks', sinceMs: 0 };
+
+  test('a run waiting on you outranks the notice: nothing marked, and it is said once the island is free', async () => {
+    graph = [{ date: '2026-10-07', active_seconds: 2 * H }];
+    island.post(waiting);
+    expect(await offerLastWeek('cat', MON_OCT_12)).toBe(false);
+    expect(kv.get(WEEK_OFFERED_KEY)).toBeUndefined();
+    island.clear('wait:a');
+    const calls = profileCalls;
+    expect(await offerLastWeek('cat', MON_OCT_12 + 60_000)).toBe(true);
+    expect(profileCalls).toBe(calls);
+    expect(posted.map((p) => p.text)).toEqual(["Last week's card is made: 2 hours. Tap to see it."]);
+    expect(kv.get(WEEK_OFFERED_KEY)).toBe('2026-10-05');
+  });
+
+  test("a tap on Monday's notification counts at once: a pass running beside it says nothing", async () => {
+    graph = [{ date: '2026-10-14', active_seconds: 2 * H }];
+    markWeekOffered('2026-10-12');
+    expect(await offerLastWeek('cat', MON_OCT_19)).toBe(false);
+    expect(posted).toHaveLength(0);
+    expect(profileCalls).toBe(0);
+  });
+
+  test('two passes at the same moment say it once', async () => {
+    graph = [{ date: '2026-10-21', active_seconds: 2 * H }];
+    const both = await Promise.all([offerLastWeek('cat', MON_OCT_26), offerLastWeek('cat', MON_OCT_26)]);
+    expect(both.filter(Boolean)).toHaveLength(1);
+    expect(posted).toHaveLength(1);
+  });
+});
+
 describe('an hours milestone, offered once', () => {
   test('the first reading only remembers what is behind them', async () => {
     expect(await offerMilestone(profile(300), 'cat')).toBe(false);
@@ -123,6 +158,16 @@ describe('an hours milestone, offered once', () => {
     posted = [];
     expect(await offerMilestone(profile(102), 'cat')).toBe(false);
     expect(posted).toHaveLength(0);
+  });
+
+  test('under a run waiting on you it waits, unmarked, and is said on a later pass', async () => {
+    kv.set(MILESTONE_KEY, '100');
+    island.post({ kind: 'needsYou', id: 'wait:b', sessionId: 'b', repo: 'b', animal: 'cat', ink: '#000000', sentence: 'asks', sinceMs: 0 });
+    expect(await offerMilestone(profile(251), 'cat')).toBe(false);
+    expect(kv.get(MILESTONE_KEY)).toBe('100');
+    island.clear('wait:b');
+    expect(await offerMilestone(profile(251), 'cat')).toBe(true);
+    expect(kv.get(MILESTONE_KEY)).toBe('250');
   });
 
   test('no profile, no reading', async () => {

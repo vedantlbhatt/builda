@@ -24,6 +24,7 @@
  */
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { morphOpen } from '../motion/MorphNav';
 import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -273,7 +274,7 @@ export function SessionsScreen() {
   const shown = stage >= 1 ? sessions : sessions.slice(0, FIRST_ROWS);
   const inner = width - GUTTER * 2;
   const stripWidth = inner - MARK - MARK_GAP;
-  const open = useCallback((id: string) => router.push(`/session/${id}`), [router]);
+  const rowRefs = useRef(new Map<string, View | null>());
   // The project names, read once for the whole list rather than once a row (`data/repoNames`).
   const names = useRepoNames();
   // The end of the list, once every row is on screen: what it holds, how far back, and the door on.
@@ -372,9 +373,19 @@ export function SessionsScreen() {
               scroll={false}
               data={shown}
               keyExtractor={(s) => s.id}
-              onItemPress={(s) => open(s.id)}
+              onItemPress={(s) =>
+                // The row lifts into a card and grows into its page (`motion/MorphNav.tsx`).
+                morphOpen(rowRefs.current.get(s.id) ?? null, () => router.push(`/session/${s.id}?morph=1`), {
+                  color: GROUND.card,
+                  radius: 18,
+                  ground: GROUND.bg,
+                })
+              }
               renderItem={({ item, index }) => (
                 <FinishedRow
+                  rowRef={(n) => {
+                    rowRefs.current.set(item.id, n);
+                  }}
                   session={item}
                   creature={crew(item)}
                   names={names}
@@ -453,7 +464,10 @@ function FinishedRow({
   accent,
   trace,
   onRecap,
+  rowRef,
 }: {
+  /** The row's own view, so opening it can grow out of exactly this rectangle. */
+  rowRef?: (n: View | null) => void;
   session: SessionDetail;
   creature: CrewCreature;
   /** A private project as the Projects tab names it ("Private project 2"), `copy/repoLabel`. */
@@ -471,7 +485,7 @@ function FinishedRow({
   // person who dismissed the banner or never got one. A word in the accent, an act.
   const recap = recapEligible(s, now);
   return (
-    <View style={[styles.row, index > 0 ? styles.hairTop : null]}>
+    <View ref={rowRef} collapsable={false} style={[styles.row, index > 0 ? styles.hairTop : null]}>
       <View style={styles.rowHead}>
         <View style={styles.mark}>
           <CreatureMark animal={creature} size={MARK} color={hue.ink} />

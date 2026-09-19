@@ -86,7 +86,9 @@ export function ProjectDoorBand({
   const [top, setTop] = useState(0);
   const title = (recent ? recent.title : door.stage) ?? 'Project';
   // With news, the report's week is out of date: the phone's line, and where the report stops.
-  const week = recent?.newer ? [recent.doorLine, recent.doorReport] : [door.momentum, door.hours ? null : (recent?.doorLine ?? door.lastSession)];
+  // Only news, or the last session when there are no hours: the week against the week before was a
+  // third sentence under two numbers (2026-09-19, the owner: say less). It is on the project page.
+  const week = recent?.newer ? [recent.doorLine] : [door.hours ? null : (recent?.doorLine ?? door.lastSession)];
   // The door's own short lines, never the page's count of sessions since: a door reads one saved row
   // a project, and "after 1 more session" from one row is a count nobody measured.
   const a11y = recent?.newer ? [`${door.label.text}.`, `${title}.`, recent.doorLine, recent.doorReport, 'Opens the project.'].filter(Boolean).join(' ') : door.a11y;

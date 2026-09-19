@@ -62,7 +62,6 @@ export function HoursSplit({ hero, rows, width, ink, empty }: { hero: ProjectsHe
   const usable = inner - GAP * Math.max(0, split.length - 1);
   return (
     <Block style={styles.wrap}>
-      <Kicker>Where your hours go</Kicker>
       <Text maxFontSizeMultiplier={1.3} style={styles.head}>
         <Text style={{ color: ink }}>{hero.count.final}</Text>
         {` ${hero.countCaption}`}
@@ -86,12 +85,6 @@ export function HoursSplit({ hero, rows, width, ink, empty }: { hero: ProjectsHe
             ))}
           </View>
         </>
-      ) : null}
-      {hero.hours ? (
-        <Text maxFontSizeMultiplier={1.3} style={styles.hours}>
-          <Text style={styles.hoursNum}>{hero.hours.final}</Text>
-          {` ${hero.hoursCaption}`}
-        </Text>
       ) : null}
       {empty ? (
         <View style={{ marginTop: 12 }}>

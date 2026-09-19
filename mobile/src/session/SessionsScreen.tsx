@@ -514,8 +514,9 @@ function WeekGround({
   const figure = week ? weekFigure(week) : null;
   const inner = width - GUTTER * 2;
   return (
+    // The number, what it is, and the one thing to do with it. The eyebrow, the days note and the
+    // comparison were three more small grey lines (2026-09-19, the owner: say less).
     <Block style={styles.groundWeek}>
-      <Kicker>this week</Kicker>
       {week === null ? (
         <Refusal>{`Your hours arrive with your profile, the next time ${HERE} reaches Builda. ${TRY_AGAIN}`}</Refusal>
       ) : (
@@ -525,8 +526,6 @@ function WeekGround({
               <>
                 <Num spec={figure.num} textStyle={figureStyle(fitSize(figure.num.final, inner - WEEK_BARS_WIDTH - 16, 72, 44), ink)} delay={80} />
                 <Words style={type.lead}>{figure.caption}</Words>
-                <Words style={type.dim}>{figure.note}</Words>
-                {compare ? <Words style={type.dim}>{compare}</Words> : null}
                 {onShare ? (
                   <View style={{ marginTop: 6 }}>
                     <WordLink title="Share this week" onPress={onShare} accessibilityHint="A card of this week's hours and longest sessions, for any app" />
@@ -536,7 +535,6 @@ function WeekGround({
             ) : (
               <>
                 <Words style={type.lead}>{QUIET_WEEK}</Words>
-                {compare ? <Words style={type.dim}>{compare}</Words> : null}
               </>
             )}
             {onShareLast ? (

@@ -1138,8 +1138,10 @@ export function projectDoors(
       lastSession: r.lastSession,
       hours,
       share,
-      hoursCaption: 'hours with you there on your Mac',
-      shareCaption: share ? `of your time, ${scope}` : null,
+      // One word under each number (2026-09-19, the owner: say less). What the hours are is the
+      // project page's to say, and the door's spoken label still says it in full.
+      hoursCaption: 'hours',
+      shareCaption: share ? 'of your time' : null,
       quiet,
       momentum: r.momentum,
       direction: r.momentumDirection,

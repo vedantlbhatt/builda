@@ -88,7 +88,9 @@ export default function YouScreen() {
 
           {ready && model && !model.empty ? (
             <>
-              <YouHero hero={model.hero} name={name} animal={accent.animal} hue={accent} width={width} source={model.source} />
+              {/* No footnote under the band (2026-09-19, the owner: say less, no small grey text).
+                  How it was scored is on the dimensions page. */}
+              <YouHero hero={model.hero} name={name} animal={accent.animal} hue={accent} width={width} source={null} />
               {stage >= 1 ? (
                 <>
                   {band('analysis')}

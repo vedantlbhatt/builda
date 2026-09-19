@@ -37,7 +37,7 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
-- **10:10 to 11:37**: the text cuts the owner asked for on Sessions (number, caption, share),
+- **10:10 to 11:34**: the text cuts the owner asked for on Sessions (number, caption, share),
   Projects (no eyebrow or footnote; doors say "hours" and "of your time") and You (no footnote),
   and a shorter desktop sign in. Capturing the rebuilt Mac app found it BROKEN since the 08:53
   hardening, in the packaged build only: the IPC origin check read Node's "null" origin for
@@ -264,7 +264,7 @@ keep the URL; from a new conversation pass the URL.
   `design/tokens.json` `spectrum.island`.
 - The brief and the design (`brief-motion.md`, `docs/motion.md`).
 
-## Next (for the owner, as of 11:37)
+## Next (for the owner, as of 11:34)
 
 0. Say whether the Mac notch island goes too, and which island idea (if any) to build.
 1. Merge `claude/motion`: `main` has been red since 2026-09-14 and turns green only with 31a1131

@@ -22,6 +22,13 @@ app's one voice, `src/island/store.ts`), and each opens as a card you can post.
   island does not offer last week's card when Monday's notification is already in Notification
   Center, and opening the card from either marks the week offered. One card a pass: when last
   week's card and a milestone are both due, the week goes first and the milestone waits.
+- **Said where it will be seen.** A notice under something that outranks it on the island (a run
+  waiting on you, a session that just shipped) never leads and is taken down unseen, so an offer
+  waits for the island to be free and is only then counted as said. On a desktop whose window is
+  behind other apps it goes to the system's notifications instead.
+- **The week turns at 04:00 on Monday.** Monday's notification is for the week `now` is in and fires
+  at 09:00 on the Monday that starts the next Builda week; a first version aimed at "the next Monday
+  at nine" and, run at 06:00 on a Monday, announced the week the island had just offered.
 - **No number written ahead of time.** Monday's notification is scheduled days before the week ends,
   so it says no figure; the card reads the profile when it opens.
 - **Never a sum that can overlap.** The week card's rows are one per title at the longest session's

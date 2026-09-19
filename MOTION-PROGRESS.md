@@ -37,6 +37,11 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **08:02 to 08:09**: a review agent read everything since 06:00 and found seven defects, six fixed
+  and tested (6b6f8ea): Monday's notification ignored the 04:00 boundary; a tap opened a stale week;
+  an offer under a waiting run was marked but never seen; two overlapping passes could both say it;
+  sign out left the notification scheduled; "1 hours". The seventh (a row's Builda day beside its
+  clock time) is the hero's documented rule, left. 2818 pass in local time and UTC.
 - **07:55 to 08:02**: web export rebuilt with everything tonight; full desktop e2e 23 of 23 (22
   routes and the Save image flow). The e2e scripts re-injected the token file's pair on every
   navigation, so a run that outlived its access token put a spent refresh token back and got the

@@ -30,23 +30,29 @@ export interface MorphLook {
 /** Where the window has covered enough of the screen to push the page under it. */
 const COVER_AT = 0.86;
 
+/**
+ * Reduce Motion, kept current rather than asked on every tap: asking is a round trip to native,
+ * and a tap that waits for it starts its morph a frame or two late, which reads as lag.
+ */
+let reduceMotion = false;
+void AccessibilityInfo.isReduceMotionEnabled().then((v) => {
+  reduceMotion = v;
+});
+AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => {
+  reduceMotion = v;
+});
+
 export function morphOpen(node: View | null, go: () => void, look: MorphLook): void {
-  if (!node) {
+  if (!node || reduceMotion) {
     go();
     return;
   }
-  void AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
-    if (reduced) {
+  node.measureInWindow((x, y, w, h) => {
+    if (!w || !h) {
       go();
       return;
     }
-    node.measureInWindow((x, y, w, h) => {
-      if (!w || !h) {
-        go();
-        return;
-      }
-      overlay.show((hide) => <Window origin={{ x, y, w, h }} look={look} onCovered={go} onDone={hide} />);
-    });
+    overlay.show((hide) => <Window origin={{ x, y, w, h }} look={look} onCovered={go} onDone={hide} />);
   });
 }
 

@@ -11,6 +11,12 @@
  * wheel of what each run is doing, the rail of faces. Leave the app and the same object keeps
  * going in the system island.
  *
+ * ON A DESKTOP there is no hardware island in the window to grow out of: a 125 point pill
+ * appearing in the middle of a 1104 point stage read as a stray black lozenge, not as the island.
+ * The desktop's island is the pill at the top of the SCREEN (the shell's own window), so here the
+ * stage drops out of the top edge instead: full width from the first frame, its height growing
+ * from nothing on the same ISLAND spring, the words lagging it as they do on the phone.
+ *
  * Three states, each its own face: running (the crew's lead, working), needs you (amber washes
  * down from the top, lids down), and quiet (your creature asleep, the glow gone grey, and the one
  * line that opens the session that finished last).
@@ -19,6 +25,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { useIsDesktop } from '../desktop/formFactor';
 import { tokens } from '../generated/tokens';
 import { Face, RippleItem, Wash, Wheel, useMorph, RAIL_STAGGER_MS } from '../motion';
 import type { CrewMember } from '../island/model';
@@ -34,6 +41,8 @@ const AMBER = tokens.spectrum.hues.amber.dark;
 
 /** The hardware island's size: where the stage starts its first morph from. */
 const PILL = { w: 125, h: 37, r: 18.5 };
+/** A desktop's stage starts as a line along its own top edge: the full width, no height. */
+const EDGE = { h: 0, r: 0 };
 /** How often the wheel steps to the next run while several are going. */
 const STEP_MS = 2600;
 
@@ -66,7 +75,9 @@ export function IslandStage({
     const t = setTimeout(() => setGrown(true), 60);
     return () => clearTimeout(t);
   }, []);
-  const target = grown ? { w: width, h, r: 44 } : PILL;
+  // Always false on a phone (a constant), where the stage grows out of the pill as before.
+  const desktop = useIsDesktop();
+  const target = grown ? { w: width, h, r: 44 } : desktop ? { w: width, ...EDGE } : PILL;
   const { box, contentIn } = useMorph(target, grown ? 'open' : 'pill');
 
   const [i, setI] = useState(0);

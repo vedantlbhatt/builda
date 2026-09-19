@@ -167,29 +167,45 @@ def test_guessing_pairing_codes_is_cut_off(client, paired):
 
     _uid, mac = paired
     phone = _phone_for(mac)
-    for _ in range(APPROVE_MISSES.limit):
-        r = client.post("/v1/auth/device/approve", json={"user_code": "BBBB-BBBB"}, headers=phone)
+    approve = "/v1/auth/device/approve"
+    # One stale code rescanned by the camera is one miss, however often it comes.
+    for _ in range(APPROVE_MISSES.limit * 2):
+        r = client.post(approve, json={"user_code": "BBBB-BBBB"}, headers=phone)
         assert r.status_code == 404
+    for i in range(1, APPROVE_MISSES.limit):
+        code = f"CCCC-{i:04d}".replace("0", "D").replace("1", "F")
+        assert client.post(approve, json={"user_code": code}, headers=phone).status_code == 404
     started = client.post(
         "/v1/auth/device/start",
         json={"machine_id": uuid.uuid4().hex * 2, "label": "a Mac", "agent_version": "0.1"},
     ).json()
-    # Even the right code waits now: the account has used its tries.
-    r = client.post(
-        "/v1/auth/device/approve", json={"user_code": started["user_code"]}, headers=phone
-    )
+    # Ten different wrong codes: even the right one waits now.
+    r = client.post(approve, json={"user_code": started["user_code"]}, headers=phone)
     assert r.status_code == 429
 
 
-def test_misses_are_forgotten_after_the_window():
+def test_the_limit_holds_a_burst_and_forgives_a_right_code():
+    import threading
+
     from builder.throttle import Misses
 
     now = [0.0]
-    m = Misses(limit=2, window_s=60, clock=lambda: now[0])
-    m.miss("a")
-    m.miss("a")
-    assert m.blocked("a") and not m.blocked("b")
-    now[0] = 59.0
-    assert m.blocked("a")
+    m = Misses(limit=10, window_s=60, clock=lambda: now[0])
+    let_through: list[bool] = []
+    threads = [
+        threading.Thread(target=lambda i=i: let_through.append(m.attempt("a", f"code{i}")))
+        for i in range(40)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert let_through.count(True) == 10
+    # A repeat of an answer already tried always goes through (it costs nothing).
+    assert m.attempt("a", "code0")
+    # A right answer given back frees its try.
+    m.forgive("a", "code0")
+    assert m.attempt("a", "new")
+    assert not m.attempt("a", "another")
     now[0] = 60.0
-    assert not m.blocked("a")
+    assert m.attempt("a", "another")

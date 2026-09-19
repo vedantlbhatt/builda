@@ -26,6 +26,10 @@ export function inFlight(board: BoardResponse): boolean {
  * a failed read changes nothing on the board, and the last board it had says what is in flight.
  */
 export function pollDelay(board: BoardResponse, lastReadFailed: boolean): number | null {
+  // An empty board after a failed read is not a quiet board, it is one never read: FOUND IN REVIEW
+  // (2026-09-19), a banner tapped on a cold start with no signal opened "That drop is not here",
+  // and nothing ever read the board again.
+  if (lastReadFailed && board.drops.length === 0) return FAILED_POLL_MS;
   if (!inFlight(board)) return null;
   return lastReadFailed ? FAILED_POLL_MS : BUSY_POLL_MS;
 }

@@ -129,6 +129,32 @@ export function pickActions(lead: MoveRow | null): CardAction[] {
   return [{ name: 'start', label: startsFromPoster(lead) ? `${MOVE_VERB[lead.move_kind]}: ${lead.title}` : 'Choose a repo' }];
 }
 
+/**
+ * The props that give a card its VoiceOver actions. On React Native's new architecture a custom
+ * action is read out by its `name` and `label` is never read (`RCTViewComponentView.mm`
+ * accessibilityCustomActions), so the words a person hears go in `name`; and the double tap is
+ * `onAccessibilityTap`, never an `activate` action. FOUND IN REVIEW (2026-09-19): VoiceOver said
+ * "start, session, film, share, activate", and the double tap still tapped the card's centre.
+ */
+export function cardA11y(
+  actions: readonly CardAction[],
+  open: () => void,
+  run: Partial<Record<CardAction['name'], () => unknown>>,
+): {
+  accessibilityActions: { name: string }[];
+  onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => void;
+  onAccessibilityTap: () => void;
+} {
+  return {
+    accessibilityActions: actions.map((a) => ({ name: a.label })),
+    onAccessibilityAction: (e) => {
+      const hit = actions.find((a) => a.label === e.nativeEvent.actionName);
+      if (hit) run[hit.name]?.();
+    },
+    onAccessibilityTap: open,
+  };
+}
+
 export function pairActions(has: { session: boolean; film: boolean; share: boolean }): CardAction[] {
   const out: CardAction[] = [];
   if (has.session) out.push({ name: 'session', label: 'Open the session' });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { undash } from '../src/copy/plain';
-import { bandOf, factsLine, factsOf, pairActions, pickActions, posterWords, runningFor, startsFromPoster, wallLine, wallOf } from '../src/drops/wall/model';
+import { bandOf, cardA11y, factsLine, factsOf, pairActions, pickActions, posterWords, runningFor, startsFromPoster, wallLine, wallOf } from '../src/drops/wall/model';
 import { MOVE_VERB } from '../src/drops/copy';
 import type { DropRow, MoveRow } from '../src/drops/types';
 
@@ -105,7 +105,18 @@ describe('the wall reads a drop\'s life, not its topic', () => {
     expect(pickActions(null)).toEqual([]);
     expect(pairActions({ session: true, film: true, share: true }).map((a) => a.name)).toEqual(['session', 'film', 'share']);
     expect(pairActions({ session: false, film: false, share: true })).toEqual([{ name: 'share', label: 'Share what you made of it' }]);
-    // Never 'activate': the card handles its own double tap.
+    // What VoiceOver reads is `name` on the new architecture: words, not ids. And the double tap
+    // opens the drop through onAccessibilityTap, never an `activate` action.
+    const ran: string[] = [];
+    const opened: string[] = [];
+    const props = cardA11y(pairActions({ session: true, film: false, share: true }), () => opened.push('open'), {
+      session: () => ran.push('session'),
+      share: () => ran.push('share'),
+    });
+    expect(props.accessibilityActions).toEqual([{ name: 'Open the session' }, { name: 'Share what you made of it' }]);
+    props.onAccessibilityAction({ nativeEvent: { actionName: 'Share what you made of it' } });
+    props.onAccessibilityTap();
+    expect([ran, opened]).toEqual([['share'], ['open']]);
     const every = [...pickActions(move('a', '1')), ...pairActions({ session: true, film: true, share: true })];
     expect(every.some((a) => (a.name as string) === 'activate')).toBe(false);
   });

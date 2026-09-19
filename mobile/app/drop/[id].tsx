@@ -19,6 +19,7 @@ import { DropSheet } from '../../src/drops/DropSheet';
 import { useBoard } from '../../src/drops/useBoard';
 import { notice } from '../../src/island/feeds';
 import { useAccent } from '../../src/theme/accent';
+import { Button } from '../../src/ui/Button';
 import { T } from '../../src/ui/Text';
 import { useColors } from '../../src/ui/scheme';
 
@@ -26,7 +27,7 @@ export default function DropScreen() {
   const c = useColors();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { drops, moves, start, archive, loading } = useBoard();
+  const { drops, moves, start, archive, loading, error, refresh } = useBoard();
   const accent = useAccent();
 
   const drop = useMemo(() => drops.find((d) => d.id === id) ?? null, [drops, id]);
@@ -60,15 +61,16 @@ export default function DropScreen() {
           onClose={close}
         />
       ) : (
-        // A drop that is not on this board any more: deleted on another device, or a link to one
-        // that never was. It says so rather than showing an empty frame.
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-          <T role="title" style={{ color: c.text, textAlign: 'center' }}>
-            That drop is not here
+        // A board that did not load is not a drop that is gone (FOUND IN REVIEW, 2026-09-19: a
+        // banner tapped on a cold start with no signal said "archived or deleted"). The board is
+        // read again on its own; the page says which it is, and always has a way out, because a
+        // full screen modal cannot be swiped away.
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
+          <T role="body" style={{ color: c.text, textAlign: 'center' }}>
+            {error ? 'Builda could not load this drop.' : 'That drop is not here any more.'}
           </T>
-          <T role="meta" style={{ color: c.textDim, marginTop: 10, textAlign: 'center' }}>
-            It may have been archived or deleted on another device.
-          </T>
+          {error ? <Button kind="secondary" size="compact" block={false} label="Try again" onPress={() => void refresh()} /> : null}
+          <Button kind="secondary" size="compact" block={false} label="Close" onPress={close} />
         </View>
       )}
     </View>

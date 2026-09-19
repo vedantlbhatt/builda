@@ -44,6 +44,10 @@ export default function PairScreen() {
   });
   // A QR in frame fires the scanner many times a second; one approval per code.
   const lockRef = useRef(false);
+  // The code that was just refused. The camera rescans a QR every RESCAN_DELAY_MS, and sending a
+  // stale code again and again burned the account's tries (review, 2026-09-19); it is said again,
+  // not sent again.
+  const refused = useRef<{ code: string; line: string } | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -80,6 +84,13 @@ export default function PairScreen() {
         return;
       }
 
+      if (refused.current?.code === code) {
+        setStatus({ kind: 'error', text: refused.current.line });
+        later(() => {
+          lockRef.current = false;
+        }, RESCAN_DELAY_MS);
+        return;
+      }
       setStatus({ kind: 'busy', text: `Pairing ${code}…` });
       try {
         const paired = await api.approvePairing(code);
@@ -88,7 +99,9 @@ export default function PairScreen() {
         later(() => router.back(), LEAVE_DELAY_MS);
       } catch (e) {
         failure();
-        setStatus({ kind: 'error', text: approveFailedLine(e, 'That code was not recognised, or it expired. Try again.') });
+        const line = approveFailedLine(e, 'That code was not recognised, or it expired. Try again.');
+        refused.current = { code, line };
+        setStatus({ kind: 'error', text: line });
         later(() => {
           lockRef.current = false;
         }, RESCAN_DELAY_MS);

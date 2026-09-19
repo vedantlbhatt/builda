@@ -155,11 +155,11 @@ class DeviceApproveRequest(BaseModel):
     user_code: str
 
 
-#: Codes an account may get wrong before it has to wait. RFC 8628 section 5.1: a user code is
-#: short enough to type, so the approve side is what has to stop guessing. A guessed code pairs
-#: SOMEONE ELSE'S machine to the guesser's account, and that machine then uploads its sessions
-#: there. Ten misses in fifteen minutes is far past any person retyping a code; 28^8 codes at ten
-#: guesses a quarter hour is not a search anyone finishes.
+#: Different codes an account may get wrong before it has to wait. RFC 8628 section 5.1: a user
+#: code is short enough to type, so the approve side is what has to stop guessing. A guessed code
+#: pairs SOMEONE ELSE'S machine to the guesser's account, and that machine then uploads its
+#: sessions there. Ten different misses in fifteen minutes is far past any person retyping a code
+#: (the same code again costs nothing); 28^8 codes at ten a quarter hour is a search nobody ends.
 APPROVE_MISSES = Misses(limit=10, window_s=15 * 60)
 
 
@@ -167,7 +167,8 @@ APPROVE_MISSES = Misses(limit=10, window_s=15 * 60)
 def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(current_person)):
     """Approve a pairing code from an already-signed-in surface."""
     who = str(device.user_id)
-    if APPROVE_MISSES.blocked(who):
+    code = body.user_code.upper()
+    if not APPROVE_MISSES.attempt(who, code):
         raise HTTPException(429, "too many pairing codes tried; wait a few minutes")
     with db_session(viewer_id=str(device.user_id)) as db:
         updated = db.execute(
@@ -182,8 +183,8 @@ def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(c
         ).first()
 
     if updated is None:
-        APPROVE_MISSES.miss(who)
         raise HTTPException(404, "no pending pairing with that code")
+    APPROVE_MISSES.forgive(who, code)
     return {"status": "approved", "label": updated.label, "platform": updated.platform}
 
 

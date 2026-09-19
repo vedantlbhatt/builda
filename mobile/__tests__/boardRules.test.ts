@@ -26,6 +26,11 @@ describe('when the board is read again', () => {
     expect(pollDelay(board('waiting', null), true)).toBe(FAILED_POLL_MS);
   });
 
+  test('a board never read (empty, and the read failed) is read again', () => {
+    expect(pollDelay({ drops: [], moves: [] }, true)).toBe(FAILED_POLL_MS);
+    expect(pollDelay({ drops: [], moves: [] }, false)).toBeNull();
+  });
+
   test('a failed read backs off rather than hammering', () => {
     expect(FAILED_POLL_MS).toBeGreaterThan(BUSY_POLL_MS);
   });

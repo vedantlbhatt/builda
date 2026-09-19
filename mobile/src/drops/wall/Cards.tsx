@@ -22,7 +22,7 @@ import { PressableScale } from '../../ui/PressableScale';
 import { commit, select } from '../../ui/haptics';
 import { EFFORT_WORD, KIND_WORD, MOVE_TARGET_WORD, MOVE_VERB } from '../copy';
 import type { MoveRow } from '../types';
-import { pairActions, pickActions, runningFor, startsFromPoster, type CardAction } from './model';
+import { cardA11y, pairActions, pickActions, runningFor, startsFromPoster } from './model';
 import type { WallDrop } from './model';
 import { Poster } from './Poster';
 
@@ -68,7 +68,7 @@ export function PickCard({
       onPress={onOpen}
       accessibilityRole="button"
       accessibilityLabel={`${w.drop.title ?? 'A drop'}. Open it.`}
-      {...voiceOver(pickActions(lead), onOpen, { start: go })}
+      {...cardA11y(pickActions(lead), onOpen, { start: go })}
     >
       <View style={[styles.card, { width }]}>
         <Poster drop={w.drop} width={posterW} frameRef={posterRef} />
@@ -181,7 +181,7 @@ export function PairCard({
       onPress={onOpen}
       accessibilityRole="button"
       accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}
-      {...voiceOver(actions, onOpen, {
+      {...cardA11y(actions, onOpen, {
         session: () => m.session_id && onSession(m.session_id),
         film: () => m.session_id && onFilm?.(m.session_id),
         share: () => onShare?.(),
@@ -251,21 +251,6 @@ export function PairCard({
       </View>
     </PressableScale>
   );
-}
-
-/**
- * The card's buttons as its VoiceOver actions (`model.ts` pickActions). `activate`, the double tap,
- * is handled here too, so it opens the drop rather than tapping whatever sits at the card's centre.
- */
-function voiceOver(actions: CardAction[], open: () => void, run: Partial<Record<CardAction['name'], () => unknown>>) {
-  return {
-    accessibilityActions: [{ name: 'activate' }, ...actions],
-    onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
-      const name = e.nativeEvent.actionName;
-      if (name === 'activate') open();
-      else run[name as CardAction['name']]?.();
-    },
-  };
 }
 
 const styles = StyleSheet.create({

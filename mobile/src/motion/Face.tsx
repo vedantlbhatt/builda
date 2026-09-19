@@ -49,7 +49,8 @@ export interface FaceProps {
   style?: ViewStyle;
 }
 
-export function Face({ animal, state, ink, size, glow = true, alive = true, style }: FaceProps) {
+// No glow by default (2026-09-19, the owner: "no glow, why do you even glow everything").
+export function Face({ animal, state, ink, size, glow = false, alive = true, style }: FaceProps) {
   const reduced = useReduceMotion();
   const px = Math.max(1, Math.floor(size / GRID));
   const drawn = px * GRID;

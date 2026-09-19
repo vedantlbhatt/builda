@@ -1051,11 +1051,9 @@ describe('mission control builds from the kit', () => {
     expect(grid).toMatch(/animate=\{m\.id === top\}/);
   });
 
-  test('the aura wraps only the tile that animates: one Aura, behind `animate`', () => {
-    // The aura means "an agent is driving this one, and it wants you": one per screen.
+  test('no tile glows: no Aura and no StarBorder (2026-09-19, the owner: no glow on anything)', () => {
     const tile = files.find((f) => f.name.endsWith('MissionTile.tsx'))!.src;
-    expect((tile.match(/<Aura\b/g) ?? []).length).toBe(1);
-    expect(tile).toMatch(/\{animate && !m\.stale \? \(/);
+    expect(tile).not.toMatch(/<Aura\b/);
     expect(tile).not.toMatch(/<StarBorder\b/);
   });
 

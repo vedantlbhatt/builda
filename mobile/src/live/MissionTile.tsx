@@ -501,15 +501,7 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
 
   return (
     <Block enter={false} style={styles.grow}>
-      {animate && !m.stale ? (
-        // The aura: on this screen it means "an agent is driving this one, and it wants you".
-        <View style={styles.grow}>
-          {tile}
-          <Aura radius={TILE_RADIUS} color={stateColor(FACE_FOR_TILE[m.kind], ink.creature)} />
-        </View>
-      ) : (
-        tile
-      )}
+      {tile}
     </Block>
   );
 }

@@ -49,10 +49,10 @@ export interface ButtonProps {
 const HEIGHT = { large: 52, compact: 44 } as const;
 
 /**
- * The two buttons. A capsule (actions are capsules), amber fill with `onAccent` ink, press
- * scale 0.97 over 120ms while the fill deepens to `accentPressed`. No glow, no gradient, no
- * border. Disabled is a `raised` capsule with faint ink, a state that reads as off in both
- * schemes without inventing a pale amber.
+ * The two buttons. A capsule (actions are capsules), the `raised` surface with the text colour,
+ * press scale 0.97 over 120ms while the fill moves to `border`. No glow, no gradient, no border.
+ * NOT an accent fill with dark ink (2026-09-19, the owner: "stop showing the buttons that are
+ * yellow with black text"). Disabled keeps the capsule and fades the words.
  */
 export function Button({
   label,
@@ -75,9 +75,9 @@ export function Button({
   const primary = kind === 'primary';
   const height = HEIGHT[size];
 
-  const fill = primary ? (disabled ? c.raised : c.accent) : 'transparent';
-  const fillPressed = primary && !disabled ? c.accentPressed : fill;
-  const ink = disabled ? c.textFaint : primary ? c.onAccent : destructive ? c.danger : c.text;
+  const fill = primary ? c.raised : 'transparent';
+  const fillPressed = primary && !disabled ? c.border : fill;
+  const ink = disabled ? c.textFaint : destructive ? c.danger : c.text;
 
   const stretch = block ?? true;
   const bare = !primary && !stretch;

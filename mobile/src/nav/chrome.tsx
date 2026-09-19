@@ -251,12 +251,14 @@ export function AccentButton({
       onPressOut={fb.onPressOut}
       style={[
         styles.action,
-        { height, alignSelf: block ? 'stretch' : 'flex-start', backgroundColor: disabled ? nav.raised : accent.fill },
+        // The raised surface and the text colour, not the accent with dark ink (2026-09-19, the
+        // owner). The accent is still how this control is chosen: its words, when it is live.
+        { height, alignSelf: block ? 'stretch' : 'flex-start', backgroundColor: nav.raised },
         fb.animatedStyle,
         style,
       ]}
     >
-      <T role={size === 'large' ? 'headline' : 'row'} numberOfLines={1} style={{ color: disabled ? nav.textFaint : accent.onFill, opacity: busy ? 0.6 : 1 }}>
+      <T role={size === 'large' ? 'headline' : 'row'} numberOfLines={1} style={{ color: disabled ? nav.textFaint : accent.text, opacity: busy ? 0.6 : 1 }}>
         {busy ? (busyLabel ?? label) : label}
       </T>
     </AnimatedPressable>

@@ -96,7 +96,7 @@ export function PickCard({
                   accessibilityRole="button"
                   hitSlop={6}
                   onPress={go}
-                  style={({ pressed }) => [styles.go, pressed && { backgroundColor: S.accentPressed.dark }]}
+                  style={({ pressed }) => [styles.go, pressed && { backgroundColor: S.border.dark }]}
                 >
                   <Text style={styles.goText}>{direct ? MOVE_VERB[lead.move_kind] : 'Choose a repo'}</Text>
                 </Pressable>
@@ -133,7 +133,6 @@ export function BuildingCard({ w, width, aura, onOpen, posterRef }: { w: WallDro
   return (
     <PressableScale style={styles.buildingPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${m.title}, ${steps.rows[steps.index]!.text}`}>
       <View style={[styles.building, { width }]}>
-        {aura ? <Aura radius={22} /> : null}
         <Poster drop={w.drop} width={64} frameRef={posterRef} />
         <View style={[styles.body, { justifyContent: 'center' }]}>
           <Text numberOfLines={1} style={styles.kindDim}>
@@ -287,8 +286,9 @@ const styles = StyleSheet.create({
   moveTitle: { fontSize: 15, fontWeight: '600', color: TEXT, lineHeight: 19 },
   moveWhere: { fontSize: 12, color: FAINT, marginTop: 2 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10 },
-  go: { height: 38, paddingHorizontal: 16, borderRadius: 19, borderCurve: 'continuous', backgroundColor: AMBER, alignItems: 'center', justifyContent: 'center' },
-  goText: { fontSize: 15, fontWeight: '700', color: ON_AMBER },
+  // The raised surface and the text colour (2026-09-19, the owner: no accent fill with dark ink).
+  go: { height: 38, paddingHorizontal: 16, borderRadius: 19, borderCurve: 'continuous', backgroundColor: S.raised.dark, alignItems: 'center', justifyContent: 'center' },
+  goText: { fontSize: 15, fontWeight: '700', color: TEXT },
   more: { fontSize: 13, color: DIM, fontWeight: '500' },
   wheel: { fontSize: 13, fontWeight: '500' },
   arrow: { width: 28, alignItems: 'center' },

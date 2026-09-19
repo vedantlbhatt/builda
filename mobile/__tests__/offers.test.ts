@@ -1,0 +1,116 @@
+/**
+ * The two cards Builda makes by itself (`share/weekOffer.ts`, `share/milestoneOffer.ts`), the glue
+ * around their pure rules: what is read and remembered in the kv table, what goes on the island,
+ * and that a tap opens the card. The cache, the API and the two card modules are faked; the rules
+ * (`session/week.ts`, `share/milestones.ts`) and the island store are the real ones.
+ */
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
+
+import type { Profile } from '../src/data/api';
+
+const kv = new Map<string, string>();
+let profileCalls = 0;
+let graph: { date: string; active_seconds: number }[] = [];
+const opened: string[] = [];
+
+mock.module('../src/data/cache', () => ({
+  getKv: async (k: string) => kv.get(k) ?? null,
+  setKv: async (k: string, v: string) => {
+    kv.set(k, v);
+  },
+  putProfile: async () => undefined,
+  listSessions: async () => [],
+}));
+mock.module('../src/data/client', () => ({
+  api: {
+    profile: async () => {
+      profileCalls += 1;
+      return { graph, totals: { sessions: 0, active_seconds: 0 }, projects: [] };
+    },
+  },
+}));
+mock.module('../src/share/WeekShare', () => ({ showWeekShare: () => opened.push('week') }));
+mock.module('../src/share/MilestoneShare', () => ({ showMilestoneShare: (h: number) => opened.push(`milestone ${h}`) }));
+
+// Dynamic, after the mocks, so the modules see them.
+const { offerLastWeek } = await import('../src/share/weekOffer');
+const { offerMilestone } = await import('../src/share/milestoneOffer');
+const { island } = await import('../src/island/store');
+const { WEEK_OFFERED_KEY } = await import('../src/session/week');
+const { MILESTONE_KEY } = await import('../src/share/milestones');
+
+type Notice = { kind: 'notice'; id: string; text: string; action?: () => void };
+let posted: Notice[] = [];
+island.post = ((a: Notice) => {
+  posted.push(a);
+}) as unknown as typeof island.post;
+island.clear = (() => undefined) as typeof island.clear;
+
+const H = 3600;
+const profile = (hours: number): Profile =>
+  ({ graph: [], totals: { sessions: 132, active_seconds: hours * H }, projects: [{ key: 'k', name: null, sessions: 1, active_seconds: 1, first_at: '2026-08-12T10:00:00Z', last_at: '2026-09-12T10:00:00Z' }] }) as unknown as Profile;
+
+beforeEach(() => {
+  kv.clear();
+  posted = [];
+  opened.length = 0;
+  profileCalls = 0;
+});
+
+describe('last week, offered once', () => {
+  // Each case its own Monday: the module remembers the Monday it checked for the life of the app,
+  // and a case that reused one would pass on that memory instead of the kv row it is about.
+  const MON_21 = new Date(2026, 8, 21, 10).getTime(); // last week: the 14th to the 20th
+  const MON_28 = new Date(2026, 8, 28, 10).getTime(); // last week: the 21st to the 27th
+
+  test('already offered for this week (the kv row): nothing posted, nothing fetched', async () => {
+    graph = [{ date: '2026-09-16', active_seconds: 5 * H }];
+    kv.set(WEEK_OFFERED_KEY, '2026-09-14');
+    expect(await offerLastWeek('cat', MON_21)).toBe(false);
+    expect(posted).toHaveLength(0);
+    expect(profileCalls).toBe(0);
+  });
+
+  test('Monday with hours last week: one notice, the Monday remembered, a tap opens the card', async () => {
+    graph = [{ date: '2026-09-23', active_seconds: 5 * H }];
+    expect(await offerLastWeek('cat', MON_28)).toBe(true);
+    expect(profileCalls).toBe(1);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]!.text).toBe("Last week's card is made: 5 hours. Tap to see it.");
+    expect(kv.get(WEEK_OFFERED_KEY)).toBe('2026-09-21');
+    posted[0]!.action?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(opened).toEqual(['week']);
+  });
+
+  test('the next pass of the same Monday asks nothing and says nothing', async () => {
+    expect(await offerLastWeek('cat', MON_28 + 60_000)).toBe(false);
+    expect(posted).toHaveLength(0);
+    expect(profileCalls).toBe(0);
+  });
+});
+
+describe('an hours milestone, offered once', () => {
+  test('the first reading only remembers what is behind them', async () => {
+    expect(await offerMilestone(profile(300), 'cat')).toBe(false);
+    expect(kv.get(MILESTONE_KEY)).toBe('250');
+    expect(posted).toHaveLength(0);
+  });
+
+  test('a milestone crossed after that: the notice, the new value remembered, a tap opens its card', async () => {
+    kv.set(MILESTONE_KEY, '50');
+    expect(await offerMilestone(profile(101), 'cat')).toBe(true);
+    expect(kv.get(MILESTONE_KEY)).toBe('100');
+    expect(posted[0]!.text).toBe('100 hours of building. Your card is made. Tap to see it.');
+    posted[0]!.action?.();
+    expect(opened).toEqual(['milestone 100']);
+    posted = [];
+    expect(await offerMilestone(profile(102), 'cat')).toBe(false);
+    expect(posted).toHaveLength(0);
+  });
+
+  test('no profile, no reading', async () => {
+    expect(await offerMilestone(null, 'cat')).toBe(false);
+    expect(kv.size).toBe(0);
+  });
+});

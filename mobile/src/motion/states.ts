@@ -61,3 +61,10 @@ export function withAlpha(hex: string, alpha: number): string {
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, alpha))})`;
 }
+
+/**
+ * The hardware's black: the colour of the Dynamic Island and the Mac's notch that every island
+ * surface grows out of. Not a palette colour (the palette's darkest is the warm ground, which
+ * would show a seam against the hardware), so it lives here, once.
+ */
+export const ISLAND_BLACK = '#000000';

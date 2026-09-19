@@ -21,7 +21,7 @@ export function stateInk(s: FaceState): string {
 }
 
 /** The hardware's black. Not a palette colour: the colour of the notch this grows out of. */
-export const ISLAND_BLACK = '#000000';
+export { ISLAND_BLACK } from '../../motion/states';
 export const INK = tokens.surface.text.dark;
 export const DIM = tokens.surface.textDim.dark;
 export const FAINT = tokens.surface.textFaint.dark;

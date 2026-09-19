@@ -26,7 +26,7 @@ import { Image } from 'expo-image';
 
 import { islandOf } from './hardware';
 import { tokens } from '../generated/tokens';
-import { Face, RippleItem, Wash, Wheel, Words, stateColor, useMorph, withAlpha, RAIL_STAGGER_MS } from '../motion';
+import { Face, RippleItem, Wash, Wheel, Words, stateColor, useMorph, withAlpha, RAIL_STAGGER_MS, ISLAND_BLACK } from '../motion';
 import { useAccent } from '../theme/accent';
 import { select } from '../ui/haptics';
 import {
@@ -481,7 +481,7 @@ function DemoContent({ a, mode, now }: { a: Extract<Activity, { kind: 'demo' }>;
 const styles = StyleSheet.create({
   anchor: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   island: {
-    backgroundColor: '#000',
+    backgroundColor: ISLAND_BLACK,
     borderCurve: 'continuous',
     overflow: 'hidden',
     // The system island has no border; its edge is the screen's black against the app's colour.

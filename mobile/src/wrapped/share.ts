@@ -6,18 +6,24 @@
  */
 import * as Sharing from 'expo-sharing';
 import type React from 'react';
-import { PixelRatio, type View } from 'react-native';
+import { PixelRatio, Platform, type View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
 import { tokens } from '../generated/tokens';
+import { saveCard } from '../share/saveCard';
 
 /** The export in pixels: `tokens.card.portrait`, 1080 by 1350 (4:5, the portrait post). */
 export const SHARE_PIXELS = tokens.card.portrait;
 
-export type ShareOutcome = 'shared' | 'unavailable' | 'failed';
+/** `{ saved }`: on a desktop, where the image is saved rather than shared, and the line saying where (`share/saveCard.web.ts`). */
+export type ShareOutcome = 'shared' | 'unavailable' | 'failed' | { saved: string };
 
 export async function shareCardImage(view: React.RefObject<View | null>, title: string): Promise<ShareOutcome> {
   if (!view.current) return 'failed';
+  if (Platform.OS === 'web') {
+    const line = await saveCard(view.current, title, SHARE_PIXELS.w);
+    return line ? { saved: line } : 'failed';
+  }
   let uri: string;
   try {
     // On iOS the capture is `width` by `height` POINTS at the screen's scale, so points are

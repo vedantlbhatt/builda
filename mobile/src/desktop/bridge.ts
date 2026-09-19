@@ -49,6 +49,12 @@ export interface DesktopBridge {
   qr(text: string): Promise<boolean[][]>;
   notify(n: DesktopNotification): void;
   copyText(text: string): void;
+  /**
+   * A card from the share preview, a PNG data URL: saved to Downloads, put on the clipboard and
+   * shown in Finder or Explorer. Resolves to the file's path, or null when the shell refused it.
+   * Optional: a shell older than the share cards does not have it, and the page downloads instead.
+   */
+  saveImage?(dataUrl: string, name: string): Promise<string | null>;
   openExternal(url: string): void;
   /** `builder://` links from the OS (a click in another app, a second launch), and notification clicks. */
   onDeepLink(cb: (url: string) => void): () => void;

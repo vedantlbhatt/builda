@@ -1,6 +1,6 @@
 /**
  * The week as a card you can post: Strava's weekly summary, for building. 360 x 450 points, captured
- * at 3x as 1080 x 1350 through the share preview (`ui/SharePreview.tsx`).
+ * at 3x as 1080 x 1350 through the share preview (`share/SharePreview.tsx`).
  *
  * It is made of the app's own pixels: the week's hours on a band printed in your colour with its
  * dithered dissolve (`insights/Band.BandPixels`, drawn printed because a card being captured has no
@@ -25,8 +25,9 @@ const CARD_W = 360;
 const CARD_H = 450;
 /** The band's solid height; its dissolve hangs under it. */
 const BAND_H = 176;
-/** The tallest day's column. */
+/** The tallest day's column; with no sessions to list under them, the columns take the room. */
 const TALL = 64;
+const TALL_ALONE = 132;
 const COL_W = 30;
 export function showWeekShare(week: WeekModel, rows: WeekCardRow[], you: { animal: Animal; ink: string }): void {
   showSharePreview(<WeekCard week={week} rows={rows} you={you} />, 'My week in builds');
@@ -35,6 +36,7 @@ export function showWeekShare(week: WeekModel, rows: WeekCardRow[], you: { anima
 export function WeekCard({ week, rows, you }: { week: WeekModel; rows: WeekCardRow[]; you: { animal: Animal; ink: string } }) {
   const figure = weekFigure(week);
   const most = Math.max(1, ...week.days.map((d) => d.seconds));
+  const tall = rows.length ? TALL : TALL_ALONE;
   return (
     <View style={styles.card}>
       <View style={{ height: BAND_H }}>
@@ -52,10 +54,10 @@ export function WeekCard({ week, rows, you }: { week: WeekModel; rows: WeekCardR
       <View style={{ height: FRINGE - 8 }} />
       <View style={styles.cols}>
         {week.days.map((d) => {
-          const h = d.future ? 0 : d.seconds > 0 ? Math.max(6, Math.round((d.seconds / most) * TALL)) : 3;
+          const h = d.future ? 0 : d.seconds > 0 ? Math.max(6, Math.round((d.seconds / most) * tall)) : 3;
           return (
             <View key={d.date} style={styles.col}>
-              <View style={{ height: TALL, justifyContent: 'flex-end' }}>
+              <View style={{ height: tall, justifyContent: 'flex-end' }}>
                 {h > 0 ? (
                   <View style={{ width: COL_W, height: h }}>
                     <BandPixels width={COL_W} solid={h} ink={d.seconds > 0 ? you.ink : S.raised.dark} motion="rise" fringe={0} />
@@ -90,12 +92,15 @@ const styles = StyleSheet.create({
   card: { width: CARD_W, height: CARD_H, backgroundColor: S.bg.dark, overflow: 'hidden' },
   bandWords: { paddingHorizontal: 20, paddingTop: 18 },
   kicker: { color: ON_HUE, fontSize: 13, fontWeight: '700', opacity: 0.8 },
-  figure: { color: ON_HUE, fontSize: 64, lineHeight: 70, fontWeight: '900', letterSpacing: -2, marginTop: 4, fontVariant: ['tabular-nums'] },
+  // No tabular digits: the figure never counts on a card, and html2canvas (the desktop's capture)
+  // draws each digit at its proportional width inside the tabular slot, so "19m" came out "1 9m".
+  figure: { color: ON_HUE, fontSize: 64, lineHeight: 70, fontWeight: '900', letterSpacing: -2, marginTop: 4 },
   caption: { color: ON_HUE, fontSize: 17, fontWeight: '800', marginTop: -2 },
   note: { color: ON_HUE, fontSize: 13, fontWeight: '600', opacity: 0.8, marginTop: 2 },
   creature: { position: 'absolute', right: 20, bottom: 14 },
   cols: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },
-  col: { alignItems: 'center', gap: 6 },
+  // A fixed width: a day still to come has no column, and without one its letter sat at the edge.
+  col: { width: COL_W, alignItems: 'center', gap: 6 },
   letter: { color: S.textDim.dark, fontSize: 11, fontWeight: '700' },
   today: { color: S.text.dark, textDecorationLine: 'underline' },
   rows: { paddingHorizontal: 20, marginTop: 16, gap: 8 },

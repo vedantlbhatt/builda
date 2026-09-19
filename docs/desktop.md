@@ -267,7 +267,7 @@ how where it matters. Rows marked "before the merge" were verified on the old UI
 | Push notifications (APNs) | none on a desktop; the island's poll posts needs you and shipped natively while the app runs | partial |
 | Live Activity, Dynamic Island | the desktop island window | verified: every sample, compact and open, and the account's real live run, in the shell |
 | Home Screen widget | none | not planned; the island is the glanceable surface |
-| Share a card or Wrapped image | expo-sharing has no share sheet in Electron; view-shot's web capture unverified | NOT YET |
+| Share a card or Wrapped image | Save image: the same 1080 x 1350 PNG, saved to Downloads, copied, and shown in Finder or Explorer (`share/saveCard.web.ts`, `desktop/src/image.js`); a plain browser downloads it. view-shot's `captureRef` throws on the web (`findNodeHandle`), so it is html2canvas on the card's DOM node, Skia's canvases included. Checked in Chromium on the week card and a Wrapped card; the shell's half (PNG only, 8 MB cap, no path in the name, no overwrite) is `test/shell.test.js` | YES |
 | Haptics | none (`ui/haptics.web.ts` does nothing) | not applicable |
 | Offline cache | real SQLite in memory, `kv` kept; sessions re-sync each launch | partial: nothing offline across launches |
 | Deep links `builder://…` | OS handler, second launch, notification clicks | before the merge |

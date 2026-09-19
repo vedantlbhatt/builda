@@ -12,6 +12,7 @@ const { fileFor, contentSecurityPolicy } = require('../src/bundle');
 const { createTokenStore } = require('../src/tokens');
 const { allowHeaders } = require('../src/cors');
 const { qrModules } = require('../src/qr');
+const { MAX_BYTES, pngFromDataUrl, safeName, freePath } = require('../src/image');
 
 // A 14 inch MacBook Pro at its default scaling: the menu bar holds the notch, 37 points.
 const notched = { bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea: { x: 0, y: 37, width: 1512, height: 945 }, internal: true };
@@ -132,4 +133,26 @@ test('the pairing QR is a real QR: square, with its three finder patterns', () =
     assert.equal(m[y + 1][x + 1], false);
     assert.equal(m[y + 3][x + 3], true);
   }
+});
+
+// A 1x1 PNG, the smallest real one.
+const DOT = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+test('a shared card: only a PNG data URL is written, and only up to the cap', () => {
+  const png = pngFromDataUrl(`data:image/png;base64,${DOT}`);
+  assert.ok(png);
+  assert.equal(png.subarray(1, 4).toString('latin1'), 'PNG');
+  assert.equal(pngFromDataUrl(`data:image/jpeg;base64,${DOT}`), null);
+  assert.equal(pngFromDataUrl(`data:image/png;base64,${Buffer.from('<svg/>').toString('base64')}`), null);
+  assert.equal(pngFromDataUrl(null), null);
+  assert.equal(pngFromDataUrl(`data:image/png;base64,${'A'.repeat(Math.ceil((MAX_BYTES * 4) / 3) + 8)}`), null);
+});
+
+test("a shared card's file name is never a path, and a second one does not overwrite the first", () => {
+  assert.equal(safeName('../../etc/passwd'), 'etc-passwd');
+  assert.equal(safeName('Builda  week of Sep 14'), 'builda-week-of-sep-14');
+  assert.equal(safeName(''), 'builda');
+  const taken = new Set(['/d/card.png', '/d/card 2.png']);
+  assert.equal(freePath('/d', 'card', (p) => taken.has(p), path.posix.join), '/d/card 3.png');
+  assert.equal(freePath('/d', 'other', (p) => taken.has(p), path.posix.join), '/d/other.png');
 });

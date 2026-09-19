@@ -4,6 +4,10 @@
  * card view at 3x (a 360 x 450 point card is 1080 x 1350, the 4:5 Instagram and LinkedIn show whole)
  * and hands the PNG to the system share sheet, so it goes to any app.
  *
+ * On a desktop there is no share sheet that takes an image from a page, so the button is Save image:
+ * the same 1080 x 1350 PNG, saved to Downloads, copied and shown by the shell, or downloaded in a
+ * plain browser (`saveCard.web.ts`).
+ *
  * Used by the drop pair card (`drops/wall/PairShare.tsx`) and the week card (`share/WeekShare.tsx`).
  * It lives beside the cards, outside the UI kit: a share card is an image of fixed size, so its
  * sizes are literal on purpose, and the kit's token laws are for screens that scale. The card itself is the caller's: a fixed size view, so the image is the
@@ -20,6 +24,7 @@ import { tokens } from '../generated/tokens';
 import { SPRING } from '../motion';
 import { commit, select } from '../ui/haptics';
 import { overlay } from '../ui/overlay';
+import { saveCard } from './saveCard';
 
 const S = tokens.surface;
 
@@ -32,6 +37,7 @@ function SharePreview({ children, title, onClose }: { children: ReactNode; title
   const insets = useSafeAreaInsets();
   const card = useRef<View>(null);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const p = useSharedValue(0);
   const scrim = useSharedValue(0);
 
@@ -55,6 +61,10 @@ function SharePreview({ children, title, onClose }: { children: ReactNode; title
     setBusy(true);
     commit();
     try {
+      if (Platform.OS === 'web') {
+        setSaved((await saveCard(card.current, title)) ?? 'That image could not be made. Try again.');
+        return;
+      }
       const uri = await captureRef(card, { format: 'png', quality: 1, result: 'tmpfile', ...(Platform.OS === 'ios' ? { pixelRatio: 3 } : {}) });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: title });
@@ -80,7 +90,7 @@ function SharePreview({ children, title, onClose }: { children: ReactNode; title
         </Animated.View>
         <View style={styles.actions}>
           <Pressable accessibilityRole="button" onPress={() => void share()} style={({ pressed }) => [styles.share, pressed && { backgroundColor: S.accentPressed.dark }]}>
-            <Text style={styles.shareText}>{busy ? 'Getting it ready' : 'Share'}</Text>
+            <Text style={styles.shareText}>{busy ? 'Getting it ready' : Platform.OS === 'web' ? 'Save image' : 'Share'}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -93,6 +103,7 @@ function SharePreview({ children, title, onClose }: { children: ReactNode; title
             <Text style={styles.close}>Close</Text>
           </Pressable>
         </View>
+        {saved ? <Text style={styles.saved}>{saved}</Text> : null}
       </View>
     </View>
   );
@@ -105,4 +116,5 @@ const styles = StyleSheet.create({
   share: { height: 48, paddingHorizontal: 34, borderRadius: 24, borderCurve: 'continuous', backgroundColor: S.accent.dark, alignItems: 'center', justifyContent: 'center' },
   shareText: { color: S.text.light, fontSize: 17, fontWeight: '700' },
   close: { color: S.textDim.dark, fontSize: 17, fontWeight: '600' },
+  saved: { color: S.textDim.dark, fontSize: 15, fontWeight: '500' },
 });

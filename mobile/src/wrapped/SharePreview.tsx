@@ -79,6 +79,8 @@ export function SharePreview({ item, hue, animal, number, onClose }: { item: Dec
     setBusy(false);
     if (outcome === 'failed') setProblem(SHARE_FAILED);
     else if (outcome === 'unavailable') setProblem(SHARE_UNAVAILABLE);
+    // A desktop keeps the sheet up and says where the image went; there was no sheet to leave for.
+    else if (typeof outcome === 'object') setProblem(outcome.saved);
     else close();
   };
 

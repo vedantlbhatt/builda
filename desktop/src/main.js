@@ -12,7 +12,8 @@
  *     frame on Windows and Linux) and the island (`island.js`);
  *   - one instance, and `builder://` links from the OS routed into the app;
  *   - a secure store for the tokens (`tokens.js`, Electron's safeStorage);
- *   - native notifications, the clipboard, the system browser for outside links;
+ *   - native notifications, the clipboard, the system browser for outside links, and a shared
+ *     card saved to Downloads (`image.js`);
  *   - the menu (`menu.js`) and, where there is no menu bar island, a tray;
  *   - the API reachable from the app's origin (`cors.js`).
  *
@@ -27,6 +28,7 @@ const path = require('node:path');
 const { ORIGIN, SCHEME, serveBundle } = require('./bundle');
 const { bridgeApi } = require('./cors');
 const { isAppLink, isExternalAllowed } = require('./geometry');
+const { freePath, pngFromDataUrl, safeName } = require('./image');
 const { createIsland } = require('./island');
 const { buildMenu } = require('./menu');
 const { nativeIslandRunning } = require('./native');
@@ -332,6 +334,16 @@ function registerIpc() {
     note.show();
   });
   ipcMain.on('copy', (_e, text) => clipboard.writeText(String(text)));
+  // A card from the share preview: to Downloads, onto the clipboard, and shown where it landed.
+  ipcMain.handle('image:save', (_e, dataUrl, name) => {
+    const png = pngFromDataUrl(dataUrl);
+    if (!png) return null;
+    const file = freePath(app.getPath('downloads'), safeName(name), fs.existsSync, path.join);
+    fs.writeFileSync(file, png);
+    clipboard.writeImage(nativeImage.createFromBuffer(png));
+    shell.showItemInFolder(file);
+    return file;
+  });
   ipcMain.on('open-external', (_e, url) => {
     if (isExternalAllowed(String(url))) void shell.openExternal(String(url));
   });

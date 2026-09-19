@@ -2,6 +2,7 @@ import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
+import { saveCard } from '../share/saveCard';
 import { duration } from '../theme';
 import { headline, type CardModel } from './RecapCard';
 
@@ -16,6 +17,9 @@ export async function shareCard(
   model: CardModel
 ): Promise<{ shared: boolean; uri?: string }> {
   if (!viewRef.current) return { shared: false };
+  // A desktop: no share sheet takes an image from a page, so it goes to Downloads and the
+  // clipboard (`share/saveCard.web.ts`).
+  if (Platform.OS === 'web') return { shared: (await saveCard(viewRef.current, caption(model))) !== null };
 
   // pixelRatio 2, always. Every timeline downscales what you upload, and a 1x capture of
   // a 1600pt card arrives soft — soft is indistinguishable from cheap.

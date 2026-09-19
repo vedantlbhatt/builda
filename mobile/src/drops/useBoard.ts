@@ -57,6 +57,7 @@ export function useBoard(): BoardState {
       setBoard(next);
       setError(null);
     } catch (e) {
+      if (__DEV__) console.warn('[drops] the board did not load', e instanceof Error ? e.message : e);
       setError(e instanceof Error ? e.message : 'could not load the board');
     } finally {
       setLoading(false);

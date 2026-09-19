@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { undash } from '../src/copy/plain';
-import { bandOf, posterWords, runningFor, startsFromPoster, wallLine, wallOf } from '../src/drops/wall/model';
+import { bandOf, factsLine, factsOf, posterWords, runningFor, startsFromPoster, wallLine, wallOf } from '../src/drops/wall/model';
 import type { DropRow, MoveRow } from '../src/drops/types';
 
 function drop(id: string, over: Partial<DropRow> = {}): DropRow {
@@ -108,6 +108,20 @@ describe('the wall reads a drop\'s life, not its topic', () => {
     const m = move('a', '1', { status: 'running', started_at: '2026-09-19T10:00:00Z' });
     expect(runningFor(m, Date.parse('2026-09-19T10:12:30Z'))).toBe(12);
     expect(runningFor(move('b', '1'), 0)).toBeNull();
+  });
+});
+
+describe('the saw it, built it card says only what was measured', () => {
+  test('attended minutes, commits and agent lines, leaving out zeros', () => {
+    const s = { attended_seconds: 2520, active_seconds: 3000, stats: { commit_count: 6, lines_added_agent: 551 } } as never;
+    expect(factsLine(factsOf(s))).toBe('42 minutes, 6 commits, +551 lines');
+    const long = { attended_seconds: 4320, active_seconds: 4320, stats: { commit_count: 1, lines_added_agent: 0 } } as never;
+    expect(factsLine(factsOf(long))).toBe('1h 12m, 1 commit');
+  });
+
+  test('no session yet, no numbers at all', () => {
+    expect(factsLine(factsOf(null))).toBeNull();
+    expect(factsLine(factsOf({ attended_seconds: 0, active_seconds: 0, stats: null } as never))).toBeNull();
   });
 });
 

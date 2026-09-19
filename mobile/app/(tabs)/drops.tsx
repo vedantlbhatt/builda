@@ -30,6 +30,7 @@ import { BuildingCard, PairCard, PickCard } from '../../src/drops/wall/Cards';
 import { wallLine, wallOf, type WallDrop } from '../../src/drops/wall/model';
 import { Opening, type Rect as Origin } from '../../src/drops/wall/Opening';
 import { Poster } from '../../src/drops/wall/Poster';
+import { showPairShare } from '../../src/drops/wall/PairShare';
 import { GUTTER, TopFade, WallBand, WallHeader } from '../../src/drops/wall/Chrome';
 import { tokens } from '../../src/generated/tokens';
 import { notice } from '../../src/island/feeds';
@@ -50,7 +51,7 @@ export default function DropsScreen() {
   const accent = useAccent();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { drops, moves, loading, refresh, start, archive } = useBoard();
+  const { drops, moves, loading, error, refresh, start } = useBoard();
   const [query, setQuery] = useState('');
   const focused = useIsFocused();
   const router = useRouter();
@@ -157,7 +158,10 @@ export default function DropsScreen() {
 
       {drops.length === 0 && !loading ? (
         <View style={{ flex: 1, paddingTop: insets.top }}>
-          <WallHeader line={waiting ? `${waiting} arriving` : ''} />
+          {/* A board that failed to load is not an empty board. FOUND ON THE SIMULATOR: a first
+              load that failed during a reload drew "Send yourself something to build" over eleven
+              drops the server had. The line says what happened; pull to try again. */}
+          <WallHeader line={error ? 'Builda could not load your drops. Pull down to try again.' : waiting ? `${waiting} arriving` : ''} />
           <Empty
             onRefresh={refresh}
             onPaste={async (link) => {
@@ -207,7 +211,14 @@ export default function DropsScreen() {
               <WallBand title="What you made of them">
                 {wall.bands.built.map((w) => (
                   <View key={w.drop.id} style={{ marginBottom: 14 }}>
-                    <PairCard posterRef={register(w.drop.id)} w={w} width={inner} onOpen={() => openDrop(w.drop.id)} onSession={(id) => router.push(`/session/${id}`)} />
+                    <PairCard
+                      posterRef={register(w.drop.id)}
+                      w={w}
+                      width={inner}
+                      onOpen={() => openDrop(w.drop.id)}
+                      onSession={(id) => router.push(`/session/${id}`)}
+                      onShare={w.active ? () => showPairShare(w.drop, w.active!, { animal: accent.animal, ink: accent.ink }) : undefined}
+                    />
                   </View>
                 ))}
               </WallBand>

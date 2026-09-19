@@ -142,7 +142,21 @@ export function BuildingCard({ w, width, aura, onOpen, posterRef }: { w: WallDro
   );
 }
 
-export function PairCard({ w, width, onOpen, onSession, posterRef }: { w: WallDrop; width: number; onOpen: () => void; onSession: (id: string) => void; posterRef?: (n: View | null) => void }) {
+export function PairCard({
+  w,
+  width,
+  onOpen,
+  onSession,
+  onShare,
+  posterRef,
+}: {
+  w: WallDrop;
+  width: number;
+  onOpen: () => void;
+  onSession: (id: string) => void;
+  onShare?: () => void;
+  posterRef?: (n: View | null) => void;
+}) {
   const m = w.active;
   if (!m) return null;
   const posterW = Math.round(width * 0.3);
@@ -180,6 +194,20 @@ export function PairCard({ w, width, onOpen, onSession, posterRef }: { w: WallDr
           ) : (
             <Text style={styles.moveWhere}>The session lands once your Mac uploads it</Text>
           )}
+          {onShare ? (
+            // Shown: the pair as the image only Builda can make (`PairShare.tsx`).
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => {
+                select();
+                onShare();
+              }}
+              style={{ marginTop: 10 }}
+            >
+              <Text style={[styles.link, { color: tokens.data.add.dark }]}>Share what you made of it</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </PressableScale>

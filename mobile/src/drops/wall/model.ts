@@ -16,6 +16,7 @@
  *
  * A drop sits in exactly one band: the first of these it qualifies for.
  */
+import type { SessionDetail } from '../../data/api';
 import type { DropRow, MoveRow } from '../types';
 
 export type Band = 'building' | 'pick' | 'built' | 'reading' | 'kept';
@@ -122,6 +123,35 @@ export function posterWords(d: DropRow): string {
   } catch {
     return d.url;
   }
+}
+
+export interface PairFacts {
+  minutes: number | null;
+  commits: number | null;
+  lines: number | null;
+}
+
+/**
+ * What the "saw this, built this" card may say about the build: the session's attended minutes,
+ * commits and agent lines, measured. A run that has not become a session yet has none of them.
+ */
+export function factsOf(s: Pick<SessionDetail, 'attended_seconds' | 'active_seconds' | 'stats'> | null): PairFacts {
+  if (!s) return { minutes: null, commits: null, lines: null };
+  const attended = s.attended_seconds ?? s.active_seconds;
+  return {
+    minutes: attended > 0 ? Math.round(attended / 60) : null,
+    commits: s.stats?.commit_count ?? null,
+    lines: s.stats?.lines_added_agent ?? null,
+  };
+}
+
+/** "42 minutes, 6 commits, +551 lines", leaving out what was not measured or was zero. */
+export function factsLine(f: PairFacts): string | null {
+  const parts: string[] = [];
+  if (f.minutes) parts.push(f.minutes >= 60 ? `${Math.floor(f.minutes / 60)}h ${f.minutes % 60}m` : `${f.minutes} minutes`);
+  if (f.commits) parts.push(`${f.commits} ${f.commits === 1 ? 'commit' : 'commits'}`);
+  if (f.lines) parts.push(`+${f.lines} lines`);
+  return parts.length > 0 ? parts.join(', ') : null;
 }
 
 /** Minutes since a move started, as the wall says it. Null when it has not started. */

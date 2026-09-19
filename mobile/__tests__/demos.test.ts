@@ -281,10 +281,10 @@ describe('no demo yet', () => {
     expect(EMPTY_DEMO.a11y).toContain(EMPTY_DEMO.publish);
   });
 
-  test('the door print has nothing to type: a command on a card you cannot type into is homework', () => {
-    const door = [EMPTY_DEMO.doorTitle, EMPTY_DEMO.doorLead, EMPTY_DEMO.doorThen].join(' ');
-    expect(door).not.toMatch(/python|capture demo|--publish/);
-    expect(door).toContain('project page');
+  test('the door print says only its title; where to ask is spoken, and nothing is to type', () => {
+    expect(EMPTY_DEMO.doorTitle).toBe('No demo yet');
+    expect(EMPTY_DEMO.doorTitle).not.toMatch(/python|capture demo|--publish/);
+    expect(EMPTY_DEMO.a11y).toContain('project page');
   });
 
   test('plain words: no dash, no spinner word, no stock picture', () => {

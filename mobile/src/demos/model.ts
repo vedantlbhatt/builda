@@ -312,10 +312,8 @@ export const EMPTY_DEMO = {
   or: 'Or in the project’s folder:',
   then: 'Then send it here, after it shows you every file:',
   publish: 'python -m capture demo --publish',
-  /** The door's print is small: where to ask, and nothing to type. */
+  /** The door's print says only this; where to ask is in `a11y` and on the project page. */
   doorTitle: 'No demo yet',
-  doorLead: 'Your Mac films one',
-  doorThen: 'when you ask on the project page.',
   a11y: 'No demo yet. Ask your Mac for one on the project page, or run python -m capture demo in the project folder, then python -m capture demo --publish.',
 } as const;
 

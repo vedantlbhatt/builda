@@ -25,14 +25,10 @@ export function DoorEmptyPrint({ width, height }: { width: number; height: numbe
       accessibilityLabel={EMPTY_DEMO.a11y}
       style={[styles.door, { width, height, transform: [{ rotate: '-3deg' }] }]}
     >
+      {/* Only the title (2026-09-19, the owner: say less). Where to ask is in its spoken label,
+          and the project page, one tap away, has the ask itself. */}
       <Text allowFontScaling={false} style={styles.doorTitle}>
         {EMPTY_DEMO.doorTitle}
-      </Text>
-      <Text allowFontScaling={false} style={styles.doorWords}>
-        {EMPTY_DEMO.doorLead}
-      </Text>
-      <Text allowFontScaling={false} style={styles.doorWords}>
-        {EMPTY_DEMO.doorThen}
       </Text>
     </View>
   );
@@ -88,7 +84,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   doorTitle: { fontSize: 14, lineHeight: 17, fontWeight: '800', letterSpacing: -0.2, color: GROUND.text, marginBottom: 'auto' },
-  doorWords: { fontSize: 12, lineHeight: 15, fontWeight: '500', color: GROUND.dim },
   doorCode: { fontFamily: MONO_FAMILY, fontSize: 10.5, lineHeight: 14, fontWeight: '600', color: GROUND.text },
   page: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   pagePrint: { borderRadius: SHAPE.mark, borderCurve: 'continuous', overflow: 'hidden', transform: [{ rotate: '-3deg' }] },

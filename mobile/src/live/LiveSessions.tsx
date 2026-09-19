@@ -423,7 +423,8 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
   const top = topNeedsYou(ids, models);
   const head = summaryHead([...models.values()]);
   const refusal = rows ? refusalLine(rows) : null;
-  const open = useCallback((id: string) => router.push(`/session/${id}`), [router]);
+  // `morph`: the tile grew into the page and it is already on screen (`motion/MorphNav.tsx`).
+  const open = useCallback((id: string, morph?: boolean) => router.push(morph ? `/session/${id}?morph=1` : `/session/${id}`), [router]);
   const openLive = useCallback(() => router.push('/live'), [router]);
 
   const signedIn = data.inputs.signedIn;

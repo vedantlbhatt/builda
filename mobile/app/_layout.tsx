@@ -118,7 +118,16 @@ export default function RootLayout() {
                     title: tabTitle(getFocusedRouteNameFromRoute(route)),
                   })}
                 />
-                <Stack.Screen name="session/[id]" options={{ title: '' }} />
+                {/* Opened by a tile growing into it (`motion/MorphNav.tsx`, `?morph=1`), the page
+                    is already on screen under the grown window when it is pushed, so it takes no
+                    slide of its own. Opened any other way, the platform's push. */}
+                <Stack.Screen
+                  name="session/[id]"
+                  options={({ route }) => ({
+                    title: '',
+                    animation: (route.params as { morph?: string } | undefined)?.morph === '1' ? 'none' : 'default',
+                  })}
+                />
                 {/* A drop takes the whole screen: the post is the screen and the sheet is over
                     it, so a tab bar sitting on top would make a full bleed frame not full
                     bleed. Fades in, because the card it came from is already on screen. */}

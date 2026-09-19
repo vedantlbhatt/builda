@@ -23,9 +23,8 @@
  *
  * Every word and number is `mission.tileModel`'s; this file only sets them.
  */
-import { Canvas, Rect, Shader, Skia, type SkRuntimeEffect } from '@shopify/react-native-skia';
 import { SymbolView } from 'expo-symbols';
-import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -46,7 +45,6 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
-  useDerivedValue,
   useFrameCallback,
   useSharedValue,
   withTiming,
@@ -54,8 +52,6 @@ import Animated, {
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 import { commas } from '../copy/numbers';
-import { tokens } from '../generated/tokens';
-import { CreaturePrint } from '../insights/Creature';
 import { formatWith, fitSize, type NumFormat } from '../insights/format';
 import { COUNT_MS, DRAW_MS, ease, phase } from '../insights/motion';
 import { GROUND, ON_HUE } from '../insights/palette';
@@ -63,15 +59,13 @@ import { Block, RevealPage, Section, useClock, usePageReveal, useReducedSV } fro
 import { ARM_FALLBACK_MS } from '../insights/RevealScroll';
 import type { Animal } from '../pixel/animals';
 import { HarnessLogo } from '../pixel/HarnessLogo';
-import { PixelAnimal } from '../pixel/PixelAnimal';
 import { creatureHue, MONO_FAMILY, radius, type Hue } from '../theme';
 import { T, useReduceMotion } from '../ui';
-import { SpotlightLayer } from '../ui/bits/components/layers';
-import { SPOT } from '../ui/bits/components/spec';
-import { StarBorder } from '../ui/bits/effects/StarBorder';
 import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
 import { Aura, Face, Wash } from '../motion';
+import { morphOpen } from '../motion/MorphNav';
+import { springAt } from '../motion/spec';
 import { FACE_FOR_TILE } from '../island/feeds';
 import { fitWords, stateLayout, STATE_GAP, tileMeasures, VARIANT, type TileVariant, type VariantSpec } from './fit';
 import { elapsedLabel, landedCommits, landedParts, TILE_MAX_SCALE, type TileModel, type TileVerdict } from './mission';
@@ -123,72 +117,33 @@ function inksFor(hue: Hue, stale: boolean): Inks {
 // ------------------------------------------------------------------ the print
 
 /**
- * The tile prints itself: every cell starts as the warm ground and switches to the hue in a
- * random order biased top to bottom (react-bits PixelTransition's rule, `hash(cell) < progress`,
- * the same order `insights/Band.tsx` prints a chapter in), then the layer is gone and the tile
- * is a plain fill. By David Haz, MIT + Commons Clause; the notice is in `src/ui/digits.ts`; used
- * as part of this application, not redistributed. Colour enters by cells, never by opacity.
+ * A block arriving: the ground covers it and draws back UP from its foot on the island spring,
+ * so the fill grows down from the top the way every band does now (`insights/Band.tsx`). It used
+ * to PRINT, cell by cell in a random order through a shader, which was the same half second of
+ * pixels as every band on nine screens (docs/motion.md, the pixel diet).
  */
-const PRINT_SKSL = `
-uniform float cell;
-uniform float height;
-uniform float reveal;
-uniform half4 ground;
-
-float hash(float2 c) { return fract(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453); }
-
-half4 main(float2 p) {
-  float2 c = floor(p / cell);
-  float y = ((c.y + 0.5) * cell) / max(height, 1.0);
-  float order = hash(c) * 0.55 + y * 0.45;
-  return order < reveal * 1.02 ? half4(0.0) : ground;
-}
-`;
-
-let printSource: SkRuntimeEffect | null | undefined;
-function printEffect(): SkRuntimeEffect | null {
-  if (printSource === undefined) {
-    printSource = Skia.RuntimeEffect.Make(PRINT_SKSL);
-    if (!printSource && __DEV__) console.warn('[live/MissionTile] the print shader did not compile; tiles arrive flat');
-  }
-  return printSource;
-}
-
-const CELL = tokens.dither.cell;
-/** How long a tile takes to print. Shorter than a chapter band's 560: a tile is a smaller sheet. */
+/** Kept for callers timing their words after the block has arrived. */
 export const PRINT_MS = 440;
 
-function rgba(hex: string): [number, number, number, number] {
-  const n = parseInt(hex.slice(1, 7), 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
-}
-
-/** The not yet printed cells, in the ground colour, over the fill; gone once the print lands. */
 export function PrintMask({ width, height, delay, ground = GROUND.bg }: { width: number; height: number; delay: number; ground?: string }) {
   const clock = useClock();
-  const source = printEffect();
+  const reduced = useReducedSV();
   const [done, setDone] = useState(false);
-  const groundU = useMemo(() => rgba(ground), [ground]);
-  const uniforms = useDerivedValue(() => ({
-    cell: CELL,
-    height,
-    reveal: ease(phase(clock.value, delay, PRINT_MS)),
-    ground: groundU,
-  }));
+  const cover = useAnimatedStyle(() => {
+    const p = reduced.value ? 1 : Math.max(0, springAt(clock.value - delay));
+    // Overshoot past 1 would uncover nothing more; clamp so the cover never grows back.
+    return { height: height * (1 - Math.min(1, p)) };
+  });
   useAnimatedReaction(
     () => clock.value >= delay + PRINT_MS,
     (over, was) => {
       if (over && !was) runOnJS(setDone)(true);
     },
   );
-  if (done || !source || width <= 0 || height <= 0) return null;
+  if (done || width <= 0 || height <= 0) return null;
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.clip]}>
-      <Canvas style={{ width, height }}>
-        <Rect x={0} y={0} width={width} height={height}>
-          <Shader source={source} uniforms={uniforms} />
-        </Rect>
-      </Canvas>
+      <Animated.View style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: ground }, cover]} />
     </View>
   );
 }
@@ -423,18 +378,12 @@ export interface MissionTileProps {
   /** Where this tile falls in the grid's print, ms on its block's clock. */
   delay?: number;
   /** Stable across renders (the grid's one callback), so a tick redraws no tile that did not change. */
-  onOpen?: (id: string) => void;
+  /** `morph` is true when the tile grew into the page and the push should not slide. */
+  onOpen?: (id: string, morph?: boolean) => void;
 }
 
-/** How far the comet runs outside the tile: in the 12 pt gap, clear of the neighbour. */
+/** How far the aura's glow runs outside the tile: in the 12 pt gap, clear of the neighbour. */
 const COMET_OUT = 5;
-/**
- * The comet on the tile that needs you. FOUND IN THE FINAL CAPTURE (2026-09-13, shot 69b): a 2pt
- * comet in the tile's own hue, beside the tile, read as a faint second edge. It runs 3pt wide and
- * a third of the edge long, its head in the ground's warm white and its tail in the hue, and it
- * settles to the 2pt outline it always left.
- */
-const COMET = { strokePt: 3, settledPt: 2, length: 0.32, head: GROUND.text } as const;
 
 function MissionTileImpl({ model: m, creature, animate, variant, width, minHeight, delay = 0, onOpen }: MissionTileProps) {
   const v = VARIANT[variant];
@@ -447,43 +396,16 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
     setBox((b) => (b.w === w && b.h === h ? b : { w, h }));
   }, []);
 
-  // The spotlight: a pool of the hue's partner cells under the finger (react-bits SpotlightCard,
-  // `ui/bits/components/SpotlightCard.tsx`), printed on the tile rather than lit over a card.
-  const ox = useSharedValue(0);
-  const oy = useSharedValue(0);
-  const amount = useSharedValue(0);
-  const spotOn = !reduce && !m.stale;
-  const gesture = useMemo(
-    () =>
-      Gesture.Manual()
-        .enabled(spotOn)
-        .onTouchesDown((e) => {
-          const t = e.allTouches[0];
-          if (!t) return;
-          ox.value = t.x;
-          oy.value = t.y;
-          amount.value = withTiming(SPOT.strength, { duration: SPOT.inMs, easing: EASE });
-        })
-        .onTouchesMove((e) => {
-          const t = e.allTouches[0];
-          if (!t) return;
-          ox.value = t.x;
-          oy.value = t.y;
-        })
-        .onTouchesUp(() => {
-          amount.value = withTiming(0, { duration: SPOT.outMs, easing: EASE });
-        })
-        .onTouchesCancelled(() => {
-          amount.value = withTiming(0, { duration: SPOT.outMs, easing: EASE });
-        })
-        .onFinalize(() => {
-          amount.value = withTiming(0, { duration: SPOT.outMs, easing: EASE });
-        }),
-    [spotOn, ox, oy, amount],
-  );
-  const spotHue = useMemo(() => ({ ...hue, ink: ON_HUE }), [hue]);
+  // The pixel spotlight under the finger is gone with the rest of the print (the pixel diet); a
+  // press is the tile giving a hair under the thumb, and a tap grows it into the page.
+  const gesture = useMemo(() => Gesture.Manual().enabled(false), []);
 
-  const onPress = useCallback(() => onOpen?.(m.id), [onOpen, m.id]);
+  // The tile grows into the session's page (`motion/MorphNav.tsx`): its own view, its own fill.
+  const tileRef = useRef<View>(null);
+  const onPress = useCallback(() => {
+    if (!onOpen) return;
+    morphOpen(tileRef.current, () => onOpen(m.id, true), { color: ink.fill, radius: TILE_RADIUS, ground: GROUND.bg });
+  }, [onOpen, m.id, ink.fill]);
   const trackH = m.track !== null ? v.track : 0;
   const { inner, lower: lowerWidth, repo: repoWidth, headGap } = tileMeasures(variant, width);
   const wordsAt = delay + PRINT_MS * 0.55;
@@ -511,6 +433,7 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
           style={({ pressed }) => [styles.grow, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
         >
           <View
+            ref={tileRef}
             onLayout={onLayout}
             style={[styles.tile, { width, minHeight, padding: v.pad, paddingBottom: v.pad + trackH, backgroundColor: ink.fill }]}
           >

@@ -15,6 +15,7 @@ import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
 import { announceFinished, publishLive, resumeDemos } from '../island/feeds';
 import { crewFor } from './crew';
+import { offerLastWeek } from '../share/weekOffer';
 
 /**
  * The app's foreground poll for the Lock Screen, the Dynamic Island and the Home Screen widget
@@ -90,6 +91,8 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   // The island inside the app says what the system island says outside it, from the same rows.
   publishLive(live, nowMs, names);
   void resumeDemos(names, nowMs).catch(() => null);
+  // Monday to Wednesday, once: last week's card, made without being asked (`share/weekOffer`).
+  void offerLastWeek(resolveAnimal(animal), nowMs).catch(() => null);
   if (finished.length > 0) {
     const crew = crewFor([...finished, ...saved]);
     for (const s of finished) announceFinished(s, crew.get(s.id) ?? resolveAnimal(animal), names);

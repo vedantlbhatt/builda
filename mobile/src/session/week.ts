@@ -37,6 +37,8 @@ export interface WeekModel {
   seconds: number;
   /** Days this week with any finished session. */
   built: number;
+  /** A week that is over (`lastWeekOf`): no today, nothing "so far". */
+  past?: boolean;
 }
 
 const LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
@@ -82,12 +84,63 @@ export interface WeekFigure {
  */
 export function weekFigure(w: WeekModel): WeekFigure | null {
   if (w.seconds <= 0) return null;
-  const note = w.built === 1 ? 'on one day so far' : `across ${spoken(w.built)} days so far`;
+  const sofar = w.past ? '' : ' so far';
+  const note = w.built === 1 ? `on one day${sofar}` : `across ${spoken(w.built)} days${sofar}`;
+  const which = w.past ? 'last week' : 'this week';
   if (w.seconds < 3600) {
-    return { num: numSpec(w.seconds, duration(w.seconds), { kind: 'duration' }), caption: 'this week', note };
+    return { num: numSpec(w.seconds, duration(w.seconds), { kind: 'duration' }), caption: which, note };
   }
   const h = w.seconds / 3600;
-  return { num: numSpec(h, n(h)), caption: 'hours this week', note };
+  return { num: numSpec(h, n(h)), caption: `hours ${which}`, note };
+}
+
+/** The week before the one `now` is in: all seven days over, none of them today. */
+export function lastWeekOf(graph: readonly { date: string; active_seconds: number }[], now: number): WeekModel {
+  const monday = weekOf(graph, now).days[0]!.date;
+  const [y, m, d] = monday.split('-').map(Number) as [number, number, number];
+  // An hour before this Monday's day begins (04:00) is still last Sunday on the Builda clock.
+  const sunday = new Date(y, m - 1, d, DAY_BOUNDARY_HOUR - 1).getTime();
+  const last = weekOf(graph, sunday);
+  return { ...last, days: last.days.map((x) => ({ ...x, today: false })), past: true };
+}
+
+/**
+ * Last week is news until Wednesday: Monday to Wednesday (the first three days of a Builda week)
+ * the Sessions band offers its card beside this week's, and after that it is old.
+ */
+export const LAST_WEEK_DAYS = 3;
+
+/** Whether `now` is in the first `LAST_WEEK_DAYS` days of its week, when last week is news. */
+export function lastWeekIsNews(now: number): boolean {
+  const row = weekOf([], now).days.findIndex((x) => x.today);
+  return row >= 0 && row < LAST_WEEK_DAYS;
+}
+
+/** Last week, while it is still news and had any finished session in it, else null. */
+export function lastWeekShown(graph: readonly { date: string; active_seconds: number }[], now: number): WeekModel | null {
+  if (!lastWeekIsNews(now)) return null;
+  const last = lastWeekOf(graph, now);
+  return last.seconds > 0 ? last : null;
+}
+
+/** The kv row that remembers the Monday of the last week whose card was offered on its own. */
+export const WEEK_OFFERED_KEY = 'week.offered';
+
+/**
+ * The week Builda makes a card of by itself, once: last week, while it is news, if its card has
+ * not been offered already (`offered` is the Monday it was offered for).
+ */
+export function weekToOffer(graph: readonly { date: string; active_seconds: number }[], now: number, offered: string | null): WeekModel | null {
+  const last = lastWeekShown(graph, now);
+  return last && last.days[0]!.date !== offered ? last : null;
+}
+
+/** What the island says when it has made last week's card. */
+export function weekOfferLine(w: WeekModel): string {
+  const f = weekFigure(w);
+  if (!f) return '';
+  const amount = f.caption.startsWith('hours') ? `${f.num.final} hours` : f.num.final;
+  return `Last week's card is made: ${amount}. Tap to see it.`;
 }
 
 /** Said when the week has nothing finished yet. */
@@ -110,10 +163,22 @@ export interface WeekCardRow {
  */
 export function weekRows(sessions: readonly SessionDetail[], week: WeekModel, max = WEEK_CARD_ROWS, now = Date.now()): WeekCardRow[] {
   const days = new Set(week.days.filter((d) => !d.future).map((d) => d.date));
-  return sessions
+  const sorted = sessions
     .filter((s) => days.has(s.local_date) && (s.state ?? 'final') !== 'live')
-    .sort((a, b) => (b.active_seconds || 0) - (a.active_seconds || 0))
-    .slice(0, max)
+    .sort((a, b) => (b.active_seconds || 0) - (a.active_seconds || 0));
+  // One row per title: FOUND ON THE SIMULATOR, last week's card read "Debugged a failing test
+  // suite" three times over, one fact said three times. The row keeps the longest session's own
+  // time. Never a sum: sessions that ran at once overlap, and a summed row read 14h 37m under a
+  // week of 14 hours.
+  const seen = new Set<string>();
+  const rows: WeekCardRow[] = [];
+  for (const s of sorted) {
     // Named the way its row in the list names it (`page.rowOf`): the title, else the day and its part.
-    .map((s) => ({ id: s.id, title: rowOf(s, now).title, active: duration(s.active_seconds || 0) }));
+    const title = rowOf(s, now).title;
+    if (seen.has(title)) continue;
+    seen.add(title);
+    rows.push({ id: s.id, title, active: duration(s.active_seconds || 0) });
+    if (rows.length >= max) break;
+  }
+  return rows;
 }

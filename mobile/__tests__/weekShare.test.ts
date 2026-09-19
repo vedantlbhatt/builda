@@ -37,4 +37,15 @@ describe('the week card names the week’s longest sessions', () => {
     expect(row.title.length).toBeGreaterThan(0);
     expect(row.title).not.toBe('null');
   });
+
+  test('sessions with one title are one row, at the longest one\'s time, never a sum', () => {
+    const t = (id: string, date: string, mins: number, title: string) => ({ ...s(id, date, mins), title }) as SessionDetail;
+    const rows = weekRows(
+      [t('a', '2026-09-15', 152, 'Debugged a failing test suite'), t('b', '2026-09-16', 152, 'Debugged a failing test suite'), t('c', '2026-09-17', 126, 'Debugged a failing test suite'), t('d', '2026-09-18', 60, 'Landed a commit'), t('e', '2026-09-18', 30, 'Debugged a failing test suite')],
+      week,
+    );
+    expect(rows.map((r) => r.title)).toEqual(['Debugged a failing test suite', 'Landed a commit']);
+    expect(rows[0]!.id).toBe('a');
+    expect(rows[0]!.active).toBe('2h 32m');
+  });
 });

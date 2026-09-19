@@ -158,6 +158,7 @@ export function Island() {
         router.push(`/ship/${encodeURIComponent(a.projectKey)}` as never);
         return;
       case 'notice':
+        a.action?.();
         return;
     }
   };

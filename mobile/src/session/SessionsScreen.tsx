@@ -56,7 +56,7 @@ import { extendReach, LIST_MAX, LIST_PAGE, listEnd, mergeReach, reachOfPage, sen
 import { rowOf } from './page';
 import { Door } from './parts';
 import { ROW_FIGURE } from './type';
-import { QUIET_WEEK, weekFigure, weekOf, weekRows } from './week';
+import { lastWeekShown, QUIET_WEEK, weekFigure, weekOf, weekRows, type WeekModel } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
 import { HERE, TRY_AGAIN } from '../copy/device';
 
@@ -281,10 +281,12 @@ export function SessionsScreen() {
   }, [live, sessions]);
 
   const week = useMemo(() => (profile ? weekOf(profile.graph, Date.now()) : null), [profile]);
+  // Monday to Wednesday, last week's card beside this week's (`week.lastWeekShown`).
+  const lastWeek = useMemo(() => (profile ? lastWeekShown(profile.graph, Date.now()) : null), [profile]);
   // The card names the week's longest sessions from every finished one the phone has, not only the
   // rows this list is showing (it opens on the notable ones).
   const shareWeek = useCallback(
-    async (w: NonNullable<typeof week>) => {
+    async (w: WeekModel) => {
       const all = await cache.listSessions(WEEK_READ).catch((): SessionDetail[] => sessions);
       showWeekShare(w, weekRows(all.length ? all : sessions, w), { animal: accent.animal, ink: accent.ink });
     },
@@ -355,6 +357,7 @@ export function SessionsScreen() {
                 ink={accent.ink}
                 width={width}
                 onShare={week && week.seconds > 0 ? () => void shareWeek(week) : undefined}
+                onShareLast={lastWeek ? () => void shareWeek(lastWeek) : undefined}
               />
             )}
             {signedIn === false ? (
@@ -450,7 +453,19 @@ export function SessionsScreen() {
  * The week on the ground, under the live band: the same number and the same seven bars, in the
  * builder's ink instead of on a band of it.
  */
-function WeekGround({ week, ink, width, onShare }: { week: ReturnType<typeof weekOf> | null; ink: string; width: number; onShare?: () => void }) {
+function WeekGround({
+  week,
+  ink,
+  width,
+  onShare,
+  onShareLast,
+}: {
+  week: ReturnType<typeof weekOf> | null;
+  ink: string;
+  width: number;
+  onShare?: () => void;
+  onShareLast?: () => void;
+}) {
   const figure = week ? weekFigure(week) : null;
   const inner = width - GUTTER * 2;
   return (
@@ -475,6 +490,11 @@ function WeekGround({ week, ink, width, onShare }: { week: ReturnType<typeof wee
             ) : (
               <Words style={type.lead}>{QUIET_WEEK}</Words>
             )}
+            {onShareLast ? (
+              <View style={{ marginTop: figure ? 0 : 6 }}>
+                <WordLink title="Share last week" onPress={onShareLast} accessibilityHint="A card of last week's hours and longest sessions, for any app" />
+              </View>
+            ) : null}
           </View>
           <WeekBars week={week} delay={160} color={ink} />
         </View>

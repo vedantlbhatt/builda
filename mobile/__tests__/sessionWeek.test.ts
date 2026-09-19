@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { hasDash } from '../src/copy/plain';
-import { QUIET_WEEK, weekFigure, weekOf } from '../src/session/week';
+import { lastWeekOf, lastWeekShown, QUIET_WEEK, weekFigure, weekOf, weekOfferLine, weekToOffer } from '../src/session/week';
 
 /** A local instant: Wednesday 16 September 2026 at 10:00 on this machine's clock. */
 const WED = new Date(2026, 8, 16, 10, 0).getTime();
@@ -66,5 +66,46 @@ describe('the figure', () => {
   test('a week with nothing finished is a sentence, never a zero', () => {
     expect(weekFigure(weekOf([], WED))).toBeNull();
     expect(hasDash(QUIET_WEEK)).toBe(false);
+  });
+});
+
+describe('last week, made by itself', () => {
+  // Monday 14 September 2026 at 10:00, the start of a Builda week; Sunday 13th is last week's end.
+  const MON = new Date(2026, 8, 14, 10).getTime();
+  const graph = [
+    { date: '2026-09-07', active_seconds: 3600 * 5 },
+    { date: '2026-09-11', active_seconds: 3600 * 7 + 1800 },
+    // Sunday night past midnight is still Sunday on the Builda clock: the graph already says 13th.
+    { date: '2026-09-13', active_seconds: 1800 },
+    { date: '2026-09-14', active_seconds: 900 },
+  ];
+
+  test('last week is the seven days before this Monday, all over, none of them today', () => {
+    const w = lastWeekOf(graph, MON);
+    expect(w.days.map((d) => d.date)).toEqual(['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13']);
+    expect(w.days.every((d) => !d.today && !d.future)).toBe(true);
+    expect(w.seconds).toBe(3600 * 13);
+    expect(w.built).toBe(3);
+  });
+
+  test('its figure says last week, with no "so far"', () => {
+    const f = weekFigure(lastWeekOf(graph, MON))!;
+    expect(f.caption).toBe('hours last week');
+    expect(f.note).toBe('across three days');
+    expect(weekOfferLine(lastWeekOf(graph, MON))).toBe("Last week's card is made: 13 hours. Tap to see it.");
+    const short = lastWeekOf([{ date: '2026-09-09', active_seconds: 42 * 60 }], MON);
+    expect(weekOfferLine(short)).toBe("Last week's card is made: 42m. Tap to see it.");
+  });
+
+  test('it is news Monday to Wednesday, offered once, and never for an empty week', () => {
+    expect(weekToOffer(graph, MON, null)?.days[0]!.date).toBe('2026-09-07');
+    expect(weekToOffer(graph, MON, '2026-09-07')).toBeNull();
+    const wed = new Date(2026, 8, 16, 23).getTime();
+    const thu = new Date(2026, 8, 17, 9).getTime();
+    expect(lastWeekShown(graph, wed)).not.toBeNull();
+    expect(lastWeekShown(graph, thu)).toBeNull();
+    // 02:00 on Thursday is still Wednesday on the Builda clock.
+    expect(lastWeekShown(graph, new Date(2026, 8, 17, 2).getTime())).not.toBeNull();
+    expect(weekToOffer([{ date: '2026-09-14', active_seconds: 900 }], MON, null)).toBeNull();
   });
 });

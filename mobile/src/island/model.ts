@@ -84,6 +84,8 @@ export type Activity =
       state: FaceState;
       animal: Animal;
       ink: string;
+      /** What a tap on the notice does, when it offers something (last week's card). */
+      action?: () => void;
     };
 
 export type ActivityKind = Activity['kind'];

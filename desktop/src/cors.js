@@ -7,7 +7,8 @@
  * every one carries `Authorization`, so every one is preflighted. The server's CORS list names its
  * own website (`server/builder/main.py`, `allow_origins=[base_url]`), not this app, and a
  * preflight from an origin it does not name comes back 400 with no `Access-Control-*` header:
- * MEASURED against the local API on the first desktop launch, every screen said "offline".
+ * MEASURED in Chromium against the local API, the page served from another origin: every preflight
+ * failed, and with it every request.
  *
  * The shell answers for the API instead of asking it to list a desktop origin: the main process
  * takes every request to the API's origin (`protocol.handle` on its scheme), answers a preflight

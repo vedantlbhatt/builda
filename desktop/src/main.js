@@ -174,7 +174,7 @@ function createMain() {
       spellcheck: true,
       // A capture run is unattended: the display may be asleep or the window covered, and a page
       // Chromium thinks nobody can see gets no animation frames, so every entrance stops at its
-      // first frame (MEASURED: blank screens in the first captures). Only then.
+      // first frame. Only then: a person looking at the window is the point of throttling it.
       backgroundThrottling: !process.env.BUILDA_CAPTURE,
       additionalArguments: ['--builda-window=main', ...pageArgs()],
     },

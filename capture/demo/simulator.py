@@ -32,10 +32,10 @@ import subprocess
 import threading
 import time
 
+from . import devices as table
 from . import paths
 
 DEFAULT_NAME = "Builda Demos"
-DEFAULT_DEVICE_TYPE = "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"
 MAESTRO = pathlib.Path("~/.maestro/bin/maestro").expanduser()
 
 #: The status bar every still shows (Apple's own marketing time).
@@ -64,6 +64,8 @@ class Device:
     name: str
     state: str
     runtime: str
+    #: `com.apple.CoreSimulator.SimDeviceType.<model>`: which row of the device table it is.
+    type_id: str = ""
 
 
 def _simctl(args: list[str], timeout: int = 120, check: bool = True) -> subprocess.CompletedProcess:
@@ -79,7 +81,7 @@ def devices() -> list[Device]:
     for runtime, devs in (data.get("devices") or {}).items():
         for d in devs:
             if d.get("isAvailable", True):
-                out.append(Device(d["udid"], d["name"], d["state"], runtime))
+                out.append(Device(d["udid"], d["name"], d["state"], runtime, d.get("deviceTypeIdentifier", "")))
     return out
 
 
@@ -96,17 +98,38 @@ def _marker(udid: str) -> pathlib.Path:
     return paths.demos_dir() / "work" / "booted" / udid
 
 
-def resolve(which: str | None) -> Device:
-    """The device to film on: a UDID or a name, else "Builda Demos", created if it is missing."""
-    want = which or DEFAULT_NAME
+def name_for(row: dict) -> str:
+    """The tool's own device for a row of the device table: "Builda Demos" for the default phone,
+    "Builda Demos <row name>" for any other, so a project filmed on an iPhone Air never borrows
+    the default device and comes out at the default's size."""
+    return DEFAULT_NAME if row["id"] == table.default_phone()["id"] else f"{DEFAULT_NAME} {row['name']}"
+
+
+def resolve(which: str | None, row: dict | None = None, type_id: str | None = None) -> Device:
+    """The device to film on: a UDID or a name (`--sim`), else the tool's own device for `row`
+    (the device table's default phone when none is given), created on `type_id` (or the row's
+    first simulator type) when it is missing. A device of the tool's own name whose type is
+    another row is not used: its screen would be the wrong size for the row the run checks."""
     devs = devices()
-    match = [d for d in devs if d.udid == want] or [d for d in devs if d.name == want]
-    if not match:
-        if which and re.fullmatch(r"[0-9A-Fa-f-]{36}", which):
-            raise SimulatorError(f"no simulator with UDID {which}")
-        udid = _simctl(["create", want, DEFAULT_DEVICE_TYPE, latest_ios_runtime()]).stdout.strip()
-        return Device(udid, want, "Shutdown", "")
-    return match[0]
+    if which:
+        match = [d for d in devs if d.udid == which] or [d for d in devs if d.name == which]
+        if not match:
+            if re.fullmatch(r"[0-9A-Fa-f-]{36}", which):
+                raise SimulatorError(f"no simulator with UDID {which}")
+            raise SimulatorError(f"no simulator named {which!r}")
+        return match[0]
+    row = row or table.default_phone()
+    want = name_for(row)
+    ours = [d for d in devs if d.name == want and table.for_simulator_type(d.type_id) is row]
+    if ours:
+        return ours[0]
+    ty = type_id or (row["simulator_types"][0] if row["simulator_types"] else None)
+    if not ty:
+        raise SimulatorError(table.refusal("no_simulator_type", device=row["name"], types="none listed"))
+    if any(d.name == want for d in devs):
+        want = f"{want} {ty.rsplit('.', 1)[-1]}"
+    udid = _simctl(["create", want, ty, latest_ios_runtime()]).stdout.strip()
+    return Device(udid, want, "Shutdown", "", ty)
 
 
 def claim(dev: Device) -> None:

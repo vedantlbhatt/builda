@@ -411,9 +411,15 @@ def read_upload_token(token: str) -> dict:
         try:
             uuid.UUID(str(claims["sub"]))
             uuid.UUID(str(claims["mid"]))
+            from .ship_kit import EXTENSIONS as KIT_TYPES
+            from .ship_kit import PREFIX as KIT_PREFIX
+
+            # A kit file's token (ship_kit.py) names an object under `ship-kit/` and may be a
+            # GIF; every other token is a demo file's, one of the contract's three types.
+            kit = isinstance(claims["key"], str) and claims["key"].startswith(KIT_PREFIX)
             ok = (
                 isinstance(claims["key"], str)
-                and claims["ct"] in MEDIA_CONTENT_TYPES
+                and claims["ct"] in (KIT_TYPES if kit else MEDIA_CONTENT_TYPES)
                 and isinstance(claims["n"], int)
                 and claims["n"] > 0
             )

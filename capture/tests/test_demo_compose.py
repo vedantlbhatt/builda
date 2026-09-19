@@ -12,6 +12,7 @@ from __future__ import annotations
 import unittest
 
 from capture.demo import compose as c
+from capture.demo import devices
 
 FREEZE_LOG = """\
 [freezedetect @ 0x6000] lavfi.freezedetect.freeze_start: 1.2
@@ -85,7 +86,7 @@ class CommandLines(unittest.TestCase):
         self.assertIn("[0:v]setpts=(PTS-STARTPTS)/1,fps=30,mpdecimate=", graph)  # motion: duplicates dropped
         self.assertIn("[1:v]setpts=(PTS-STARTPTS)/4,fps=30,scale=", graph)  # a hold: sped up, not decimated
         self.assertIn("[s0][s1]concat=n=2:v=1:a=0[cat]", graph)
-        self.assertIn(f"[cat][2:v]overlay=x=(W-w)/2:y=H-h-{round(2622 * c.CAPTION_BOTTOM)}", graph)
+        self.assertIn(f"[cat][2:v]overlay=x=(W-w)/2:y=H-h-{round(2622 * c.caption_bottom(devices.default_phone()))}", graph)
         self.assertIn("cap.png", args)
         self.assertEqual(args[-1], "b1.mp4")
         self.assertIn("libx264", args)

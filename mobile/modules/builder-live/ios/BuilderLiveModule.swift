@@ -79,6 +79,15 @@ public class BuilderLiveModule: Module {
       if #available(iOS 16.2, *) {
         // Re-attach to activities that survived an app restart (the system keeps them alive).
         for activity in Activity<BuilderSessionAttributes>.activities { self.observe(activity) }
+        // The drop cards too, and every new one: a push-to-start card appears while the app is
+        // not running, and the system wakes it to hand over the card's update token
+        // (BuilderDropLive.swift says why that goes to the server from here).
+        for activity in Activity<BuilderDropAttributes>.activities { self.observeDrop(activity) }
+        Task {
+          for await activity in Activity<BuilderDropAttributes>.activityUpdates {
+            await self.adoptDrop(activity)
+          }
+        }
       }
       if #available(iOS 17.2, *) {
         Task {
@@ -86,6 +95,11 @@ public class BuilderLiveModule: Module {
             let token = data.map { String(format: "%02x", $0) }.joined()
             self.latestPushToStartToken = token
             self.sendEvent("onPushToStartToken", ["token": token])
+          }
+        }
+        Task {
+          for await data in Activity<BuilderDropAttributes>.pushToStartTokenUpdates {
+            await DropTokenRegistrar.shared.pushToStartToken(DropLive.hex(data))
           }
         }
       }
@@ -167,11 +181,90 @@ public class BuilderLiveModule: Module {
       await activity.end(finalState.map { Self.content($0, opts) }, dismissalPolicy: policy)
     }
 
+    /// Every Builda card, the drop cards included: Settings > Live Activities off, signing out
+    /// and the details switch all mean no card of either kind stays up.
     AsyncFunction("endAll") { () async in
       guard #available(iOS 16.2, *) else { return }
       for activity in Activity<BuilderSessionAttributes>.activities {
         await activity.end(nil, dismissalPolicy: .immediate)
       }
+      for activity in Activity<BuilderDropAttributes>.activities {
+        await activity.end(nil, dismissalPolicy: .immediate)
+      }
+    }
+
+    // MARK: drops (docs/drop-island.md, BuilderDropLive.swift)
+
+    /// One card per drop: a live card for this drop is updated rather than stacked (a push may
+    /// have started one a moment before the app's own start, or the other way round).
+    AsyncFunction("startDrop") { (attrs: DropAttrsRecord, state: DropStateRecord, opts: ContentOptionsRecord?) async throws -> String in
+      guard #available(iOS 16.2, *), ActivityAuthorizationInfo().areActivitiesEnabled else {
+        throw LiveActivitiesUnavailableException()
+      }
+      if let existing = DropLive.live(attrs.dropId) {
+        await existing.update(DropLive.content(state, opts))
+        return existing.id
+      }
+      let attributes = BuilderDropAttributes(dropId: attrs.dropId, host: attrs.host, platform: attrs.platform)
+      let activity: Activity<BuilderDropAttributes>
+      do {
+        activity = try Activity.request(
+          attributes: attributes, content: DropLive.content(state, opts),
+          pushType: (opts?.push ?? false) ? .token : nil)
+      } catch where opts?.push ?? false {
+        // A build or a simulator that cannot issue an ActivityKit push token: a card the app
+        // moves itself beats no card, as `activity.ts startActivity` says for a session.
+        activity = try Activity.request(attributes: attributes, content: DropLive.content(state, opts), pushType: nil)
+      }
+      self.observeDrop(activity)
+      return activity.id
+    }
+
+    /// Move a drop's card. False when no live card shows it (swiped away, or never started).
+    AsyncFunction("updateDrop") { (dropId: String, state: DropStateRecord, opts: ContentOptionsRecord?) async -> Bool in
+      guard #available(iOS 16.2, *), let activity = DropLive.live(dropId) else { return false }
+      await activity.update(DropLive.content(state, opts))
+      return true
+    }
+
+    AsyncFunction("endDrop") { (dropId: String, finalState: DropStateRecord?, opts: ContentOptionsRecord?) async -> Bool in
+      guard #available(iOS 16.2, *) else { return false }
+      let cards = Activity<BuilderDropAttributes>.activities.filter { $0.attributes.dropId == dropId }
+      let policy: ActivityUIDismissalPolicy
+      switch opts?.dismissAfterSeconds {
+      case .none: policy = .immediate
+      case .some(let s) where s <= 0: policy = .immediate
+      case .some(let s): policy = .after(Date().addingTimeInterval(s))
+      }
+      for activity in cards {
+        await activity.end(finalState.map { DropLive.content($0, opts) }, dismissalPolicy: policy)
+      }
+      return !cards.isEmpty
+    }
+
+    /// Every drop card the system still knows: `state` is active, stale, ended or dismissed.
+    Function("listDrops") { () -> [[String: Any]] in
+      guard #available(iOS 16.2, *) else { return [] }
+      return Activity<BuilderDropAttributes>.activities.map { a -> [String: Any] in
+        [
+          "id": a.id, "dropId": a.attributes.dropId, "state": "\(a.activityState)",
+          "phase": a.content.state.phase, "updatedEpoch": a.content.state.updatedEpoch,
+        ]
+      }
+    }
+
+    /// Whether the server may push to this phone's drop cards: Live Activities and Lock Screen
+    /// details on, and signed in. Off forgets every token on the server.
+    AsyncFunction("setDropPush") { (enabled: Bool, environment: String) async in
+      guard #available(iOS 16.2, *) else { return }
+      await DropTokenRegistrar.shared.setEnabled(enabled, environment: environment)
+    }
+
+    /// Retry any token the server has not taken yet. The foreground poll calls it each tick.
+    AsyncFunction("flushDropTokens") { () async -> [String: Any] in
+      guard #available(iOS 16.2, *) else { return [:] }
+      await DropTokenRegistrar.shared.flush()
+      return await DropTokenRegistrar.shared.status()
     }
 
     // Home-screen widget refresh (ExtensionStorage.reloadWidget from @bacons/apple-targets
@@ -214,6 +307,38 @@ public class BuilderLiveModule: Module {
       staleDate: opts?.staleInSeconds.map { Date().addingTimeInterval($0) },
       relevanceScore: opts?.relevance ?? 0
     )
+  }
+
+  /// A drop card the app did not start itself (a push started it). One card per drop: when the
+  /// app's own start got there first, the newcomer comes down and the first one carries on.
+  @available(iOS 16.2, *)
+  private func adoptDrop(_ activity: Activity<BuilderDropAttributes>) async {
+    let twin = Activity<BuilderDropAttributes>.activities.first {
+      $0.id != activity.id && $0.attributes.dropId == activity.attributes.dropId && DropLive.isLive($0.activityState)
+    }
+    if twin != nil {
+      await activity.end(nil, dismissalPolicy: .immediate)
+      return
+    }
+    observeDrop(activity)
+  }
+
+  @available(iOS 16.2, *)
+  private func observeDrop(_ activity: Activity<BuilderDropAttributes>) {
+    guard observers[activity.id] == nil else { return }
+    let tokenTask = Task {
+      for await data in activity.pushTokenUpdates {
+        await DropTokenRegistrar.shared.activityToken(
+          activityId: activity.id, dropId: activity.attributes.dropId, token: DropLive.hex(data),
+          phase: activity.content.state.phase)
+      }
+    }
+    let stateTask = Task {
+      for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
+        await DropTokenRegistrar.shared.ended(activityId: activity.id)
+      }
+    }
+    observers[activity.id] = [tokenTask, stateTask]
   }
 
   @available(iOS 16.2, *)

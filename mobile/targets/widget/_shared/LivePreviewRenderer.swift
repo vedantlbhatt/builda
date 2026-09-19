@@ -40,7 +40,9 @@ public final class BuilderPreviewRenderer: NSObject {
   @MainActor
   static func gallery() -> [(String, AnyView)] {
     typealias F = LiveFixtures
-    var out: [(String, AnyView)] = []
+    // The drop card first: it is the newest surface, and a render that stops part way (a view the
+    // system traps on) should not take its states down with it.
+    var out: [(String, AnyView)] = dropGallery()
 
     let lock: [(String, BuilderSessionAttributes, BuilderSessionAttributes.ContentState, Bool)] = [
       ("lock-working", F.rideGT, F.working, false),
@@ -110,6 +112,38 @@ public final class BuilderPreviewRenderer: NSObject {
     let later = F.now.addingTimeInterval(20 * 60)
     out.append(("widget-small-four-stale", AnyView(WidgetFrame(size: .small, snapshot: F.widgetFour, scheme: .dark, now: later))))
     out.append(("widget-medium-four-stale", AnyView(WidgetFrame(size: .medium, snapshot: F.widgetFour, scheme: .dark, now: later))))
+    return out
+  }
+
+  /// A reel you shared, every state its card draws (docs/drop-island.md): the walk from sent to
+  /// an answer, each kind's hue once it is read, the move that needs you to pick a repository,
+  /// a refusal, a start, and a Mac that has not answered by the stale date.
+  @available(iOS 17.0, *)
+  @MainActor
+  static func dropGallery() -> [(String, AnyView)] {
+    typealias D = DropFixtures
+    let states: [(String, BuilderDropAttributes, BuilderDropAttributes.ContentState, Bool)] = [
+      ("sent", D.instagram, D.sent, false),
+      ("reading", D.instagram, D.reading, false),
+      ("planned", D.instagram, D.planned, false),
+      ("planned-one", D.tiktok, D.plannedOne, false),
+      ("planned-needs-repo", D.tiktok, D.plannedNeedsRepo, false),
+      ("planned-recipe", D.instagram, D.plannedRecipe, false),
+      ("planned-tool", D.tiktok, D.plannedTool, false),
+      ("planned-unknown", D.instagram, D.plannedUnknown, false),
+      ("refused", D.instagram, D.refused, false),
+      ("started", D.instagram, D.started, false),
+      ("waiting-stale", D.tiktok, D.reading, true),
+      ("planned-stale", D.instagram, D.planned, true),
+    ]
+    var out: [(String, AnyView)] = []
+    for (name, a, s, stale) in states {
+      let d = DropDisplay(attributes: a, state: s, isStale: stale)
+      out.append(("drop-lock-\(name)", AnyView(LockFrame { DropLockScreenView(d: d) })))
+      out.append(("drop-compact-\(name)", AnyView(DropCompactFrame(d: d))))
+      out.append(("drop-minimal-\(name)", AnyView(DropMinimalFrame(d: d))))
+      out.append(("drop-expanded-\(name)", AnyView(DropExpandedFrame(d: d))))
+    }
     return out
   }
 }
@@ -195,6 +229,58 @@ private struct ExpandedFrame: View {
 }
 
 @available(iOS 17.0, *)
+private struct DropCompactFrame: View {
+  let d: DropDisplay
+  var body: some View {
+    HStack(spacing: 0) {
+      DropCompactLeading(d: d)
+      Spacer(minLength: 0)
+      DropCompactTrailing(d: d)
+    }
+    .padding(.horizontal, 9)
+    .frame(width: 230, height: 36.67)
+    .background(Capsule().fill(Color.black))
+    .padding(12)
+    .environment(\.colorScheme, .dark)
+  }
+}
+
+@available(iOS 17.0, *)
+private struct DropMinimalFrame: View {
+  let d: DropDisplay
+  var body: some View {
+    DropMinimal(d: d)
+      .frame(width: 36.67, height: 36.67)
+      .background(Circle().fill(Color.black))
+      .padding(12)
+      .environment(\.colorScheme, .dark)
+  }
+}
+
+/// The same top row as a session's (`ExpandedFrame`): the leading content beside the camera when
+/// it fits the region there, under it otherwise, as `.belowIfTooWide` places it.
+@available(iOS 17.0, *)
+private struct DropExpandedFrame: View {
+  let d: DropDisplay
+  var body: some View {
+    VStack(spacing: 8) {
+      IslandTopRows(beside: 118, row: 36) {
+        DropExpandedLeading(d: d)
+        DropExpandedTrailing(d: d).frame(width: 100, height: 36)
+      }
+      DropExpandedBottom(d: d)
+    }
+    .padding(.horizontal, 18)
+    .padding(.top, 14)
+    .padding(.bottom, 10)
+    .frame(width: 371)
+    .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Color.black))
+    .padding(12)
+    .environment(\.colorScheme, .dark)
+  }
+}
+
+@available(iOS 17.0, *)
 private struct WidgetFrame: View {
   let size: HomeWidgetView.Size
   let snapshot: WidgetSnapshot
@@ -222,16 +308,24 @@ private struct IslandTopRows: Layout {
   let row: CGFloat
 
   private func below(_ subviews: Subviews) -> Bool {
-    subviews[0].sizeThatFits(.unspecified).width > beside
+    guard let leading = subviews.first else { return false }
+    return leading.sizeThatFits(.unspecified).width > beside
   }
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     CGSize(width: proposal.width ?? 335, height: below(subviews) ? row * 2 : row)
   }
 
+  /// FOUND RENDERING ON THE iOS 26.5 SIMULATOR (2026-09-19): a trailing region that draws
+  /// nothing (a stale card's `EmptyView`) is not a subview there at all, so `subviews[1]` trapped
+  /// in `LayoutSubviews.subscript` and took the app down half way through the gallery, at
+  /// island-expanded-stale, every time. Each subview is placed only if it is there.
   func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    let trailing = subviews[1].sizeThatFits(.unspecified)
-    subviews[1].place(at: CGPoint(x: bounds.maxX - trailing.width, y: bounds.minY), proposal: ProposedViewSize(trailing))
+    guard !subviews.isEmpty else { return }
+    if subviews.count > 1 {
+      let trailing = subviews[1].sizeThatFits(.unspecified)
+      subviews[1].place(at: CGPoint(x: bounds.maxX - trailing.width, y: bounds.minY), proposal: ProposedViewSize(trailing))
+    }
     if below(subviews) {
       subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY + row), proposal: ProposedViewSize(width: bounds.width, height: row))
     } else {

@@ -4,24 +4,40 @@
  * this moment: a running session's tile, a drop whose move is running. ONE per screen, because
  * the ring means "this one, now", and two rings mean nothing.
  *
- * A sweep gradient through four cool hues of the spectrum, stroked around a rounded rectangle and
- * turned once every `AURA_TURN_MS`. Slow on purpose: a presence, not a spinner. Under Reduce
- * Motion it stands still.
+ * ONE HUE, the state's own (`stateColor`): a light travelling round the edge with a tail behind
+ * it, over a faint ring in the same colour so the edge is there when the light is on the far side.
+ * It was a sweep through four hues first, the clip's iridescent ring; a multi hue ring turning
+ * round a card is the most generated looking thing a screen can wear, and in this app a colour
+ * already means a state, so four of them at once said four things. Turned once every
+ * `AURA_TURN_MS`. Slow on purpose: a presence, not a spinner. Under Reduce Motion it stands still.
  */
 import { Canvas, RoundedRect, SweepGradient, vec, BlurMask, Group } from '@shopify/react-native-skia';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { cancelAnimation, Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { tokens } from '../generated/tokens';
 import { useReduceMotion } from '../ui/motion';
 import { AURA_TURN_MS } from './spec';
+import { withAlpha } from './states';
 
-const H = tokens.spectrum.hues;
-/** Cool to warm and back, so the seam of the sweep is invisible. */
-const RING = [H.cobalt.dark, H.iris.dark, H.orchid.dark, H.tide.dark, H.cobalt.dark];
+/** Where the light sits on the sweep: dark for half the turn, a tail, then the head. */
+const STOPS = [0, 0.45, 0.82, 0.985, 1];
 
-export function Aura({ radius, width = 1.5, glow = true, active = true }: { radius: number; width?: number; glow?: boolean; active?: boolean }) {
+export function Aura({
+  radius,
+  width = 1.5,
+  glow = true,
+  active = true,
+  color = tokens.spectrum.hues.cobalt.dark,
+}: {
+  radius: number;
+  width?: number;
+  glow?: boolean;
+  active?: boolean;
+  /** The state's colour (`stateColor`). Working's cobalt unless told otherwise. */
+  color?: string;
+}) {
   const reduced = useReduceMotion();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const turn = useSharedValue(0);
@@ -37,6 +53,9 @@ export function Aura({ radius, width = 1.5, glow = true, active = true }: { radi
   const transform = useDerivedValue(() => [{ rotate: turn.value * Math.PI * 2 }]);
   const onLayout = (e: LayoutChangeEvent) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
 
+  const ring = useMemo(() => [withAlpha(color, 0), withAlpha(color, 0), withAlpha(color, 0.4), color, withAlpha(color, 0)], [color]);
+  const base = useMemo(() => withAlpha(color, 0.16), [color]);
+
   if (!active) return null;
   const pad = glow ? 8 : 0;
   return (
@@ -46,12 +65,13 @@ export function Aura({ radius, width = 1.5, glow = true, active = true }: { radi
           <Group>
             {glow ? (
               <RoundedRect x={pad} y={pad} width={size.w - pad * 2} height={size.h - pad * 2} r={radius} style="stroke" strokeWidth={width * 3} opacity={0.35}>
-                <SweepGradient c={vec(size.w / 2, size.h / 2)} colors={RING} transform={transform} origin={vec(size.w / 2, size.h / 2)} />
+                <SweepGradient c={vec(size.w / 2, size.h / 2)} colors={ring} positions={STOPS} transform={transform} origin={vec(size.w / 2, size.h / 2)} />
                 <BlurMask blur={6} style="normal" />
               </RoundedRect>
             ) : null}
+            <RoundedRect x={pad + width / 2} y={pad + width / 2} width={size.w - pad * 2 - width} height={size.h - pad * 2 - width} r={radius} style="stroke" strokeWidth={width} color={base} />
             <RoundedRect x={pad + width / 2} y={pad + width / 2} width={size.w - pad * 2 - width} height={size.h - pad * 2 - width} r={radius} style="stroke" strokeWidth={width}>
-              <SweepGradient c={vec(size.w / 2, size.h / 2)} colors={RING} transform={transform} origin={vec(size.w / 2, size.h / 2)} />
+              <SweepGradient c={vec(size.w / 2, size.h / 2)} colors={ring} positions={STOPS} transform={transform} origin={vec(size.w / 2, size.h / 2)} />
             </RoundedRect>
           </Group>
         </Canvas>

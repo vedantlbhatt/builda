@@ -27,7 +27,7 @@ import { Image } from 'expo-image';
 import { useIslandHost } from '../desktop/islandHost';
 import { islandOf } from './hardware';
 import { tokens } from '../generated/tokens';
-import { Face, RippleItem, Wash, Wheel, Words, stateColor, useMorph, withAlpha, RAIL_STAGGER_MS } from '../motion';
+import { Face, RippleItem, Wash, Wheel, Words, stateColor, useMorph, withAlpha, RAIL_STAGGER_MS, ISLAND_BLACK } from '../motion';
 import { useAccent } from '../theme/accent';
 import { select } from '../ui/haptics';
 import {
@@ -254,7 +254,7 @@ function expandedHeight(a: Activity): number {
 function phaseKey(a: Activity | null): string {
   if (!a) return '';
   if (a.kind === 'drop') return a.phase;
-  if (a.kind === 'demo') return a.ready ? 'ready' : 'cutting';
+  if (a.kind === 'demo') return a.ready ? 'ready' : a.filming ? 'filming' : 'asked';
   return '';
 }
 
@@ -304,7 +304,7 @@ function Content({
     case 'shipped':
       return <ShippedToast a={a} flat={flat} />;
     case 'demo':
-      return <DemoContent a={a} mode={mode} />;
+      return <DemoContent a={a} mode={mode} now={now} />;
     case 'notice':
       return <NoticeToast a={a} accentInk={accentInk} flat={flat} />;
   }
@@ -466,29 +466,51 @@ function NoticeToast({ a, accentInk, flat }: { a: Extract<Activity, { kind: 'not
   );
 }
 
-function DemoContent({ a, mode }: { a: Extract<Activity, { kind: 'demo' }>; mode: Mode }) {
-  const p = a.progress ?? 0;
+/**
+ * A demo your Mac is making because you asked from the phone (the ship kit). It happens elsewhere,
+ * takes minutes, and finishes while you are doing something else: the island's kind of news.
+ * Left ear: a dot, faint while it waits for the Mac, the data red while the Mac is recording (the
+ * colour a record light is everywhere), green when the kit is up. Right ear: how long ago you
+ * asked, the crew's own clock, or the Mac's progress when it says one.
+ */
+function DemoContent({ a, mode, now }: { a: Extract<Activity, { kind: 'demo' }>; mode: Mode; now: number }) {
+  const dot = a.ready ? ADD : a.filming ? DEL : FAINT;
+  const p = a.progress;
   if (mode === 'compact') {
     return (
       <Ears
-        left={<View style={[styles.demoDot, { backgroundColor: a.ready ? ADD : INK }]} />}
+        left={<View style={[styles.demoDot, { backgroundColor: dot }]} />}
         right={
-          <View style={styles.track}>
-            <View style={[styles.fill, { width: `${Math.round((a.ready ? 1 : p) * 100)}%`, backgroundColor: a.ready ? ADD : INK }]} />
-          </View>
+          p !== null && !a.ready ? (
+            <View style={styles.track}>
+              <View style={[styles.fill, { width: `${Math.round(p * 100)}%`, backgroundColor: INK }]} />
+            </View>
+          ) : (
+            <Text style={[styles.mono, { color: a.ready ? ADD : INK }]}>{a.ready ? 'kit' : earLabel(now - a.sinceMs)}</Text>
+          )
         }
       />
     );
   }
+  const kicker = a.ready ? 'The kit is up' : a.filming ? 'Your Mac is filming it' : 'Waiting for your Mac';
   return (
     <View style={[styles.expandedRow, { flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center' }]}>
-      <Text style={[styles.kicker, { color: a.ready ? ADD : FAINT }]}>{a.ready ? 'Demo ready' : 'Cutting a demo'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={[styles.demoDot, { backgroundColor: dot }]} />
+        <Text style={[styles.kicker, { color: a.ready ? ADD : a.filming ? DEL : FAINT }]}>{kicker}</Text>
+      </View>
       <Text numberOfLines={1} style={[styles.title, { color: INK }]}>
         {a.title}
       </Text>
-      <View style={[styles.track, { width: '100%', marginTop: 10 }]}>
-        <View style={[styles.fill, { width: `${Math.round((a.ready ? 1 : p) * 100)}%`, backgroundColor: a.ready ? ADD : INK }]} />
-      </View>
+      {p !== null && !a.ready ? (
+        <View style={[styles.track, { width: '100%', marginTop: 10 }]}>
+          <View style={[styles.fill, { width: `${Math.round(p * 100)}%`, backgroundColor: INK }]} />
+        </View>
+      ) : (
+        <Text numberOfLines={1} style={[styles.body, { color: FAINT }]}>
+          {a.ready ? 'Tap to share it anywhere.' : `${now - a.sinceMs < 60_000 ? 'Asked just now' : `Asked ${minutesLabel(now - a.sinceMs)} ago`}. One demo at a time.`}
+        </Text>
+      )}
     </View>
   );
 }
@@ -496,7 +518,7 @@ function DemoContent({ a, mode }: { a: Extract<Activity, { kind: 'demo' }>; mode
 const styles = StyleSheet.create({
   anchor: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   island: {
-    backgroundColor: '#000',
+    backgroundColor: ISLAND_BLACK,
     borderCurve: 'continuous',
     overflow: 'hidden',
     // The system island has no border; its edge is the screen's black against the app's colour.

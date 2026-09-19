@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
 import type { BoardResponse, DropRow, MoveRow } from '../drops/types';
+import type { DemoRequestRow, ShipKitResponse } from '../shipkit/types';
 
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
@@ -887,7 +888,7 @@ const ACCESS_KEY = 'builder.access';
 const REFRESH_KEY = 'builder.refresh';
 const TIMEOUT_MS = 20_000;
 
-const secureStorage: TokenStorage = {
+export const secureStorage: TokenStorage = {
   get: (k) => SecureStore.getItemAsync(k),
   set: (k, v) => SecureStore.setItemAsync(k, v),
   remove: (k) => SecureStore.deleteItemAsync(k),
@@ -1058,6 +1059,28 @@ export class Api {
   async mediaSource(url: string): Promise<MediaSourceRef> {
     await this.loadTokens();
     return resolveMediaUrl(url, this.baseUrl, this.access);
+  }
+
+  // ------------------------------------------------------------ ship kits (docs/ship-kit.md)
+
+  /** A project's published ship kit, or `{kit: null}`; 404 for a project that is not yours. */
+  shipKit(key: string): Promise<{ kit: ShipKitResponse | null }> {
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}/kit`);
+  }
+
+  /** Ask your Mac for a demo of this project; the live request when there is one already. */
+  requestDemo(key: string, hue: string | null): Promise<{ request: DemoRequestRow; existing: boolean }> {
+    return this.request('POST', '/v1/demos/requests', { body: { project_key: key, hue } });
+  }
+
+  /** Your requests for this project's demo, newest first. */
+  demoRequests(key: string): Promise<{ requests: DemoRequestRow[] }> {
+    return this.request('GET', `/v1/demos/requests?project_key=${encodeURIComponent(key)}`);
+  }
+
+  /** Take back a request that has not ended. */
+  cancelDemoRequest(id: string): Promise<{ request: DemoRequestRow }> {
+    return this.request('DELETE', `/v1/demos/requests/${encodeURIComponent(id)}`);
   }
 
   sessions(opts: { limit?: number; before?: string | null; notable_only?: boolean; include_live?: boolean } = {}): Promise<{

@@ -1,3 +1,4 @@
+import BuilderModel
 import SwiftUI
 
 // The pieces the island is built from, each one the kit's component in SwiftUI. They live in
@@ -299,18 +300,26 @@ private struct RailFace: View {
 
 // MARK: - The aura
 
-/// The iridescent ring that says "an agent is driving this". It turns once every 5 s, linear,
-/// and fades in over 420 ms. ONE per screen at most: a second aura is two things claiming to be
-/// the one an agent is on, and the ring stops meaning anything.
+/// The ring that says "an agent is driving this": ONE HUE, the state's own, a light travelling
+/// round the edge with a tail behind it over a faint ring of the same colour. It turns once every
+/// 5 s, linear, and fades in over 420 ms. ONE per screen at most: a second aura is two things
+/// claiming to be the one an agent is on, and the ring stops meaning anything.
+///
+/// It was the kit's iridescent ring first, pink to violet to blue to green to gold. A multi hue
+/// ring turning round a card is the most generated looking thing a screen can wear, and here a
+/// colour already means a state, so five at once said five things. The phone's `Aura.tsx` made
+/// the same change; both read `DesignTokens.Spectrum.island`.
 public struct AuraRing: ViewModifier {
     let active: Bool
     let radius: CGFloat
     let width: CGFloat
+    let color: Color
 
-    public init(active: Bool, radius: CGFloat, width: CGFloat = 1.5) {
+    public init(active: Bool, radius: CGFloat, width: CGFloat = 1.5, color: Color = AuraRing.working) {
         self.active = active
         self.radius = radius
         self.width = width
+        self.color = color
     }
 
     public func body(content: Content) -> some View {
@@ -319,12 +328,22 @@ public struct AuraRing: ViewModifier {
                 TimelineView(LoopSchedule(fps: 30, paused: IslandMotion.reduceMotion)) { tl in
                     let turn = Double(IslandMotion.auraTurnMs) / 1000
                     let angle = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: turn) / turn * 360
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .strokeBorder(
-                            AngularGradient(
-                                colors: AuraRing.colors, center: .center,
-                                angle: .degrees(angle)),
-                            lineWidth: width)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .strokeBorder(color.opacity(0.16), lineWidth: width)
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .strokeBorder(
+                                AngularGradient(
+                                    gradient: Gradient(stops: [
+                                        .init(color: color.opacity(0), location: 0),
+                                        .init(color: color.opacity(0), location: 0.45),
+                                        .init(color: color.opacity(0.4), location: 0.82),
+                                        .init(color: color, location: 0.985),
+                                        .init(color: color.opacity(0), location: 1),
+                                    ]),
+                                    center: .center, angle: .degrees(angle)),
+                                lineWidth: width)
+                    }
                 }
                 .transition(.opacity.animation(.easeInOut(duration: Double(IslandMotion.auraFadeMs) / 1000)))
                 .allowsHitTesting(false)
@@ -332,20 +351,18 @@ public struct AuraRing: ViewModifier {
         }
     }
 
-    /// The kit's ring, pink to violet to blue to green to gold and back.
-    public static let colors: [Color] = [
-        Color(.sRGB, red: 1.0, green: 0.561, blue: 0.780),
-        Color(.sRGB, red: 0.655, green: 0.545, blue: 0.980),
-        Color(.sRGB, red: 0.376, green: 0.647, blue: 0.980),
-        Color(.sRGB, red: 0.204, green: 0.827, blue: 0.600),
-        Color(.sRGB, red: 1.0, green: 0.820, blue: 0.400),
-        Color(.sRGB, red: 1.0, green: 0.561, blue: 0.780),
-    ]
+    /// Working's colour, the default: an agent driving something is working.
+    public static let working = island("working")
+
+    /// An island state's colour from the generated tokens.
+    public static func island(_ state: String) -> Color {
+        StripPalette.color(DesignTokens.Spectrum.island[state] ?? DesignTokens.Spectrum.island["working"]!)
+    }
 }
 
 extension View {
     /// Mark what an agent is driving right now. One per screen.
-    public func aura(_ active: Bool, radius: CGFloat, width: CGFloat = 1.5) -> some View {
-        modifier(AuraRing(active: active, radius: radius, width: width))
+    public func aura(_ active: Bool, radius: CGFloat, width: CGFloat = 1.5, color: Color = AuraRing.working) -> some View {
+        modifier(AuraRing(active: active, radius: radius, width: width, color: color))
     }
 }

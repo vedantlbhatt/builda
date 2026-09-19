@@ -63,6 +63,8 @@ export interface HeroDemoProps {
   projectKey: string;
   /** The server deleted it: the page shows nothing of it from now on. */
   onDeleted: () => void;
+  /** No demo yet: ask the Mac for one (opens the ship kit). */
+  onAsk?: () => void;
 }
 
 /**
@@ -70,7 +72,7 @@ export interface HeroDemoProps {
  * where its solid ink ends; until then, and with no video, the band stands alone and the demo
  * (the pile, or the empty print) follows it as a block of its own.
  */
-export function HeroDemo({ band, demo, hue, width, held, onOpen, onError, projectKey, onDeleted }: HeroDemoProps) {
+export function HeroDemo({ band, demo, hue, width, held, onOpen, onError, projectKey, onDeleted, onAsk }: HeroDemoProps) {
   const [bandH, setBandH] = useState(0);
   const [said, setSaid] = useState<string | null>(null);
   const entries = demo.kind === 'ready' ? demo.entries : [];
@@ -115,7 +117,7 @@ export function HeroDemo({ band, demo, hue, width, held, onOpen, onError, projec
       {demo.kind === 'none' ? (
         <Block style={styles.below}>
           {said ? <Words style={[type.dim, styles.said]}>{said}</Words> : null}
-          <PageEmptyDemo hue={hue} width={width - GUTTER * 2} />
+          <PageEmptyDemo hue={hue} width={width - GUTTER * 2} onAsk={onAsk} projectKey={projectKey} />
         </Block>
       ) : null}
     </>

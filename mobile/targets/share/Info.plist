@@ -4,6 +4,20 @@
 <dict>
   <key>CFBundleDisplayName</key>
   <string>Builda</string>
+  <!--
+    The app's own transport rule, the same two keys (ios/Builda/Info.plist): https only, except a
+    development API on this machine or the local network. The extension now posts one route
+    itself (docs/drop-island.md), and without this a debug build pointed at the local stack would
+    have every direct share refused by ATS and silently queued, which is the fallback working and
+    the feature never once being exercised.
+  -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <false/>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionPointIdentifier</key>

@@ -119,6 +119,16 @@ describe('what the island says', () => {
     expect(spoken(crew, 0)).toBe('2 sessions running');
     expect(spoken(null, 0)).toBe('');
   });
+
+  test('a demo you asked for says where it is: waiting, filming, up', () => {
+    const d = { kind: 'demo' as const, id: 'demo:k', projectKey: 'k', title: 'tramline', progress: null, sinceMs: 0 };
+    expect(spoken({ ...d, filming: false, ready: false }, 0)).toBe('Waiting for your Mac to film tramline');
+    expect(spoken({ ...d, filming: true, ready: false }, 0)).toBe('Your Mac is filming tramline');
+    expect(spoken({ ...d, filming: false, ready: true }, 0)).toBe('The demo of tramline is ready');
+    // A demo is standing news while it is made, and it outranks the crew it is not part of.
+    expect(restingMode({ ...d, filming: true, ready: false })).toBe('compact');
+    expect(PRIORITY.demo).toBeGreaterThan(PRIORITY.crew);
+  });
 });
 
 describe('the store', () => {

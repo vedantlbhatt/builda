@@ -9,8 +9,9 @@ the clone, the command typed at a readable speed, `Wait` until the prompt is bac
 guessing how long a command's output takes, and the composer joins them like any other beats.
 
 The tape runs under the environment allowlist with the venv and `node_modules/.bin` first on
-PATH, portrait (1080 by 1920) like every other demo, in a theme with enough contrast for the
-privacy check to read every character it shows.
+PATH, at the size of the device table's terminal canvas (spec/devices.v1.json `terminal`, the
+vertical format: a CLI has no screen of its own, so it is filmed at the size its reel is posted
+at), in a theme with enough contrast for the privacy check to read every character it shows.
 """
 
 from __future__ import annotations
@@ -19,13 +20,14 @@ import os
 import pathlib
 import subprocess
 
+from . import devices as table
 from . import tools
 from .compose import probe
 from .detect import Plan
 from .result import BeatWindow, Capture, CaptureError, Still
 from .workspace import Sandbox, Workspace
 
-WIDTH, HEIGHT = 1080, 1920
+WIDTH, HEIGHT = table.fmt(table.TERMINAL["format"])["size"]
 THEME = "Catppuccin Mocha"
 
 

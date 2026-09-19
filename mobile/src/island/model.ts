@@ -71,7 +71,11 @@ export type Activity =
       title: string;
       /** 0 to 1 while cutting, null when the Mac has not said. */
       progress: number | null;
+      /** The Mac has claimed the request and is filming it now. */
+      filming: boolean;
       ready: boolean;
+      /** When the phone asked, for the ear's clock. */
+      sinceMs: number;
     }
   | {
       kind: 'notice';
@@ -247,7 +251,7 @@ export function spoken(a: Activity | null, nowMs: number): string {
     case 'shipped':
       return a.summary;
     case 'demo':
-      return a.ready ? `The demo of ${a.title} is ready` : `Cutting a demo of ${a.title}`;
+      return a.ready ? `The demo of ${a.title} is ready` : a.filming ? `Your Mac is filming ${a.title}` : `Waiting for your Mac to film ${a.title}`;
     case 'notice':
       return a.text;
   }

@@ -48,7 +48,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
-from .. import objectstore
+from .. import objectstore, ship_kit
 from .. import project_media as pm
 from ..auth import CurrentDevice, current_device
 from ..builder_profile import excluded_keys
@@ -465,7 +465,23 @@ def read_poster(media_id: str, device: CurrentDevice = Depends(current_device)):
 def _waiting(claims: dict) -> bool:
     """Is the row this token was made for still waiting for this object? A publish that was
     replaced, or a demo deleted since the presign, has no row, and its upload is refused
-    rather than left on disk with nothing pointing at it."""
+    rather than left on disk with nothing pointing at it. A ship kit's file (an object under
+    `ship-kit/`, ship_kit.py) is waited for by its row in `ship_kit_media`."""
+    if str(claims["key"]).startswith(ship_kit.PREFIX):
+        with db_session(viewer_id=claims["sub"]) as db:
+            return bool(
+                db.execute(
+                    text(
+                        """
+                        SELECT EXISTS (
+                          SELECT 1 FROM ship_kit_media
+                          WHERE id = CAST(:m AS uuid) AND user_id = CAST(:u AS uuid)
+                            AND NOT committed AND object_key = :k)
+                        """
+                    ),
+                    {"m": claims["mid"], "u": claims["sub"], "k": claims["key"]},
+                ).scalar()
+            )
     with db_session(viewer_id=claims["sub"]) as db:
         return bool(
             db.execute(
@@ -526,7 +542,7 @@ async def upload(token: str, request: Request):
                 f.write(chunk)
         if written != claims["n"]:
             raise HTTPException(400, f"this upload is {claims['n']} bytes, and {written} arrived")
-        if not pm.looks_like(claims["ct"], head):
+        if not ship_kit.looks_like(claims["ct"], head):
             raise HTTPException(415, f"these bytes are not {claims['ct']}")
         try:
             os.link(part, path)  # fails if the object exists: the single use, kept by the disk

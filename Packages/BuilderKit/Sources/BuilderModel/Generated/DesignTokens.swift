@@ -205,5 +205,15 @@ public enum DesignTokens {
         ]
         public static let creature: [String: String] = ["bit": "amber", "cat": "orchid", "dog": "cobalt", "fox": "ember", "owl": "heather", "bee": "brass", "whale": "tide", "octopus": "iris", "crab": "coral"]
         public static let crewRing: [String] = ["fox", "whale", "bee", "octopus", "crab", "dog", "cat", "owl"]
+        /// An island state's colour: working, thinking, reading, waiting, error, done, sleep.
+        public static let island: [String: SRGB] = [
+            "working": SRGB(r: 0.32549, g: 0.639216, b: 0.94902),  // cobalt
+            "thinking": SRGB(r: 0.65098, g: 0.439216, b: 0.952941),  // iris
+            "waiting": SRGB(r: 1.0, g: 0.701961, b: 0.0),  // amber
+            "error": SRGB(r: 0.898039, g: 0.282353, b: 0.301961),  // data.del
+            "done": SRGB(r: 0.482353, g: 0.788235, b: 0.435294),  // data.add
+            "reading": SRGB(r: 0.423529, g: 0.85098, b: 0.945098),  // tide
+            "sleep": SRGB(r: 0.419608, g: 0.396078, b: 0.364706),  // surface.textFaint
+        ]
     }
 }

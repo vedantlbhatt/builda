@@ -28,7 +28,7 @@
  * A chapter the window cannot answer is not drawn as zeroes: a project with nothing in the window
  * keeps its hero (stage, last session, history) and its sessions, and says so in a sentence.
  */
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -36,6 +36,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { n } from '../copy/numbers';
 import { DemoGallery } from '../demos/Gallery';
 import { HeroDemo } from '../demos/PageDemo';
+import { ShipKitDoor } from '../shipkit/ShipKitDoor';
 import { useProjectDemo, type DemoLoad } from '../demos/useDemo';
 import { Band, BandWords } from '../insights/Band';
 import { DiffBar, GrowBar, RuleTrack, StackBar } from '../insights/Bars';
@@ -173,6 +174,7 @@ export function ProjectPage() {
                   onDemoError={reloadDemo}
                   onDemoDeleted={demoDeleted}
                 />
+                <ShipKitDoor projectKey={page.detail.key} color={own.ink} hue={page.hue} name={page.detail.label.text} always={demo.kind !== 'none'} />
                 {page.time && stage >= 1 ? <TimeChapter page={page} hue={SPECTRUM[timeHue!]} inner={inner} /> : null}
                 {page.build && stage >= 2 ? <BuildChapter page={page} hue={SPECTRUM[buildHue!]} inner={inner} /> : null}
                 {page.shipping && stage >= 3 ? <ShippingChapter page={page} hue={SPECTRUM[shipHue!]} spark={page.hue} inner={inner} /> : null}
@@ -318,6 +320,7 @@ function HeroChapter({
   onDemoError: () => void;
   onDemoDeleted: () => void;
 }) {
+  const router = useRouter();
   const d = page.detail;
   const h = page.hero;
   const editable = d.label.source !== 'public';
@@ -392,7 +395,18 @@ function HeroChapter({
     : [d.momentum, recent ? recent.lastSession : d.lastSession];
   return (
     <Section>
-      <HeroDemo band={band} demo={demo} hue={page.hue} width={width} held={held} onOpen={onOpen} onError={onDemoError} projectKey={d.key} onDeleted={onDemoDeleted} />
+      <HeroDemo
+        band={band}
+        demo={demo}
+        hue={page.hue}
+        width={width}
+        held={held}
+        onOpen={onOpen}
+        onError={onDemoError}
+        projectKey={d.key}
+        onDeleted={onDemoDeleted}
+        onAsk={d.key.length === 64 ? () => router.push({ pathname: '/ship/[key]', params: { key: d.key, hue: page.hue, name: d.label.text } }) : undefined}
+      />
       {naming ? (
         <Block style={styles.block}>
           <NameField projectKey={d.key} current={d.label.source === 'nickname' ? d.label.text : null} onDone={onNamed} />

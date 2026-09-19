@@ -81,7 +81,7 @@ export const DEMO_STEPS: { label: string; run: () => void; ms: number }[] = [
   {
     label: 'demo',
     ms: 3600,
-    run: () => island.post({ kind: 'demo', id: 'demo:builda', projectKey: 'builda', title: 'builda', progress: 0.64, ready: false }, 0),
+    run: () => island.post({ kind: 'demo', id: 'demo:builda', projectKey: 'builda', title: 'builda', progress: null, filming: true, ready: false, sinceMs: now() - 3 * 60000 }, 0),
   },
   {
     label: 'rest',

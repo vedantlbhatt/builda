@@ -22,4 +22,4 @@ export { RippleItem } from './Ripple';
 export { Words } from './Words';
 export { Wash, type WashFrom } from './Wash';
 export { Aura } from './Aura';
-export { stateColor, withAlpha, EYES_FOR, type FaceState, type Eyes } from './states';
+export { stateColor, withAlpha, EYES_FOR, ISLAND_BLACK, type FaceState, type Eyes } from './states';

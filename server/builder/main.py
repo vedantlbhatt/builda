@@ -8,12 +8,14 @@ from .boot import run_startup_checks
 from .routes import (
     auth_routes,
     capture_keys,
+    drop_activity,
     drops,
     ingest,
     media,
     privacy,
     push,
     sessions,
+    shipkit,
     social,
     sync,
     users,
@@ -57,8 +59,13 @@ app.include_router(drops.router)
 # `GET /v1/projects/{key}`, or the literal "media:preview" is handed to the project route as
 # a key and refused as one.
 app.include_router(media.router)
+# shipkit BEFORE sessions too: `/v1/demos/requests:claim` and `/v1/projects/{key}/kit:presign`
+# are literals a `{something}/{id}` route would otherwise take as ids.
+app.include_router(shipkit.router)
 app.include_router(sessions.router)
 app.include_router(push.router)
+# The drop island's tokens (docs/drop-island.md), beside the session cards' in /v1/push.
+app.include_router(drop_activity.router)
 app.include_router(privacy.router)
 # users BEFORE social: `/v1/users/me` must be registered ahead of `/v1/users/{handle}`,
 # or the literal "me" is handed to the profile route as a handle.

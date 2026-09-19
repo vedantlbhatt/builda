@@ -100,6 +100,11 @@ def assert_policies_present() -> None:
         # 0026. A project's published demo: images of a person's own app, which may show a
         # private repository's name. Owner only whatever else is shared.
         "project_media",
+        # 0030. The phone's requests for a demo, and published ship kits: the same pictures
+        # in more shapes, and captions written from commit subjects. Owner only.
+        "demo_requests",
+        "ship_kits",
+        "ship_kit_media",
     }
     with engine().connect() as conn:
         rows = conn.execute(

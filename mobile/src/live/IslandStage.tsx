@@ -27,7 +27,7 @@ import Animated from 'react-native-reanimated';
 
 import { useIsDesktop } from '../desktop/formFactor';
 import { tokens } from '../generated/tokens';
-import { Face, RippleItem, Wash, Wheel, useMorph, RAIL_STAGGER_MS } from '../motion';
+import { Face, RippleItem, Wash, Wheel, useMorph, RAIL_STAGGER_MS, ISLAND_BLACK } from '../motion';
 import type { CrewMember } from '../island/model';
 import type { Animal } from '../pixel/animals';
 import { T } from '../ui/Text';
@@ -154,7 +154,7 @@ export function IslandStage({
 
 const styles = StyleSheet.create({
   anchor: { alignItems: 'center' },
-  stage: { backgroundColor: '#000', borderCurve: 'continuous', overflow: 'hidden' },
+  stage: { backgroundColor: ISLAND_BLACK, borderCurve: 'continuous', overflow: 'hidden' },
   press: { borderRadius: 44, borderCurve: 'continuous' },
   quiet: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   row: { flex: 1, flexDirection: 'row', padding: 12, gap: 10 },

@@ -63,7 +63,7 @@ import { creatureHue, MONO_FAMILY, radius, type Hue } from '../theme';
 import { T, useReduceMotion } from '../ui';
 import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
-import { Aura, Face, Wash } from '../motion';
+import { Aura, Face, stateColor, Wash } from '../motion';
 import { morphOpen } from '../motion/MorphNav';
 import { springAt } from '../motion/spec';
 import { FACE_FOR_TILE } from '../island/feeds';
@@ -493,7 +493,7 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
         // The aura: on this screen it means "an agent is driving this one, and it wants you".
         <View style={styles.grow}>
           {tile}
-          <Aura radius={TILE_RADIUS} />
+          <Aura radius={TILE_RADIUS} color={stateColor(FACE_FOR_TILE[m.kind], ink.creature)} />
         </View>
       ) : (
         tile

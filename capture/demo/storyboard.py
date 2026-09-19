@@ -414,6 +414,22 @@ def validate(data) -> dict:
     loc = dev.get("location")
     if loc is not None and not (isinstance(loc, list) and len(loc) == 2 and all(isinstance(x, (int, float)) for x in loc)):
         raise StoryboardError("device.location is [latitude, longitude]")
+    # The screen is a row of spec/devices.v1.json, never a size typed here (docs/ship-kit.md):
+    # `device.row` names the phone or tablet, `device.desktop` a web project's Mac window (or
+    # false for no desktop pass), and a top level `viewport` must be some row's points.
+    from . import devices as table
+
+    rows = {d["id"]: d for d in table.DEVICES}
+    if dev.get("row") is not None and rows.get(str(dev["row"]), {}).get("family") not in ("iphone", "ipad"):
+        raise StoryboardError(f"device.row {dev['row']!r} is not a phone or tablet of spec/devices.v1.json")
+    if dev.get("desktop") not in (None, False):
+        if kind != "web":
+            raise StoryboardError("device.desktop: only a web page has a desktop pass")
+        if rows.get(str(dev["desktop"]), {}).get("family") != "mac":
+            raise StoryboardError(f"device.desktop {dev['desktop']!r} is not a Mac window of spec/devices.v1.json")
+    vp = data.get("viewport") or {}
+    if vp and not any(d["points"] == [vp.get("width"), vp.get("height")] for d in table.DEVICES):
+        raise StoryboardError(f"viewport {vp} is not the points of any row of spec/devices.v1.json; name one with device.row")
     app = data.get("app") or {}
     if not isinstance(app, dict):
         raise StoryboardError("app is a mapping")

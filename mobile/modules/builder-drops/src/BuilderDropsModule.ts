@@ -1,6 +1,6 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
-import type { PendingDrop } from './BuilderDrops.types';
+import type { CredentialStatus, DirectShareResult, PendingDrop, ShareItemsResult } from './BuilderDrops.types';
 
 declare class BuilderDropsModule extends NativeModule {
   /**
@@ -14,6 +14,24 @@ declare class BuilderDropsModule extends NativeModule {
   takePending(): PendingDrop[];
   /** How many are waiting, without taking them. For Settings and the tests. */
   pendingCount(): number;
+  /**
+   * Copy the app's ACCESS token (never the refresh token) into the App Group's keychain, for the
+   * share extension's one route and the island's Start button (docs/drop-island.md).
+   * `expiresEpoch` is the JWT's `exp`, Unix seconds. Returns the keychain status, 0 on success.
+   */
+  mirrorCredential?(token: string, expiresEpoch: number, baseURL: string): number;
+  /** Signed out: nothing outside the app may act any more. */
+  clearCredential?(): void;
+  /** DEBUG: what the extension would find, without the token itself. */
+  credentialStatus?(): CredentialStatus;
+  /** DEBUG: the share extension's own send, run from the app. No queue fallback. */
+  debugShareDirect?(url: string, text: string): Promise<DirectShareResult>;
+  /**
+   * One share sheet with every file (local file paths or file:// URLs) and the text, for the
+   * ship kit (docs/ship-kit.md). The text also goes on the pasteboard, because some apps drop it
+   * when files come with it. Resolves when the sheet closes: whether it was sent, and where.
+   */
+  shareItems(paths: string[], text?: string | null): Promise<ShareItemsResult>;
 }
 
 /**

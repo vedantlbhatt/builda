@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from sqlalchemy import text
 
-from .. import builder_profile, live_store, quotes
+from .. import builder_profile, live_store, quotes, ship_kit
 from .. import project_media as pm
 from ..auth import CurrentDevice, current_device, current_phone, current_uploader
 from ..contract import ANONYMOUS_FIELDS, CONTRACT_VERSION, PUBLIC_FIELDS
@@ -176,6 +176,7 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
         return JSONResponse({"error": "invalid visibility"}, status_code=422)
 
     demo_objects: list[str] = []
+    kit_objects: list[str] = []
     with db_session(viewer_id=str(device.user_id)) as db:
         repo = db.execute(
             text("SELECT id FROM repos WHERE repo_hash = :h"), {"h": body.repo_hash}
@@ -225,6 +226,9 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
             # recognisable thing about it the server could hold. The rows go here, the
             # objects once this transaction has committed.
             _, demo_objects = pm.forget_project(db, str(device.user_id), body.repo_hash)
+            # And its ship kit (0030, docs/ship-kit.md): the videos, the captions and the
+            # requests for one. Same order: rows here, objects after the commit.
+            _, kit_objects = ship_kit.forget_project(db, str(device.user_id), body.repo_hash)
         elif body.visibility == "anonymous":
             # Dropping to anonymous must strip the name and the title everywhere it was
             # already stored, not just stop sending them from now on.
@@ -242,6 +246,8 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
     if body.visibility == "excluded":
         pm.delete_objects(demo_objects)
         pm.sweep(str(device.user_id), body.repo_hash)
+        pm.delete_objects(kit_objects)
+        ship_kit.sweep(str(device.user_id), body.repo_hash)
     return {"status": "ok", "visibility": body.visibility, "sessions_deleted": deleted}
 
 
@@ -260,6 +266,8 @@ def delete_account(device: CurrentDevice = Depends(current_device)):
         # video live in the object store, which no cascade reaches. Their keys are read now,
         # while the viewer can still see the rows, and the objects go after the commit.
         counts["project_media"], demo_objects = pm.account_objects(db, user_id)
+        # Ship kits (0030), the same way: their objects are in the same private store.
+        counts["ship_kit_media"], kit_objects = ship_kit.account_objects(db, user_id)
         for table, sql in [
             ("sessions", "SELECT COUNT(*) FROM sessions WHERE user_id = :u"),
             ("devices", "SELECT COUNT(*) FROM devices WHERE user_id = :u"),
@@ -294,4 +302,6 @@ def delete_account(device: CurrentDevice = Depends(current_device)):
     # good at the bucket, is under it too. The rows are gone, so nothing under it is kept.
     # One that lands after this is `python -m builder.media_sweep`'s.
     pm.sweep(user_id)
+    pm.delete_objects(kit_objects)
+    ship_kit.sweep(user_id)
     return {"status": "deleted", "row_counts": counts, "receipt": receipt}

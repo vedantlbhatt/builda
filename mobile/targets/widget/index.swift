@@ -9,5 +9,7 @@ struct BuilderWidgetBundle: WidgetBundle {
   var body: some Widget {
     BuilderHomeWidget()
     BuilderLiveActivity()
+    // A reel you shared, being read on your Mac (docs/drop-island.md).
+    BuilderDropActivity()
   }
 }

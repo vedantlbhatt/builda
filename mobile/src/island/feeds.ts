@@ -8,6 +8,7 @@ import { api } from '../data/client';
 import type { RepoNames } from '../copy/repoLabel';
 import { tileModel } from '../live/mission';
 import { crewFor } from '../live/crew';
+import { dropLanded, dropMoved } from '../live/dropActivity';
 import type { FaceState } from '../motion/states';
 import { DEFAULT_ANIMAL, type Animal } from '../pixel/animals';
 import { creatureHue, dropHue } from '../theme';
@@ -117,11 +118,14 @@ export function trackDrop(dropId: string, url: string): void {
   const id = `drop:${dropId}`;
   const base = { kind: 'drop' as const, id, dropId, host, title: null, thumbnail: null, moves: 0, firstMove: null, hue: null };
   island.post({ ...base, phase: 'sent' }, 0);
+  // And the system island, for the moment you leave the app (docs/drop-island.md).
+  void dropLanded(dropId, url);
   const started = Date.now();
 
   const tick = async () => {
     try {
       const { drop, moves } = await api.drop(dropId);
+      void dropMoved(drop, moves);
       const offered = moves.filter((m) => m.status === 'offered').sort((a, b) => a.position - b.position);
       const hue = drop.kind ? (dropHue(drop.kind)?.ink ?? null) : null;
       const common = { ...base, title: drop.title, thumbnail: drop.thumbnail_url, hue };
@@ -147,4 +151,71 @@ export function trackDrop(dropId: string, url: string): void {
     setTimeout(() => void tick(), TRACK_EVERY_MS);
   };
   setTimeout(() => void tick(), 800);
+}
+
+const demos = new Set<string>();
+/** A demo takes minutes on the Mac; the island checks at the ship kit screen's own cadence. */
+export const DEMO_EVERY_MS = 20_000;
+/**
+ * Stop watching after this. The one phone request run end to end on this Mac (a website, captions
+ * included; the ship kit's phone-09 to phone-12 screenshots) went from asked to landed in about
+ * thirteen minutes. Half an hour is more than twice that: past it the Mac is asleep, and the kit
+ * screen says so better than a pill that never ends.
+ */
+export const DEMO_FOR_MS = 30 * 60_000;
+
+/**
+ * Watch one demo request from the moment the phone asks until the Mac publishes the kit, refuses,
+ * or the request is taken back. It lives here, not on the kit screen, because the point is the
+ * minutes AFTER you leave that screen: you asked, you went back to what you were doing, and the
+ * island tells you when the thing you asked for exists. Tapping it opens the kit.
+ */
+/** Taken back on the phone: the island says nothing more about it, now rather than on the next read. */
+export function untrackDemo(projectKey: string): void {
+  demos.delete(projectKey);
+  island.clear(`demo:${projectKey}`);
+}
+
+export function trackDemo(projectKey: string, title: string): void {
+  if (demos.has(projectKey)) return;
+  demos.add(projectKey);
+  const id = `demo:${projectKey}`;
+  const sinceMs = Date.now();
+  const base = { kind: 'demo' as const, id, projectKey, title, progress: null, sinceMs };
+  island.post({ ...base, filming: false, ready: false }, 0);
+
+  const tick = async () => {
+    if (!demos.has(projectKey)) return;
+    try {
+      const { requests } = await api.demoRequests(projectKey);
+      if (!demos.has(projectKey)) return;
+      const r = requests[0];
+      if (!r || r.status === 'cancelled') {
+        island.clear(id);
+        demos.delete(projectKey);
+        return;
+      }
+      if (r.status === 'done') {
+        island.post({ ...base, filming: false, ready: true }, DROP_DONE_HOLD_MS);
+        demos.delete(projectKey);
+        return;
+      }
+      if (r.status === 'failed') {
+        island.clear(id);
+        demos.delete(projectKey);
+        notice(`Your Mac could not film ${title}. The kit page says why.`, 'error', DEFAULT_ANIMAL, creatureHue(DEFAULT_ANIMAL).ink);
+        return;
+      }
+      island.post({ ...base, filming: r.status === 'claimed', ready: false }, 0);
+    } catch {
+      // Offline for a moment: keep what the island shows and try again on the next tick.
+    }
+    if (Date.now() - sinceMs > DEMO_FOR_MS) {
+      island.clear(id);
+      demos.delete(projectKey);
+      return;
+    }
+    setTimeout(() => void tick(), DEMO_EVERY_MS);
+  };
+  setTimeout(() => void tick(), 1500);
 }

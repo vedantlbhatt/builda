@@ -105,9 +105,10 @@ export default function DropsScreen() {
           return;
         }
         const origin: Origin = { x, y, w, h, r: Math.max(10, Math.round(w * 0.07)) };
-        overlay.show((hide) => (
-          <Opening origin={origin} initial={{ drop: row, moves }} onClosed={hide} onChanged={() => void refresh()} />
-        ));
+        overlay.show(
+          (hide) => <Opening origin={origin} initial={{ drop: row, moves }} onClosed={hide} onChanged={() => void refresh()} />,
+          { closeOnNavigate: true },
+        );
       });
     },
     [router, drops, moves, refresh, desktop, c.bg],

@@ -40,7 +40,7 @@ const CARD_W = 360;
 const CARD_H = 450;
 
 export function showPairShare(drop: DropRow, move: MoveRow, you: { animal: Animal; ink: string }): void {
-  overlay.show((hide) => <Preview drop={drop} move={move} you={you} onClose={hide} />);
+  overlay.show((hide) => <Preview drop={drop} move={move} you={you} onClose={hide} />, { closeOnNavigate: true });
 }
 
 function Preview({ drop, move, you, onClose }: { drop: DropRow; move: MoveRow; you: { animal: Animal; ink: string }; onClose: () => void }) {

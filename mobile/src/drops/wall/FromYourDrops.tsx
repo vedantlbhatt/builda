@@ -1,5 +1,7 @@
 /**
- * On a session's page: the reels you saved that are about what this session did
+ * On a session's page: the reel this session was MADE from, when one of your moves ran as it
+ * (the other direction of the wall's "what you made of them" pair, which already links the reel
+ * to its session), and the reels you saved that are about what this session did
  * (`drops/context.ts`). Small posters, the words the two share, and a tap opens the drop.
  *
  * Only after the session's reading, and only when there is a match: an empty shelf titled "from
@@ -18,21 +20,28 @@ import { Block, Section } from '../../insights/reveal';
 import { select } from '../../ui/haptics';
 import { relatedDrops, sharedLine, type Related } from '../context';
 import { KIND_WORD } from '../copy';
+import type { DropRow, MoveRow } from '../types';
 import { Poster } from './Poster';
 
 const S = tokens.surface;
 
-export function FromYourDrops({ analysis }: { analysis: SessionAnalysis | null | undefined }) {
+export function FromYourDrops({ analysis, sessionId }: { analysis: SessionAnalysis | null | undefined; sessionId?: string }) {
   const router = useRouter();
   const [related, setRelated] = useState<Related[]>([]);
+  const [madeFrom, setMadeFrom] = useState<{ drop: DropRow; move: MoveRow } | null>(null);
 
   useEffect(() => {
-    if (!analysis) return;
+    if (!analysis && !sessionId) return;
     let live = true;
     api
       .dropsBoard()
       .then((b) => {
-        if (live) setRelated(relatedDrops(analysis, b.drops));
+        if (!live) return;
+        const move = sessionId ? b.moves.find((m) => m.session_id === sessionId) : undefined;
+        const drop = move ? b.drops.find((d) => d.id === move.drop_id) : undefined;
+        setMadeFrom(move && drop ? { drop, move } : null);
+        // The reel it was made from is not also "a reel you saved about this".
+        if (analysis) setRelated(relatedDrops(analysis, b.drops).filter((r) => r.drop.id !== drop?.id));
       })
       .catch(() => {
         // No board, no shelf: this is a nicety on a page that stands without it.
@@ -40,16 +49,42 @@ export function FromYourDrops({ analysis }: { analysis: SessionAnalysis | null |
     return () => {
       live = false;
     };
-  }, [analysis]);
+  }, [analysis, sessionId]);
 
-  if (related.length === 0) return null;
+  if (related.length === 0 && !madeFrom) return null;
   return (
     <Section>
       <Block style={styles.wrap}>
         <Kicker>from your drops</Kicker>
-        <Text maxFontSizeMultiplier={1.3} style={styles.lead}>
-          {related.length === 1 ? 'You saved a reel about this.' : `You saved ${related.length} reels about this.`}
-        </Text>
+        {madeFrom ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Made from a reel you shared: ${madeFrom.drop.title ?? 'a drop'}. ${madeFrom.move.title}`}
+            onPress={() => {
+              select();
+              router.push(`/drop/${madeFrom.drop.id}`);
+            }}
+            style={({ pressed }) => [styles.made, pressed && { opacity: 0.7 }]}
+          >
+            <Poster drop={madeFrom.drop} width={72} />
+            <View style={styles.words}>
+              <Text maxFontSizeMultiplier={1.3} style={styles.lead}>
+                Made from a reel you shared.
+              </Text>
+              <Text maxFontSizeMultiplier={1.3} numberOfLines={2} style={styles.title}>
+                {madeFrom.drop.title ?? 'Untitled'}
+              </Text>
+              <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={styles.why}>
+                {`The move: ${madeFrom.move.title}`}
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
+        {related.length ? (
+          <Text maxFontSizeMultiplier={1.3} style={[styles.lead, madeFrom ? { marginTop: 8 } : null]}>
+            {related.length === 1 ? 'You saved a reel about this.' : `You saved ${related.length} reels about this.`}
+          </Text>
+        ) : null}
         {related.map((r) => (
           <Pressable
             key={r.drop.id}
@@ -84,6 +119,7 @@ const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 8, gap: 12 },
   lead: { color: S.text.dark, fontSize: 20, lineHeight: 25, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  made: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   words: { flex: 1, minWidth: 0 },
   kind: { color: S.textDim.dark, fontSize: 13, fontWeight: '600' },
   title: { color: S.text.dark, fontSize: 16, lineHeight: 20, fontWeight: '600', marginTop: 1 },

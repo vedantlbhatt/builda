@@ -38,6 +38,15 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **03:30 to 03:55**: the ship kit re-filmed Builda from tonight's build (`capture demo . --app`
+  with a minted device, `BUILDER_DEMO_ACCESS`/`REFRESH`), its band a plain panel now; the project
+  page's empty demo asks the Mac (and says Asked once asked); the island carries a demo request
+  (`trackDemo`, pure rules in `island/model.ts`, tested); the session page's live bar is the
+  island opened on the run; a session made from a reel links back to it; an open drop closes
+  when a deep link navigates; creature marks are one path. Server pytest passes on
+  `builder_overnight_motion_test` (0031); `make check-gen` and `make lint` clean.
+- Helpers running: `claude/motion-desktop2` (desktop on tonight's screens), `claude/motion-demoisland`
+  (the demo request as a system Live Activity).
 - **Merges** (03:00): Mac notch (SNAP spring aligned to the phone's 33 by the cross check test),
   desktop (its spring copy became a re-export of `src/motion/spec.ts`, its state inks resolve via
   `stateColor`; `force.ts` stays deleted), drop island (Live Activity, share extension direct POST).

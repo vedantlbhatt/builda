@@ -256,3 +256,37 @@ export function spoken(a: Activity | null, nowMs: number): string {
       return a.text;
   }
 }
+
+// ─── a demo you asked for (`feeds.trackDemo`) ──────────────────────────────────────────────────
+
+/** A demo takes minutes on the Mac; the island checks at the ship kit screen's own cadence. */
+export const DEMO_EVERY_MS = 20_000;
+/**
+ * Stop watching after this. The one phone request run end to end on this Mac (a website, captions
+ * included; the ship kit's phone-09 to phone-12 screenshots) went from asked to landed in about
+ * thirteen minutes. Half an hour is more than twice that: past it the Mac is asleep, and the kit
+ * screen says so better than a pill that never ends.
+ */
+export const DEMO_FOR_MS = 30 * 60_000;
+
+/** What the island does with the newest request row for a project it is watching. */
+export type DemoStep = 'clear' | 'ready' | 'failed' | 'filming' | 'waiting';
+
+/**
+ * PURE, so the tests hold it. No row, or taken back: say nothing more. Done: the kit is up.
+ * Failed: a notice with where to read why. Claimed: the Mac is filming. Queued: still waiting.
+ */
+export function demoStepFor(status: string | null | undefined): DemoStep {
+  switch (status) {
+    case 'done':
+      return 'ready';
+    case 'failed':
+      return 'failed';
+    case 'claimed':
+      return 'filming';
+    case 'queued':
+      return 'waiting';
+    default:
+      return 'clear';
+  }
+}

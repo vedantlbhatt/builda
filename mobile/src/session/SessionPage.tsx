@@ -179,7 +179,7 @@ export function SessionPage(props: SessionPageProps) {
           ) : null}
 
           {/* Reels you saved about what this session did (`drops/context.ts`). Nothing when none. */}
-          {stage >= 4 && s.analysis ? <FromYourDrops analysis={s.analysis} /> : null}
+          {stage >= 4 ? <FromYourDrops analysis={s.analysis} sessionId={s.id} /> : null}
 
           {stage >= 5 ? (
             <ShareChapter

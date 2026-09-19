@@ -133,3 +133,50 @@ export type DropTokenStatus = {
   pushToStartRegistered?: boolean;
   activities?: { activityId: string; dropId: string; registered: boolean }[];
 };
+
+// ------------------------------------------------------------------ a demo you asked for
+
+/**
+ * The JS half of `BuilderDemoAttributes` (ios/BuilderDemoAttributes.swift, byte-identical with
+ * targets/widget/_shared/). `__tests__/liveActivityAttributes.test.ts` holds these keys to the
+ * Swift struct, to the module's Records and to the server's push (`demo_push.CONTENT_STATE_KEYS`).
+ * docs/demo-island.md.
+ */
+export type DemoPhase = 'asked' | 'filming' | 'ready' | 'failed';
+
+/** Static for the life of the card. */
+export type DemoAttrs = {
+  /** The server's request uuid. */
+  requestId: string;
+  /** The project's key (64 hex), for the Share link `builder://ship/<key>`. */
+  projectKey: string;
+  /** The project as the phone names it. */
+  title: string;
+  /** `theme.ts` HueName the title wears; null for the warm greys. */
+  hue: string | null;
+};
+
+export type DemoState = {
+  phase: DemoPhase;
+  /** Unix seconds the phone asked: the clock the compact island counts up from. */
+  sinceEpoch: number;
+  /** Why it could not be made, in the kit screen's words; null unless failed. */
+  failure: string | null;
+  updatedEpoch: number;
+};
+
+export type DemoActivityInfo = {
+  id: string;
+  requestId: string;
+  projectKey: string;
+  state: 'active' | 'stale' | 'ended' | 'dismissed' | string;
+  phase: DemoPhase | string;
+  updatedEpoch: number;
+};
+
+/** DEBUG: what the server has been handed (`flushDemoTokens`). */
+export type DemoTokenStatus = {
+  enabled?: boolean;
+  environment?: string;
+  activities?: { activityId: string; requestId: string; registered: boolean }[];
+};

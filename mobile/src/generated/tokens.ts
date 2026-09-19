@@ -463,6 +463,12 @@ export const tokens = {
       "done": "data.add",
       "reading": "tide",
       "sleep": "surface.textFaint"
+    },
+    "demo": {
+      "asked": "surface.textFaint",
+      "filming": "data.del",
+      "ready": "data.add",
+      "failed": "data.del"
     }
   },
   "card": {

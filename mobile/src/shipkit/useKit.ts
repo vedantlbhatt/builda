@@ -73,8 +73,9 @@ export function useShipKit(key: string | null) {
         setRequests((rs) => [r.request, ...(rs ?? []).filter((x) => x.id !== r.request.id)]);
         setError(null);
         // The island carries it from here, past this screen: it says when the Mac starts filming
-        // and when the kit is up, wherever you are in the app by then.
-        trackDemo(key, name);
+        // and when the kit is up, wherever you are in the app by then, and with the row the
+        // system island carries it on once you leave the app (docs/demo-island.md).
+        trackDemo(key, name, r.request);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'The request did not reach the server.');
       } finally {

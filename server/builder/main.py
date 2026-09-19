@@ -8,6 +8,7 @@ from .boot import run_startup_checks
 from .routes import (
     auth_routes,
     capture_keys,
+    demo_activity,
     drop_activity,
     drops,
     ingest,
@@ -66,6 +67,7 @@ app.include_router(sessions.router)
 app.include_router(push.router)
 # The drop island's tokens (docs/drop-island.md), beside the session cards' in /v1/push.
 app.include_router(drop_activity.router)
+app.include_router(demo_activity.router)
 app.include_router(privacy.router)
 # users BEFORE social: `/v1/users/me` must be registered ahead of `/v1/users/{handle}`,
 # or the literal "me" is handed to the profile route as a handle.

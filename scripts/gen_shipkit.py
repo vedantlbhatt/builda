@@ -190,6 +190,11 @@ def gen_py(s: dict) -> str:
     )
     caps = "\n".join(f"    {json.dumps(k)}: {v}," for k, v in s["caps"].items())
     limits = "\n".join(f"    {json.dumps(k)}: {v}," for k, v in s["platform_limits"].items())
+    # A failed request's sentence, for the words its Live Activity carries (demo_push, docs/demo-island.md):
+    # the same `refusals` text the phone's kit screen and the Mac print, not a third wording.
+    request_sentences = "\n".join(
+        f"    {json.dumps(k)}: {json.dumps(s['refusals'][k])}," for k in s["enums"]["request_refusal"]
+    )
     return f'''{BANNER_PY}
 """The ship kit at the server's door (docs/ship-kit.md): a kit document, the presign of one kit
 file, and the phone's request for a demo.
@@ -228,6 +233,11 @@ SHIPKIT_ENUM_VALUES: dict[str, list[str]] = {{
 
 SHIPKIT_ENUM_FIELDS: dict[str, dict[str, str]] = {{
 {enum_fields}
+}}
+
+#: A failed request's code to its sentence (spec `refusals`), for the demo island's failure words.
+REQUEST_REFUSAL_SENTENCES: dict[str, str] = {{
+{request_sentences}
 }}
 
 

@@ -169,9 +169,20 @@ actor DropTokenRegistrar {
     ]
   }
 
-  enum Sent { case ok, refused, later }
+  typealias Sent = IslandTokenPost.Sent
 
   private func send(_ method: String, _ path: String, _ body: [String: Any]?) async -> Sent {
+    await IslandTokenPost.send(method, path, body)
+  }
+}
+
+/// The one way an island's token reaches the server: the mirrored short-lived credential, ten
+/// seconds, and three answers. Shared by the drop cards and the demo cards
+/// (`BuilderDemoLive.swift`), so the two cannot come to disagree about what a refusal is.
+enum IslandTokenPost {
+  enum Sent { case ok, refused, later }
+
+  static func send(_ method: String, _ path: String, _ body: [String: Any]?) async -> Sent {
     guard let c = BuilderDropsCredential.usable(),
           let request = c.request(method, path, json: body, timeout: 10)
     else { return .later }
@@ -181,6 +192,7 @@ actor DropTokenRegistrar {
           let status = (response as? HTTPURLResponse)?.statusCode
     else { return .later }
     if (200..<300).contains(status) { return .ok }
+    // Not this account's, gone, or a body the route will never take: retrying cannot help.
     if status == 404 || status == 409 || status == 422 { return .refused }
     return .later
   }

@@ -83,6 +83,8 @@ public class BuilderLiveModule: Module {
         // not running, and the system wakes it to hand over the card's update token
         // (BuilderDropLive.swift says why that goes to the server from here).
         for activity in Activity<BuilderDropAttributes>.activities { self.observeDrop(activity) }
+        // The demo cards a previous launch started: their tokens and their ends still matter.
+        for activity in Activity<BuilderDemoAttributes>.activities { self.observeDemo(activity) }
         Task {
           for await activity in Activity<BuilderDropAttributes>.activityUpdates {
             await self.adoptDrop(activity)
@@ -191,6 +193,9 @@ public class BuilderLiveModule: Module {
       for activity in Activity<BuilderDropAttributes>.activities {
         await activity.end(nil, dismissalPolicy: .immediate)
       }
+      for activity in Activity<BuilderDemoAttributes>.activities {
+        await activity.end(nil, dismissalPolicy: .immediate)
+      }
     }
 
     // MARK: drops (docs/drop-island.md, BuilderDropLive.swift)
@@ -267,6 +272,86 @@ public class BuilderLiveModule: Module {
       return await DropTokenRegistrar.shared.status()
     }
 
+    // MARK: demos (docs/demo-island.md, BuilderDemoLive.swift)
+
+    /// One card per request, and one per project: a live card for this request is moved rather
+    /// than stacked, and any other live card of the same project (an older request's kit) comes
+    /// down, because two demo cards for one project would say two different things about it.
+    AsyncFunction("startDemo") { (attrs: DemoAttrsRecord, state: DemoStateRecord, opts: ContentOptionsRecord?) async throws -> String in
+      guard #available(iOS 16.2, *), ActivityAuthorizationInfo().areActivitiesEnabled else {
+        throw LiveActivitiesUnavailableException()
+      }
+      if let existing = DemoLive.live(attrs.requestId) {
+        await existing.update(DemoLive.content(state, opts))
+        return existing.id
+      }
+      for older in Activity<BuilderDemoAttributes>.activities where older.attributes.projectKey == attrs.projectKey {
+        await older.end(nil, dismissalPolicy: .immediate)
+      }
+      let attributes = BuilderDemoAttributes(
+        requestId: attrs.requestId, projectKey: attrs.projectKey, title: attrs.title, hue: attrs.hue)
+      let activity: Activity<BuilderDemoAttributes>
+      do {
+        activity = try Activity.request(
+          attributes: attributes, content: DemoLive.content(state, opts),
+          pushType: (opts?.push ?? false) ? .token : nil)
+      } catch where opts?.push ?? false {
+        // A build or a simulator that cannot issue an ActivityKit push token: a card the app
+        // moves itself beats no card, as `startDrop` says for a drop.
+        activity = try Activity.request(attributes: attributes, content: DemoLive.content(state, opts), pushType: nil)
+      }
+      self.observeDemo(activity)
+      return activity.id
+    }
+
+    /// Move a request's card. False when no live card shows it (swiped away, or never started).
+    AsyncFunction("updateDemo") { (requestId: String, state: DemoStateRecord, opts: ContentOptionsRecord?) async -> Bool in
+      guard #available(iOS 16.2, *), let activity = DemoLive.live(requestId) else { return false }
+      await activity.update(DemoLive.content(state, opts))
+      return true
+    }
+
+    AsyncFunction("endDemo") { (requestId: String, finalState: DemoStateRecord?, opts: ContentOptionsRecord?) async -> Bool in
+      guard #available(iOS 16.2, *) else { return false }
+      let cards = Activity<BuilderDemoAttributes>.activities.filter { $0.attributes.requestId == requestId }
+      let policy: ActivityUIDismissalPolicy
+      switch opts?.dismissAfterSeconds {
+      case .none: policy = .immediate
+      case .some(let s) where s <= 0: policy = .immediate
+      case .some(let s): policy = .after(Date().addingTimeInterval(s))
+      }
+      for activity in cards {
+        await activity.end(finalState.map { DemoLive.content($0, opts) }, dismissalPolicy: policy)
+      }
+      return !cards.isEmpty
+    }
+
+    /// Every demo card the system still knows: `state` is active, stale, ended or dismissed.
+    Function("listDemos") { () -> [[String: Any]] in
+      guard #available(iOS 16.2, *) else { return [] }
+      return Activity<BuilderDemoAttributes>.activities.map { a -> [String: Any] in
+        [
+          "id": a.id, "requestId": a.attributes.requestId, "projectKey": a.attributes.projectKey,
+          "state": "\(a.activityState)", "phase": a.content.state.phase,
+          "updatedEpoch": a.content.state.updatedEpoch,
+        ]
+      }
+    }
+
+    /// Whether the server may push to this phone's demo cards: Live Activities and Lock Screen
+    /// details on, and signed in. Off forgets every token there.
+    AsyncFunction("setDemoPush") { (enabled: Bool, environment: String) async in
+      guard #available(iOS 16.2, *) else { return }
+      await DemoTokenRegistrar.shared.setEnabled(enabled, environment: environment)
+    }
+
+    /// Retry any token the server has not taken yet. The foreground poll calls it each tick.
+    AsyncFunction("flushDemoTokens") { () async -> [String: Any] in
+      guard #available(iOS 16.2, *) else { return [:] }
+      await DemoTokenRegistrar.shared.flush()
+      return await DemoTokenRegistrar.shared.status()
+    }
+
     // Home-screen widget refresh (ExtensionStorage.reloadWidget from @bacons/apple-targets
     // does the same; this one needs no second native module).
     Function("reloadWidgets") { (kind: String?) in
@@ -336,6 +421,24 @@ public class BuilderLiveModule: Module {
     let stateTask = Task {
       for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
         await DropTokenRegistrar.shared.ended(activityId: activity.id)
+      }
+    }
+    observers[activity.id] = [tokenTask, stateTask]
+  }
+
+  @available(iOS 16.2, *)
+  private func observeDemo(_ activity: Activity<BuilderDemoAttributes>) {
+    guard observers[activity.id] == nil else { return }
+    let tokenTask = Task {
+      for await data in activity.pushTokenUpdates {
+        await DemoTokenRegistrar.shared.activityToken(
+          activityId: activity.id, requestId: activity.attributes.requestId, token: DropLive.hex(data),
+          phase: activity.content.state.phase)
+      }
+    }
+    let stateTask = Task {
+      for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
+        await DemoTokenRegistrar.shared.ended(activityId: activity.id)
       }
     }
     observers[activity.id] = [tokenTask, stateTask]

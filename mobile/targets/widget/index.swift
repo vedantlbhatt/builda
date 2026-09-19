@@ -11,5 +11,7 @@ struct BuilderWidgetBundle: WidgetBundle {
     BuilderLiveActivity()
     // A reel you shared, being read on your Mac (docs/drop-island.md).
     BuilderDropActivity()
+    // A demo you asked your Mac for from the phone (docs/demo-island.md).
+    BuilderDemoActivity()
   }
 }

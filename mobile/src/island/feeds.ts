@@ -8,6 +8,7 @@ import { api } from '../data/client';
 import type { RepoNames } from '../copy/repoLabel';
 import { tileModel } from '../live/mission';
 import { crewFor } from '../live/crew';
+import { demoAsked, demoMoved, demoTakenBack, type DemoRequestCard } from '../live/demoActivity';
 import { dropLanded, dropMoved } from '../live/dropActivity';
 import type { FaceState } from '../motion/states';
 import { DEFAULT_ANIMAL, type Animal } from '../pixel/animals';
@@ -165,21 +166,32 @@ const demos = new Set<string>();
 export function untrackDemo(projectKey: string): void {
   demos.delete(projectKey);
   island.clear(`demo:${projectKey}`);
+  // And the system island's card, which would otherwise hold "waiting" until its stale date.
+  void demoTakenBack(projectKey);
 }
 
-export function trackDemo(projectKey: string, title: string): void {
+/**
+ * `request` is the row the server answered the ask with. With it the system island gets the
+ * same request as a Live Activity (docs/demo-island.md), for the moment you leave the app; the
+ * in-app island below is the same with or without it.
+ */
+export function trackDemo(projectKey: string, title: string, request?: DemoRequestCard): void {
   if (demos.has(projectKey)) return;
   demos.add(projectKey);
   const id = `demo:${projectKey}`;
   const sinceMs = Date.now();
   const base = { kind: 'demo' as const, id, projectKey, title, progress: null, sinceMs };
   island.post({ ...base, filming: false, ready: false }, 0);
+  if (request) void demoAsked(request, title);
 
   const tick = async () => {
     if (!demos.has(projectKey)) return;
     try {
       const { requests } = await api.demoRequests(projectKey);
       if (!demos.has(projectKey)) return;
+      // The system island reads the same row through the same rule (`demoStepFor`), so the two
+      // cannot say different things about it; with no row at all its card comes down too.
+      void (requests[0] ? demoMoved(requests[0]) : demoTakenBack(projectKey));
       const step = demoStepFor(requests[0]?.status);
       if (step === 'clear') {
         island.clear(id);

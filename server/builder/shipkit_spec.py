@@ -74,6 +74,17 @@ SHIPKIT_ENUM_FIELDS: dict[str, dict[str, str]] = {
     "DemoRequestFinish": {"status": "request_status", "refusal": "request_refusal"},
 }
 
+#: A failed request's code to its sentence (spec `refusals`), for the demo island's failure words.
+REQUEST_REFUSAL_SENTENCES: dict[str, str] = {
+    "not_runnable": "this project could not be run on the Mac",
+    "capture_failed": "the Mac could not film it",
+    "privacy_refused": "the Mac found a name or a key on screen and kept the demo to itself",
+    "kit_failed": "the demo was made, and the kit around it was not",
+    "no_checkout": "the Mac has no checkout of this project",
+    "excluded": "this repository is excluded",
+    "cancelled_on_mac": "it was cancelled on the Mac",
+}
+
 
 class Caption(BaseModel):
     model_config = ConfigDict(extra="forbid")

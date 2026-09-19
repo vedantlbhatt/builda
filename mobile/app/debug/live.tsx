@@ -9,6 +9,7 @@ import { loadRepoNames } from '../../src/data/repoNames';
 import BuilderDrops from '../../modules/builder-drops';
 import BuilderLive from '../../modules/builder-live';
 import { activityFor, endAllLiveActivities, liveActivitiesAvailable, renderLivePreviews, syncLiveActivities, type SyncResult } from '../../src/live/activity';
+import { debugDemoCard } from '../../src/live/demoActivity';
 import { debugDropCard } from '../../src/live/dropActivity';
 import { crewFor } from '../../src/live/crew';
 import { debugSessions, DEBUG_TODAY, parseDebugLive, type DebugLiveRequest } from '../../src/live/fixtures';
@@ -62,6 +63,13 @@ import { ANIMAL_KEY } from '../icon';
  *              fallback: proves the mirrored token and the one route on a simulator
  *   drop=tokens       what the server has been handed for drop cards
  *
+ * A demo you asked for (docs/demo-island.md):
+ *
+ *   demo=asked|filming|ready|failed|end[&stale=10][&render=1]
+ *              one sample request's card, driven to that phase through the same `demoState` a
+ *              real poll uses (no server, no Mac); `stale` shortens its stale date
+ *   demo=tokens       what the server has been handed for demo cards
+ *
  * DEV ONLY. A release build renders nothing here and redirects, touching no activity. (The root
  * layout does not list this route, because another change owns that file; listing it in the
  * `__DEV__` group there is the follow up.)
@@ -84,6 +92,18 @@ function DebugLive() {
       const v = p[k];
       return Array.isArray(v) ? v[0] : v;
     };
+    const demo = first('demo');
+    if (demo !== undefined) {
+      const stale = Number(first('stale'));
+      return {
+        kind: 'demo',
+        demo: {
+          action: demo,
+          stale: Number.isInteger(stale) && stale >= 1 && stale <= 3600 ? stale : null,
+          render: ['1', 'true', 'yes'].includes((first('render') ?? '').toLowerCase()),
+        },
+      };
+    }
     const drop = first('drop');
     if (drop !== undefined) {
       const stale = Number(first('stale'));
@@ -105,7 +125,9 @@ function DebugLive() {
 
   useEffect(() => {
     let cancelled = false;
-    (req.kind === 'drop'
+    (req.kind === 'demo'
+      ? runDemo(req.demo)
+      : req.kind === 'drop'
       ? runDrop(req.drop)
       : req.kind === 'payload'
         ? runPayload(req.payload)
@@ -224,6 +246,31 @@ async function runDrop(r: DropRequest): Promise<string[]> {
   return out;
 }
 
+// ------------------------------------------------------------------ demo=<phase|tokens>
+
+const DEMO_PHASES = ['asked', 'filming', 'ready', 'failed', 'end'] as const;
+
+async function runDemo(r: DemoRequest): Promise<string[]> {
+  const out: string[] = [liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build'];
+  out.push(`asked: ${r.action}`);
+  if ((DEMO_PHASES as readonly string[]).includes(r.action)) {
+    out.push(await debugDemoCard(r.action as (typeof DEMO_PHASES)[number], r.stale ?? undefined));
+  } else if (r.action === 'tokens') {
+    out.push(JSON.stringify((await BuilderLive?.flushDemoTokens?.()) ?? {}));
+  } else {
+    out.push(`demo must be one of ${DEMO_PHASES.join(', ')} or tokens, not "${r.action}"`);
+  }
+  for (const c of BuilderLive?.listDemos?.() ?? []) out.push(`card ${c.id.slice(0, 8)} ${c.requestId} ${c.state} ${c.phase}`);
+  if (r.render) {
+    try {
+      out.push(`rendered ${(await renderLivePreviews()).length} previews into Documents/live-previews`);
+    } catch (e) {
+      out.push(`render failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ payload=<JSON>
 
 type RowIn = Partial<SessionDetail> & { id: string };
@@ -239,7 +286,10 @@ interface DebugPayload {
 
 type DropRequest = { action: string; url: string | null; stale: number | null; render: boolean; id: string | null; move: string | null };
 
+type DemoRequest = { action: string; stale: number | null; render: boolean };
+
 type Request =
+  | { kind: 'demo'; demo: DemoRequest }
   | { kind: 'drop'; drop: DropRequest }
   | { kind: 'fixtures'; req: DebugLiveRequest }
   | { kind: 'payload'; payload: DebugPayload }

@@ -142,7 +142,7 @@ export type DropTokenStatus = {
  * Swift struct, to the module's Records and to the server's push (`demo_push.CONTENT_STATE_KEYS`).
  * docs/demo-island.md.
  */
-export type DemoPhase = 'asked' | 'filming' | 'ready' | 'failed';
+export type DemoPhase = 'asked' | 'filming' | 'made' | 'ready' | 'failed';
 
 /** Static for the life of the card. */
 export type DemoAttrs = {

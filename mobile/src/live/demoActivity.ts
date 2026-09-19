@@ -23,7 +23,7 @@ import * as RN from 'react-native';
 import BuilderLive from '../../modules/builder-live';
 import type { DemoPhase, DemoState } from '../../modules/builder-live/src/BuilderLive.types';
 import type { PushEnvironment } from '../data/api';
-import { DEMO_HOLD_MS, DEMO_RANK, DEMO_RELEVANCE, demoState, demosToEnd, isAnswered, staleAfter, type DemoRequestLike } from './demoState';
+import { DEMO_HOLD_MS, DEMO_RANK, DEMO_RELEVANCE, demoState, demosToEnd, isFinal, staleAfter, type DemoRequestLike } from './demoState';
 
 function native() {
   return RN.Platform?.OS === 'ios' ? BuilderLive : null;
@@ -100,18 +100,19 @@ export async function demoAsked(req: DemoRequestCard, title: string, nowMs = Dat
     // Live Activities off in iOS Settings, or ActivityKit refused: the in-app island still has it.
     return false;
   }
-  if (isAnswered(state.phase)) endAfterBeat(req.id);
+  if (isFinal(state.phase)) endAfterBeat(req.id);
   return true;
 }
 
 /**
  * One poll of the request (`trackDemo`'s tick): move its card forward when the phase changed,
- * take it down after the beat once answered, and at once when the request was taken back.
+ * take it down after the beat once final, and at once when the request was taken back. A done
+ * request needs `kitPublishedAt` to be `ready`; without it, it is `made` (`demoState`).
  */
-export async function demoMoved(req: DemoRequestCard, nowMs = Date.now()): Promise<DemoState | null> {
+export async function demoMoved(req: DemoRequestCard, at: { nowMs?: number; kitPublishedAt?: string | null } = {}): Promise<DemoState | null> {
   const mod = native();
   if (!mod) return null;
-  const state = demoState(req, { nowMs });
+  const state = demoState(req, { nowMs: at.nowMs ?? Date.now(), kitPublishedAt: at.kitPublishedAt });
   if (!state) {
     // Taken back (on this phone or another): there is nothing left to say.
     if (shown.has(req.id)) await endNow(req.id);
@@ -129,7 +130,7 @@ export async function demoMoved(req: DemoRequestCard, nowMs = Date.now()): Promi
   } catch {
     return null;
   }
-  if (isAnswered(state.phase)) endAfterBeat(req.id);
+  if (isFinal(state.phase)) endAfterBeat(req.id);
   return state;
 }
 
@@ -189,6 +190,7 @@ const DEBUG_PROJECT = 'ab'.repeat(32);
  * looked at on a simulator. `staleInSeconds` shortens the stale date to photograph a quiet Mac.
  */
 export async function debugDemoCard(phase: DemoPhase | 'end', staleInSeconds?: number, nowMs = Date.now()): Promise<string> {
+  // A published kit a minute old for ready, none for made: the one rule decides between them.
   const mod = native();
   if (!mod?.startDemo) return 'no demo Live Activity in this build';
   if (phase === 'end') {
@@ -196,7 +198,7 @@ export async function debugDemoCard(phase: DemoPhase | 'end', staleInSeconds?: n
     shown.delete(DEBUG_REQUEST);
     return 'ended the sample demo card';
   }
-  const status = { asked: 'queued', filming: 'claimed', ready: 'done', failed: 'failed' }[phase];
+  const status = { asked: 'queued', filming: 'claimed', made: 'done', ready: 'done', failed: 'failed' }[phase];
   const row: DemoRequestCard = {
     id: DEBUG_REQUEST,
     project_key: DEBUG_PROJECT,
@@ -205,8 +207,9 @@ export async function debugDemoCard(phase: DemoPhase | 'end', staleInSeconds?: n
     hue: 'orchid',
     // Asked four minutes ago, so the timer has something to count.
     created_at: new Date(nowMs - 4 * 60_000).toISOString(),
+    claimed_at: phase === 'asked' ? null : new Date(nowMs - 3 * 60_000).toISOString(),
   };
-  const state = demoState(row, { nowMs });
+  const state = demoState(row, { nowMs, kitPublishedAt: phase === 'ready' ? new Date(nowMs - 60_000).toISOString() : null });
   if (!state) return `no card for ${phase}`;
   const o = { ...opts(state.phase), ...(staleInSeconds ? { staleInSeconds } : {}) };
   const id = await mod.startDemo({ requestId: row.id, projectKey: row.project_key, title: 'builda', hue: row.hue }, state, o);

@@ -65,7 +65,7 @@ import { ANIMAL_KEY } from '../icon';
  *
  * A demo you asked for (docs/demo-island.md):
  *
- *   demo=asked|filming|ready|failed|end[&stale=10][&render=1]
+ *   demo=asked|filming|made|ready|failed|end[&stale=10][&render=1]
  *              one sample request's card, driven to that phase through the same `demoState` a
  *              real poll uses (no server, no Mac); `stale` shortens its stale date
  *   demo=tokens       what the server has been handed for demo cards
@@ -248,7 +248,7 @@ async function runDrop(r: DropRequest): Promise<string[]> {
 
 // ------------------------------------------------------------------ demo=<phase|tokens>
 
-const DEMO_PHASES = ['asked', 'filming', 'ready', 'failed', 'end'] as const;
+const DEMO_PHASES = ['asked', 'filming', 'made', 'ready', 'failed', 'end'] as const;
 
 async function runDemo(r: DemoRequest): Promise<string[]> {
   const out: string[] = [liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build'];

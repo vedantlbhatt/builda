@@ -371,7 +371,7 @@ describe('BuilderDemoAttributes', () => {
 
   test('the phases are one list: the TypeScript union, the Swift views, the palette, the server', () => {
     const union = tsUnion(read(TS), 'DemoPhase');
-    expect(union).toEqual(['asked', 'filming', 'ready', 'failed']);
+    expect(union).toEqual(['asked', 'filming', 'made', 'ready', 'failed']);
     const views = /enum Phase: String \{\s*case ([^\n]+)/.exec(read(DEMO_VIEWS))![1]!.split(',').map((x) => x.trim());
     expect(views).toEqual(union);
     const palette = /enum DemoState: String, CaseIterable \{\s*case ([^\n]+)/.exec(read('targets/widget/_shared/Palette.swift'))![1]!.split(',').map((x) => x.trim());
@@ -433,6 +433,23 @@ describe('the demo card says what the in-app island and the kit screen say', () 
     }
     // The right ear's word once the kit is up.
     expect(island).toContain(`{a.ready ? '${swiftWord('wordKit')}' :`);
+  });
+
+  test('made is the in-app notice\'s own sentence, and its card has no Share', () => {
+    const made = swiftWord('made')!;
+    expect(made).toBe('Made on your Mac. Publish it there to share it.');
+    // feeds.ts trackDemo's notice ends with the same sentence ("The demo of X is made on your Mac. ...").
+    const feeds = read('src/island/feeds.ts');
+    expect(feeds).toContain('is made on your Mac. Publish it there to share it.`');
+    // The Share link is drawn only for ready.
+    const row = views.slice(views.indexOf('struct DemoAnswerRow'), views.indexOf('// MARK: - Lock Screen'));
+    expect(row).toContain('if d.phase == .ready, let url = d.url');
+    expect(row.split('Link(destination:').length).toBe(2);
+  });
+
+  test('made wears the dim grey token, from the generator', () => {
+    const palette = read('targets/widget/_shared/Palette.swift');
+    expect(palette).toMatch(/case \.made: return srgb\([^)]+\)  \/\/ surface\.textDim /);
   });
 
   test('a failure is requestView\'s line, word for word, with and without a reason', async () => {

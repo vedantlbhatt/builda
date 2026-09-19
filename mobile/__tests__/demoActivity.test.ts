@@ -12,6 +12,9 @@
  *     ends an answer past its beat and anything past its stale date.
  *   * `trackDemo` hands the row it was asked with to the system island and moves it on each tick,
  *     while the in-app island behaves exactly as before.
+ *   * Done is not the same as up: a done request is `ready` only with a kit of its own
+ *     (`kitFromRequest`), `made` otherwise, and `trackDemo` moves the card to made rather than
+ *     taking it down; made is not final, so the beat does not end it.
  */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -20,6 +23,7 @@ import { join } from 'node:path';
 import type { DemoState } from '../modules/builder-live/src/BuilderLive.types';
 import { SHIPKIT_ENUMS } from '../src/generated/shipkit';
 import { DEMO_FOR_MS, DROP_DONE_HOLD_MS, demoStepFor } from '../src/island/model';
+import { kitFromRequest } from '../src/shipkit/model';
 import {
   ANSWER_STALE_SECONDS,
   ASKED_STALE_SECONDS,
@@ -34,7 +38,13 @@ import {
 
 const ROOT = join(import.meta.dir, '..', '..');
 const FIXTURE = JSON.parse(readFileSync(join(ROOT, 'spec/fixtures/demos/activity_state.json'), 'utf8')) as {
-  cases: { name: string; now: number; request: { status: string; refusal: string | null; created_at: string }; expect: DemoState | null }[];
+  cases: {
+    name: string;
+    now: number;
+    kit_published_at?: string | null;
+    request: { status: string; refusal: string | null; created_at: string; claimed_at: string | null };
+    expect: DemoState | null;
+  }[];
 };
 const PY = readFileSync(join(ROOT, 'server/builder/demo_push.py'), 'utf8');
 /** `NAME = 30 * 60` or `NAME = 55` in demo_push.py, as a number. */
@@ -46,9 +56,18 @@ const pyNum = (name: string) => {
 describe('the card, held to the file the server is held to', () => {
   for (const c of FIXTURE.cases) {
     test(c.name, () => {
-      expect(demoState(c.request, { nowMs: c.now * 1000 })).toEqual(c.expect);
+      expect(demoState(c.request, { nowMs: c.now * 1000, kitPublishedAt: c.kit_published_at })).toEqual(c.expect);
     });
   }
+
+  test('ready and made are kitFromRequest, the kit screen\'s rule, on every done case', () => {
+    const done = FIXTURE.cases.filter((c) => c.request.status === 'done');
+    expect(done.map((c) => c.expect?.phase)).toContain('made');
+    expect(done.map((c) => c.expect?.phase)).toContain('ready');
+    for (const c of done) {
+      expect(c.expect?.phase).toBe(kitFromRequest(c.request, c.kit_published_at ?? null) ? 'ready' : 'made');
+    }
+  });
 
   test('no row is no card', () => {
     expect(demoState(null, { nowMs: 0 })).toBeNull();
@@ -60,7 +79,9 @@ describe('the card, held to the file the server is held to', () => {
     for (const status of SHIPKIT_ENUMS.request_status) {
       const step = demoStepFor(status);
       const phase = step === 'clear' ? null : DEMO_PHASE_OF_STEP[step];
-      expect(demoState({ status, refusal: null, created_at: '2025-09-13T08:00:00+00:00' }, { nowMs: 0 })?.phase ?? null).toBe(phase);
+      // With a kit of its own, so done reads as the step's own `ready`.
+      const kit = { kitPublishedAt: '2025-09-13T08:10:00+00:00' };
+      expect(demoState({ status, refusal: null, created_at: '2025-09-13T08:00:00+00:00' }, { nowMs: 0, ...kit })?.phase ?? null).toBe(phase);
       if (phase) expect(pyMap).toContain(`"${status}": "${phase}"`);
       else expect(pyMap).not.toContain(`"${status}"`);
     }
@@ -74,6 +95,9 @@ describe('the card, held to the file the server is held to', () => {
     expect(DEMO_RELEVANCE).toBe(pyNum('RELEVANCE'));
     const rank = /^RANK = \{([^}]+)\}/m.exec(PY)![1]!;
     for (const [phase, n] of Object.entries(DEMO_RANK)) expect(rank).toContain(`"${phase}": ${n}`);
+    // Made below ready, so a publish after the finish can still move the card.
+    expect(DEMO_RANK.made).toBeLessThan(DEMO_RANK.ready);
+    expect(DEMO_RANK.filming).toBeLessThan(DEMO_RANK.made);
     // The beat an answered card holds in front of you is the in-app island's for a ready kit.
     expect(DEMO_HOLD_MS).toBe(DROP_DONE_HOLD_MS);
   });
@@ -89,13 +113,14 @@ describe('which cards come down', () => {
   const now = 1_757_750_400_000;
   const card = (requestId: string, phase: string, agoMs: number, state = 'active') => ({ requestId, phase, state, updatedEpoch: (now - agoMs) / 1000 });
 
-  test('an answer past the beat, and anything past its stale date; never an answer in its beat, never one still going', () => {
+  test('a final answer past the beat, and anything past its stale date; never one in its beat, never one still going, never made before its stale date', () => {
     expect(
       demosToEnd(
         [
           card('ready-old', 'ready', DEMO_HOLD_MS),
           card('failed-old', 'failed', DEMO_HOLD_MS + 1),
           card('ready-new', 'ready', DEMO_HOLD_MS - 1),
+          card('made-old', 'made', 3_600_000),
           card('filming-long', 'filming', 3_600_000),
           card('asked-stale', 'asked', 1_900_000, 'stale'),
           card('ended', 'ready', 3_600_000, 'ended'),
@@ -112,7 +137,8 @@ const calls: { fn: string; args: unknown[] }[] = [];
 let listed: { requestId: string; projectKey: string; state: string; phase: string; updatedEpoch: number; id: string }[] = [];
 let appState = 'active';
 let liveCards = new Set<string>();
-let requestRows: { id: string; project_key: string; status: string; refusal: string | null; hue: string | null; created_at: string }[] = [];
+let requestRows: { id: string; project_key: string; status: string; refusal: string | null; hue: string | null; created_at: string; claimed_at?: string | null }[] = [];
+let kitResponse: { kit: { published_at: string } | null } | null = null;
 
 mock.module('react-native', () => ({
   Platform: { OS: 'ios', select: (o: Record<string, unknown>) => o.ios },
@@ -148,7 +174,13 @@ mock.module('../modules/builder-live', () => ({
 }));
 // trackDemo's poll, answered from `requestRows`, and nothing else of the API.
 mock.module('../src/data/client', () => ({
-  api: { demoRequests: async () => ({ requests: requestRows }) },
+  api: {
+    demoRequests: async () => ({ requests: requestRows }),
+    shipKit: async () => {
+      if (!kitResponse) throw new Error('offline');
+      return kitResponse;
+    },
+  },
 }));
 
 const glue = await import('../src/live/demoActivity');
@@ -161,8 +193,11 @@ const row = (status: string, over: Partial<(typeof requestRows)[number]> = {}) =
   refusal: null as string | null,
   hue: 'orchid',
   created_at: '2025-09-13T08:00:00+00:00',
+  claimed_at: status === 'queued' ? null : '2025-09-13T08:00:30+00:00',
   ...over,
 });
+/** A kit published after the claim: this request's own. */
+const OWN_KIT = '2025-09-13T08:12:00+00:00';
 
 describe('starting, moving and ending a card', () => {
   beforeEach(() => {
@@ -208,21 +243,37 @@ describe('starting, moving and ending a card', () => {
   test('the poll moves it forward once per phase, never back, each with its stale date', async () => {
     await allow();
     await glue.demoAsked(row('queued'), 'builda', NOW);
-    expect((await glue.demoMoved(row('claimed'), NOW + 20_000))?.phase).toBe('filming');
-    expect(await glue.demoMoved(row('claimed'), NOW + 40_000)).toBeNull(); // nothing new
-    expect(await glue.demoMoved(row('queued'), NOW + 50_000)).toBeNull(); // never back
-    const ready = await glue.demoMoved(row('done'), NOW + 60_000);
+    expect((await glue.demoMoved(row('claimed'), { nowMs: NOW + 20_000 }))?.phase).toBe('filming');
+    expect(await glue.demoMoved(row('claimed'), { nowMs: NOW + 40_000 })).toBeNull(); // nothing new
+    expect(await glue.demoMoved(row('queued'), { nowMs: NOW + 50_000 })).toBeNull(); // never back
+    // Done with no kit of its own: made, and a made card is not stepped back by a second read.
+    expect(await glue.demoMoved(row('done'), { nowMs: NOW + 60_000 })).toMatchObject({ phase: 'made', failure: null });
+    expect(await glue.demoMoved(row('done'), { nowMs: NOW + 61_000 })).toBeNull();
+    // The kit is published: made moves on to ready.
+    const ready = await glue.demoMoved(row('done'), { nowMs: NOW + 70_000, kitPublishedAt: OWN_KIT });
     expect(ready).toMatchObject({ phase: 'ready', failure: null });
+    // And a later read without the kit does not take it back to made.
+    expect(await glue.demoMoved(row('done'), { nowMs: NOW + 80_000 })).toBeNull();
     expect(calls.filter((c) => c.fn === 'updateDemo').map((c) => (c.args[2] as { staleInSeconds: number }).staleInSeconds)).toEqual([
       FILMING_STALE_SECONDS,
+      ANSWER_STALE_SECONDS,
       ANSWER_STALE_SECONDS,
     ]);
   });
 
+  test('made is not final: the beat does not end it, so a publish can still move it', async () => {
+    await allow();
+    await glue.demoAsked(row('claimed'), 'builda', NOW);
+    expect((await glue.demoMoved(row('done'), { nowMs: NOW }))?.phase).toBe('made');
+    await new Promise((r) => setTimeout(r, DEMO_HOLD_MS + 50));
+    expect(calls.some((c) => c.fn === 'endDemo')).toBe(false);
+    expect(glue.shownDemos().get('r-1')?.phase).toBe('made');
+  }, DEMO_HOLD_MS + 2000);
+
   test('an answer comes down after the in-app island\'s beat, not before', async () => {
     await allow();
     await glue.demoAsked(row('claimed'), 'builda', NOW);
-    await glue.demoMoved(row('failed', { refusal: 'no_checkout' }), NOW);
+    await glue.demoMoved(row('failed', { refusal: 'no_checkout' }), { nowMs: NOW });
     expect(calls.some((c) => c.fn === 'endDemo')).toBe(false);
     await new Promise((r) => setTimeout(r, DEMO_HOLD_MS + 50));
     expect(calls.filter((c) => c.fn === 'endDemo').map((c) => c.args)).toEqual([['r-1', null, { dismissAfterSeconds: 0 }]]);
@@ -231,7 +282,7 @@ describe('starting, moving and ending a card', () => {
   test('a failure carries the kit screen\'s words', async () => {
     await allow();
     await glue.demoAsked(row('claimed'), 'builda', NOW);
-    const failed = await glue.demoMoved(row('failed', { refusal: 'capture_failed' }), NOW);
+    const failed = await glue.demoMoved(row('failed', { refusal: 'capture_failed' }), { nowMs: NOW });
     expect(failed?.failure).toBe('the Mac could not film it');
   });
 
@@ -247,7 +298,7 @@ describe('starting, moving and ending a card', () => {
   test('a cancelled row read by the poll ends its card', async () => {
     await allow();
     await glue.demoAsked(row('queued'), 'builda', NOW);
-    expect(await glue.demoMoved(row('cancelled'), NOW)).toBeNull();
+    expect(await glue.demoMoved(row('cancelled'), { nowMs: NOW })).toBeNull();
     expect(calls.filter((c) => c.fn === 'endDemo').map((c) => c.args[0])).toEqual(['r-1']);
   });
 
@@ -255,7 +306,7 @@ describe('starting, moving and ending a card', () => {
     await allow();
     await glue.demoAsked(row('queued'), 'builda', NOW);
     liveCards.clear();
-    expect(await glue.demoMoved(row('claimed'), NOW)).toBeNull();
+    expect(await glue.demoMoved(row('claimed'), { nowMs: NOW })).toBeNull();
     expect(glue.shownDemos().has('r-1')).toBe(false);
   });
 
@@ -298,6 +349,46 @@ describe('trackDemo carries the row to the system island and the in-app island i
     expect(island.snapshot().some((a) => a.kind === 'demo')).toBe(false);
     expect(calls.some((c) => c.fn === 'endDemo' && c.args[0] === 'r-1')).toBe(true);
   });
+
+  // trackDemo's first read is 1.5 s after the ask; each of these waits for it.
+  const FIRST_READ_MS = 1500;
+
+  test('done with no kit of its own: the in-app island says made on your Mac, and the system card MOVES to made, not down', async () => {
+    await glue.syncDemoSurfaces({ enabled: true, push: true, environment: 'sandbox', nowMs: NOW });
+    requestRows = [row('done')];
+    kitResponse = { kit: null };
+    feeds.trackDemo(KEY, 'builda', row('queued'));
+    await new Promise((r) => setTimeout(r, FIRST_READ_MS + 100));
+    const notices = island.snapshot().filter((a) => a.kind === 'notice');
+    expect(notices.map((n) => (n as { text: string }).text)).toEqual(['The demo of builda is made on your Mac. Publish it there to share it.']);
+    expect(island.snapshot().some((a) => a.kind === 'demo')).toBe(false);
+    const moved = calls.filter((c) => c.fn === 'updateDemo');
+    expect(moved.map((c) => (c.args[1] as DemoState).phase)).toEqual(['made']);
+    expect(calls.some((c) => c.fn === 'endDemo')).toBe(false);
+    feeds.untrackDemo(KEY);
+  }, FIRST_READ_MS + 2000);
+
+  test('done with a kit of its own: the in-app island says ready, and so does the system card', async () => {
+    await glue.syncDemoSurfaces({ enabled: true, push: true, environment: 'sandbox', nowMs: NOW });
+    requestRows = [row('done')];
+    kitResponse = { kit: { published_at: OWN_KIT } };
+    feeds.trackDemo(KEY, 'builda', row('queued'));
+    await new Promise((r) => setTimeout(r, FIRST_READ_MS + 100));
+    expect(island.snapshot().find((a) => a.kind === 'demo')).toMatchObject({ ready: true });
+    expect(calls.filter((c) => c.fn === 'updateDemo').map((c) => (c.args[1] as DemoState).phase)).toEqual(['ready']);
+    feeds.untrackDemo(KEY);
+  }, FIRST_READ_MS + 2000);
+
+  test('an older kit from before the claim is not this request\'s: made on both', async () => {
+    await glue.syncDemoSurfaces({ enabled: true, push: true, environment: 'sandbox', nowMs: NOW });
+    requestRows = [row('done')];
+    kitResponse = { kit: { published_at: '2025-09-12T21:00:00+00:00' } };
+    feeds.trackDemo(KEY, 'builda', row('queued'));
+    await new Promise((r) => setTimeout(r, FIRST_READ_MS + 100));
+    expect(island.snapshot().some((a) => a.kind === 'notice')).toBe(true);
+    expect(calls.filter((c) => c.fn === 'updateDemo').map((c) => (c.args[1] as DemoState).phase)).toEqual(['made']);
+    feeds.untrackDemo(KEY);
+  }, FIRST_READ_MS + 2000);
 
   test('without a row (an older caller) the in-app island still carries it and no system card starts', async () => {
     await glue.syncDemoSurfaces({ enabled: true, push: true, environment: 'sandbox', nowMs: NOW });

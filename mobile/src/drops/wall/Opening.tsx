@@ -21,6 +21,7 @@ import Animated, { Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSha
 
 import { tokens } from '../../generated/tokens';
 import { CONTENT_IN, SPRING } from '../../motion';
+import { overlay } from '../../ui/overlay';
 import { DropSheet } from '../DropSheet';
 import type { DropRow, MoveRow } from '../types';
 import { useBoard } from '../useBoard';
@@ -70,6 +71,10 @@ export function Opening({
       if (done) runOnJS(onClosed)();
     });
   }, [p, onClosed]);
+
+  // Esc in a browser window narrow enough for the phone layout closes it the same way
+  // (`ui/overlay.tsx` dismiss).
+  useEffect(() => overlay.onDismiss(close), [close]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {

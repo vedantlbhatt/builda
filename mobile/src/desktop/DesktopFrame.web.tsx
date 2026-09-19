@@ -21,6 +21,7 @@ import { aliasPath, dropPath, recapPath } from '../../app/+native-intent';
 import { handleIncomingUrl } from '../auth/googleFlow';
 import { api } from '../data/client';
 import { nav } from '../nav/Skeleton';
+import { overlay } from '../ui/overlay';
 import { PaneSize, useWindowSize } from '../web/useWindowDimensions.web';
 import { desktopBridge } from './bridge';
 import { CommandPalette } from './CommandPalette';
@@ -171,7 +172,9 @@ function DesktopFrameInner({ children: stack }: { children: ReactNode }) {
           toggleFold();
           return;
         case 'back':
+          // A preview over the window first (`ui/overlay.tsx`), then the page under it.
           if (palette) setPalette(false);
+          else if (overlay.dismiss()) return;
           else if (router.canGoBack()) router.back();
           return;
         case 'refresh':

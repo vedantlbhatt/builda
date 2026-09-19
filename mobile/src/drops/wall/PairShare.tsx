@@ -62,6 +62,10 @@ function Preview({ drop, move, you, onClose }: { drop: DropRow; move: MoveRow; y
     p.value = withTiming(0, { duration: 120 }, () => {});
     setTimeout(onClose, 130);
   };
+  // Esc on a desktop closes it the same way (`ui/overlay.tsx` dismiss); nothing calls it on a phone.
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => overlay.onDismiss(() => closeRef.current()), []);
 
   const share = async () => {
     if (!card.current || busy) return;

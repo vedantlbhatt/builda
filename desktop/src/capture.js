@@ -94,6 +94,18 @@ async function run(o) {
       const win = o.island.open();
       listen(win.webContents, 'island');
       const base = new URL(win.webContents.getURL() || `${o.origin}/island`);
+      // First as it is: the account's own live rows, compact and then held open.
+      for (const expand of ['0', '1']) {
+        const u = new URL(base.toString());
+        u.searchParams.delete('sample');
+        if (expand === '1') u.searchParams.set('expand', '1');
+        else u.searchParams.delete('expand');
+        await win.loadURL(u.toString());
+        await wait(Number(process.env.BUILDA_CAPTURE_LIVE_WAIT ?? 7000));
+        const name = `island-live-${expand === '1' ? 'open' : 'compact'}.png`;
+        await shoot(win.webContents, path.join(dir, name));
+        log(`island live ${expand} -> ${name}`);
+      }
       for (const sample of ['needsYou', 'crew', 'drop', 'shipped']) {
         for (const expand of ['0', '1']) {
           const u = new URL(base.toString());

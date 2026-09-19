@@ -35,6 +35,10 @@ mac:
   extendInfo:
     NSUserNotificationAlertStyle: alert
     LSUIElement: false
+    # The same two the phone asks for, in the phone's words: the pairing screen can read a Mac
+    # agent's code with the webcam, and a shared session can carry a voice note.
+    NSCameraUsageDescription: Builda uses the camera only to scan the pairing code shown by the Mac agent.
+    NSMicrophoneUsageDescription: Builda records the voice note you add to a shared session.
 win:
   icon: assets/icon.png
   target:

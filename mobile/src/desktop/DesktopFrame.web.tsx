@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from
 import { StyleSheet, View } from 'react-native';
 
 import { aliasPath, dropPath, recapPath } from '../../app/+native-intent';
+import { handleIncomingUrl } from '../auth/googleFlow';
 import { api } from '../data/client';
 import { nav } from '../nav/Skeleton';
 import { PaneSize, useWindowSize } from '../web/useWindowDimensions.web';
@@ -210,7 +211,14 @@ function DesktopFrameInner({ children: stack }: { children: ReactNode }) {
       else if (kind === 'back') run({ kind: 'back' });
       else if (kind === 'go' && arg) router.push(command.slice('go:'.length) as never);
     });
-    const offLink = bridge.onDeepLink((url) => router.push(routeForLink(url) as never));
+    const offLink = bridge.onDeepLink((url) => {
+      // Google's redirect comes back through the scheme, as on the phone, and is a sign in, not
+      // a route (`app/_layout.tsx` does the same with Linking, which a web page never hears).
+      void handleIncomingUrl(url, api).then((signedIn) => {
+        if (signedIn) router.push('/settings');
+        else router.push(routeForLink(url) as never);
+      });
+    });
     return () => {
       offCommand();
       offLink();

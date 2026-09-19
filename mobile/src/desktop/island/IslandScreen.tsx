@@ -333,7 +333,13 @@ function Body({ a }: { a: Activity }) {
     case 'crew':
       return (
         <Wheel
-          rows={a.members.slice(0, 3).map((m) => ({ key: m.sessionId, text: `${m.repo}  ${m.sentence}`, corner: m.corner, ink: stateInk(m.state) }))}
+          // One run: its repo is already the title, so the row is what it is doing.
+          rows={a.members.slice(0, 3).map((m) => ({
+            key: m.sessionId,
+            text: a.members.length === 1 ? m.sentence : `${m.repo}  ${m.sentence}`,
+            corner: m.corner,
+            ink: stateInk(m.state),
+          }))}
           index={0}
         />
       );

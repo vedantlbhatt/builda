@@ -90,24 +90,34 @@ the system island carries on with it. The in-app one can do what ActivityKit can
 the wheel, the wash), and it also carries app-local news: a drop landed, a move started, a
 share finished. It never shows a toast in any other place: the island is the app's one voice.
 
-## The pixel diet
+## The pixels stay; each item arrives its own way
 
-The creature stays: it is identity, and it is the face in the island. Pixel strips stay: they
-are data. What goes:
+**Corrected 2026-09-19, 05:45, by the owner.** The first answer to "the UI is repetitive with the
+pixel stuff" was a "pixel diet": the dither fringe removed, bands turned into cards that grow, tiles
+turned into dark cards with a wash of hue. That was the wrong reading and it is undone: "do not
+change the pixel stuff to gradients ... just itemize motion in some new novel way." The pixels are
+the identity. What repeated was that every one of them arrived THE SAME WAY.
 
-- The dither fringe on every band. One surface treatment per screen, chosen for that screen.
-- Count-up numbers everywhere. A number counts up ONCE per screen, on the one figure that is the
-  screen's headline, and only the first time it is seen. Everything else is set still in tabular
-  figures. Live numbers roll (they change because the world changed, which is information).
-- The same hero on nine screens. Each tab gets its own entrance built from the island vocabulary:
-  Now grows its tiles out of the island, Sessions pages open by morphing the row into the page,
-  Projects unfolds rivers, You is the creature's face, big, with its state.
+So the rule is:
 
-**Where the pixels stay, on purpose.** Onboarding keeps its print, its dissolve between steps and
-its creature switching hue cell by cell: it is the one place the pixel identity introduces itself,
-once, and a first meeting is where it belongs. Wrapped keeps its dithered card art: those cards
-are made to be shared as images, and they are the identity at its loudest by design. The strips
-stay: they are data. Everywhere else the pixels are the creature and nothing else.
+- **Every pixel surface keeps its pixels**: full bleed bands in the 1-bit Bayer dither with the
+  36 pt dissolve (`insights/Band.tsx`), tiles printed in their run's hue (`live/MissionTile.tsx`),
+  the live strip on a session page, the creature printed cell by cell (`insights/Creature.tsx`),
+  dither fields, the ship kit's dithered band. No gradient stands in for any of them.
+- **Each item arrives its own way.** `motion/pixelMotion.ts` holds eight arrival orders, each a
+  different physical thing: `rain` (random, biased down: the original), `scan` (a CRT drawing its
+  frame), `ripple` (rings from a point, a tap or the Continue button), `rise` (columns filling like
+  a level meter), `interlace` (two fields), `blocks` (a progressive image), `spiral` (a lens
+  opening), `wipe` (a page turned). An item takes its order from its own name, so it always
+  arrives the same way; a page hands out the next free order when two of its bands would share
+  one (`takeOrder` through `RevealPage`). Onboarding's eight steps take one each (`STEP_MOTION`).
+  The orders exist once, as `cellOrderWith` in JS and `orderSksl` in SkSL over each shader's own
+  hash, and a CanvasKit test holds every cell of all eight to the twin.
+- **The one number a screen moves arrives one of four ways**: counting up, a split flap scramble
+  settling left to right, typed in, or ticking over in tenths (`NUM_MOTIONS`). Every other figure
+  on the screen is set still.
+- **The island is the notch kit's**, black, with its washes: that is a different object with its
+  own language, and it is the only place a wash is the right tool.
 
 ## Navigation grows out of what you touched
 

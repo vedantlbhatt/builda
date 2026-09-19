@@ -85,7 +85,7 @@ describe('where a path sits', () => {
     expect(placeOf('/sessions')).toMatchObject({ section: 'sessions', master: 'sessions', masterRoot: true });
     expect(placeOf('/session/abc')).toMatchObject({ section: 'sessions', master: 'sessions', masterRoot: false });
     expect(placeOf('/drop/xyz')).toMatchObject({ section: 'drops', master: 'drops', masterRoot: false });
-    expect(placeOf('/project/b093f920')).toMatchObject({ section: 'projects', master: 'projects' });
+    expect(placeOf('/project/0123abcd')).toMatchObject({ section: 'projects', master: 'projects' });
   });
 
   test('pages without a list take the whole pane, and light their own row', () => {

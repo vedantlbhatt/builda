@@ -35,7 +35,7 @@ function allowHeaders(appOrigin, request) {
 /**
  * @param {import('electron').Session} ses
  * @param {import('electron').Net} net
- * @param {string} apiOrigin  e.g. `https://api.builda.app` or `http://127.0.0.1:8788`
+ * @param {string} apiOrigin  e.g. `https://api.example.com` or `http://127.0.0.1:8788`
  * @param {string} appOrigin  the page's origin, `app://builda`
  */
 function bridgeApi(ses, net, apiOrigin, appOrigin) {

@@ -36,7 +36,13 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
-- **06:40 to 07:15**: the desktop says "this computer" and Cmd+R / Ctrl+R, never "this phone" and
+- **06:35 to 06:41**: the packaged Mac app rebuilt from tonight's bundle and self-captured (five
+  screens, every island state, no page error). The earlier stall was a Keychain prompt: a newly
+  signed app's first `safeStorage` call, and codesign's key access, both wait for a person. Capture
+  runs keep tokens in memory (3234511); unattended builds sign ad hoc (`-c.mac.identity=null`).
+  A SecurityAgent (Keychain) prompt is left on screen for the user, beside the two older dialogs.
+  Desktop web e2e: 22 routes, no page error.
+- **06:20 to 06:35**: the desktop says "this computer" and Cmd+R / Ctrl+R, never "this phone" and
   "pull down" (30b2ded, `src/copy/device.ts`, 21 sentences). **Last week's card, made by itself**
   (0e97699): Monday to Wednesday, first time in front, the island says "Last week's card is made:
   14 hours. Tap to see it." and the tap opens the card; once a week (kv `week.offered`); Sessions

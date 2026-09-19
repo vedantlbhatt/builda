@@ -274,7 +274,7 @@ how where it matters. Rows marked "before the merge" were verified on the old UI
 | Deep links `builder://…` | OS handler, second launch, notification clicks | before the merge |
 | Social routes (feed, post, factions, profiles) | same code | not exercised (out of scope on the phone too) |
 
-Builds: at 07:40 on 19 September the Mac app was rebuilt from tonight's bundle (`--mac --dir`,
+Builds: at 06:39 on 19 September the Mac app was rebuilt from tonight's bundle (`--mac --dir`,
 arm64) and ran its own capture (`BUILDA_CAPTURE`): five screens and every island state, no page
 error, 61 to 62 frames per 500 ms on each screen. Two things an unattended build has to route
 around, both found doing it: signing with the developer identity asks the login Keychain for the

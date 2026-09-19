@@ -39,6 +39,8 @@ import { Poster } from '../../src/drops/wall/Poster';
 import { showPairShare } from '../../src/drops/wall/PairShare';
 import { GUTTER, TopFade, WallBand, WallHeader } from '../../src/drops/wall/Chrome';
 import { tokens } from '../../src/generated/tokens';
+import { api } from '../../src/data/client';
+import * as cache from '../../src/data/cache';
 import { notice } from '../../src/island/feeds';
 import { RippleItem } from '../../src/motion';
 import { morphOpen } from '../../src/motion/MorphNav';
@@ -112,6 +114,21 @@ export default function DropsScreen() {
       });
     },
     [router, drops, moves, refresh, desktop, c.bg],
+  );
+
+  // The project a built move made is its session's repository; the ship kit films that. A session
+  // whose repository did not resolve (a scratch run) has nothing a kit could be keyed to.
+  const filmBuilt = useCallback(
+    async (sessionId: string, title: string) => {
+      const s = (await cache.getDetail(sessionId).catch(() => null)) ?? (await api.session(sessionId).catch(() => null));
+      const key = s?.repo_key ?? null;
+      if (!key || key.length !== 64) {
+        notice('That run has no project to film yet. It needs its session uploaded first.', 'thinking', accent.animal, accent.ink);
+        return;
+      }
+      router.push({ pathname: '/ship/[key]', params: { key, name: title } });
+    },
+    [router, accent.animal, accent.ink],
   );
 
   const startMove = useCallback(
@@ -239,6 +256,7 @@ export default function DropsScreen() {
                       onOpen={() => openDrop(w.drop.id)}
                       onSession={(id) => router.push(`/session/${id}`)}
                       onShare={w.active ? () => showPairShare(w.drop, w.active!, { animal: accent.animal, ink: accent.ink }) : undefined}
+                      onFilm={(id) => void filmBuilt(id, w.active?.title ?? 'what you built')}
                     />
                   </View>
                 ))}

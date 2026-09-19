@@ -148,6 +148,7 @@ export function PairCard({
   onOpen,
   onSession,
   onShare,
+  onFilm,
   posterRef,
 }: {
   w: WallDrop;
@@ -155,10 +156,15 @@ export function PairCard({
   onOpen: () => void;
   onSession: (id: string) => void;
   onShare?: () => void;
+  /** Film what was built (the ship kit), for a move that made something that runs. */
+  onFilm?: (sessionId: string) => void;
   posterRef?: (n: View | null) => void;
 }) {
   const m = w.active;
   if (!m) return null;
+  // Only a move that made or changed a project has something to film: installing a tool, trying
+  // one out, filling in a card or keeping the reel leave nothing a demo could show.
+  const filmable = m.session_id !== null && (m.move_kind === 'scaffold' || m.move_kind === 'apply');
   const posterW = Math.round(width * 0.3);
   return (
     <PressableScale style={styles.pairPress} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${w.drop.title ?? 'A drop'}, built: ${m.title}`}>
@@ -194,6 +200,20 @@ export function PairCard({
           ) : (
             <Text style={styles.moveWhere}>The session lands once your Mac uploads it</Text>
           )}
+          {onFilm && filmable ? (
+            // Shown, the video half: the ship kit films the project the move made (`docs/ship-kit.md`).
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => {
+                select();
+                onFilm(m.session_id!);
+              }}
+              style={{ marginTop: 10 }}
+            >
+              <Text style={styles.link}>Film it for sharing →</Text>
+            </Pressable>
+          ) : null}
           {onShare ? (
             // Shown: the pair as the image only Builda can make (`PairShare.tsx`).
             <Pressable

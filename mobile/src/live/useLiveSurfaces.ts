@@ -15,6 +15,7 @@ import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
 import { announceFinished, publishLive, resumeDemos } from '../island/feeds';
 import { crewFor } from './crew';
+import { offerMilestone } from '../share/milestoneOffer';
 import { offerLastWeek } from '../share/weekOffer';
 
 /**
@@ -91,8 +92,11 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   // The island inside the app says what the system island says outside it, from the same rows.
   publishLive(live, nowMs, names);
   void resumeDemos(names, nowMs).catch(() => null);
-  // Monday to Wednesday, once: last week's card, made without being asked (`share/weekOffer`).
-  void offerLastWeek(resolveAnimal(animal), nowMs).catch(() => null);
+  // Made without being asked, each once: last week's card Monday to Wednesday (`share/weekOffer`),
+  // else an hours milestone just passed (`share/milestones`). One card a pass, never two at once.
+  void offerLastWeek(resolveAnimal(animal), nowMs)
+    .then((offered) => (offered ? false : offerMilestone(profile, resolveAnimal(animal))))
+    .catch(() => null);
   if (finished.length > 0) {
     const crew = crewFor([...finished, ...saved]);
     for (const s of finished) announceFinished(s, crew.get(s.id) ?? resolveAnimal(animal), names);

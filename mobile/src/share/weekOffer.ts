@@ -29,14 +29,15 @@ const WEEK_READ = 200;
 /** The Monday checked this launch, so a quiet last week is not fetched for every minute. */
 let checked: string | null = null;
 
-export async function offerLastWeek(animal: Animal, nowMs: number): Promise<void> {
+/** True when it put the card up, so the milestone card waits for the next pass. */
+export async function offerLastWeek(animal: Animal, nowMs: number): Promise<boolean> {
   const monday = lastWeekOf([], nowMs).days[0]!.date;
-  if (checked === monday) return;
+  if (checked === monday) return false;
   const offered = await cache.getKv(WEEK_OFFERED_KEY).catch(() => null);
   if (offered === monday || !lastWeekIsNews(nowMs)) {
     // Already offered, or past Wednesday: nothing to fetch.
     checked = monday;
-    return;
+    return false;
   }
   checked = monday;
   let graph: readonly { date: string; active_seconds: number }[];
@@ -47,10 +48,10 @@ export async function offerLastWeek(animal: Animal, nowMs: number): Promise<void
   } catch {
     // No answer: try again on the next launch rather than offer a week read from an old profile.
     checked = null;
-    return;
+    return false;
   }
   const week = weekToOffer(graph, nowMs, offered);
-  if (!week) return;
+  if (!week) return false;
   await cache.setKv(WEEK_OFFERED_KEY, monday);
   const ink = creatureHue(animal).ink;
   const id = `week:${monday}`;
@@ -69,6 +70,7 @@ export async function offerLastWeek(animal: Animal, nowMs: number): Promise<void
     },
     WEEK_OFFER_HOLD_MS,
   );
+  return true;
 }
 
 async function openWeek(week: WeekModel, animal: Animal, ink: string): Promise<void> {

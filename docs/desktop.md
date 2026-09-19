@@ -282,7 +282,8 @@ around, both found doing it: signing with the developer identity asks the login 
 key, and a newly signed app's first `safeStorage` call asks it too; either prompt blocks until a
 person answers (the app's main process hung with no window, the GPU process quit after 15 s).
 An unattended build signs ad hoc (`-c.mac.identity=null`), and a capture run keeps its tokens in
-memory (`tokens.createMemoryStore`). Windows: `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
+memory (`tokens.createMemoryStore`). Windows: `--win --dir --x64` rebuilt at 07:15 with tonight's shell (Save image and the kit's Save in
+its `app.asar`); `--win --dir` and the NSIS installer both BUILD on macOS (a PE32+ x64
 `Builda.exe`, a 115 MB `Builda Setup 0.1.0.exe`, unsigned); neither has been RUN, because there
 is no Windows machine here. Linux: configured (AppImage), not built.
 

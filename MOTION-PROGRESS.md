@@ -37,6 +37,11 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:08 to 07:16**: desktop ship kit Save (0bea4a3): the kit's Share threw "no cache directory" on
+  the web; now the picked files go to one new folder in Downloads through the shell (`files:save`,
+  `image.kitFiles`: the four kit types checked by their bytes) and the caption to the clipboard;
+  checked in Chromium (the 16:9 MP4, 1920 x 1080, 10 s). Windows x64 rebuilt with tonight's shell
+  (not run: no Windows here). Report v15.
 - **07:05**: Now's stage drops from its own edge on a phone with no Dynamic Island, as on the
   desktop (5bd79cd); recorded on the SE. Report v14.
 - **06:42 to 07:02**: sessions rows carry their start time (ef20f47); the Sessions band says "Same

@@ -22,6 +22,7 @@ breakfast is one you learn to ignore, and then the one that needs you is ignored
 | needs you | an agent handed the turn back, asked a question, or is stopped at a permission prompt | flat eyes on an amber glow, "2m" in amber where the dots were | amber wash from the top, "gt-transit is waiting on you", what it said or asked, how long; a click brings its terminal forward |
 | shipped | a session finalized and was announced | (opens by itself) | green wash across, arc eyes, "Shipped · builder · 42m · 6 commits" a word at a time, 55 ms apart; lets go after 4 s |
 | drop | a link is dragged over the notch, or was just dropped | (open while it lasts) | dashed zone, "Drop a link to make it a drop"; then a wheel of Sent, Reading, Planned; "Pair this Mac first" on a Mac with no account |
+| filming | the ship kit's worker (`capture demo watch`) holds a job in `~/.builder/demos/queue/running/` | the working face; the record light (the data red) and how long, where the dots were | "Filming a demo of tramline", "On a headless simulator. Kept here until you publish.", the record light and the minutes; opens once, for the shipped beat's 4 s, when a job starts. Outranks the crew, yields to a wait (the phone island's order) |
 
 Precedence, when two are true: the thing you are doing with your hands (a drag), then the
 one-off beat (shipped), then what needs you, then what is merely running.

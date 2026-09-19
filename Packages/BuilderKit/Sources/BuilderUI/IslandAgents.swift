@@ -44,12 +44,60 @@ public enum IslandAgents {
                 id: r.agent.sourceID, sessionID: r.agent.sessionID, repo: repo,
                 creature: creatures[r.agent.sessionID] ?? "bit", activity: t?.activity,
                 waiting: waiting, lastEventAt: max(r.agent.lastEventAt, t?.lastTs ?? 0),
-                transcriptPath: r.agent.path, cwd: t?.cwd ?? r.agent.cwd)
+                transcriptPath: r.agent.path, cwd: t?.cwd ?? r.agent.cwd,
+                branch: (t?.cwd ?? r.agent.cwd).flatMap(GitHead.branch(at:)))
         }
         // A transcript silent past the agent's own cadence (LiveTail.idleAfterSeconds, the p99
         // record gap) that did not hand the turn back is neither working nor waiting on you,
         // so it is not on the notch. FOUND BY RUNNING IT: the popover said "7 agents running"
         // over one repository, four of them Idle: windows left open, not work being done.
         return all.filter { $0.waiting != nil || $0.activity != "Idle" }
+    }
+}
+
+/// The branch checked out in a working directory, read from the files git keeps, with no git
+/// process: this runs for every running agent every two seconds.
+public enum GitHead {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: (branch: String?, at: Date)] = [:]
+
+    public static func branch(at cwd: String) -> String? {
+        if let hit = lock.withLock({ cache[cwd] }), Date().timeIntervalSince(hit.at) < 30 {
+            return hit.branch
+        }
+        let branch = read(cwd)
+        lock.withLock { cache[cwd] = (branch, Date()) }
+        return branch
+    }
+
+    /// Walk up to the `.git` entry: a directory in a main checkout, a file naming the real git
+    /// directory in a worktree (`gitdir: /repo/.git/worktrees/name`). HEAD there is
+    /// `ref: refs/heads/<branch>`, or a bare hash when detached, which has no name to show.
+    private static func read(_ cwd: String) -> String? {
+        let fm = FileManager.default
+        var dir = URL(fileURLWithPath: cwd)
+        for _ in 0..<32 {
+            let dotgit = dir.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dotgit.path, isDirectory: &isDir) {
+                var gitdir = dotgit
+                if !isDir.boolValue {
+                    guard let text = try? String(contentsOf: dotgit, encoding: .utf8),
+                          let line = text.split(separator: "\n").first, line.hasPrefix("gitdir:")
+                    else { return nil }
+                    let path = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+                    gitdir = URL(fileURLWithPath: path, relativeTo: dir).standardizedFileURL
+                }
+                guard let head = try? String(contentsOf: gitdir.appendingPathComponent("HEAD"), encoding: .utf8)
+                else { return nil }
+                let ref = head.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard ref.hasPrefix("ref: refs/heads/") else { return nil }
+                return String(ref.dropFirst("ref: refs/heads/".count))
+            }
+            let parent = dir.deletingLastPathComponent()
+            if parent.path == dir.path { return nil }
+            dir = parent
+        }
+        return nil
     }
 }

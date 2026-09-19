@@ -104,3 +104,53 @@ struct IslandLayoutTests {
         #expect(CreatureGrids.eyes.count == 8)
     }
 }
+
+/// Two agents in one repository are told apart by branch, read from git's own files.
+@Suite("Island agent names")
+struct IslandAgentNameTests {
+
+    static func agent(_ id: String, repo: String, branch: String?) -> IslandAgent {
+        IslandAgent(id: id, sessionID: id, repo: repo, creature: "fox", activity: "Working",
+                    waiting: nil, lastEventAt: 0, branch: branch)
+    }
+
+    @Test("a lone agent is its repository; twins carry their branch's last part")
+    func labels() {
+        let a = Self.agent("a", repo: "builder", branch: "claude/motion-mac")
+        let b = Self.agent("b", repo: "builder", branch: "claude/motion")
+        let c = Self.agent("c", repo: "gt-transit", branch: "main")
+        let s = IslandSnapshot(agents: [a, b, c])
+        #expect(s.label(for: a) == "builder/motion-mac")
+        #expect(s.label(for: b) == "builder/motion")
+        #expect(s.label(for: c) == "gt-transit")
+    }
+
+    @Test("the branch is read from a checkout and from a worktree's .git file, and a detached HEAD has none")
+    func readsHead() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("githead-\(UUID().uuidString)")
+        let fm = FileManager.default
+        // A main checkout: .git is a directory.
+        let main = root.appendingPathComponent("repo")
+        try fm.createDirectory(at: main.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try "ref: refs/heads/feature/island\n".write(
+            to: main.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
+        try fm.createDirectory(at: main.appendingPathComponent("Sources/App"), withIntermediateDirectories: true)
+        // A worktree: .git is a file naming the real git directory.
+        let wtGit = main.appendingPathComponent(".git/worktrees/wt")
+        try fm.createDirectory(at: wtGit, withIntermediateDirectories: true)
+        try "ref: refs/heads/claude/motion-mac\n".write(
+            to: wtGit.appendingPathComponent("HEAD"), atomically: true, encoding: .utf8)
+        let wt = root.appendingPathComponent("wt")
+        try fm.createDirectory(at: wt, withIntermediateDirectories: true)
+        try "gitdir: \(wtGit.path)\n".write(to: wt.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+        // Detached.
+        let det = root.appendingPathComponent("detached")
+        try fm.createDirectory(at: det.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try "3f2a9c0e1d\n".write(to: det.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
+        defer { try? fm.removeItem(at: root) }
+
+        #expect(GitHead.branch(at: main.appendingPathComponent("Sources/App").path) == "feature/island")
+        #expect(GitHead.branch(at: wt.path) == "claude/motion-mac")
+        #expect(GitHead.branch(at: det.path) == nil)
+    }
+}

@@ -271,7 +271,7 @@ public struct IslandView: View {
 
     private var crewBody: some View {
         let rows = snapshot.agents.map {
-            StatusWheel.Row(id: $0.id, lead: $0.repo, text: $0.activity ?? "working", tint: $0.hue)
+            StatusWheel.Row(id: $0.id, lead: snapshot.label(for: $0), text: $0.activity ?? "working", tint: $0.hue)
         }
         return StatusWheel(
             rows: rows, index: rows.isEmpty ? 0 : wheelIndex % rows.count, rowHeight: 22,
@@ -283,7 +283,7 @@ public struct IslandView: View {
         let first = waiting.first
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("\(first?.repo ?? "A session") is waiting on you")
+                Text("\(first.map(snapshot.label(for:)) ?? "A session") is waiting on you")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(needsDetail(first))

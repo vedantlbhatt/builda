@@ -98,7 +98,7 @@ public struct NowCard: View {
                 } label: {
                     HStack(spacing: 8) {
                         Circle().fill(StripPalette.accent(dark: true)).frame(width: 6, height: 6)
-                        Text("\(first.repo) is waiting on you")
+                        Text("\(IslandSnapshot(agents: agents).label(for: first)) is waiting on you")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(StripPalette.text(dark: true))
                         Spacer(minLength: 6)
@@ -114,7 +114,7 @@ public struct NowCard: View {
             StatusWheel(
                 rows: agents.map {
                     StatusWheel.Row(
-                        id: $0.id, lead: $0.repo,
+                        id: $0.id, lead: IslandSnapshot(agents: agents).label(for: $0),
                         text: $0.waiting != nil ? "waiting on you" : ($0.activity ?? "working"),
                         tint: $0.hue)
                 },

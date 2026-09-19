@@ -41,10 +41,14 @@ public struct IslandAgent: Identifiable, Equatable, Sendable {
     /// The transcript on disk, so a click can reveal it when no terminal can be found.
     public let transcriptPath: String?
     public let cwd: String?
+    /// The branch checked out where it runs, to tell apart two agents in one repository
+    /// (two worktrees of it, most often). LOCAL: shown on this Mac only.
+    public let branch: String?
 
     public init(
         id: String, sessionID: String, repo: String, creature: String, activity: String?,
-        waiting: Waiting?, lastEventAt: Double, transcriptPath: String? = nil, cwd: String? = nil
+        waiting: Waiting?, lastEventAt: Double, transcriptPath: String? = nil, cwd: String? = nil,
+        branch: String? = nil
     ) {
         self.id = id
         self.sessionID = sessionID
@@ -55,6 +59,7 @@ public struct IslandAgent: Identifiable, Equatable, Sendable {
         self.lastEventAt = lastEventAt
         self.transcriptPath = transcriptPath
         self.cwd = cwd
+        self.branch = branch
     }
 
     public var hue: Color { CrewRule.color(ofCreature: creature) }
@@ -149,6 +154,15 @@ public struct IslandSnapshot: Equatable, Sendable {
         self.ranToday = ranToday
         self.shipped = shipped
         self.drop = drop
+    }
+
+    /// What to call an agent in a list: its repository, and its branch when another agent in
+    /// the list works in the same repository ("builder/motion-mac"), and only then, so a lone
+    /// agent reads as plainly as the repository it is in.
+    public func label(for agent: IslandAgent) -> String {
+        let twins = agents.filter { $0.repo == agent.repo }.count
+        guard twins > 1, let branch = agent.branch, !branch.isEmpty else { return agent.repo }
+        return "\(agent.repo)/\(branch.split(separator: "/").last.map(String.init) ?? branch)"
     }
 
     /// Who needs you, longest wait first: the one waiting longest has lost the most.

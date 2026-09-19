@@ -49,6 +49,14 @@ generated file — possibly one that defines what leaves the machine.
 
 Agreement is evidence, not tautology — the measurements predate the implementation.
 
+**That corpus is gone from this machine (checked 2026-09-19).** Claude Code keeps 30 days of
+transcripts: the oldest RideGT file left was written on Aug 20, and the reference was measured by
+Aug 15. So `GroundTruthTests` now runs against a different, rolling set of sessions (107 at tau 900
+where the reference says 84) and fails here, loudly, which is the truthful result: the table above
+is history, not a check anyone can rerun on this machine. Do not move its numbers to make the suite
+pass; a new reference needs a new independent measurement over a corpus that is kept (copied out of
+`~/.claude/projects`, not read in place). CI has no corpus and skips the suite.
+
 ## Things that were tried and REVERTED, with the reason
 
 **Summing `.message.usage` across records.** Inflates by 1.878x. Claude Code writes one

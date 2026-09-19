@@ -555,7 +555,8 @@ function FinishedRow({
           </Text>
           <View style={styles.meta}>
             <HarnessLogo harness={row.harness} size={13} color={GROUND.dim} />
-            <Text maxFontSizeMultiplier={1.4} numberOfLines={1} style={[type.meta, styles.metaText]} accessibilityLabel={`${row.harnessName}, ${row.meta}`}>
+            {/* Two lines on a narrow phone: FOUND ON AN iPHONE SE, one line cut the start time to "Sep 12, 7:...". */}
+            <Text maxFontSizeMultiplier={1.4} numberOfLines={2} style={[type.meta, styles.metaText]} accessibilityLabel={`${row.harnessName}, ${row.meta}`}>
               {row.meta}
             </Text>
           </View>

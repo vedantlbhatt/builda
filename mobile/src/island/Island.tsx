@@ -89,8 +89,13 @@ export function Island() {
     ? { x: host.centerX, y: DESK_TOP, width: 120, height: 0 }
     : (hardware ?? { x: width / 2, y: Math.max(14, insets.top / 2), width: 120, height: 34 });
 
-  // On a desktop only the passing beats: the standing states belong to the desktop island.
-  const shown = useMemo(() => (desk ? acts.filter((a) => restingMode(a) === 'toast') : acts), [acts, desk]);
+  // On a desktop only the passing beats: the standing states belong to the desktop island. The
+  // same on a phone with no Dynamic Island (`hardware.ts`: a notch, or an SE): a standing state
+  // sits compact beside a hardware island, and with none to sit beside it was a black pill drawn
+  // over the status bar with the clock inside it. FOUND ON AN iPHONE SE SIMULATOR. The running
+  // work is on Now and the Lock Screen there, as it is on every such phone.
+  const passingOnly = desk || hardware === null;
+  const shown = useMemo(() => (passingOnly ? acts.filter((a) => restingMode(a) === 'toast') : acts), [acts, passingOnly]);
   const top = lead(shown);
   const mode: Mode = top ? (expanded && canExpand(top) ? 'expanded' : restingMode(top)) : 'hidden';
 

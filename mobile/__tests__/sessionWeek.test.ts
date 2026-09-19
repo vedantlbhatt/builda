@@ -120,12 +120,12 @@ describe('against last week, fairly', () => {
 
   test('Tuesday is held to last Monday and Tuesday, not to the whole week', () => {
     const tue = new Date(2026, 8, 15, 12).getTime();
-    expect(sameDaysLastWeek(graph, tue)).toBe('Same days last week: 7.2 hours');
+    expect(sameDaysLastWeek(graph, tue)).toBe('Same days last week: 7.2\u00a0hours');
   });
 
   test('Sunday is the whole of last week, said so', () => {
     const sun = new Date(2026, 8, 20, 12).getTime();
-    expect(sameDaysLastWeek(graph, sun)).toBe('Last week: 14.2 hours');
+    expect(sameDaysLastWeek(graph, sun)).toBe('Last week: 14.2\u00a0hours');
   });
 
   test('nothing on those days last week says nothing', () => {

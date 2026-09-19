@@ -137,7 +137,8 @@ export function sameDaysLastWeek(graph: readonly { date: string; active_seconds:
   const last = lastWeekOf(graph, now);
   const seconds = last.days.slice(0, row + 1).reduce((s, d) => s + d.seconds, 0);
   if (seconds <= 0) return null;
-  const amount = seconds < 3600 ? duration(seconds) : `${n(seconds / 3600)} hours`;
+  // A no-break space: on an iPhone SE the line wrapped as "...: 13.7" / "hours".
+  const amount = seconds < 3600 ? duration(seconds) : `${n(seconds / 3600)}\u00a0hours`;
   return row === 6 ? `Last week: ${amount}` : `Same days last week: ${amount}`;
 }
 

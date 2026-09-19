@@ -123,6 +123,24 @@ export function lastWeekShown(graph: readonly { date: string; active_seconds: nu
   return last.seconds > 0 ? last : null;
 }
 
+/**
+ * Last week up to the same day, for the band's comparison: "Same days last week: 9.2 hours". Never
+ * the whole of last week: on a Tuesday that says "down 80%" about a week that is two days old.
+ * Null when last week had nothing on those days (a comparison with nothing is not one), or for a
+ * week that is over.
+ */
+export function sameDaysLastWeek(graph: readonly { date: string; active_seconds: number }[], now: number): string | null {
+  const cur = weekOf(graph, now);
+  if (cur.past) return null;
+  const row = cur.days.findIndex((d) => d.today);
+  if (row < 0) return null;
+  const last = lastWeekOf(graph, now);
+  const seconds = last.days.slice(0, row + 1).reduce((s, d) => s + d.seconds, 0);
+  if (seconds <= 0) return null;
+  const amount = seconds < 3600 ? duration(seconds) : `${n(seconds / 3600)} hours`;
+  return row === 6 ? `Last week: ${amount}` : `Same days last week: ${amount}`;
+}
+
 /** The kv row that remembers the Monday of the last week whose card was offered on its own. */
 export const WEEK_OFFERED_KEY = 'week.offered';
 

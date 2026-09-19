@@ -56,7 +56,7 @@ import { extendReach, LIST_MAX, LIST_PAGE, listEnd, mergeReach, reachOfPage, sen
 import { rowOf } from './page';
 import { Door } from './parts';
 import { ROW_FIGURE } from './type';
-import { lastWeekShown, QUIET_WEEK, weekFigure, weekOf, weekRows, type WeekModel } from './week';
+import { lastWeekShown, QUIET_WEEK, sameDaysLastWeek, weekFigure, weekOf, weekRows, type WeekModel } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
 import { HERE, TRY_AGAIN } from '../copy/device';
 
@@ -283,6 +283,7 @@ export function SessionsScreen() {
   const week = useMemo(() => (profile ? weekOf(profile.graph, Date.now()) : null), [profile]);
   // Monday to Wednesday, last week's card beside this week's (`week.lastWeekShown`).
   const lastWeek = useMemo(() => (profile ? lastWeekShown(profile.graph, Date.now()) : null), [profile]);
+  const compare = useMemo(() => (profile ? sameDaysLastWeek(profile.graph, Date.now()) : null), [profile]);
   // The card names the week's longest sessions from every finished one the phone has, not only the
   // rows this list is showing (it opens on the notable ones).
   const shareWeek = useCallback(
@@ -358,6 +359,7 @@ export function SessionsScreen() {
                 width={width}
                 onShare={week && week.seconds > 0 ? () => void shareWeek(week) : undefined}
                 onShareLast={lastWeek ? () => void shareWeek(lastWeek) : undefined}
+                compare={compare}
               />
             )}
             {signedIn === false ? (
@@ -459,12 +461,15 @@ function WeekGround({
   width,
   onShare,
   onShareLast,
+  compare,
 }: {
   week: ReturnType<typeof weekOf> | null;
   ink: string;
   width: number;
   onShare?: () => void;
   onShareLast?: () => void;
+  /** "Same days last week: 7.2 hours" (`week.sameDaysLastWeek`), or null. */
+  compare?: string | null;
 }) {
   const figure = week ? weekFigure(week) : null;
   const inner = width - GUTTER * 2;
@@ -481,6 +486,7 @@ function WeekGround({
                 <Num spec={figure.num} textStyle={figureStyle(fitSize(figure.num.final, inner - WEEK_BARS_WIDTH - 16, 72, 44), ink)} delay={80} />
                 <Words style={type.lead}>{figure.caption}</Words>
                 <Words style={type.dim}>{figure.note}</Words>
+                {compare ? <Words style={type.dim}>{compare}</Words> : null}
                 {onShare ? (
                   <View style={{ marginTop: 6 }}>
                     <WordLink title="Share this week" onPress={onShare} accessibilityHint="A card of this week's hours and longest sessions, for any app" />
@@ -488,7 +494,10 @@ function WeekGround({
                 ) : null}
               </>
             ) : (
-              <Words style={type.lead}>{QUIET_WEEK}</Words>
+              <>
+                <Words style={type.lead}>{QUIET_WEEK}</Words>
+                {compare ? <Words style={type.dim}>{compare}</Words> : null}
+              </>
             )}
             {onShareLast ? (
               <View style={{ marginTop: figure ? 0 : 6 }}>

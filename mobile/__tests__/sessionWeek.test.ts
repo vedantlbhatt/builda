@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { hasDash } from '../src/copy/plain';
-import { lastWeekOf, lastWeekShown, QUIET_WEEK, weekFigure, weekOf, weekOfferLine, weekToOffer } from '../src/session/week';
+import { lastWeekOf, lastWeekShown, sameDaysLastWeek, QUIET_WEEK, weekFigure, weekOf, weekOfferLine, weekToOffer } from '../src/session/week';
 
 /** A local instant: Wednesday 16 September 2026 at 10:00 on this machine's clock. */
 const WED = new Date(2026, 8, 16, 10, 0).getTime();
@@ -107,5 +107,29 @@ describe('last week, made by itself', () => {
     // 02:00 on Thursday is still Wednesday on the Builda clock.
     expect(lastWeekShown(graph, new Date(2026, 8, 17, 2).getTime())).not.toBeNull();
     expect(weekToOffer([{ date: '2026-09-14', active_seconds: 900 }], MON, null)).toBeNull();
+  });
+});
+
+describe('against last week, fairly', () => {
+  const graph = [
+    { date: '2026-09-07', active_seconds: 3600 * 5 },
+    { date: '2026-09-08', active_seconds: 3600 * 2 + 720 },
+    { date: '2026-09-11', active_seconds: 3600 * 7 },
+    { date: '2026-09-14', active_seconds: 900 },
+  ];
+
+  test('Tuesday is held to last Monday and Tuesday, not to the whole week', () => {
+    const tue = new Date(2026, 8, 15, 12).getTime();
+    expect(sameDaysLastWeek(graph, tue)).toBe('Same days last week: 7.2 hours');
+  });
+
+  test('Sunday is the whole of last week, said so', () => {
+    const sun = new Date(2026, 8, 20, 12).getTime();
+    expect(sameDaysLastWeek(graph, sun)).toBe('Last week: 14.2 hours');
+  });
+
+  test('nothing on those days last week says nothing', () => {
+    expect(sameDaysLastWeek([{ date: '2026-09-11', active_seconds: 3600 }], new Date(2026, 8, 15, 12).getTime())).toBeNull();
+    expect(sameDaysLastWeek([{ date: '2026-09-07', active_seconds: 1800 }], new Date(2026, 8, 14, 12).getTime())).toBe('Same days last week: 30m');
   });
 });

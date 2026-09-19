@@ -958,8 +958,9 @@ describe('the widget creatures', () => {
   const art = readFileSync(join(ROOT, 'targets/widget/_shared/CreatureArt.swift'), 'utf8');
   const ids = JSON.parse(/static let ids: \[String\] = (\[[^\]]*\])/.exec(art)![1]!) as string[];
 
-  test('every animal in the pack, then Bit awake and asleep', () => {
-    expect(ids).toEqual([...ANIMALS, 'bit', 'bit-sleeping']);
+  test('every animal in the pack, then Bit awake and asleep, then each animal waiting and done', () => {
+    // The two faces are the in-app island's (src/motion/faceModel.ts): lids down, eyes up.
+    expect(ids).toEqual([...ANIMALS, 'bit', 'bit-sleeping', ...ANIMALS.flatMap((a) => [`${a}-low`, `${a}-high`])]);
   });
 
   test('each is a 1-bit template at 16, 32, 48 and 64pt, @2x and @3x, whole pixels per cell', () => {

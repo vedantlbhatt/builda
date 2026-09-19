@@ -47,6 +47,8 @@ import { decodeMarks } from '../strip/decode';
 import { TRACK_HEIGHT } from '../strip/layout';
 import { StripDraw, stripDoneAt, useOwnClock } from '../strip/StripDraw';
 import { useAccent } from '../theme/accent';
+import { WordLink } from '../nav/chrome';
+import { showWeekShare } from '../share/WeekShare';
 import { AnimatedList } from '../ui/bits/components';
 import { useReduceMotion } from '../ui/motion';
 import { crewBase, type CrewCreature } from './crew';
@@ -54,7 +56,7 @@ import { extendReach, LIST_MAX, LIST_PAGE, listEnd, mergeReach, reachOfPage, sen
 import { rowOf } from './page';
 import { Door } from './parts';
 import { ROW_FIGURE } from './type';
-import { QUIET_WEEK, weekFigure, weekOf } from './week';
+import { QUIET_WEEK, weekFigure, weekOf, weekRows } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
 
 /** Rows drawn in the first commit; the rest mount a moment later, still (a page of fifty canvases mounted at once starves the first frames). */
@@ -67,6 +69,13 @@ const MARK_GAP = 14;
 const STRIP_SWEEP_MS = 620;
 /** Points from the end of the list at which a scroll that stops there reads the next page: about a screen. */
 const END_REACH = 900;
+
+/**
+ * Finished sessions read for the week card. MEASURED on the local stack's corpus: its busiest day
+ * held 64 sessions (2026-09-12), so a week of parallel agents can run past one day's worth; the card
+ * names three, and the longest are what it needs.
+ */
+const WEEK_READ = 200;
 
 export function SessionsScreen() {
   const { width } = useWindowDimensions();
@@ -271,6 +280,15 @@ export function SessionsScreen() {
   }, [live, sessions]);
 
   const week = useMemo(() => (profile ? weekOf(profile.graph, Date.now()) : null), [profile]);
+  // The card names the week's longest sessions from every finished one the phone has, not only the
+  // rows this list is showing (it opens on the notable ones).
+  const shareWeek = useCallback(
+    async (w: NonNullable<typeof week>) => {
+      const all = await cache.listSessions(WEEK_READ).catch((): SessionDetail[] => sessions);
+      showWeekShare(w, weekRows(all.length ? all : sessions, w), { animal: accent.animal, ink: accent.ink });
+    },
+    [sessions, accent.animal, accent.ink],
+  );
   const shown = stage >= 1 ? sessions : sessions.slice(0, FIRST_ROWS);
   const inner = width - GUTTER * 2;
   const stripWidth = inner - MARK - MARK_GAP;
@@ -331,7 +349,12 @@ export function SessionsScreen() {
             ) : (
               // The week on the ground, in the builder's ink, never as a hue slab: Sessions is the
               // list, and its head is set like a page, not like every other screen's chapter.
-              <WeekGround week={week} ink={accent.ink} width={width} />
+              <WeekGround
+                week={week}
+                ink={accent.ink}
+                width={width}
+                onShare={week && week.seconds > 0 ? () => void shareWeek(week) : undefined}
+              />
             )}
             {signedIn === false ? (
               <Block style={styles.pad}>
@@ -426,7 +449,7 @@ export function SessionsScreen() {
  * The week on the ground, under the live band: the same number and the same seven bars, in the
  * builder's ink instead of on a band of it.
  */
-function WeekGround({ week, ink, width }: { week: ReturnType<typeof weekOf> | null; ink: string; width: number }) {
+function WeekGround({ week, ink, width, onShare }: { week: ReturnType<typeof weekOf> | null; ink: string; width: number; onShare?: () => void }) {
   const figure = week ? weekFigure(week) : null;
   const inner = width - GUTTER * 2;
   return (
@@ -442,6 +465,11 @@ function WeekGround({ week, ink, width }: { week: ReturnType<typeof weekOf> | nu
                 <Num spec={figure.num} textStyle={figureStyle(fitSize(figure.num.final, inner - WEEK_BARS_WIDTH - 16, 72, 44), ink)} delay={80} />
                 <Words style={type.lead}>{figure.caption}</Words>
                 <Words style={type.dim}>{figure.note}</Words>
+                {onShare ? (
+                  <View style={{ marginTop: 6 }}>
+                    <WordLink title="Share this week" onPress={onShare} accessibilityHint="A card of this week's hours and longest sessions, for any app" />
+                  </View>
+                ) : null}
               </>
             ) : (
               <Words style={type.lead}>{QUIET_WEEK}</Words>

@@ -17,6 +17,8 @@
 import { n } from '../copy/numbers';
 import { spoken } from '../copy/plain';
 import { numSpec, type NumSpec } from '../insights/format';
+import type { SessionDetail } from '../data/api';
+import { rowOf } from './page';
 import { DAY_BOUNDARY_HOUR, duration } from '../theme';
 
 export interface WeekDay {
@@ -90,3 +92,28 @@ export function weekFigure(w: WeekModel): WeekFigure | null {
 
 /** Said when the week has nothing finished yet. */
 export const QUIET_WEEK = 'Nothing finished yet this week. The first session you finish lands here.';
+
+// ------------------------------------------------------------------ the week card (`share/WeekShare.tsx`)
+
+/** Sessions named on the card: the week's longest, by active time. */
+export const WEEK_CARD_ROWS = 3;
+
+export interface WeekCardRow {
+  id: string;
+  title: string;
+  active: string;
+}
+
+/**
+ * The week's longest sessions, by active time, for the card. PURE. A session counts for the week when
+ * it started on one of the week's days (the model's dates, which already follow the 4am day).
+ */
+export function weekRows(sessions: readonly SessionDetail[], week: WeekModel, max = WEEK_CARD_ROWS, now = Date.now()): WeekCardRow[] {
+  const days = new Set(week.days.filter((d) => !d.future).map((d) => d.date));
+  return sessions
+    .filter((s) => days.has(s.local_date) && (s.state ?? 'final') !== 'live')
+    .sort((a, b) => (b.active_seconds || 0) - (a.active_seconds || 0))
+    .slice(0, max)
+    // Named the way its row in the list names it (`page.rowOf`): the title, else the day and its part.
+    .map((s) => ({ id: s.id, title: rowOf(s, now).title, active: duration(s.active_seconds || 0) }));
+}

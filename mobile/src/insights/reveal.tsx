@@ -246,9 +246,19 @@ export function useClock(): SharedValue<number> {
   return clock;
 }
 
+/** The block's clock, or null outside one: for a printed surface drawn still (a share card). */
+export function useOptionalClock(): SharedValue<number> | null {
+  return useContext(ClockCtx);
+}
+
 /** Whether the page is under Reduce Motion, as a shared value (1 or 0). */
 export function useReducedSV(): SharedValue<number> {
   const page = useContext(PageCtx);
   if (!page) throw new Error('useReducedSV needs a RevealPage around it');
   return page.reduced;
+}
+
+/** The page's Reduce Motion flag, or null outside a page (a share card). */
+export function useOptionalReducedSV(): SharedValue<number> | null {
+  return useContext(PageCtx)?.reduced ?? null;
 }

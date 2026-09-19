@@ -28,7 +28,7 @@ import { modeOf, motionFor, orderSksl, PIXEL_MOTIONS, type PixelMotion } from '.
 import { MONO_FAMILY } from '../theme';
 import { ease, phase, RISE } from './motion';
 import { GROUND, ON_HUE, type Hue } from './palette';
-import { Block, useClock, usePageOrder, useReducedSV } from './reveal';
+import { Block, useClock, useOptionalClock, useOptionalReducedSV, usePageOrder, useReducedSV } from './reveal';
 
 /**
  * The orders are `pixelMotion.orderSksl` over this `hash` (`pixelMotion.cellHash` with seed 0 in
@@ -109,8 +109,9 @@ export function BandPixels({
   /** When the print starts on the block's clock. */
   delay?: number;
 }) {
-  const clock = useClock();
-  const reduced = useReducedSV();
+  // Outside a block (a share card being captured) there is no clock, and it is drawn printed.
+  const clock = useOptionalClock();
+  const reduced = useOptionalReducedSV();
   const source = bandEffect();
   const inkU = rgba(ink);
   const height = solid + fringe;
@@ -123,7 +124,7 @@ export function BandPixels({
     cell: CELL,
     solid,
     fringe: Math.max(0.001, fringe),
-    reveal: reduced.value ? 1 : ease(phase(clock.value, delay, PRINT_MS)),
+    reveal: !clock || !reduced || reduced.value ? 1 : ease(phase(clock.value, delay, PRINT_MS)),
     mode,
     cols,
     rows,

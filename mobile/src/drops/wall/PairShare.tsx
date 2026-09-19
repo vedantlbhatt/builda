@@ -10,26 +10,21 @@
  * what is true ("built on my Mac with Claude Code") and no number at all. The outcome line is the
  * run's own, through the dash rule.
  *
- * It comes up as a preview over everything (`ui/overlay.tsx`), popping on the island's small
- * spring, with Share and Close under it: you see the card you are about to post before you post it.
+ * It comes up in the share preview (`ui/SharePreview.tsx`): you see the card you are about to post
+ * before you post it.
  */
 import { Image } from 'expo-image';
-import * as Sharing from 'expo-sharing';
-import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import { captureRef } from 'react-native-view-shot';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { undash } from '../../copy/plain';
 import type { SessionDetail } from '../../data/api';
 import { api } from '../../data/client';
 import { tokens } from '../../generated/tokens';
-import { Face, SPRING } from '../../motion';
+import { Face } from '../../motion';
 import type { Animal } from '../../pixel/animals';
 import { dropHue } from '../../theme';
-import { commit, select } from '../../ui/haptics';
-import { overlay } from '../../ui/overlay';
+import { showSharePreview } from '../../share/SharePreview';
 import { PLATFORM_WORD } from '../copy';
 import type { DropRow, MoveRow } from '../types';
 import { factsLine, factsOf, posterWords } from './model';
@@ -40,72 +35,16 @@ const CARD_W = 360;
 const CARD_H = 450;
 
 export function showPairShare(drop: DropRow, move: MoveRow, you: { animal: Animal; ink: string }): void {
-  overlay.show((hide) => <Preview drop={drop} move={move} you={you} onClose={hide} />, { closeOnNavigate: true });
+  showSharePreview(<PairCardLoader drop={drop} move={move} you={you} />, `Saw it, built it: ${move.title}`);
 }
 
-function Preview({ drop, move, you, onClose }: { drop: DropRow; move: MoveRow; you: { animal: Animal; ink: string }; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
-  const card = useRef<View>(null);
+/** The card, with the move's session read in once it is known (the facts line waits for it). */
+function PairCardLoader({ drop, move, you }: { drop: DropRow; move: MoveRow; you: { animal: Animal; ink: string } }) {
   const [session, setSession] = useState<SessionDetail | null>(null);
-  const [busy, setBusy] = useState(false);
-  const p = useSharedValue(0);
-  const scrim = useSharedValue(0);
-
   useEffect(() => {
-    scrim.value = withTiming(1, { duration: 200 });
-    p.value = withSpring(1, SPRING.pop);
     if (move.session_id) api.session(move.session_id).then(setSession).catch(() => {});
-  }, [move.session_id, p, scrim]);
-
-  const close = () => {
-    scrim.value = withTiming(0, { duration: 120 });
-    p.value = withTiming(0, { duration: 120 }, () => {});
-    setTimeout(onClose, 130);
-  };
-  // Esc on a desktop closes it the same way (`ui/overlay.tsx` dismiss); nothing calls it on a phone.
-  const closeRef = useRef(close);
-  closeRef.current = close;
-  useEffect(() => overlay.onDismiss(() => closeRef.current()), []);
-
-  const share = async () => {
-    if (!card.current || busy) return;
-    setBusy(true);
-    commit();
-    try {
-      const uri = await captureRef(card, { format: 'png', quality: 1, result: 'tmpfile', ...(Platform.OS === 'ios' ? { pixelRatio: 3 } : {}) });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: `Saw it, built it: ${move.title}` });
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const scrimStyle = useAnimatedStyle(() => ({ opacity: scrim.value }));
-  const cardStyle = useAnimatedStyle(() => ({ opacity: Math.min(1, p.value * 1.4), transform: [{ scale: interpolate(p.value, [0, 1], [0.9, 1]) }] }));
-
-  return (
-    <View style={StyleSheet.absoluteFill}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrimStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} accessibilityLabel="Close" onPress={close} />
-      </Animated.View>
-      <View style={[styles.center, { paddingTop: insets.top, paddingBottom: insets.bottom }]} pointerEvents="box-none">
-        <Animated.View style={cardStyle}>
-          <View ref={card} collapsable={false}>
-            <PairCardImage drop={drop} move={move} session={session} you={you} />
-          </View>
-        </Animated.View>
-        <View style={styles.actions}>
-          <Pressable accessibilityRole="button" onPress={() => void share()} style={({ pressed }) => [styles.share, pressed && { backgroundColor: S.accentPressed.dark }]}>
-            <Text style={styles.shareText}>{busy ? 'Getting it ready' : 'Share'}</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" hitSlop={10} onPress={() => { select(); close(); }}>
-            <Text style={styles.close}>Close</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
+  }, [move.session_id]);
+  return <PairCardImage drop={drop} move={move} session={session} you={you} />;
 }
 
 /** The card itself: what gets captured. Fixed size, so the image is the same on every phone. */
@@ -159,8 +98,6 @@ export function PairCardImage({ drop, move, session, you }: { drop: DropRow; mov
 }
 
 const styles = StyleSheet.create({
-  scrim: { backgroundColor: 'rgba(8,7,6,0.82)' },
-  center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 22 },
   card: { width: CARD_W, height: CARD_H, backgroundColor: S.bg.dark, borderRadius: 28, borderCurve: 'continuous', padding: 18, overflow: 'hidden' },
   cols: { flex: 1, flexDirection: 'row', gap: 12 },
   col: { flex: 1, gap: 8 },
@@ -175,8 +112,4 @@ const styles = StyleSheet.create({
   facts: { color: tokens.data.add.dark, fontSize: 13, fontWeight: '700' },
   foot: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   brand: { color: S.text.dark, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 24 },
-  share: { height: 48, paddingHorizontal: 34, borderRadius: 24, borderCurve: 'continuous', backgroundColor: S.accent.dark, alignItems: 'center', justifyContent: 'center' },
-  shareText: { color: S.text.light, fontSize: 17, fontWeight: '700' },
-  close: { color: S.textDim.dark, fontSize: 17, fontWeight: '600' },
 });

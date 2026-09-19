@@ -370,6 +370,29 @@ def write_catalog(art: dict[str, list[list[bool]]]) -> list[str]:
     return sorted(wanted)
 
 
+# The eyes every animal shares (`EYES` in mobile/src/pixel/frames.ts): two 2x2 holes on rows 6
+# and 7 at columns 5-6 and 9-10.
+EYE_ROWS = (6, 7)
+EYE_COLS = (5, 6, 9, 10)
+
+
+def moods(art: dict[str, list[list[bool]]]) -> dict[str, list[list[bool]]]:
+    """Each animal with its lids down (`-low`: row 6 filled, waiting on you or failing) and with
+    its eyes pushed up by a smile (`-high`: row 7 filled, done). The phone's island face draws the
+    same two (`mobile/src/motion/faceModel.ts`), so the creature in the system island makes the
+    face the one inside the app makes. Bit keeps his own frames."""
+    out: dict[str, list[list[bool]]] = {}
+    for cid, ink in art.items():
+        if cid.startswith("bit"):
+            continue
+        for suffix, row in (("low", EYE_ROWS[0]), ("high", EYE_ROWS[1])):
+            copy = [r[:] for r in ink]
+            for x in EYE_COLS:
+                copy[row][x] = True
+            out[f"{cid}-{suffix}"] = copy
+    return out
+
+
 def side_insets(ink: list[list[bool]]) -> tuple[int, int]:
     """Empty columns left and right of the drawing (0, 0 for a blank frame)."""
     cols = [x for x in range(GRID) if any(ink[y][x] for y in range(GRID))]
@@ -425,6 +448,7 @@ def main(argv: list[str]) -> int:
 
     src = creatures()
     art = {cid: one_bit(rows, is_bit=cid.startswith("bit")) for cid, rows in src.items()}
+    art.update(moods(art))
     sets = write_catalog(art)
     write_swift(art)
     print(f"{len(sets)} imagesets ({len(art)} creatures x {len(SIZES_PT)} sizes x @{'/@'.join(map(str, SCALES))}x) in {CATALOG.relative_to(ROOT)}")

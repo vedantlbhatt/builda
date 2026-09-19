@@ -3,12 +3,12 @@
 
 enum CreatureArt {
   /// Every creature with images in the widget's Assets.xcassets, in the pack's order, then Bit.
-  static let ids: [String] = ["cat", "dog", "fox", "owl", "bee", "whale", "octopus", "crab", "bit", "bit-sleeping"]
+  static let ids: [String] = ["cat", "dog", "fox", "owl", "bee", "whale", "octopus", "crab", "bit", "bit-sleeping", "cat-low", "cat-high", "dog-low", "dog-high", "fox-low", "fox-high", "owl-low", "owl-high", "bee-low", "bee-high", "whale-low", "whale-high", "octopus-low", "octopus-high", "crab-low", "crab-high"]
   /// Point sizes drawn. The grid lands on whole device pixels only at these.
   static let sizes: [Int] = [16, 32, 48, 64]
   static let prefix = "creature-"
   /// Empty grid columns left and right of each drawing. Every image keeps the full 16 cell
   /// frame so creatures line up with each other; a surface that must sit flush with text or
   /// snug to the camera trims these instead (`CreatureMark(trim:)`).
-  static let insets: [String: (leading: Int, trailing: Int)] = ["cat": (2, 2), "dog": (2, 2), "fox": (2, 2), "owl": (2, 2), "bee": (2, 2), "whale": (2, 2), "octopus": (2, 2), "crab": (2, 2), "bit": (3, 3), "bit-sleeping": (3, 0)]
+  static let insets: [String: (leading: Int, trailing: Int)] = ["cat": (2, 2), "dog": (2, 2), "fox": (2, 2), "owl": (2, 2), "bee": (2, 2), "whale": (2, 2), "octopus": (2, 2), "crab": (2, 2), "bit": (3, 3), "bit-sleeping": (3, 0), "cat-low": (2, 2), "cat-high": (2, 2), "dog-low": (2, 2), "dog-high": (2, 2), "fox-low": (2, 2), "fox-high": (2, 2), "owl-low": (2, 2), "owl-high": (2, 2), "bee-low": (2, 2), "bee-high": (2, 2), "whale-low": (2, 2), "whale-high": (2, 2), "octopus-low": (2, 2), "octopus-high": (2, 2), "crab-low": (2, 2), "crab-high": (2, 2)]
 }

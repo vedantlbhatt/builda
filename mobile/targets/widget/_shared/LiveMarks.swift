@@ -202,9 +202,14 @@ struct CreatureMark: View {
   /// The creature's own hue: `BuilderPalette.creatureHue(creature).ink` on dark.
   var tint: Color
   var trim: Edge.Set = []
+  /// The face: nil looking, `"low"` lids down (needs you), `"high"` eyes up in a smile (done).
+  /// The same two the phone's island face draws (`src/motion/faceModel.ts`); a creature with no
+  /// such drawing (Bit) keeps its own.
+  var mood: String? = nil
 
   var body: some View {
-    let id = CreatureAssets.resolve(creature)
+    let base = CreatureAssets.resolve(creature)
+    let id = mood.map { CreatureArt.ids.contains("\(base)-\($0)") ? "\(base)-\($0)" : base } ?? base
     let cell = CGFloat(points) / 16
     let inset = CreatureArt.insets[id] ?? (leading: 0, trailing: 0)
     Image(CreatureAssets.name(id, points: points), bundle: CreatureAssets.bundle)

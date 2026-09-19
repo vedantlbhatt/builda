@@ -60,7 +60,7 @@ struct LockScreenLiveView: View {
     HStack(alignment: .top, spacing: 12) {
       // Identity and progress, one mark: the creature inside its ring.
       LiveRing(ring: d.ring, size: 52, stroke: 4, tint: tints.ring) {
-        CreatureMark(creature: d.creature, points: 32, tint: tints.creature)
+        CreatureMark(creature: d.creature, points: 32, tint: tints.creature, mood: d.mood)
       }
 
       VStack(alignment: .leading, spacing: 0) {
@@ -303,7 +303,23 @@ struct IslandCompactLeading: View {
   let isStale: Bool
   var body: some View {
     CreatureMark(creature: d.creature, points: 32,
-                 tint: MarkTints(d, stale: isStale, dimmed: false).creature, trim: .horizontal)
+                 tint: MarkTints(d, stale: isStale, dimmed: false).creature, trim: .horizontal,
+                 mood: d.mood)
+  }
+}
+
+@available(iOS 16.1, *)
+extension LiveDisplay {
+  /// The creature's face for this phase, the one the in-app island draws for the same state
+  /// (`mobile/src/island/feeds.ts` FACE_FOR_TILE): lids down while it waits on you, eyes up in a
+  /// smile when it is done, looking otherwise. A change of phase is then a change of FACE on the
+  /// thing you already recognise, before any glyph beside it has to say so.
+  var mood: String? {
+    switch phase {
+    case .needsYou: return "low"
+    case .done: return "high"
+    case .working, .stalled: return nil
+    }
   }
 }
 
@@ -374,7 +390,8 @@ struct IslandExpandedLeading: View {
   var body: some View {
     HStack(spacing: 6) {
       CreatureMark(creature: d.creature, points: 16,
-                   tint: MarkTints(d, stale: isStale, dimmed: false).creature, trim: .leading)
+                   tint: MarkTints(d, stale: isStale, dimmed: false).creature, trim: .leading,
+                   mood: d.mood)
       Text(d.repo)
         .font(LiveType.font(15, .semibold, mono: true))
         .foregroundStyle(BuilderPalette.text)

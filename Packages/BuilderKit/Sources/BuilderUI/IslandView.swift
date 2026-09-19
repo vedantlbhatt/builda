@@ -73,6 +73,7 @@ public enum IslandLayout {
         case .shipped: return 54
         case .drop: return 74
         case .filming: return 54
+        case .away: return 54
         }
     }
 
@@ -84,6 +85,7 @@ public enum IslandLayout {
         case .shipped: return 420
         case .drop: return 420
         case .filming: return 420
+        case .away: return 480
         }
     }
 
@@ -232,7 +234,7 @@ public struct IslandView: View {
                     colors: [Color(.sRGB, red: 1, green: 0.69, blue: 0.34, opacity: 0.30),
                              Color(.sRGB, red: 1, green: 0.69, blue: 0.34, opacity: 0.02)],
                     startPoint: .top, endPoint: .bottom))
-        case .shipped:
+        case .shipped, .away:
             // Green across.
             return AnyShapeStyle(
                 LinearGradient(
@@ -277,6 +279,7 @@ public struct IslandView: View {
             case .shipped: shippedBody
             case .drop: dropBody
             case .filming: filmingBody
+            case .away: awayBody
             case .idle: Color.clear
             }
         }
@@ -334,6 +337,14 @@ public struct IslandView: View {
     private var shippedBody: some View {
         if let s = snapshot.shipped {
             WordReveal(s.sentence, size: 14, weight: .semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var awayBody: some View {
+        if let a = snapshot.away {
+            WordReveal(a.sentence, size: 14, weight: .semibold)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

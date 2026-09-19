@@ -41,6 +41,12 @@ final class IslandController {
     private var shippedQueue: [IslandShipped] = []
     private var drop: DropPhase?
     private var filming: IslandFilming?
+    private var away: IslandAway?
+    /// Shipped beats that played while nobody was at the Mac, for the away beat.
+    private var missed: [IslandShipped] = []
+    /// The longest idle seen since the last time someone was at the Mac.
+    private var idleRun: Double = 0
+    private var awayTask: Task<Void, Never>?
 
     // MARK: Pointer and beats
 
@@ -177,11 +183,56 @@ final class IslandController {
         if primed && !fresh.isEmpty { beat(Self.needsYouBeat) }
         // A demo the worker started since the last pass is news too, once: a simulator just
         // booted headless and the fans may be the first sign of it.
+        noticeReturn()
         let film = IslandFilming.read(queueRoot: Self.demoQueue)
         if primed, film != nil, filming == nil { beat(Self.filmingBeat) }
         filming = film
         primed = true
         apply()
+    }
+
+    // MARK: While you were away
+
+    /// Idle this long when a shipped beat plays and nobody saw it. Two minutes: the screen dims at
+    /// about that on a default MacBook, and a person reading something is rarely still for longer.
+    static let unwatchedIdle: Double = 120
+    /// Away this long before the return gets a beat: an hour, the phone's `AWAY_MIN_MS`, so the two
+    /// agree about what "away" means.
+    static let awayIdle: Double = 3600
+    /// Idle under this means someone is at the Mac now.
+    static let backIdle: Double = 5
+    /// How long the away beat stays open: one sentence of five or six words, read once.
+    static let awayBeat: Double = 6
+
+    /// Seconds since the last keyboard, mouse or trackpad event, from the HID system. It needs no
+    /// permission (it is a number, not the events), and it is what the screen saver reads.
+    static func idleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
+    /// Called every pass: once someone is back after an hour or more away, say what finished.
+    private func noticeReturn() {
+        let idle = Self.idleSeconds()
+        if idle >= Self.backIdle {
+            idleRun = max(idleRun, idle)
+            return
+        }
+        let wasAway = idleRun >= Self.awayIdle
+        idleRun = 0
+        guard wasAway, let summary = IslandAway.of(missed) else {
+            if !wasAway { missed.removeAll() }
+            return
+        }
+        missed.removeAll()
+        away = summary
+        apply()
+        awayTask?.cancel()
+        awayTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.awayBeat * 1e9))
+            guard let self, !Task.isCancelled else { return }
+            self.away = nil
+            self.apply()
+        }
     }
 
     /// The ship kit worker's queue (`capture/shipkit/queue.py`): `BUILDER_DEMOS_DIR/queue` when
@@ -201,6 +252,8 @@ final class IslandController {
     /// A session finished: the shipped beat.
     func showShipped(_ s: IslandShipped) {
         guard demo == nil else { return }
+        // Nobody at the Mac to see it: it plays anyway, and is also kept for the away beat.
+        if Self.idleSeconds() >= Self.unwatchedIdle { missed.append(s) }
         if shipped != nil {
             shippedQueue.append(s)
             return
@@ -231,11 +284,11 @@ final class IslandController {
     // MARK: The one place anything changes
 
     private func apply() {
-        let next = IslandSnapshot(agents: agents, ranToday: ranToday, shipped: shipped, drop: drop, filming: filming)
+        let next = IslandSnapshot(agents: agents, ranToday: ranToday, shipped: shipped, drop: drop, filming: filming, away: away)
         let mode = next.mode
         let hoverOpens = (mode == .crew || mode == .needsYou || mode == .filming) && hovering
         let open =
-            mode == .drop || mode == .shipped
+            mode == .drop || mode == .shipped || mode == .away
             || (mode != .idle && (pinned || hoverOpens || (beatUntil.map { $0 > Date() } ?? false)))
         if mode == .idle { pinned = false }
         guard next != snapshot || open != expanded else { return }
@@ -331,7 +384,7 @@ final class IslandController {
         switch snapshot.mode {
         case .idle:
             openPopover?()
-        case .shipped, .drop, .filming:
+        case .shipped, .drop, .filming, .away:
             break
         case .crew, .needsYou:
             pinned.toggle()

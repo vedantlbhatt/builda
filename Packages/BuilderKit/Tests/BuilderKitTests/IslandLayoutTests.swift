@@ -178,4 +178,22 @@ struct IslandAgentNameTests {
         let now = Date().timeIntervalSince1970
         #expect((IslandFilming.read(queueRoot: root)?.since ?? 0) <= now)
     }
+
+    @Test("what finished while nobody was at the Mac is added up once, in the phone's words")
+    func awayBeat() {
+        #expect(IslandAway.of([]) == nil)
+        let missed = [
+            IslandShipped(sessionID: "a", repo: "tramline", activeSeconds: 7200, commits: 6, unattended: true),
+            IslandShipped(sessionID: "b", repo: "notes", activeSeconds: 3600, commits: 0),
+            IslandShipped(sessionID: "c", repo: "site", activeSeconds: 7920, commits: 8, unattended: true),
+        ]
+        let a = IslandAway.of(missed)!
+        #expect(a.finished == 3 && a.alone == 2 && a.commits == 14)
+        #expect(a.sentence == "While you were away · 3 finished · 5h 12m · 14 commits")
+        #expect(IslandAway(finished: 1, activeSeconds: 600, commits: 0, alone: 0).sentence == "While you were away · 1 finished · 10m")
+        // A beat outranks what is merely running or waiting, the way shipped does; a drag outranks it.
+        #expect(IslandSnapshot(agents: IslandFixtures.needsYou(), away: a).mode == .away)
+        #expect(IslandSnapshot(agents: [], drop: .zone(valid: true), away: a).mode == .drop)
+        #expect(IslandSnapshot(agents: [], away: a).face == .done)
+    }
 }

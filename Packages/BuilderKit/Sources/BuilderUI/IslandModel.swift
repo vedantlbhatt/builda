@@ -23,6 +23,9 @@ public enum IslandMode: String, Sendable, CaseIterable {
     /// The Mac is filming a demo (the ship kit's worker, `capture demo watch`): a simulator is
     /// running headless and the fans may say so, so the notch says what it is for.
     case filming
+    /// You came back to the Mac after an hour or more and sessions finished meanwhile: one beat
+    /// that says what, since each one's own shipped beat played to an empty room.
+    case away
 }
 
 /// One running agent: one transcript being written to right now.
@@ -124,6 +127,41 @@ public struct IslandShipped: Equatable, Sendable {
     }
 }
 
+/// What finished while nobody was at the Mac (`IslandController`, the shipped beats that played
+/// while the Mac was idle), said once when someone comes back.
+public struct IslandAway: Equatable, Sendable {
+    public let finished: Int
+    public let activeSeconds: Double
+    public let commits: Int
+    /// How many of them ran with nobody there (agent runs).
+    public let alone: Int
+
+    public init(finished: Int, activeSeconds: Double, commits: Int, alone: Int) {
+        self.finished = finished
+        self.activeSeconds = activeSeconds
+        self.commits = commits
+        self.alone = alone
+    }
+
+    /// The beats nobody saw, added up. Nil when there were none: nothing finished is not news.
+    public static func of(_ missed: [IslandShipped]) -> IslandAway? {
+        guard !missed.isEmpty else { return nil }
+        return IslandAway(
+            finished: missed.count,
+            activeSeconds: missed.reduce(0) { $0 + $1.activeSeconds },
+            commits: missed.reduce(0) { $0 + $1.commits },
+            alone: missed.filter(\.unattended).count)
+    }
+
+    /// "While you were away · 3 finished · 5h 12m · 14 commits", the phone's words (`live/away.ts`),
+    /// the shipped sentence's shape. Commits drop out at zero, as they do there.
+    public var sentence: String {
+        var parts = ["While you were away", "\(finished) finished", IslandText.minutes(activeSeconds)]
+        if commits > 0 { parts.append(commits == 1 ? "1 commit" : "\(commits) commits") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 /// Where a dropped link is.
 public enum DropPhase: Equatable, Sendable {
     /// A drag is over the notch. `valid` is false when what is being dragged has no link in it.
@@ -181,16 +219,18 @@ public struct IslandSnapshot: Equatable, Sendable {
     public var shipped: IslandShipped?
     public var drop: DropPhase?
     public var filming: IslandFilming?
+    public var away: IslandAway?
 
     public init(
         agents: [IslandAgent] = [], ranToday: Bool = false, shipped: IslandShipped? = nil,
-        drop: DropPhase? = nil, filming: IslandFilming? = nil
+        drop: DropPhase? = nil, filming: IslandFilming? = nil, away: IslandAway? = nil
     ) {
         self.agents = agents
         self.ranToday = ranToday
         self.shipped = shipped
         self.drop = drop
         self.filming = filming
+        self.away = away
     }
 
     /// What to call an agent in a list: its repository, and its branch when another agent in
@@ -228,6 +268,7 @@ public struct IslandSnapshot: Equatable, Sendable {
     public var mode: IslandMode {
         if drop != nil { return .drop }
         if shipped != nil { return .shipped }
+        if away != nil { return .away }
         if !waiting.isEmpty { return .needsYou }
         if filming != nil { return .filming }
         if !agents.isEmpty { return .crew }
@@ -242,6 +283,7 @@ public struct IslandSnapshot: Equatable, Sendable {
         case .needsYou: return .waiting
         case .shipped: return .done
         case .filming: return .working
+        case .away: return .done
         case .drop:
             if case .failed = drop { return .error }
             if case .unpaired = drop { return .error }

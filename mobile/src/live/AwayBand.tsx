@@ -55,7 +55,10 @@ export function useAwayFrom(): { from: number | null; done: () => void } {
   return { from, done };
 }
 
-export function AwayBand({ away, onOpen, onDone }: { away: AwaySummary; onOpen: (id: string) => void; onDone: () => void }) {
+/** Memoised: Now re-renders on its clock, and nothing in the band changes with it. */
+export const AwayBand = React.memo(AwayBandImpl);
+
+function AwayBandImpl({ away, onOpen, onDone }: { away: AwaySummary; onOpen: (id: string) => void; onDone: () => void }) {
   return (
     <View style={styles.card} accessibilityRole="summary" accessibilityLabel={`${away.lead}. ${away.line}`}>
       {/* Green from the left, the finished colour, into the black: news that is good or at least over. */}

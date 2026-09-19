@@ -425,10 +425,11 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
     () => (data.sample ? null : awaySummary(data.recent, data.live ?? [], awayClock.from, Date.now(), names)),
     [data.sample, data.recent, data.live, awayClock.from, names],
   );
+  const awayGone = awayClock.done;
   const awayDone = useCallback(() => {
     select();
-    awayClock.done();
-  }, [awayClock]);
+    awayGone();
+  }, [awayGone]);
   const openLive = useCallback(() => router.push('/live'), [router]);
 
   const signedIn = data.inputs.signedIn;
@@ -528,7 +529,7 @@ export function MissionControl({ sample = null, doorway = false }: { sample?: Sa
                   <Refusal>{staleLine(screen.stale, now)}</Refusal>
                 </View>
               ) : null}
-              {away ? <AwayBand away={away} onOpen={(id) => open(id)} onDone={awayDone} /> : null}
+              {away ? <AwayBand away={away} onOpen={open} onDone={awayDone} /> : null}
             </View>
           ) : null}
 

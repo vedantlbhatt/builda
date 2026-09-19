@@ -17,10 +17,17 @@ export const RECAP_KINDS: ReadonlySet<string> = new Set(['session_finished', 'ag
  */
 export const DROP_KINDS: ReadonlySet<string> = new Set(['drop_read', 'drop_done']);
 
+/**
+ * The phone's own Monday notification for last week's card (`push/weekly.ts`). It opens Sessions
+ * with the card up (`SessionsScreen` reads `card=last-week`).
+ */
+export const WEEK_CARD_KIND = 'week_card';
+export const WEEK_CARD_ROUTE = '/sessions?card=last-week';
+
 /** The route a recap opens on. `[id].tsx` reads `recap=1` and raises the sheet. */
 export type SessionRoute = `/session/${string}` | `/session/${string}?recap=1`;
 export type DropRoute = `/drops?open=${string}`;
-export type TapRoute = SessionRoute | DropRoute;
+export type TapRoute = SessionRoute | DropRoute | typeof WEEK_CARD_ROUTE;
 
 /**
  * Where a notification's data points, or null when it points nowhere.
@@ -36,6 +43,7 @@ export function routeForNotification(data: unknown): TapRoute | null {
   if (typeof data !== 'object' || data === null) return null;
   const d = data as Record<string, unknown>;
   const kindRaw = typeof d.kind === 'string' ? d.kind : null;
+  if (kindRaw === WEEK_CARD_KIND) return WEEK_CARD_ROUTE;
   if (kindRaw && DROP_KINDS.has(kindRaw)) {
     const dropId = dropIdFrom(d);
     return dropId ? `/drops?open=${dropId}` : null;

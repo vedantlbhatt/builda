@@ -15,6 +15,8 @@ import { finishedSince, todayFromProfile } from './surface';
 import { clearWidgetSnapshot } from './widget';
 import { announceFinished, publishLive, resumeDemos } from '../island/feeds';
 import { crewFor } from './crew';
+import { scheduleWeekCard } from '../push/weekly';
+import { weekOf } from '../session/week';
 import { offerMilestone } from '../share/milestoneOffer';
 import { offerLastWeek } from '../share/weekOffer';
 
@@ -94,6 +96,8 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
   void resumeDemos(names, nowMs).catch(() => null);
   // Made without being asked, each once: last week's card Monday to Wednesday (`share/weekOffer`),
   // else an hours milestone just passed (`share/milestones`). One card a pass, never two at once.
+  // And Monday's notification for it, scheduled while this week has hours (`push/weekly`).
+  if (profile) void scheduleWeekCard(weekOf(profile.graph, nowMs).seconds, nowMs);
   void offerLastWeek(resolveAnimal(animal), nowMs)
     .then((offered) => (offered ? false : offerMilestone(profile, resolveAnimal(animal))))
     .catch(() => null);

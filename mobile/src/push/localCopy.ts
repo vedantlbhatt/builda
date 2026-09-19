@@ -102,3 +102,13 @@ export function finishedNotification(
     data: { kind: KIND_SESSION_FINISHED, session_id: s.id, url },
   };
 }
+
+/**
+ * Monday's notification for last week's card (`push/weekly.ts`). No numbers: it is written days
+ * before the week ends, and a figure from Saturday would be wrong by Monday; the card itself carries
+ * the week's hours from the profile when it opens.
+ */
+export const WEEK_CARD_NOTIFICATION = {
+  title: 'Your week in builds is made',
+  body: "Last week's hours and longest sessions, on one card to share.",
+} as const;

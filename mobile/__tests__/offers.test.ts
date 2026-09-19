@@ -29,6 +29,7 @@ mock.module('../src/data/client', () => ({
     },
   },
 }));
+import { fakeNotifications } from './fakeNotifications';
 mock.module('../src/share/WeekShare', () => ({ showWeekShare: () => opened.push('week') }));
 mock.module('../src/share/MilestoneShare', () => ({ showMilestoneShare: (h: number) => opened.push(`milestone ${h}`) }));
 
@@ -55,6 +56,7 @@ const profile = (hours: number): Profile =>
   ({ graph: [], totals: { sessions: 132, active_seconds: hours * H }, projects: [{ key: 'k', name: null, sessions: 1, active_seconds: 1, first_at: '2026-08-12T10:00:00Z', last_at: '2026-09-12T10:00:00Z' }] }) as unknown as Profile;
 
 beforeEach(() => {
+  fakeNotifications.reset();
   island.reset();
   kv.clear();
   posted = [];
@@ -92,6 +94,15 @@ describe('last week, offered once', () => {
     expect(await offerLastWeek('cat', MON_28 + 60_000)).toBe(false);
     expect(posted).toHaveLength(0);
     expect(profileCalls).toBe(0);
+  });
+
+  test("Monday's notification already delivered: the island stays quiet and the week is marked", async () => {
+    const MON_OCT_5 = new Date(2026, 9, 5, 10).getTime(); // last week: Sep 28 to Oct 4
+    graph = [{ date: '2026-09-30', active_seconds: 3 * H }];
+    fakeNotifications.presented.push('week-card');
+    expect(await offerLastWeek('cat', MON_OCT_5)).toBe(false);
+    expect(posted).toHaveLength(0);
+    expect(kv.get(WEEK_OFFERED_KEY)).toBe('2026-09-28');
   });
 });
 

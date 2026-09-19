@@ -143,3 +143,23 @@ describe('a drop banner', () => {
     expect(routeForNotification({ session_id: 's1' })).toBe('/session/s1?recap=1');
   });
 });
+
+describe("last week's card, by notification", () => {
+  test('its kind opens Sessions with the card up, whatever else the payload says', async () => {
+    const { routeForNotification: route, WEEK_CARD_ROUTE } = await import('../src/push/route');
+    expect(route({ kind: 'week_card' })).toBe(WEEK_CARD_ROUTE);
+    expect(route({ kind: 'week_card', session_id: 'x' })).toBe('/sessions?card=last-week');
+  });
+
+  test('it fires at nine on the next Monday, never in the past', async () => {
+    const { nextWeekCardAt } = await import('../src/push/weekCardTime');
+    const at = (y: number, m: number, d: number, h: number, min = 0) => new Date(y, m - 1, d, h, min).getTime();
+    // Saturday 19 September 2026 -> Monday the 21st at 9.
+    expect(nextWeekCardAt(at(2026, 9, 19, 7, 40)).getTime()).toBe(at(2026, 9, 21, 9));
+    // Monday before nine -> that morning; at or after nine -> the Monday after.
+    expect(nextWeekCardAt(at(2026, 9, 21, 8, 59)).getTime()).toBe(at(2026, 9, 21, 9));
+    expect(nextWeekCardAt(at(2026, 9, 21, 9, 0)).getTime()).toBe(at(2026, 9, 28, 9));
+    // Sunday night -> the next morning.
+    expect(nextWeekCardAt(at(2026, 9, 27, 23, 30)).getTime()).toBe(at(2026, 9, 28, 9));
+  });
+});

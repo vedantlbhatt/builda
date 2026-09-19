@@ -16,6 +16,7 @@ import type { SessionDetail } from '../data/api';
 import * as cache from '../data/cache';
 import { api } from '../data/client';
 import { island } from '../island/store';
+import { weekCardDelivered } from '../push/weekly';
 import type { Animal } from '../pixel/animals';
 import { lastWeekIsNews, lastWeekOf, weekOfferLine, weekRows, weekToOffer, WEEK_OFFERED_KEY, type WeekModel } from '../session/week';
 import { creatureHue } from '../theme';
@@ -53,6 +54,8 @@ export async function offerLastWeek(animal: Animal, nowMs: number): Promise<bool
   const week = weekToOffer(graph, nowMs, offered);
   if (!week) return false;
   await cache.setKv(WEEK_OFFERED_KEY, monday);
+  // Never both: Monday's notification already said it (`push/weekly`).
+  if (await weekCardDelivered()) return false;
   const ink = creatureHue(animal).ink;
   const id = `week:${monday}`;
   island.post(

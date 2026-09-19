@@ -22,8 +22,8 @@
  * one sentence and the word to sign in, the error inline, one quiet line when a sync failed over
  * saved sessions, and a sentence with the one thing that fills the page when there are none yet.
  */
-import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { morphOpen } from '../motion/MorphNav';
 import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -56,7 +56,7 @@ import { extendReach, LIST_MAX, LIST_PAGE, listEnd, mergeReach, reachOfPage, sen
 import { rowOf } from './page';
 import { Door } from './parts';
 import { ROW_FIGURE } from './type';
-import { lastWeekShown, QUIET_WEEK, sameDaysLastWeek, weekFigure, weekOf, weekRows, type WeekModel } from './week';
+import { lastWeekOf, lastWeekShown, QUIET_WEEK, sameDaysLastWeek, WEEK_OFFERED_KEY, weekFigure, weekOf, weekRows, type WeekModel } from './week';
 import { WEEK_BARS_WIDTH, WeekBars } from './WeekBars';
 import { HERE, TRY_AGAIN } from '../copy/device';
 
@@ -293,6 +293,18 @@ export function SessionsScreen() {
     },
     [sessions, accent.animal, accent.ink],
   );
+  // Monday's notification opens here with `card=last-week` (`push/weekly`): the card goes up once
+  // the profile has the week, and the week counts as offered so the island does not say it again.
+  const { card } = useLocalSearchParams<{ card?: string }>();
+  const cardShown = useRef(false);
+  useEffect(() => {
+    if (card !== 'last-week' || !profile || cardShown.current) return;
+    cardShown.current = true;
+    const last = lastWeekOf(profile.graph, Date.now());
+    void cache.setKv(WEEK_OFFERED_KEY, last.days[0]!.date).catch(() => undefined);
+    router.setParams({ card: undefined });
+    if (last.seconds > 0) void shareWeek(last);
+  }, [card, profile, router, shareWeek]);
   const shown = stage >= 1 ? sessions : sessions.slice(0, FIRST_ROWS);
   const inner = width - GUTTER * 2;
   const stripWidth = inner - MARK - MARK_GAP;

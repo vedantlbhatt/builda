@@ -39,6 +39,10 @@ const DEV_URL = process.env.BUILDA_DEV_URL || null;
 const APP_ORIGIN = DEV_URL ? new URL(DEV_URL).origin : ORIGIN;
 const MAC = process.platform === 'darwin';
 const BG = '#141210';
+/** `BUILDA_DEBUG=1`: what the shell decided, on stdout. */
+const debug = (...a) => {
+  if (process.env.BUILDA_DEBUG) console.log('[builda]', ...a);
+};
 
 // A separate profile for a test run, so it never touches the installed app's tokens.
 if (process.env.BUILDA_USER_DATA) app.setPath('userData', path.resolve(process.env.BUILDA_USER_DATA));
@@ -71,6 +75,7 @@ const pendingLinks = [];
 let pageListening = false;
 
 function deliverLink(/** @type {string} */ url) {
+  debug('link', url, pageListening ? 'to the page' : 'held');
   if (!isAppLink(url)) return;
   const win = showMain();
   if (pageListening && win) win.webContents.send('deep-link', url);
@@ -93,6 +98,7 @@ app.on('open-url', (event, url) => {
 });
 
 app.on('second-instance', (_event, argv) => {
+  debug('second instance', argv.slice(1).join(' '));
   const link = argv.find((a) => isAppLink(a));
   if (link) deliverLink(link);
   else showMain();
@@ -187,8 +193,11 @@ function createMain() {
     event.preventDefault();
     if (isExternalAllowed(url)) void shell.openExternal(url);
   });
-  // A reload (not a route change: those are in page) means a new page that has to listen again.
-  win.webContents.on('did-start-loading', () => {
+  // A new document (a reload, not a route change: those are in page) has to listen again.
+  // `did-start-loading` also fires inside a running page (MEASURED: a link held after the page had
+  // said it was listening), so only a main-frame navigation that is not in page counts.
+  win.webContents.on('did-navigate', () => {
+    debug('new document');
     pageListening = false;
   });
   win.on('close', (event) => {
@@ -331,6 +340,7 @@ function registerIpc() {
     if (typeof route === 'string' && route.startsWith('/')) win.webContents.send('command', `go:${route}`);
   });
   ipcMain.on('deep-link:ready', (e) => {
+    debug('page listening', e.sender === main?.webContents ? '(app window)' : '(another window)', pendingLinks.length, 'held');
     if (e.sender !== main?.webContents) return;
     pageListening = true;
     while (pendingLinks.length) {

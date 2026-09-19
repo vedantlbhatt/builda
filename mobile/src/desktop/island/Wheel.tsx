@@ -72,9 +72,10 @@ const styles = StyleSheet.create({
   wheel: { gap: 4 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 24 },
   mark: { width: 6, height: 6, borderRadius: 3, borderCurve: 'continuous' },
-  textBox: { flex: 1, minWidth: 0, overflow: 'hidden' },
+  // Only as wide as its words, so the light crosses text and never an empty stretch of black.
+  textBox: { flexShrink: 1, minWidth: 0, overflow: 'hidden' },
   active: { ...roleStyle('row') },
   rest: { ...roleStyle('meta') },
-  corner: { ...roleStyle('mono') },
+  corner: { ...roleStyle('mono'), marginLeft: 'auto' },
   light: { position: 'absolute', top: 0, bottom: 0, width: '34%' },
 });

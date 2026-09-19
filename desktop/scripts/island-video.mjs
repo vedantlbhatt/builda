@@ -14,7 +14,9 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const [capDir, outDir] = process.argv.slice(2);
+const [capArg, outArg] = process.argv.slice(2);
+const capDir = capArg && path.resolve(capArg);
+const outDir = outArg && path.resolve(outArg);
 if (!capDir || !outDir) {
   console.error('usage: island-video.mjs <capture dir> <out dir> [--notch WxH] [--scale N]');
   process.exit(2);

@@ -113,7 +113,7 @@ final class AppStore {
         work.async { [weak self] in self?.openStores() }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if await self.sync.isPaired { self.pairing = .paired }
+            if !Self.keychainOff, await self.sync.isPaired { self.pairing = .paired }
         }
     }
 
@@ -318,7 +318,20 @@ final class AppStore {
     }
 
     /// Whether this Mac holds a token to send a drop with.
-    func isPaired() async -> Bool { await sync.isPaired }
+    func isPaired() async -> Bool {
+        if Self.keychainOff { return false }
+        return await sync.isPaired
+    }
+
+    /// A development run against a copy of the store (`BUILDER_STORE_DIR`), or
+    /// `BUILDER_KEYCHAIN=0`, never touches the Keychain. FOUND BY RUNNING IT: a debug build is
+    /// signed ad hoc and signed differently on every build, so its first read of the pairing
+    /// token raised the system's "allow access" dialog, which then sat on screen after the test
+    /// run had ended, waiting for a person.
+    static let keychainOff: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BUILDER_STORE_DIR"] != nil || env["BUILDER_KEYCHAIN"] == "0"
+    }()
 
     func shareDrop(_ shared: DropLink.Shared) async throws -> SyncClient.DropState {
         try await sync.shareDrop(

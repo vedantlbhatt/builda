@@ -149,13 +149,26 @@ public struct IslandView: View {
         ZStack(alignment: .top) {
             IslandBody(
                 geometry: g, notch: notch, content: content, face: { face(points: $0) }, ears: ears,
-                wash: wash, washKey: isOpen ? mode.rawValue : "none", contentKey: contentKey, edge: edge)
+                wash: wash, washKey: isOpen ? contentKey : "none", contentKey: contentKey, edge: edge)
             rail(g)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var contentKey: String { isOpen ? mode.rawValue : "collapsed" }
+    /// Which layer is showing. A new key is a morph (the outgoing layer gone by 28% scaling up,
+    /// the incoming one in from 34%); the same key is the same layer changing in place. The drop
+    /// has four layers, not one: FOUND IN A RECORDED FRAME, the zone and "Pair this Mac first"
+    /// under one key cross faded, both legible at once, which is the cut the kit warns about.
+    private var contentKey: String {
+        guard isOpen else { return "collapsed" }
+        guard mode == .drop else { return mode.rawValue }
+        switch snapshot.drop {
+        case .none, .zone: return "drop-zone"
+        case .unpaired: return "drop-unpaired"
+        case .sending, .progress: return "drop-progress"
+        case .failed: return "drop-failed"
+        }
+    }
 
     // MARK: The face (one object from ear to body)
 

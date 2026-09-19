@@ -4,6 +4,7 @@ import BuilderIngest
 import BuilderModel
 import BuilderSchema
 import BuilderSQLite
+import BuilderSync
 import BuilderUI
 import SwiftUI
 import UserNotifications
@@ -71,8 +72,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             island.startDemo(shotsDir: env["BUILDER_ISLAND_RECORD"])
             return
         }
-        requestNotificationPermission()
+        // A development run against a copied store neither asks for nor sends notifications:
+        // its sessions are real, and a banner about one would be a real banner.
+        if !AppStore.keychainOff { requestNotificationPermission() }
         store.start()
+        fakeDropIfAsked(env)
+    }
+
+    /// `BUILDER_ISLAND_FAKE_DROP=<text>`: three seconds after launch, a drag carrying `<text>`
+    /// hovers over the notch for two seconds and is dropped, through the same controller calls
+    /// the drop target makes. A real drag cannot be synthesised without the Accessibility
+    /// permission; this runs everything after the pasteboard. Point BUILDER_API_URL at a local
+    /// server when using it: a paired Mac posts a real drop.
+    private func fakeDropIfAsked(_ env: [String: String]) {
+        guard let text = env["BUILDER_ISLAND_FAKE_DROP"] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.island.dragEntered(hasLink: DropLink.normalize(text) != nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.island.dropped(payload: text)
+            }
+        }
     }
 
     /// `BUILDER_ISLAND_RECORD=<dir>`: film the top of the screen around the island

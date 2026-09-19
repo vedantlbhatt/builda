@@ -38,10 +38,18 @@ public actor SyncClient {
     private let session: URLSession
     private let clientVersion: String
 
-    public init(baseURL: URL, clientVersion: String = "0.1.0", session: URLSession = .shared) {
+    /// Where the access token comes from. The Keychain, always, outside a test; a test hands
+    /// one in so the request can be checked without writing the machine's Keychain.
+    private let accessToken: @Sendable () -> String?
+
+    public init(
+        baseURL: URL, clientVersion: String = "0.1.0", session: URLSession = .shared,
+        accessToken: @escaping @Sendable () -> String? = { Keychain.get(.accessToken) }
+    ) {
         self.baseURL = baseURL
         self.clientVersion = clientVersion
         self.session = session
+        self.accessToken = accessToken
     }
 
     // MARK: - Pairing
@@ -208,7 +216,7 @@ public actor SyncClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try SessionUpload.encoder().encode(body)
         if authorized {
-            guard let token = Keychain.get(.accessToken) else { throw SyncError.notPaired }
+            guard let token = accessToken() else { throw SyncError.notPaired }
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return try await send(request, retryOn401: authorized)
@@ -216,7 +224,7 @@ public actor SyncClient {
 
     private func get<R: Decodable>(_ path: String) async throws -> R {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        guard let token = Keychain.get(.accessToken) else { throw SyncError.notPaired }
+        guard let token = accessToken() else { throw SyncError.notPaired }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return try await send(request, retryOn401: true)
     }
@@ -234,7 +242,7 @@ public actor SyncClient {
         if status == 401 && retryOn401 {
             try await refreshTokens()
             var retried = request
-            if let token = Keychain.get(.accessToken) {
+            if let token = accessToken() {
                 retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             return try await send(retried, retryOn401: false)

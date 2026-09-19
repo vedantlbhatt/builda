@@ -37,21 +37,22 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
-- **07:20 to 07:30**: `swift test`, 187 tests: the only failures (18 issues) are in the two suites
+- **07:09 to 07:15**: `swift test`, 187 tests: the only failures (18 issues) are in the two suites
   that read this machine's LIVE data against frozen reference measurements: "Ground truth" (the
   RideGT transcripts now run to Sep 16; 107 sessions at tau 900 against the reference 84) and
   "Cursor IDE" (the real Cursor database). No engine code changed tonight; the reference numbers
   are left alone (a number is moved only with a measurement). Idle CPU after tonight's changes,
   20 one second samples each: Now median 0.3%, Sessions 0.5%, Drops 0.4%. The island's no hardware
   rule is `island/model.shownActivities`, tested (2961b3e). Linux cross builds.
-- **07:08 to 07:16**: desktop ship kit Save (0bea4a3): the kit's Share threw "no cache directory" on
+- **07:04 to 07:09**: desktop ship kit Save (0bea4a3): the kit's Share threw "no cache directory" on
   the web; now the picked files go to one new folder in Downloads through the shell (`files:save`,
   `image.kitFiles`: the four kit types checked by their bytes) and the caption to the clipboard;
   checked in Chromium (the 16:9 MP4, 1920 x 1080, 10 s). Windows x64 rebuilt with tonight's shell
-  (not run: no Windows here). Report v15.
-- **07:05**: Now's stage drops from its own edge on a phone with no Dynamic Island, as on the
+  (not run: no Windows here). Report v15. TIMES: take them from `date` or git, never from memory;
+  two entries were labelled ahead of the clock and corrected.
+- **07:04**: Now's stage drops from its own edge on a phone with no Dynamic Island, as on the
   desktop (5bd79cd); recorded on the SE. Report v14.
-- **06:42 to 07:02**: sessions rows carry their start time (ef20f47); the Sessions band says "Same
+- **06:42 to 07:01**: sessions rows carry their start time (ef20f47); the Sessions band says "Same
   days last week: 13.7 hours" (8ae6cb9, last week up to today's weekday, never the whole week); a
   test holds the desktop preload to the `DesktopBridge` type (09f0330). **iPhone SE pass** (868424a):
   the island's compact pill was drawn over the status bar clock on a phone with no Dynamic Island

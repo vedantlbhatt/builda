@@ -33,7 +33,7 @@ and by this policy. Account deletion cascades from `users`, a drop's delete from
 from alembic import op
 
 revision = "0031_drop_activity_tokens"
-down_revision = "0029_drop_move_run_uuid"
+down_revision = "0030_ship_kits"
 branch_labels = None
 depends_on = None
 

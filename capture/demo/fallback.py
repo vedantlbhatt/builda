@@ -25,23 +25,21 @@ import re
 import shutil
 import subprocess
 
-from . import manifest
+from . import devices, manifest
 
 IMAGE_DIRS = (
     "shots", "screenshots", "screenshot", "verification-screenshots", "docs", "doc", "media",
     "assets/screenshots", ".github", "images", "img", "demo", "demos", "preview", "previews",
 )  # fmt: skip
 _IMG = re.compile(r"\.(png|jpe?g)$", re.IGNORECASE)
-#: Pixel sizes an iPhone or iPad screenshot comes out at (simulator or device). FOUND ON THE
-#: FIRST RIDEGT FALLBACK: "phone shaped" alone ranked the ad portal's 1440 by 2996 templates
-#: above the app's own 1179 by 2556 screenshots in the same folder.
+#: Pixel sizes an iPhone or iPad screenshot comes out at (simulator or device), from the device
+#: table (spec/devices.v1.json), both ways round. FOUND ON THE FIRST RIDEGT FALLBACK: "phone
+#: shaped" alone ranked the ad portal's 1440 by 2996 templates above the app's own 1179 by 2556
+#: screenshots in the same folder. The list this replaced was typed here and had no iPhone Air and
+#: no iPad Pro of 2024, so their screenshots ranked as pictures of nothing in particular.
 DEVICE_SIZES = frozenset(
-    {
-        (1320, 2868), (1290, 2796), (1206, 2622), (1179, 2556), (1284, 2778), (1170, 2532),
-        (1125, 2436), (1242, 2688), (828, 1792), (1080, 2340), (1242, 2208), (750, 1334),
-        (640, 1136), (2048, 2732), (1668, 2388), (1640, 2360), (1488, 2266),
-    }
-)  # fmt: skip
+    (w, h) for d in devices.DEVICES if d["family"] in ("iphone", "ipad") for w, h in (d["pixels"], d["pixels"][::-1])
+)
 _README_IMG = re.compile(r"!\[[^\]]*\]\(([^)\s]+)|<img[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
 #: Too small to be a screen: icons, badges, favicons.
 MIN_SIDE = 320

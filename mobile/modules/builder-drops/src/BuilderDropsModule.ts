@@ -1,6 +1,6 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
-import type { CredentialStatus, DirectShareResult, PendingDrop } from './BuilderDrops.types';
+import type { CredentialStatus, DirectShareResult, PendingDrop, ShareItemsResult } from './BuilderDrops.types';
 
 declare class BuilderDropsModule extends NativeModule {
   /**
@@ -26,6 +26,12 @@ declare class BuilderDropsModule extends NativeModule {
   credentialStatus?(): CredentialStatus;
   /** DEBUG: the share extension's own send, run from the app. No queue fallback. */
   debugShareDirect?(url: string, text: string): Promise<DirectShareResult>;
+  /**
+   * One share sheet with every file (local file paths or file:// URLs) and the text, for the
+   * ship kit (docs/ship-kit.md). The text also goes on the pasteboard, because some apps drop it
+   * when files come with it. Resolves when the sheet closes: whether it was sent, and where.
+   */
+  shareItems(paths: string[], text?: string | null): Promise<ShareItemsResult>;
 }
 
 /**

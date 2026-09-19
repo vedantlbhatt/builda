@@ -15,3 +15,13 @@ export type CredentialStatus =
 
 /** The share extension's own send, as the debug route runs it. */
 export type DirectShareResult = { sent: true; dropId: string } | { sent: false; why: string };
+
+/** What the share sheet did with a ship kit's files (`shareItems`). */
+export interface ShareItemsResult {
+  /** The person picked a destination and it took the items. */
+  shared: boolean;
+  /** The activity type iOS reports (`com.apple.UIKit.activity.Message`, an app's extension id), or null. */
+  activity: string | null;
+  /** Files that were not on disk when the sheet opened, so were not offered. */
+  missing: number;
+}

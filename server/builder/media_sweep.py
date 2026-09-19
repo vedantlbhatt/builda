@@ -32,10 +32,13 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import create_engine, text
 
-from . import objectstore
+from . import objectstore, ship_kit
 from .project_media import PENDING_GRACE_SECONDS, delete_objects, kept_keys
 
 PREFIX = "project-media/"
+#: Ship kits (0030) live in the same private store under a prefix of their own, swept by the
+#: same rule over their own rows (`ship_kit.kept_keys`).
+KIT_PREFIX = ship_kit.PREFIX
 
 
 class CannotSeeEveryRow(SystemExit):
@@ -70,13 +73,29 @@ def sweep_all(engine, *, now: datetime | None = None, dry_run: bool = False) -> 
             ),
             {"cutoff": cutoff},
         ).all()
+        kit_stale_sql = "FROM ship_kit_media WHERE NOT committed AND created_at < :cutoff"
+        kit_stale = c.execute(
+            text(
+                f"SELECT object_key {kit_stale_sql}"
+                if dry_run
+                else f"DELETE {kit_stale_sql} RETURNING object_key"
+            ),
+            {"cutoff": cutoff},
+        ).all()
     listed = objectstore.media_list(PREFIX)
+    kit_listed = objectstore.media_list(KIT_PREFIX)
     with engine.connect() as c:
         rows = c.execute(
             text("SELECT object_key, poster_object_key, committed, created_at FROM project_media")
         ).all()
+        kit_rows = c.execute(
+            text("SELECT object_key, committed, created_at FROM ship_kit_media")
+        ).all()
     keep = kept_keys(rows, now)
-    orphans = [k for k in listed if k not in keep]
+    kit_keep = ship_kit.kept_keys(kit_rows, now)
+    orphans = [k for k in listed if k not in keep] + [k for k in kit_listed if k not in kit_keep]
+    listed = listed + kit_listed
+    stale = list(stale) + list(kit_stale)
     return {
         "role": role.who,
         "listed": len(listed),

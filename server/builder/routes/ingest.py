@@ -58,7 +58,6 @@ HOOK_SCRIPT = r"""#!/usr/bin/env bash
 # It always exits 0: a broken upload must never block Claude Code.
 set -u
 [ -f "$HOME/.builder/env" ] && . "$HOME/.builder/env"
-[ -n "${BUILDER_URL:-}" ] && [ -n "${BUILDER_CAPTURE_KEY:-}" ] || exit 0
 input=$(cat)
 field() {
   printf '%s' "$input" | sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
@@ -66,6 +65,22 @@ field() {
 sid=$(field session_id); path=$(field transcript_path)
 hook=$(field hook_event_name)
 [ -n "$sid" ] && [ -f "$path" ] || exit 0
+# A session that ended on a Mac that makes demos (docs/ship-kit.md): one small file in the demo
+# queue for `python -m capture demo watch` to judge. It only writes the file; never a failure.
+if [ "${hook:-}" = "SessionEnd" ] && [ "$(uname -s)" = "Darwin" ] \
+  && [ -d "$HOME/.builder/demos" ]; then
+  cwd=$(field cwd); q="$HOME/.builder/demos/queue/pending"
+  if [ -n "$cwd" ] && mkdir -p "$q" 2>/dev/null; then
+    esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+    at=$(date -u +%Y-%m-%dT%H:%M:%SZ); name="$(date -u +%Y%m%dT%H%M%SZ)-hook$$"
+    fmt='{"id":"hook%s","kind":"session_end","created_at":"%s",'
+    fmt="$fmt"'"session_id":"%s","transcript":"%s","cwd":"%s"}\n'
+    printf "$fmt" \
+      "$$" "$at" "$(esc "$sid")" "$(esc "$path")" "$(esc "$cwd")" > "$q/.$name.tmp" 2>/dev/null \
+      && mv "$q/.$name.tmp" "$q/$name.json" 2>/dev/null
+  fi
+fi
+[ -n "${BUILDER_URL:-}" ] && [ -n "${BUILDER_CAPTURE_KEY:-}" ] || exit 0
 proj=$(basename "$(dirname "$path")")
 state="$HOME/.builder/offsets"; mkdir -p "$state"
 off=0; [ -f "$state/$sid" ] && off=$(cat "$state/$sid" 2>/dev/null || echo 0)

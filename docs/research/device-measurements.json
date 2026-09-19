@@ -1,0 +1,1380 @@
+{
+ "devices": {
+  "com.apple.CoreSimulator.SimDeviceType.iPad-9th-generation": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 0,
+    "native_pixels": [
+     1620,
+     2160
+    ],
+    "native_scale": 2,
+    "points": [
+     810,
+     1080
+    ],
+    "safe_bottom": 0,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     810,
+     1080
+    ]
+   },
+   "profile": {
+    "model": "iPad12,2",
+    "name": "iPad (9th generation)",
+    "pixels": [
+     1620,
+     2160
+    ],
+    "scale": 2.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-A16": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 25,
+    "native_pixels": [
+     1640,
+     2360
+    ],
+    "native_scale": 2,
+    "points": [
+     820,
+     1180
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     820,
+     1180
+    ]
+   },
+   "profile": {
+    "model": "iPad15,7",
+    "name": "iPad (A16)",
+    "pixels": [
+     1640,
+     2360
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M3": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 18,
+    "native_pixels": [
+     1640,
+     2360
+    ],
+    "native_scale": 2,
+    "points": [
+     820,
+     1180
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     820,
+     1180
+    ]
+   },
+   "profile": {
+    "model": "iPad15,3",
+    "name": "iPad Air 11-inch (M3)",
+    "pixels": [
+     1640,
+     2360
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M4": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 18,
+    "native_pixels": [
+     1640,
+     2360
+    ],
+    "native_scale": 2,
+    "points": [
+     820,
+     1180
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     820,
+     1180
+    ]
+   },
+   "profile": {
+    "model": "iPad16,9",
+    "name": "iPad Air 11-inch (M4)",
+    "pixels": [
+     1640,
+     2360
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Air-13-inch-M3": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 18,
+    "native_pixels": [
+     2048,
+     2732
+    ],
+    "native_scale": 2,
+    "points": [
+     1024,
+     1366
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     1024,
+     1366
+    ]
+   },
+   "profile": {
+    "model": "iPad15,5",
+    "name": "iPad Air 13-inch (M3)",
+    "pixels": [
+     2048,
+     2732
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Air-13-inch-M4": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 18,
+    "native_pixels": [
+     2048,
+     2732
+    ],
+    "native_scale": 2,
+    "points": [
+     1024,
+     1366
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     1024,
+     1366
+    ]
+   },
+   "profile": {
+    "model": "iPad16,11",
+    "name": "iPad Air 13-inch (M4)",
+    "pixels": [
+     2048,
+     2732
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-3rd-generation": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 18,
+    "native_pixels": [
+     1668,
+     2388
+    ],
+    "native_scale": 2,
+    "points": [
+     834,
+     1194
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     834,
+     1194
+    ]
+   },
+   "profile": {
+    "model": "iPad13,5",
+    "name": "iPad Pro (11-inch) (3rd generation)",
+    "pixels": [
+     1668,
+     2388
+    ],
+    "scale": 2.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-4th-generation-8GB": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 18,
+    "native_pixels": [
+     1668,
+     2388
+    ],
+    "native_scale": 2,
+    "points": [
+     834,
+     1194
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     834,
+     1194
+    ]
+   },
+   "profile": {
+    "model": "iPad14,3",
+    "name": "iPad Pro (11-inch) (4th generation)",
+    "pixels": [
+     1668,
+     2388
+    ],
+    "scale": 2.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M4-8GB": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 30,
+    "native_pixels": [
+     1668,
+     2420
+    ],
+    "native_scale": 2,
+    "points": [
+     834,
+     1210
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     834,
+     1210
+    ]
+   },
+   "profile": {
+    "model": "iPad16,4",
+    "name": "iPad Pro 11-inch (M4)",
+    "pixels": [
+     1668,
+     2420
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M5-12GB": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 30,
+    "native_pixels": [
+     1668,
+     2420
+    ],
+    "native_scale": 2,
+    "points": [
+     834,
+     1210
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     834,
+     1210
+    ]
+   },
+   "profile": {
+    "model": "iPad17,2",
+    "name": "iPad Pro 11-inch (M5)",
+    "pixels": [
+     1668,
+     2420
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M4-8GB": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 30,
+    "native_pixels": [
+     2064,
+     2752
+    ],
+    "native_scale": 2,
+    "points": [
+     1032,
+     1376
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     1032,
+     1376
+    ]
+   },
+   "profile": {
+    "model": "iPad16,6",
+    "name": "iPad Pro 13-inch (M4)",
+    "pixels": [
+     2064,
+     2752
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 30,
+    "native_pixels": [
+     2064,
+     2752
+    ],
+    "native_scale": 2,
+    "points": [
+     1032,
+     1376
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     1032,
+     1376
+    ]
+   },
+   "profile": {
+    "model": "iPad17,4",
+    "name": "iPad Pro 13-inch (M5)",
+    "pixels": [
+     2064,
+     2752
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPad-mini-A17-Pro": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 21.5,
+    "native_pixels": [
+     1488,
+     2266
+    ],
+    "native_scale": 2,
+    "points": [
+     744,
+     1133
+    ],
+    "safe_bottom": 25,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 32,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     744,
+     1133
+    ]
+   },
+   "profile": {
+    "model": "iPad16,2",
+    "name": "iPad mini (A17 Pro)",
+    "pixels": [
+     1488,
+     2266
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-11": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 41.5,
+    "native_pixels": [
+     828,
+     1792
+    ],
+    "native_scale": 2,
+    "points": [
+     414,
+     896
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 48,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     414,
+     896
+    ]
+   },
+   "profile": {
+    "model": "iPhone12,1",
+    "name": "iPhone 11",
+    "pixels": [
+     828,
+     1792
+    ],
+    "scale": 2.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 39,
+    "native_pixels": [
+     1125,
+     2436
+    ],
+    "native_scale": 3,
+    "points": [
+     375,
+     812
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 44,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     375,
+     812
+    ]
+   },
+   "profile": {
+    "model": "iPhone12,3",
+    "name": "iPhone 11 Pro",
+    "pixels": [
+     1125,
+     2436
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 39,
+    "native_pixels": [
+     1242,
+     2688
+    ],
+    "native_scale": 3,
+    "points": [
+     414,
+     896
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 44,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     414,
+     896
+    ]
+   },
+   "profile": {
+    "model": "iPhone12,5",
+    "name": "iPhone 11 Pro Max",
+    "pixels": [
+     1242,
+     2688
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-12-Pro-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 53.33,
+    "native_pixels": [
+     1284,
+     2778
+    ],
+    "native_scale": 3,
+    "points": [
+     428,
+     926
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 47,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     428,
+     926
+    ]
+   },
+   "profile": {
+    "model": "iPhone13,4",
+    "name": "iPhone 12 Pro Max",
+    "pixels": [
+     1284,
+     2778
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-12-mini": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 44,
+    "native_pixels": [
+     1080,
+     2340
+    ],
+    "native_scale": 2.88,
+    "points": [
+     375,
+     812
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 50,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     375,
+     812
+    ]
+   },
+   "profile": {
+    "model": "iPhone13,1",
+    "name": "iPhone 12 mini",
+    "pixels": [
+     1080,
+     2340
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 53.33,
+    "native_pixels": [
+     1284,
+     2778
+    ],
+    "native_scale": 3,
+    "points": [
+     428,
+     926
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 47,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     428,
+     926
+    ]
+   },
+   "profile": {
+    "model": "iPhone14,3",
+    "name": "iPhone 13 Pro Max",
+    "pixels": [
+     1284,
+     2778
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-13-mini": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 44,
+    "native_pixels": [
+     1080,
+     2340
+    ],
+    "native_scale": 2.88,
+    "points": [
+     375,
+     812
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 50,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     375,
+     812
+    ]
+   },
+   "profile": {
+    "model": "iPhone14,4",
+    "name": "iPhone 13 mini",
+    "pixels": [
+     1080,
+     2340
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-14": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 47.33,
+    "native_pixels": [
+     1170,
+     2532
+    ],
+    "native_scale": 3,
+    "points": [
+     390,
+     844
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 47,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     390,
+     844
+    ]
+   },
+   "profile": {
+    "model": "iPhone14,7",
+    "name": "iPhone 14",
+    "pixels": [
+     1170,
+     2532
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Plus": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 53.33,
+    "native_pixels": [
+     1284,
+     2778
+    ],
+    "native_scale": 3,
+    "points": [
+     428,
+     926
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 47,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     428,
+     926
+    ]
+   },
+   "profile": {
+    "model": "iPhone14,8",
+    "name": "iPhone 14 Plus",
+    "pixels": [
+     1284,
+     2778
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-15": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 55,
+    "native_pixels": [
+     1179,
+     2556
+    ],
+    "native_scale": 3,
+    "points": [
+     393,
+     852
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 59,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     393,
+     852
+    ]
+   },
+   "profile": {
+    "model": "iPhone15,4",
+    "name": "iPhone 15",
+    "pixels": [
+     1179,
+     2556
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Plus": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 55,
+    "native_pixels": [
+     1290,
+     2796
+    ],
+    "native_scale": 3,
+    "points": [
+     430,
+     932
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 59,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     430,
+     932
+    ]
+   },
+   "profile": {
+    "model": "iPhone15,5",
+    "name": "iPhone 15 Plus",
+    "pixels": [
+     1290,
+     2796
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 55,
+    "native_pixels": [
+     1179,
+     2556
+    ],
+    "native_scale": 3,
+    "points": [
+     393,
+     852
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 59,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     393,
+     852
+    ]
+   },
+   "profile": {
+    "model": "iPhone16,1",
+    "name": "iPhone 15 Pro",
+    "pixels": [
+     1179,
+     2556
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 55,
+    "native_pixels": [
+     1290,
+     2796
+    ],
+    "native_scale": 3,
+    "points": [
+     430,
+     932
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 59,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     430,
+     932
+    ]
+   },
+   "profile": {
+    "model": "iPhone16,2",
+    "name": "iPhone 15 Pro Max",
+    "pixels": [
+     1290,
+     2796
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-16": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 55,
+    "native_pixels": [
+     1179,
+     2556
+    ],
+    "native_scale": 3,
+    "points": [
+     393,
+     852
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 59,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     393,
+     852
+    ]
+   },
+   "profile": {
+    "model": "iPhone17,3",
+    "name": "iPhone 16",
+    "pixels": [
+     1179,
+     2556
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Plus": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 55,
+    "native_pixels": [
+     1290,
+     2796
+    ],
+    "native_scale": 3,
+    "points": [
+     430,
+     932
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 59,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     430,
+     932
+    ]
+   },
+   "profile": {
+    "model": "iPhone17,4",
+    "name": "iPhone 16 Plus",
+    "pixels": [
+     1290,
+     2796
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 62,
+    "native_pixels": [
+     1206,
+     2622
+    ],
+    "native_scale": 3,
+    "points": [
+     402,
+     874
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 62,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     402,
+     874
+    ]
+   },
+   "profile": {
+    "model": "iPhone17,1",
+    "name": "iPhone 16 Pro",
+    "pixels": [
+     1206,
+     2622
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 62,
+    "native_pixels": [
+     1320,
+     2868
+    ],
+    "native_scale": 3,
+    "points": [
+     440,
+     956
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 62,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     440,
+     956
+    ]
+   },
+   "profile": {
+    "model": "iPhone17,2",
+    "name": "iPhone 16 Pro Max",
+    "pixels": [
+     1320,
+     2868
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-16e": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 47.33,
+    "native_pixels": [
+     1170,
+     2532
+    ],
+    "native_scale": 3,
+    "points": [
+     390,
+     844
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 47,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     390,
+     844
+    ]
+   },
+   "profile": {
+    "model": "iPhone17,5",
+    "name": "iPhone 16e",
+    "pixels": [
+     1170,
+     2532
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-17": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 62,
+    "native_pixels": [
+     1206,
+     2622
+    ],
+    "native_scale": 3,
+    "points": [
+     402,
+     874
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 62,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     402,
+     874
+    ]
+   },
+   "profile": {
+    "model": "iPhone18,3",
+    "name": "iPhone 17",
+    "pixels": [
+     1206,
+     2622
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 62,
+    "native_pixels": [
+     1206,
+     2622
+    ],
+    "native_scale": 3,
+    "points": [
+     402,
+     874
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 62,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     402,
+     874
+    ]
+   },
+   "profile": {
+    "model": "iPhone18,1",
+    "name": "iPhone 17 Pro",
+    "pixels": [
+     1206,
+     2622
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 62,
+    "native_pixels": [
+     1320,
+     2868
+    ],
+    "native_scale": 3,
+    "points": [
+     440,
+     956
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 62,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     440,
+     956
+    ]
+   },
+   "profile": {
+    "model": "iPhone18,2",
+    "name": "iPhone 17 Pro Max",
+    "pixels": [
+     1320,
+     2868
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-17e": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 47.33,
+    "native_pixels": [
+     1170,
+     2532
+    ],
+    "native_scale": 3,
+    "points": [
+     390,
+     844
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 47,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     390,
+     844
+    ]
+   },
+   "profile": {
+    "model": "iPhone18,5",
+    "name": "iPhone 17e",
+    "pixels": [
+     1170,
+     2532
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-Air": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 62,
+    "native_pixels": [
+     1260,
+     2736
+    ],
+    "native_scale": 3,
+    "points": [
+     420,
+     912
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 68,
+    "scale": 3,
+    "system": "26.5",
+    "window": [
+     420,
+     912
+    ]
+   },
+   "profile": {
+    "model": "iPhone18,4",
+    "name": "iPhone Air",
+    "pixels": [
+     1260,
+     2736
+    ],
+    "scale": 3.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 0,
+    "native_pixels": [
+     750,
+     1334
+    ],
+    "native_scale": 2,
+    "points": [
+     375,
+     667
+    ],
+    "safe_bottom": 0,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 20,
+    "scale": 2,
+    "system": "26.5",
+    "window": [
+     375,
+     667
+    ]
+   },
+   "profile": {
+    "model": "iPhone14,6",
+    "name": "iPhone SE (3rd generation)",
+    "pixels": [
+     750,
+     1334
+    ],
+    "scale": 2.0
+   }
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-XR": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 41.5,
+    "native_pixels": [
+     828,
+     1792
+    ],
+    "native_scale": 2,
+    "points": [
+     414,
+     896
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 48,
+    "scale": 2,
+    "system": "18.2",
+    "window": [
+     414,
+     896
+    ]
+   },
+   "profile": {
+    "model": "iPhone11,8",
+    "name": "iPhone X\u0280",
+    "pixels": [
+     828,
+     1792
+    ],
+    "scale": 2.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-18-2"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-XS": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 39,
+    "native_pixels": [
+     1125,
+     2436
+    ],
+    "native_scale": 3,
+    "points": [
+     375,
+     812
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 44,
+    "scale": 3,
+    "system": "18.2",
+    "window": [
+     375,
+     812
+    ]
+   },
+   "profile": {
+    "model": "iPhone11,2",
+    "name": "iPhone Xs",
+    "pixels": [
+     1125,
+     2436
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-18-2"
+  },
+  "com.apple.CoreSimulator.SimDeviceType.iPhone-XS-Max": {
+   "installed": true,
+   "ios": {
+    "corner_radius": 39,
+    "native_pixels": [
+     1242,
+     2688
+    ],
+    "native_scale": 3,
+    "points": [
+     414,
+     896
+    ],
+    "safe_bottom": 34,
+    "safe_left": 0,
+    "safe_right": 0,
+    "safe_top": 44,
+    "scale": 3,
+    "system": "18.2",
+    "window": [
+     414,
+     896
+    ]
+   },
+   "profile": {
+    "model": "iPhone11,4",
+    "name": "iPhone Xs Max",
+    "pixels": [
+     1242,
+     2688
+    ],
+    "scale": 3.0
+   },
+   "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-18-2"
+  }
+ },
+ "measured_at": "2026-09-19",
+ "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
+}

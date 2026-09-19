@@ -156,6 +156,8 @@ export default function RootLayout() {
                 <Stack.Screen name="you/timelapse/[id]" options={{ title: 'Time lapse' }} />
                 {/* One project's page, from a door on the Projects tab (src/projects/). */}
                 <Stack.Screen name="project/[key]" options={{ title: '' }} />
+                {/* A project's ship kit and one Share (src/shipkit/, docs/ship-kit.md). */}
+                <Stack.Screen name="ship/[key]" options={{ title: 'Share what you built' }} />
                 {/* Settings wears the chapter pages' large title bar, set in the screen. */}
                 <Stack.Screen name="settings" options={{ title: 'Settings' }} />
                 <Stack.Screen name="pair" options={{ title: 'Connect your Mac' }} />

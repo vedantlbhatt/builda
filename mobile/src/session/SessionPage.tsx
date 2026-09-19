@@ -65,6 +65,7 @@ import { heroOf, ledgerOf, untitledName, wordsOf, type LedgerLine, type LedgerMo
 import { useClockReached } from './parts';
 import { Route } from './Route';
 import { SessionLinks } from './SessionLinks';
+import { ShipKitDoor } from '../shipkit/ShipKitDoor';
 import { StaleLine } from './SessionStates';
 import { ShareChapter, type PostState } from './Share';
 import { SessionWords } from './TitleLine';
@@ -154,6 +155,7 @@ export function SessionPage(props: SessionPageProps) {
               <SessionWords words={words} />
               <DecisionList rows={decisions} />
               <SessionLinks links={links} color={accent.ink} />
+              {s.repo_key ? <ShipKitDoor projectKey={s.repo_key} color={accent.ink} /> : null}
             </Section>
           ) : null}
 

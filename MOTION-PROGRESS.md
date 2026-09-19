@@ -37,6 +37,12 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:27 to 07:30**: CI had been red on every push since 2026-09-14 (main too): the `contract`
+  gate runs `make gen` on a bare Python, `gen_live_fixtures.py` reaches `notify.needs_you_title`,
+  and `notify.py` imported SQLAlchemy at the top, so the gate died on the import and reference,
+  mobile, swift and backend were skipped behind it. Fixed in 31a1131 (lazy SQLAlchemy, contract as
+  a type only); `make gen` on a fresh empty venv passes and moves nothing; pinned ruff and pytest
+  pass. Watching the first full CI run.
 - **07:21 to 07:27**: the desktop e2e drives Save image to the end and reads the PNG (74137b1);
   the offers' glue tested (fb60b76, dca4e2f). fb60b76 BROKE the suite for one commit (it patched
   the shared island store; nine tests in other files failed) and went in because the commit was

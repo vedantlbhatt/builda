@@ -89,14 +89,14 @@ def register_drop_activity(
             text(
                 """
                 INSERT INTO drop_activity_tokens
-                  (user_id, kind, drop_id, activity_id, token, environment, last_phase)
+                  (user_id, kind, drop_id, activity_id, token, environment, shown_phase)
                 VALUES (:u, :k, :d, :a, :t, :e, :p)
                 ON CONFLICT (user_id, token) DO UPDATE SET
                   kind = EXCLUDED.kind,
                   drop_id = EXCLUDED.drop_id,
                   activity_id = EXCLUDED.activity_id,
                   environment = EXCLUDED.environment,
-                  last_phase = COALESCE(drop_activity_tokens.last_phase, EXCLUDED.last_phase)
+                  shown_phase = COALESCE(drop_activity_tokens.shown_phase, EXCLUDED.shown_phase)
                 """
             ),
             {

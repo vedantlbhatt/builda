@@ -179,11 +179,11 @@ def test_a_token_is_registered_by_the_phone_and_is_that_persons_alone(
     )
     assert r.status_code == 200, r.text
     mine = _rows(
-        "SELECT kind, drop_id, last_phase FROM drop_activity_tokens "
+        "SELECT kind, drop_id, shown_phase FROM drop_activity_tokens "
         "WHERE user_id = :u ORDER BY kind",
         u=uid,
     )
-    assert [(m.kind, m.drop_id and str(m.drop_id), m.last_phase) for m in mine] == [
+    assert [(m.kind, m.drop_id and str(m.drop_id), m.shown_phase) for m in mine] == [
         ("activity", drop["id"], "sent"),
         ("push_to_start", None, None),
     ]
@@ -343,7 +343,9 @@ def test_each_transition_moves_the_card_forward_once(client, paired, apns):
     assert ups[1]["headers"]["apns-priority"] == "10"
     assert apns.banners() == []
     assert (
-        _rows("SELECT last_phase FROM drop_activity_tokens WHERE token = :t", t=CARD)[0].last_phase
+        _rows("SELECT shown_phase FROM drop_activity_tokens WHERE token = :t", t=CARD)[
+            0
+        ].shown_phase
         == "planned"
     )
 
@@ -476,9 +478,44 @@ def test_without_an_apns_key_nothing_is_sent_and_it_says_so(client, paired, monk
     assert "APNs is not configured" in caplog.text
     # The decision is still recorded, so a key added later does not replay old moves.
     assert (
-        _rows("SELECT last_phase FROM drop_activity_tokens WHERE token = :t", t=CARD)[0].last_phase
+        _rows("SELECT shown_phase FROM drop_activity_tokens WHERE token = :t", t=CARD)[
+            0
+        ].shown_phase
         == "reading"
     )
+
+
+@needs_db
+def test_an_answer_comes_down_after_its_hold_on_the_macs_next_poll(client, paired, apns):
+    """No end on the answer itself (iOS would take the card out of the island as it lands); the
+    Mac's claim poll, the one clock the server has, ends it once it has had its time there."""
+    uid, mac = paired
+    phone = _phone_for(mac)
+    drop = _share(client, mac).json()["drop"]
+    _register(client, phone, kind="activity", drop_id=drop["id"], activity_id="act-6", token=CARD)
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=mac)
+    client.post("/v1/drops:claim", headers=mac)
+    assert [p for p in apns.live() if p["body"]["aps"]["event"] == "end"] == []
+
+    with owner_engine().begin() as c:
+        c.execute(
+            text(
+                "UPDATE drop_activity_tokens "
+                "SET last_pushed_at = now() - make_interval(secs => :s) "
+                "WHERE token = :t"
+            ),
+            {"s": drop_push.ANSWER_HOLD_SECONDS + 5, "t": CARD},
+        )
+    client.post("/v1/drops:claim", headers=mac)
+    ends = [p for p in apns.live() if p["body"]["aps"]["event"] == "end"]
+    assert len(ends) == 1
+    aps = ends[0]["body"]["aps"]
+    assert aps["dismissal-date"] == aps["timestamp"]
+    assert aps["content-state"]["phase"] == "planned"
+    assert _rows("SELECT id FROM drop_activity_tokens WHERE user_id = :u", u=uid) == []
+    # And once only: the token is gone, so the next poll has nothing to end.
+    client.post("/v1/drops:claim", headers=mac)
+    assert len([p for p in apns.live() if p["body"]["aps"]["event"] == "end"]) == 1
 
 
 @needs_db

@@ -31,6 +31,10 @@ tested:
   * The answer (planned or refused) carries the alert, priority 10, and when that alert was
     delivered the ordinary "it was read" banner is not sent: one moment, one alert, the rule
     `live_push` keeps for needs you. Reading and started are quiet, priority 5.
+  * The server never ends a card on an answer: iOS takes an ended card out of the Dynamic
+    Island at once, which would hide the answer as it lands. An answer that has been up for
+    ANSWER_HOLD_SECONDS is ended by the Mac's next claim poll (`plan_ends`), and its token
+    forgotten; the phone ends one sooner whenever it is in front.
   * No APNs key (a laptop): nothing is sent, one log line says so, and the decision is still
     recorded, so turning the key on later does not replay old transitions.
 """
@@ -89,6 +93,13 @@ READING_STALE_SECONDS = 600
 #: would fail and says to open Builda instead.
 ANSWER_STALE_SECONDS = 900
 
+#: How long an answer stays in the island when Builda is never opened: as long as its Start button
+#: can work (the token it uses lives ANSWER_STALE_SECONDS), then the Mac's next poll ends it
+#: (`plan_ends`). An end push takes a card out of the Dynamic Island at once, so it can only come
+#: after the answer has had its time there; the Mac's claim poll (every 20 s idle,
+#: `drops/runner.IDLE_SLEEP_S`) is the clock, and a Mac that is asleep has sent no answer to end.
+ANSWER_HOLD_SECONDS = ANSWER_STALE_SECONDS
+
 #: docs/motion.md PRIORITY: a reel being read (60) sits under a run that needs you (100, which
 #: `live_push.RELEVANCE_NEEDS_YOU` gives) and over a session merely running (50).
 RELEVANCE = 60
@@ -101,6 +112,10 @@ PRIORITY_QUIET = 5
 
 KIND_START = "start"
 KIND_UPDATE = "update"
+KIND_END = "end"
+#: `apns-expiration` for an end: `live_push.END_EXPIRATION_SECONDS`'s reason, an end that
+#: arrives late still takes down a card that would otherwise sit there.
+END_EXPIRATION_SECONDS = 8 * 3600
 
 
 # ------------------------------------------------------------------------------ the card
@@ -237,6 +252,15 @@ def update_payload(state: Mapping, *, now: float, alert: Mapping | None = None) 
     return {"aps": aps}
 
 
+def end_payload(state: Mapping | None, *, now: float) -> dict:
+    """An `end` that takes the card down now, from the Lock Screen too (`dismissal-date` now)."""
+    at = js_round(now)
+    aps: dict = {"timestamp": at, "event": KIND_END, "dismissal-date": at}
+    if state is not None:
+        aps["content-state"] = dict(state)
+    return {"aps": aps}
+
+
 def answer_alert(drop: Mapping, state: Mapping) -> dict | None:
     """The alert an answer carries: the read banner's own words (`drops_notify.compose_read`),
     so the island and the banner it replaces say the same thing."""
@@ -317,7 +341,7 @@ def plan_updates(
     started_move_id: str | None = None,
 ) -> list[DropPush]:
     """An update to every card of these drops that is behind where its drop now is, RECORDED on
-    the token row (`last_phase`) in the caller's transaction."""
+    the token row (`shown_phase`) in the caller's transaction."""
     from sqlalchemy import text
 
     from . import drops_store as store
@@ -328,7 +352,7 @@ def plan_updates(
     tokens = db.execute(
         text(
             """
-            SELECT id, drop_id, token, environment, last_phase FROM drop_activity_tokens
+            SELECT id, drop_id, token, environment, shown_phase FROM drop_activity_tokens
             WHERE user_id = :u AND kind = 'activity' AND drop_id = ANY(CAST(:ids AS uuid[]))
             ORDER BY created_at, id
             FOR UPDATE
@@ -352,7 +376,7 @@ def plan_updates(
         phase = state["phase"]
         alert = answer_alert(drop, state)
         for t in toks:
-            if RANK[phase] <= RANK.get(t.last_phase or "", -1):
+            if RANK[phase] <= RANK.get(t.shown_phase or "", -1):
                 continue
             payload = update_payload(state, now=now, alert=alert)
             pushes.append(
@@ -367,11 +391,55 @@ def plan_updates(
             )
             db.execute(
                 text(
-                    "UPDATE drop_activity_tokens SET last_phase = :p, last_pushed_at = now() "
+                    "UPDATE drop_activity_tokens SET shown_phase = :p, last_pushed_at = now() "
                     "WHERE id = :i"
                 ),
                 {"p": phase, "i": str(t.id)},
             )
+    return pushes
+
+
+def plan_ends(db, user_id: str, *, now: float) -> list[DropPush]:
+    """An `end` to every card whose answer has been up for ANSWER_HOLD_SECONDS, and the token
+    forgotten (a push to an ended card is dropped by ActivityKit, and nothing should try)."""
+    from sqlalchemy import text
+
+    from . import drops_store as store
+
+    rows = db.execute(
+        text(
+            """
+            SELECT id, drop_id, token, environment, shown_phase FROM drop_activity_tokens
+            WHERE user_id = :u AND kind = 'activity'
+              AND shown_phase IN ('planned', 'refused', 'started')
+              AND last_pushed_at < now() - make_interval(secs => :hold)
+            ORDER BY created_at, id
+            FOR UPDATE
+            """
+        ),
+        {"u": user_id, "hold": ANSWER_HOLD_SECONDS},
+    ).all()
+    pushes: list[DropPush] = []
+    for t in rows:
+        drop = store.get_drop(db, user_id, str(t.drop_id))
+        state = None
+        if drop is not None:
+            state = content_state(drop, store.moves_of(db, user_id, str(t.drop_id)), now=now)
+        pushes.append(
+            DropPush(
+                target=Target(str(t.id), user_id, t.token, t.environment),
+                drop_id=str(t.drop_id),
+                event=KIND_END,
+                payload=end_payload(state, now=now),
+                priority=PRIORITY_QUIET,
+                expiration=js_round(now) + END_EXPIRATION_SECONDS,
+            )
+        )
+    if rows:
+        db.execute(
+            text("DELETE FROM drop_activity_tokens WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            {"ids": [str(t.id) for t in rows]},
+        )
     return pushes
 
 
@@ -466,3 +534,23 @@ def after_transition(
         log.exception("drop island: deciding updates failed")
         return []
     return send(pushes)
+
+
+def after_claim(
+    user_id: str, claimed: Iterable[str], *, now: float | None = None
+) -> list[DropPush]:
+    """The Mac's poll committed: the drops it took are being read, and any answer that has been
+    in the island for its hold comes down. The poll is the one clock the server has."""
+    import time
+
+    from .db import db_session
+
+    now = time.time() if now is None else now
+    sent = after_transition(user_id, claimed, now=now)
+    try:
+        with db_session(viewer_id=user_id) as db:
+            ends = plan_ends(db, user_id, now=now)
+    except Exception:
+        log.exception("drop island: deciding ends failed")
+        return sent
+    return sent + send(ends)

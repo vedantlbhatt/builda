@@ -10,8 +10,10 @@ drop card is tied to a drop, not a session. So: one table, the same shape, owner
 
 `kind = 'push_to_start'`: the app's token for starting a drop card; no drop, no activity.
 `kind = 'activity'`: one card's update token, naming its drop and ActivityKit's own id.
-`last_phase` is what the card was last told (or what the phone said it was showing when it
-registered), so `drop_push.plan_updates` sends only a move FORWARD and never repeats one.
+`shown_phase` is what the card was last told (or what the phone said it was showing when it
+registered), so `drop_push.plan_updates` sends only a move FORWARD and never repeats one. Not
+`last_phase`, the session table's name for the same idea: test_contract.py reads EVERY CHECK on a
+column called `last_phase` as the live spec's session phase, and a drop's phases are not those.
 
 NUMBERED 0031, NOT 0030. `0030_ship_kits` is taken on claude/motion-shipkit, which branched from
 the same 0029. Whichever lands second sets its `down_revision` to the other; until then each
@@ -52,7 +54,7 @@ def upgrade() -> None:
           activity_id    text CHECK (char_length(activity_id) <= 128),
           token          text NOT NULL CHECK (char_length(token) BETWEEN 16 AND 512),
           environment    text NOT NULL CHECK (environment IN ('sandbox', 'production')),
-          last_phase     text CHECK (last_phase IN ({DROP_PHASE})),
+          shown_phase    text CHECK (shown_phase IN ({DROP_PHASE})),
           last_pushed_at timestamptz,
           created_at     timestamptz NOT NULL DEFAULT now(),
           UNIQUE (user_id, token),

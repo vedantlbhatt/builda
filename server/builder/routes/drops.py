@@ -144,8 +144,9 @@ def claim(
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         claimed = store.claim_waiting(db, uid, limit=limit)
-    # The card says "reading" now: the Mac has it.
-    drop_push.after_transition(uid, [d["id"] for d in claimed])
+    # The card says "reading" now: the Mac has it. And an answer that has had its time in the
+    # island comes down: this poll is the only clock the server has (drop_push.plan_ends).
+    drop_push.after_claim(uid, [d["id"] for d in claimed])
     return {"drops": claimed}
 
 

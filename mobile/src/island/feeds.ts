@@ -170,6 +170,12 @@ export const DEMO_FOR_MS = 30 * 60_000;
  * minutes AFTER you leave that screen: you asked, you went back to what you were doing, and the
  * island tells you when the thing you asked for exists. Tapping it opens the kit.
  */
+/** Taken back on the phone: the island says nothing more about it, now rather than on the next read. */
+export function untrackDemo(projectKey: string): void {
+  demos.delete(projectKey);
+  island.clear(`demo:${projectKey}`);
+}
+
 export function trackDemo(projectKey: string, title: string): void {
   if (demos.has(projectKey)) return;
   demos.add(projectKey);
@@ -179,8 +185,10 @@ export function trackDemo(projectKey: string, title: string): void {
   island.post({ ...base, filming: false, ready: false }, 0);
 
   const tick = async () => {
+    if (!demos.has(projectKey)) return;
     try {
       const { requests } = await api.demoRequests(projectKey);
+      if (!demos.has(projectKey)) return;
       const r = requests[0];
       if (!r || r.status === 'cancelled') {
         island.clear(id);

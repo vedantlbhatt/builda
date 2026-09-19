@@ -303,8 +303,12 @@ export function demoFor(s: DemoState, key: string | null): DemoLoad {
  */
 export const EMPTY_DEMO = {
   title: 'No demo yet',
-  lead: 'Your Mac makes one: it runs the app, films it, and checks every frame for names and keys before anything leaves. Ask for one just below, or in the project’s folder:',
+  lead: 'Your Mac makes one: it runs the app, films it, and checks every frame for names and keys before anything leaves.',
+  ask: 'Ask your Mac for a demo',
+  asked: 'Asked. Waiting for your Mac',
+  filming: 'Your Mac is filming it',
   make: 'python -m capture demo',
+  or: 'Or in the project’s folder:',
   then: 'Then send it here, after it shows you every file:',
   publish: 'python -m capture demo --publish',
   /** The door's print is small: where to ask, and nothing to type. */

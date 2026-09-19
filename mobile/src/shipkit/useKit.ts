@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../data/api';
 import { api } from '../data/client';
-import { trackDemo } from '../island/feeds';
+import { trackDemo, untrackDemo } from '../island/feeds';
 import type { DemoRequestRow, ShipKitResponse } from './types';
 
 /** How often a waiting request is read again. The Mac films in minutes; this is a glance. */
@@ -88,10 +88,11 @@ export function useShipKit(key: string | null) {
     try {
       const r = await api.cancelDemoRequest(id);
       setRequests((rs) => (rs ?? []).map((x) => (x.id === id ? r.request : x)));
+      if (key) untrackDemo(key);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'It could not be taken back.');
     }
-  }, []);
+  }, [key]);
 
   return { kit, requests, error, asking, reload: read, request, cancel };
 }

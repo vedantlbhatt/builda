@@ -276,7 +276,7 @@ describe('no demo yet', () => {
   test('the empty print says where to ask first, and keeps the Mac\'s own two commands for the terminal', () => {
     expect(EMPTY_DEMO.make).toBe('python -m capture demo');
     expect(EMPTY_DEMO.publish).toBe('python -m capture demo --publish');
-    expect(EMPTY_DEMO.lead).toContain('Ask for one');
+    expect(EMPTY_DEMO.ask).toBe('Ask your Mac for a demo');
     expect(EMPTY_DEMO.a11y).toContain(EMPTY_DEMO.make);
     expect(EMPTY_DEMO.a11y).toContain(EMPTY_DEMO.publish);
   });

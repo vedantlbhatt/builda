@@ -315,3 +315,133 @@ describe('the credential the extension and the island share', () => {
     expect(read('targets/share/ShareSheetView.swift')).toContain('"Kept for when Builda opens"');
   });
 });
+
+// ------------------------------------------------------------------ a demo you asked for
+
+/**
+ * `BuilderDemoAttributes` (docs/demo-island.md), the same five places as the drop card's: the
+ * Swift struct the widget extension compiles, its byte-identical copy in the pod, the pod's
+ * Records, the TypeScript the phone builds a card with, and the server's push
+ * (`demo_push.CONTENT_STATE_KEYS`). And the words: the Swift card says what the in-app island and
+ * the kit screen say, so the two islands cannot disagree about a request.
+ */
+const DEMO_EXT = 'targets/widget/_shared/BuilderDemoAttributes.swift';
+const DEMO_POD = 'modules/builder-live/ios/BuilderDemoAttributes.swift';
+const DEMO_BRIDGE = 'modules/builder-live/ios/BuilderDemoLive.swift';
+const DEMO_VIEWS = 'targets/widget/_shared/DemoActivityViews.swift';
+const DEMO_PUSH = '../server/builder/demo_push.py';
+
+const demoExt = read(DEMO_EXT);
+const demoCard = swiftVars(demoExt, 'struct ContentState', 'public init(');
+const demoAttrs = swiftVars(demoExt.slice(demoExt.indexOf('public var requestId')), 'public var requestId', 'public init(');
+
+describe('BuilderDemoAttributes', () => {
+  test('the pod and the extension declare the same ActivityAttributes, byte for byte', () => {
+    expect(read(DEMO_POD)).toBe(demoExt);
+  });
+
+  test('ContentState is the card the task names (phase, since, failure words) and when it moved, and the attributes are fixed', () => {
+    expect([...demoCard.keys()]).toEqual(['phase', 'sinceEpoch', 'failure', 'updatedEpoch']);
+    expect([...demoAttrs.keys()]).toEqual(['requestId', 'projectKey', 'title', 'hue']);
+    expect(demoCard.get('failure')).toBe('String?');
+    expect(demoCard.get('sinceEpoch')).toBe('Double');
+    expect(demoAttrs.get('hue')).toBe('String?');
+  });
+
+  test('the JS DemoState and DemoAttrs keys are exactly the Swift fields, optionals nullable', () => {
+    const state = tsFields(read(TS), 'DemoState');
+    expect([...state.keys()].sort()).toEqual([...demoCard.keys()].sort());
+    for (const [name, swiftType] of demoCard) {
+      const t = state.get(name)!;
+      if (swiftType.endsWith('?')) expect(t).toContain('| null');
+      else expect(t).not.toContain('null');
+      if (/^(Int|Double)\??$/.test(swiftType)) expect(t.replace(' | null', '')).toBe('number');
+    }
+    const attrs = tsFields(read(TS), 'DemoAttrs');
+    expect([...attrs.keys()].sort()).toEqual([...demoAttrs.keys()].sort());
+    expect(attrs.get('hue')).toContain('| null');
+  });
+
+  test('the server pushes exactly these keys', () => {
+    const py = read(DEMO_PUSH);
+    expect(pyTuple(py, 'CONTENT_STATE_KEYS')).toEqual([...demoCard.keys()]);
+    expect(pyTuple(py, 'ATTRIBUTE_KEYS')).toEqual([...demoAttrs.keys()]);
+    expect(demoExt).toContain('public struct BuilderDemoAttributes: ActivityAttributes');
+  });
+
+  test('the phases are one list: the TypeScript union, the Swift views, the palette, the server', () => {
+    const union = tsUnion(read(TS), 'DemoPhase');
+    expect(union).toEqual(['asked', 'filming', 'ready', 'failed']);
+    const views = /enum Phase: String \{\s*case ([^\n]+)/.exec(read(DEMO_VIEWS))![1]!.split(',').map((x) => x.trim());
+    expect(views).toEqual(union);
+    const palette = /enum DemoState: String, CaseIterable \{\s*case ([^\n]+)/.exec(read('targets/widget/_shared/Palette.swift'))![1]!.split(',').map((x) => x.trim());
+    expect(palette).toEqual(union);
+    expect(pyTuple(read(DEMO_PUSH), 'PHASES')).toEqual(union);
+  });
+
+  test('DemoStateRecord and DemoAttrsRecord carry every field with the same type, and content() hands them all over', () => {
+    const bridge = read(DEMO_BRIDGE);
+    const rec = recordFields(bridge, 'DemoStateRecord');
+    expect([...rec.keys()].sort()).toEqual([...demoCard.keys()].sort());
+    for (const [name, swiftType] of demoCard) expect(rec.get(name)).toBe(swiftType);
+    const attrs = recordFields(bridge, 'DemoAttrsRecord');
+    expect([...attrs.keys()].sort()).toEqual([...demoAttrs.keys()].sort());
+    for (const [name, swiftType] of demoAttrs) expect(attrs.get(name)).toBe(swiftType);
+    const body = bridge.slice(bridge.indexOf('static func content('));
+    for (const name of demoCard.keys()) expect(body).toContain(`${name}: s.${name}`);
+    // Tokens go to the demo route, through the one POST the drop cards use.
+    expect(bridge).toContain('"/v1/push/demo-activity"');
+    expect(bridge).toContain('IslandTokenPost.send(');
+  });
+
+  test('one card per request and per project, and every card comes down with the rest', () => {
+    const mod = read(MODULE);
+    expect(mod).toContain('if let existing = DemoLive.live(attrs.requestId)');
+    expect(mod).toContain('older.attributes.projectKey == attrs.projectKey');
+    const endAll = mod.slice(mod.indexOf('AsyncFunction("endAll")'), mod.indexOf('AsyncFunction("startDrop")'));
+    expect(endAll).toContain('Activity<BuilderDemoAttributes>.activities');
+  });
+
+  test('the island registers the demo card, and Share is a link into the kit', () => {
+    expect(read('targets/widget/index.swift')).toContain('BuilderDemoActivity()');
+    expect(read('targets/widget/BuilderDemoActivity.swift')).toContain('ActivityConfiguration(for: BuilderDemoAttributes.self)');
+    const views = read(DEMO_VIEWS);
+    expect(views).toContain('URL(string: "builder://ship/\\(projectKey)")');
+    expect(views).toContain('Link(destination: url)');
+    // The in-app island opens the same screen when its demo is tapped.
+    expect(read('src/island/Island.tsx')).toContain('router.push(`/ship/${encodeURIComponent(a.projectKey)}` as never)');
+  });
+
+  test('the record light is the generated palette, never a literal colour', () => {
+    const views = read(DEMO_VIEWS);
+    expect(views).toContain('BuilderPalette.demoInk(');
+    expect(views).not.toMatch(/Color\(\s*(red|\.sRGB|hue|white)/);
+    expect(views).not.toMatch(/#[0-9A-Fa-f]{6}/);
+  });
+});
+
+describe('the demo card says what the in-app island and the kit screen say', () => {
+  const views = read(DEMO_VIEWS);
+  const island = read('src/island/Island.tsx');
+  const swiftWord = (name: string) => new RegExp(`static let ${name} = "([^"]+)"`).exec(views)?.[1];
+
+  test('waiting, filming, the kit is up, and the line under it are DemoContent\'s words', () => {
+    for (const name of ['waiting', 'filming', 'ready', 'shareLine']) {
+      const w = swiftWord(name)!;
+      expect(w).toBeTruthy();
+      expect(island).toContain(`'${w}'`);
+    }
+    // The right ear's word once the kit is up.
+    expect(island).toContain(`{a.ready ? '${swiftWord('wordKit')}' :`);
+  });
+
+  test('a failure is requestView\'s line, word for word, with and without a reason', async () => {
+    const { requestView } = await import('../src/shipkit/model');
+    const failed = (refusal: string | null) =>
+      requestView([{ id: 'r', project_key: 'k', status: 'failed', refusal: refusal as never, hue: null, created_at: '', claimed_at: null, finished_at: '' }], null).line;
+    expect(views).toContain('return "It did not work: \\(why)."');
+    expect(failed('capture_failed')).toBe('It did not work: the Mac could not film it.');
+    expect(views).toContain('return "It did not work on your Mac."');
+    expect(failed(null)).toBe('It did not work on your Mac.');
+  });
+});

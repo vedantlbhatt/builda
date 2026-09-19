@@ -4,6 +4,10 @@ import type {
   ActivityInfo,
   BuilderLiveEvents,
   ContentOptions,
+  DemoActivityInfo,
+  DemoAttrs,
+  DemoState,
+  DemoTokenStatus,
   DropActivityInfo,
   DropAttrs,
   DropState,
@@ -36,6 +40,18 @@ declare class BuilderLiveModule extends NativeModule<BuilderLiveEvents> {
   setDropPush?(enabled: boolean, environment: 'sandbox' | 'production'): Promise<void>;
   /** Retry any token the server has not taken; answers what it holds. */
   flushDropTokens?(): Promise<DropTokenStatus>;
+
+  // A demo you asked your Mac for (docs/demo-island.md). Optional for the drop functions' reason.
+  /** Start a request's card (ending any older card of the same project), or move its live one. */
+  startDemo?(attrs: DemoAttrs, state: DemoState, opts?: ContentOptions): Promise<string>;
+  /** False when no live card shows the request. */
+  updateDemo?(requestId: string, state: DemoState, opts?: ContentOptions): Promise<boolean>;
+  endDemo?(requestId: string, finalState?: DemoState | null, opts?: ContentOptions): Promise<boolean>;
+  listDemos?(): DemoActivityInfo[];
+  /** Whether the server may push to this phone's demo cards; off forgets every token there. */
+  setDemoPush?(enabled: boolean, environment: 'sandbox' | 'production'): Promise<void>;
+  /** Retry any token the server has not taken; answers what it holds. */
+  flushDemoTokens?(): Promise<DemoTokenStatus>;
 }
 
 /**

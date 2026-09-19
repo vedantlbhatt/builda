@@ -6,6 +6,7 @@ import type { PushEnvironment, SessionDetail } from '../data/api';
 import { api } from '../data/client';
 import { scheduleFinished, scheduleNeedsYou } from '../push/local';
 import { crewFor } from './crew';
+import { syncDemoSurfaces } from './demoActivity';
 import { syncDropSurfaces } from './dropActivity';
 import { visibleRows } from './mission';
 import {
@@ -335,6 +336,16 @@ async function sync(liveSessions: SessionDetail[], liveStates: LiveStates | unde
   if (mod) {
     result.errors.push(
       ...(await syncDropSurfaces({
+        enabled: enabled && activities && details,
+        push: Boolean(opts.pushTokens),
+        environment: ENVIRONMENT,
+        nowMs,
+      }))
+    );
+    // A demo you asked your Mac for (docs/demo-island.md), under the same two switches: the card
+    // names your project on the Lock Screen.
+    result.errors.push(
+      ...(await syncDemoSurfaces({
         enabled: enabled && activities && details,
         push: Boolean(opts.pushTokens),
         environment: ENVIRONMENT,

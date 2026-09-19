@@ -89,6 +89,10 @@ export function Island() {
 
   useEffect(() => island.onExpand(() => setExpanded(true)), []);
 
+  // No haptic when news arrives here: the house rule (ui/hapticsGate.ts) is never on a live data
+  // update, and everything the island shows on its own is one. The system island's own alert
+  // (the Live Activity's alertConfiguration) is what buzzes a phone in a pocket.
+
   // Seven seconds untouched folds it back; so does the activity going away.
   useEffect(() => {
     if (!expanded) return;

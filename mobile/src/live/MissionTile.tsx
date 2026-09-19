@@ -612,24 +612,14 @@ function Figures({ m, v, ink, variant, width, scale, delay }: { m: TileModel; v:
     );
   }
 
-  const size = Math.min(
-    elapsedText ? fitSize(elapsedText, width, v.figure, 22) : v.figure,
-    filesText ? fitSize(filesText, width, v.figure, 22) : v.figure,
-  );
+  // One figure, the time, with no caption under it (2026-09-19, the owner: "big text, small text,
+  // grey is all AI"). The files count was a second figure with a second caption; the session page
+  // has it.
+  if (!elapsedText) return null;
+  const size = fitSize(elapsedText, width, v.figure, 22);
   return (
-    <View style={[styles.row, { gap: 22, alignItems: 'flex-start' }]}>
-      {elapsedText ? (
-        <View>
-          <LiveNum value={m.elapsedMin! * 60} final={elapsedText} figure={{ kind: 'elapsed' }} textStyle={inked(size, '800', color, Math.round(size * 1.06))} delay={delay} accessibilityLabel={`${elapsedText} so far`} />
-          <T style={caption}>so far</T>
-        </View>
-      ) : null}
-      {filesText ? (
-        <View>
-          <LiveNum value={m.files!} final={filesText} figure={{ kind: 'count' }} textStyle={inked(size, '800', color, Math.round(size * 1.06))} delay={delay + 120} accessibilityLabel={`${filesText} ${filesWord} touched`} />
-          <T style={caption}>{filesWord}</T>
-        </View>
-      ) : null}
+    <View style={[styles.row, { alignItems: 'flex-start' }]}>
+      <LiveNum value={m.elapsedMin! * 60} final={elapsedText} figure={{ kind: 'elapsed' }} textStyle={inked(size, '800', color, Math.round(size * 1.06))} delay={delay} accessibilityLabel={`${elapsedText} so far`} />
     </View>
   );
 }

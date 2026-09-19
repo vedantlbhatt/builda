@@ -77,9 +77,8 @@ function AwayBandImpl({ away, onOpen, onDone }: { away: AwaySummary; onOpen: (id
           <Text maxFontSizeMultiplier={1.3} style={styles.lead}>
             {away.lead}
           </Text>
-          <Text maxFontSizeMultiplier={1.3} style={styles.line}>
-            {away.line}
-          </Text>
+          {/* The total under the heading was a small second line (2026-09-19, the owner: say less);
+              each row carries its own time, and VoiceOver still hears the total. */}
           <View style={styles.rows}>
             {away.rows.map((r, i) => (
               <RippleItem key={r.id} i={i} per={STAGGER_MS}>

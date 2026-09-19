@@ -204,6 +204,16 @@ class Captions(unittest.TestCase):
         self.assertEqual(kcopy.check(thread, self.SRC), "invented_number")
         self.assertEqual(kcopy.numbers_unknown("1,211 calls and 14 routes", self.SRC), ["1211"])
 
+    def test_the_first_demo_has_no_commits_since_the_last_one(self):
+        """FOUND ON THE FIRST WEBSITE KIT: the latest 30 commits were handed over as "commits since
+        the last demo: 30" and four captions said so about a project with no last demo."""
+        i = kcopy.Inputs(what="A portfolio page", commits=["a blog section"] * 30, since_last_demo=False, facts={"stills in the demo": 4})
+        src = kcopy.build_input(i)
+        self.assertIn("FIRST demo", src)
+        self.assertNotIn("SINCE THE LAST DEMO,", src)
+        claim = {"platform": "tiktok", "text": "30 commits since the last demo.", "thread": []}
+        self.assertEqual(kcopy.check(claim, src), "invented_number")
+
     def test_a_name_and_a_limit(self):
         named = {"platform": "threads", "text": "Shipping gt-transit today.", "thread": []}
         self.assertEqual(kcopy.check(named, self.SRC, names=("gt-transit",)), "names_a_repository")

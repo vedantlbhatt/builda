@@ -462,7 +462,7 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
             subprocess.run(fr.render_command(ff, str(video), str(bg), str(mask), str(ring) if ring else None, len(ring_list), dur,
                                              fr.filter_graph(lay, timeline, ring_list), str(raw)),
                            check=True, capture_output=True, timeout=1800)  # fmt: skip
-            blank = fr.check_blank(ff, raw, lay, work)
+            blank = fr.check_blank(ff, raw, lay, work, device)
             final = out / f"video-{fid}.mp4"
             poster = out / f"poster-{fid}.jpg"
             pt = poster_t if (poster_t is not None and video == demo.video) else round(dur * 0.5, 3)
@@ -514,10 +514,16 @@ def build(key: str, *, hue: str | None = None, shipped: dict | None = None, src:
     log = changelog(src or (paths.work_dir(key) / "src"), since, demo.commit)
     (out / "changelog.json").write_text(json.dumps({"since_commit": since, "until_commit": demo.commit, "commits": log}, indent=1) + "\n")
     (out / "changelog.md").write_text(changelog_md(log, since, demo) + "\n")
-    facts = {"stills in the demo": len(demo.stills), "commits since the last demo": len(log)}
+    # FOUND ON THE FIRST WEBSITE KIT (2026-09-19): with no earlier demo the changelog is the latest
+    # 30 commits, and it was handed over as "commits since the last demo: 30", so four captions
+    # said "30 commits since the last demo" about a project that had never had one. The count is
+    # a fact only when there IS a last demo.
+    facts = {"stills in the demo": len(demo.stills)}
+    if since:
+        facts["commits since the last demo"] = len(log)
     if demo.video is not None:
         facts["seconds of video"] = round(compose.probe(demo.video)["duration"])
-    inputs = kcopy.Inputs.from_shipped(shipped, commits=[c["subject"] for c in log[:12]], shows=[b.get("caption") or b.get("label") for b in demo.capture.get("timeline") or [] if b.get("label")] or [a["label"] for a in demo.stills], facts=facts)
+    inputs = kcopy.Inputs.from_shipped(shipped, since_last_demo=bool(since), commits=[c["subject"] for c in log[:12]], shows=[b.get("caption") or b.get("label") for b in demo.capture.get("timeline") or [] if b.get("label")] or [a["label"] for a in demo.stills], facts=facts)
     copydoc = kcopy.write(inputs, names=names, others=others, use_model=use_model)
     for d in copydoc["dropped"]:
         refused.append(refusal(d["platform"], d["code"]))

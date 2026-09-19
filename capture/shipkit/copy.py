@@ -60,6 +60,9 @@ class Inputs:
     commits: list[str] = dataclasses.field(default_factory=list)
     shows: list[str] = dataclasses.field(default_factory=list)
     facts: dict[str, int] = dataclasses.field(default_factory=dict)
+    #: Whether `commits` are the ones since an earlier demo, or only the latest (the first demo):
+    #: the two are different claims and the model is told which it has.
+    since_last_demo: bool = True
 
     @classmethod
     def from_shipped(cls, post: dict | None, **kw) -> Inputs:
@@ -95,7 +98,11 @@ def build_input(i: Inputs) -> str:
         add(f"  stack: {', '.join(i.stack)}")
     if i.commits:
         add("")
-        add("COMMITS SINCE THE LAST DEMO, as written (never quote a hash or a file name)")
+        add(
+            "COMMITS SINCE THE LAST DEMO, as written (never quote a hash or a file name)"
+            if i.since_last_demo
+            else "THE LATEST COMMITS, as written. This is the FIRST demo, so there is no 'since the last demo' to count"
+        )
         for c in i.commits:
             add(f"  {c}")
     if i.shows:

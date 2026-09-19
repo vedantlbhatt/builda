@@ -54,7 +54,7 @@ BLOCK_HOSTS = (
 _URL_IN_LOG = re.compile(r"https?://(?:localhost|127\.0\.0\.1|\[::1\]):(\d{2,5})")
 
 DRIVER = r'''
-import json, sys, time, hashlib
+import json, re, sys, time, hashlib
 from playwright.sync_api import sync_playwright
 
 job = json.load(open(sys.argv[1]))
@@ -137,6 +137,29 @@ def act(page, a):
         page.keyboard.press(v)
     elif k == "back":
         page.go_back()
+    elif k == "reveal":
+        loc = page.get_by_text(re.compile(v)).first
+        try:
+            loc.scroll_into_view_if_needed(timeout=5000)
+            # A little of what is above it, so the text is not pinned to the window's edge.
+            page.evaluate("window.scrollBy(0, -Math.round(window.innerHeight * 0.2))")
+        except Exception:
+            pass
+        time.sleep(0.6)
+
+def desktop_actions(b):
+    """A beat's actions for a Mac window. A swipe scrolls by pixels, and a wider page is a
+    shorter one, so the phone's two swipes land somewhere else on a desktop (FOUND ON THE FIRST
+    DESKTOP PASS, 2026-09-19: "where I have worked" was two swipes down on the phone and off
+    screen on a 1512 point window, so the pass was refused rather than mislabelled). A beat that
+    says what it must show gets its swipes replaced by scrolling that text into view, which is
+    what the swipes were for; a beat that says nothing keeps its swipes."""
+    acts = b["actions"]
+    if not b.get("expect") or not any("swipe" in a for a in acts):
+        return acts
+    out = [a for a in acts if "swipe" not in a]
+    out.append({"reveal": b["expect"]})
+    return out
 
 def check(bucket, label, pattern, shot, path, optional=False):
     """What `_verify` needs to hold the picture to its label: the refused open, and the settled
@@ -168,14 +191,15 @@ def film(browser, bucket, viewport, scale, mobile, video_dir):
         state["refused"] = None
         state["tap"] = None
         start = time.monotonic() - t0
-        for a in b["actions"]:
+        actions = b["actions"] if mobile else desktop_actions(b)
+        for a in actions:
             act(page, a)
         shot = settle(page, b["settle"])
-        if last is not None and shot == last and b["actions"]:
+        if last is not None and shot == last and actions:
             # The page did not change: act once more, then keep what it shows (the run's
             # manifest step still refuses the same picture twice).
             bucket["notes"].append("re-shot " + b["label"] + ": the page did not change")
-            for a in b["actions"]:
+            for a in actions:
                 act(page, a)
             shot = settle(page, b["settle"])
         last = shot

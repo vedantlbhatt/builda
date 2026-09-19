@@ -358,10 +358,12 @@ def check_aspect(ff: str, lay: Layout, device: dict | None, mask: pathlib.Path, 
     return result
 
 
-#: A sampled frame whose screen's grey levels spread less than this (standard deviation, 0 to
-#: 255, read at 96 pixels across) is blank: one flat colour. MEASURED on the four demos on this
-#: Mac (docs/ship-kit.md, "Blank screens"): the lowest a real screen of theirs reads is the
-#: RideGT search sheet, well above this; a white page still loading reads under 1.
+#: A sampled frame whose screen, below its status bar, spreads its grey levels less than this
+#: (standard deviation, 0 to 255, read at 96 pixels across) is blank. MEASURED on the four demos
+#: on this Mac (docs/ship-kit.md, "Blank screens"): the lowest real screen of the 15 stills and
+#: 99 video samples reads 22.0 (a RideGT map sheet); a flat screen reads 0 and a white page with a
+#: small loading spinner 1.65. 4 sits 2.4 times above the spinner and 5.5 times under the lowest
+#: real screen.
 BLANK_STD = 4.0
 #: Two samples in a row at `BLANK_FPS` is half a second of nothing on screen: a segment.
 BLANK_RUN = 2
@@ -385,14 +387,29 @@ def blank_runs(stds: list[float], fps: int = BLANK_FPS, floor: float = BLANK_STD
     return out
 
 
-def screen_stats(ff: str, video: pathlib.Path, lay: Layout | None, work: pathlib.Path, fps: int = BLANK_FPS) -> list[float]:
-    """The grey level spread of the SCREEN (the layout's box, or the whole frame) at `fps`."""
+def below_status_bar(device: dict | None) -> float:
+    """The share of the screen's height the status bar or island takes (the row's top safe area),
+    which the blank check leaves out (pure). MEASURED: a dark app screen with nothing on it but
+    its status bar reads a grey spread of 7.2 whole and 0 below the bar, so reading the bar would
+    make "the clock and nothing else" look like a screen with something on it."""
+    if device is None:
+        return 0.0
+    return device["safe_area"]["top"] / device["points"][1]
+
+
+def screen_stats(ff: str, video: pathlib.Path, lay: Layout | None, work: pathlib.Path, fps: int = BLANK_FPS, skip_top: float = 0.0) -> list[float]:
+    """The grey level spread of the SCREEN (the layout's box, or the whole frame) at `fps`, from
+    `skip_top` of its height down (`below_status_bar`)."""
     frames = work / f"blank-{video.stem}"
     if frames.exists():
         for p in frames.glob("*.png"):
             p.unlink()
     frames.mkdir(parents=True, exist_ok=True)
-    crop = f"crop={lay.w}:{lay.h}:{lay.x}:{lay.y}," if lay is not None else ""
+    if lay is not None:
+        top = round(lay.h * skip_top)
+        crop = f"crop={lay.w}:{lay.h - top}:{lay.x}:{lay.y + top},"
+    else:
+        crop = f"crop=iw:ih*{1 - skip_top:.4f}:0:ih*{skip_top:.4f}," if skip_top else ""
     subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(video), "-vf", f"{crop}fps={fps},scale=96:-2",
                     str(frames / "f-%05d.png")], check=True, capture_output=True, timeout=600)  # fmt: skip
     files = sorted(frames.glob("f-*.png"))
@@ -404,9 +421,9 @@ def screen_stats(ff: str, video: pathlib.Path, lay: Layout | None, work: pathlib
     return [float(x.get("std", 0.0)) for x in json.loads(r.stdout)]
 
 
-def check_blank(ff: str, video: pathlib.Path, lay: Layout | None, work: pathlib.Path) -> dict:
-    """Refuse a video with a blank stretch on its screen (`blank_segment`)."""
-    stds = screen_stats(ff, video, lay, work)
+def check_blank(ff: str, video: pathlib.Path, lay: Layout | None, work: pathlib.Path, device: dict | None = None) -> dict:
+    """Refuse a video with a blank stretch on its screen below the status bar (`blank_segment`)."""
+    stds = screen_stats(ff, video, lay, work, skip_top=below_status_bar(device))
     runs = blank_runs(stds)
     if runs:
         s, e = runs[0]

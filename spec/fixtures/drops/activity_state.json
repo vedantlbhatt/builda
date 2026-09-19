@@ -1,0 +1,88 @@
+{
+  "_comment": [
+    "The drop Live Activity's ContentState for a drop row and its moves (docs/drop-island.md).",
+    "Written by hand, and held on BOTH sides: server/tests/test_drop_island.py runs",
+    "drop_push.content_state over every case and mobile/__tests__/dropActivity.test.ts runs",
+    "src/live/dropActivity.ts dropState, so the card the server pushes and the card the phone",
+    "draws from its own poll are one card. `now` is Unix seconds; `expect: null` is a drop no card",
+    "shows. `hosts` is the one rule for the card's `host` attribute, on both sides."
+  ],
+  "cases": [
+    {
+      "name": "waiting_is_sent",
+      "now": 1757750400,
+      "drop": {"status": "waiting", "title": null, "kind": null},
+      "moves": [],
+      "expect": {"phase": "sent", "title": null, "moves": 0, "firstMoveTitle": null, "firstMoveId": null, "kind": null, "updatedEpoch": 1757750400}
+    },
+    {
+      "name": "resolving_is_reading_and_knows_nothing_yet",
+      "now": 1757750400.4,
+      "drop": {"status": "resolving", "title": "An older reading", "kind": "skill"},
+      "moves": [],
+      "expect": {"phase": "reading", "title": null, "moves": 0, "firstMoveTitle": null, "firstMoveId": null, "kind": null, "updatedEpoch": 1757750400}
+    },
+    {
+      "name": "planned_counts_the_offered_and_starts_the_first_by_position",
+      "now": 1757750400.5,
+      "drop": {"status": "planned", "title": "5 beginner Claude Skills to install", "kind": "skill"},
+      "moves": [
+        {"id": "m-3", "position": 2, "status": "offered", "title": "Read the docs first", "target": "none"},
+        {"id": "m-1", "position": 0, "status": "declined", "title": "Keep it", "target": "none"},
+        {"id": "m-2", "position": 1, "status": "offered", "title": "Go find the 5 skills", "target": "this_machine"},
+        {"id": "m-4", "position": 3, "status": "offered", "title": "Try one in a scratch clone", "target": "this_machine"}
+      ],
+      "expect": {"phase": "planned", "title": "5 beginner Claude Skills to install", "moves": 3, "firstMoveTitle": "Go find the 5 skills", "firstMoveId": "m-2", "kind": "skill", "updatedEpoch": 1757750401}
+    },
+    {
+      "name": "a_first_move_into_your_repo_is_not_started_from_the_island",
+      "now": 1757750400,
+      "drop": {"status": "planned", "title": "Stop Claude reading your whole repo on every turn", "kind": "technique"},
+      "moves": [
+        {"id": "m-1", "position": 0, "status": "offered", "title": "Add the ignore rules to one of your repos", "target": "existing_repo"},
+        {"id": "m-2", "position": 1, "status": "offered", "title": "Keep the technique", "target": "none"}
+      ],
+      "expect": {"phase": "planned", "title": "Stop Claude reading your whole repo on every turn", "moves": 2, "firstMoveTitle": "Add the ignore rules to one of your repos", "firstMoveId": null, "kind": "technique", "updatedEpoch": 1757750400}
+    },
+    {
+      "name": "planned_with_nothing_to_do",
+      "now": 1757750400,
+      "drop": {"status": "planned", "title": "A studio tour", "kind": "unknown"},
+      "moves": [],
+      "expect": {"phase": "planned", "title": "A studio tour", "moves": 0, "firstMoveTitle": null, "firstMoveId": null, "kind": "unknown", "updatedEpoch": 1757750400}
+    },
+    {
+      "name": "refused_names_no_moves",
+      "now": 1757750400,
+      "drop": {"status": "refused", "title": null, "kind": null},
+      "moves": [],
+      "expect": {"phase": "refused", "title": null, "moves": 0, "firstMoveTitle": null, "firstMoveId": null, "kind": null, "updatedEpoch": 1757750400}
+    },
+    {
+      "name": "started_names_the_move_that_started",
+      "now": 1757750460,
+      "started_move_id": "m-2",
+      "drop": {"status": "planned", "title": "5 beginner Claude Skills to install", "kind": "skill"},
+      "moves": [
+        {"id": "m-2", "position": 1, "status": "queued", "title": "Go find the 5 skills", "target": "this_machine"},
+        {"id": "m-3", "position": 2, "status": "offered", "title": "Read the docs first", "target": "none"}
+      ],
+      "expect": {"phase": "started", "title": "5 beginner Claude Skills to install", "moves": 1, "firstMoveTitle": "Go find the 5 skills", "firstMoveId": "m-2", "kind": "skill", "updatedEpoch": 1757750460}
+    },
+    {
+      "name": "archived_is_no_card",
+      "now": 1757750400,
+      "drop": {"status": "archived", "title": "Anything", "kind": "tool"},
+      "moves": [],
+      "expect": null
+    }
+  ],
+  "hosts": [
+    ["https://www.instagram.com/reel/DGxvBNzR8vC", "instagram.com"],
+    ["https://vm.tiktok.com/ZMabc", "vm.tiktok.com"],
+    ["https://www.tiktok.com/@nocode.joshua/video/7620790035939462407", "tiktok.com"],
+    ["https://x.com/a/status/1", "x.com"],
+    ["https://www.youtube.com/shorts/2Nn9", "youtube.com"],
+    ["https://example.com:8443/a", "example.com:8443"]
+  ]
+}

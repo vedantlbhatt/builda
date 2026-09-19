@@ -26,7 +26,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import drops_notify
+from .. import drop_push, drops_notify
 from .. import drops_store as store
 from ..auth import CurrentDevice, current_device
 from ..db import db_session
@@ -100,6 +100,9 @@ def share(body: DropIn, device: CurrentDevice = Depends(current_device)):
             db, uid, url=body.url, platform=body.platform, shared_text=body.shared_text
         )
     created = row.pop("created", True)
+    # After the commit: the island's card for a reel you are still scrolling past
+    # (docs/drop-island.md). Only for a drop this share made; never fails the share.
+    drop_push.after_share(uid, row, created=bool(created))
     return {"drop": row, "created": bool(created)}
 
 
@@ -140,7 +143,10 @@ def claim(
     """
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
-        return {"drops": store.claim_waiting(db, uid, limit=limit)}
+        claimed = store.claim_waiting(db, uid, limit=limit)
+    # The card says "reading" now: the Mac has it.
+    drop_push.after_transition(uid, [d["id"] for d in claimed])
+    return {"drops": claimed}
 
 
 @router.put("/drops/{drop_id}/resolution")
@@ -159,7 +165,11 @@ def put_resolution(
         after = store.get_drop(db, uid, drop_id)
     # AFTER the transaction commits, for notify.py's reason: a push failure must never roll back
     # what was stored, and a crash between the two loses a banner rather than doubling one.
-    _tell_them_it_was_read(uid, drop_id, before, after or {}, out["moves"])
+    island = drop_push.after_transition(uid, [drop_id])
+    if not any(p.alerts for p in island):
+        # One moment, one alert: when the island's card already said it (and lit the screen),
+        # the banner that would pull you out of the app you are in is not sent as well.
+        _tell_them_it_was_read(uid, drop_id, before, after or {}, out["moves"])
     return out
 
 
@@ -193,7 +203,9 @@ def put_refusal(drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(c
             raise HTTPException(404, "no such drop")
         store.mark_refused(db, uid, drop_id, body.refusal)
         after = store.get_drop(db, uid, drop_id)
-    _tell_them_it_was_read(uid, drop_id, before, after or {}, 0)
+    island = drop_push.after_transition(uid, [drop_id])
+    if not any(p.alerts for p in island):
+        _tell_them_it_was_read(uid, drop_id, before, after or {}, 0)
     return {"status": "refused", "refusal": body.refusal}
 
 
@@ -218,7 +230,9 @@ def start(
             if current is None:
                 raise HTTPException(404, "no such move")
             raise HTTPException(409, f"move is already {current['status']}")
-        return {"move": move}
+    # Whoever tapped it (the board, or the island's own Start), the card says it started.
+    drop_push.after_transition(uid, [move["drop_id"]], started_move_id=move_id)
+    return {"move": move}
 
 
 @router.post("/drops/{drop_id}/moves/{move_id}:decline")

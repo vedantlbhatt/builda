@@ -45,10 +45,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import text
-
-from .contract import SessionUpload
+# `make gen` imports this module on a bare Python (CI's contract job installs nothing):
+# `scripts/gen_live_fixtures.py` -> `live_push.alert_for` -> `needs_you_title`. A top-level
+# SQLAlchemy import failed that job on every push from 2026-09-14, and it gates every other
+# job. So the database half imports SQLAlchemy where it runs, and the contract is a type only.
+if TYPE_CHECKING:
+    from .contract import SessionUpload
 
 #: Mirrors `Tuning.tauSessionSec` (900 s), the idle gap that ends 99.8% of sessions.
 TAU_SESSION_SEC = 900
@@ -206,6 +210,8 @@ def plan(db, session_id, p: SessionUpload, existing, now: datetime | None = None
     else:
         return None
 
+    from sqlalchemy import text
+
     # Belt to the transition check's braces: a row here means this session was decided
     # once already, whatever the sessions row says about itself.
     already = db.execute(
@@ -257,6 +263,8 @@ def compose(p: SessionUpload, kind: str) -> tuple[str, str]:
 
 
 def _record(db, session_id, kind: str) -> None:
+    from sqlalchemy import text
+
     db.execute(
         text(
             """

@@ -210,6 +210,10 @@ def validate_spectrum(t: dict) -> list[str]:
         hue_ref(f"archetype.{k}", v)
     for k, v in spec.get("dimension", {}).items():
         hue_ref(f"dimension.{k}", v)
+    # The Live Activity for a shared reel draws its kind in this hue (Palette.swift `dropHue`),
+    # so a name that is not a hue would reach Swift as a case that does not compile.
+    for k, v in spec.get("drop", {}).items():
+        hue_ref(f"drop.{k}", v)
     for k, v in spec.get("island", {}).items():
         if v not in TOKEN_REFS + ("surface.textFaint",) and v not in hues:
             problems.append(f"spectrum.island.{k} is {v!r}; an island state is one of the nine hues or one of {TOKEN_REFS}")
@@ -549,6 +553,20 @@ def gen_widget_palette(t: dict) -> str:
     creature_cases = "\n".join(
         f'    case "{k}": return hue(.{v}, dark: dark)' for k, v in creature.items() if k != "bit"
     )
+    drop_cases = "\n".join(f'    case "{k}": return hue(.{v}, dark: dark)' for k, v in spec["drop"].items())
+
+    def island_ink(ref: str) -> str:
+        """An island state's colour on the dark ground: a hue's ink, or a token path's dark value."""
+        if ref in hues:
+            return f"hue(.{ref}).ink"
+        group, key = ref.split(".")
+        hexv = t[group][key]["dark"]
+        return f"{swift_color(hexv)}  // {ref} {hexv}"
+
+    island_cases = "\n".join(
+        f"    case .{k}: return {island_ink(v)}" for k, v in spec["island"].items()
+    )
+    island_names = ", ".join(spec["island"])
     ring = ", ".join(f'"{c}"' for c in spec["crew"]["ring"])
     hue_names = ", ".join(hues)
     return f"""{BANNER}
@@ -668,6 +686,28 @@ enum BuilderPalette {{
   /// spectrum.crew.ring, the eight a session's creature is hashed onto (the rule is the phone's,
   /// `src/live/crew.ts`; the widget only draws what it is handed).
   static let crewRing: [String] = [{ring}]
+
+  /// spectrum.drop: the hue a shared reel's KIND wears once the Mac has read it (`theme.ts`
+  /// `dropHue`). nil for `unknown`, for a drop not read yet and for a kind this build does not
+  /// know: those are drawn in the warm greys, so a colour always means something was understood.
+  static func dropHue(_ kind: String?, dark: Bool = true) -> Hue? {{
+    switch kind {{
+{drop_cases}
+    default: return nil
+    }}
+  }}
+
+  /// spectrum.island: the colour a state springs to in the island (docs/motion.md), on the dark
+  /// ground the island always is. A hue's ink, or the data token the state already means.
+  enum IslandState: String, CaseIterable {{
+    case {island_names}
+  }}
+
+  static func islandInk(_ state: IslandState) -> Color {{
+    switch state {{
+{island_cases}
+    }}
+  }}
 }}
 """
 

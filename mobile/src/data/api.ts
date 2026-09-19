@@ -887,7 +887,7 @@ const ACCESS_KEY = 'builder.access';
 const REFRESH_KEY = 'builder.refresh';
 const TIMEOUT_MS = 20_000;
 
-const secureStorage: TokenStorage = {
+export const secureStorage: TokenStorage = {
   get: (k) => SecureStore.getItemAsync(k),
   set: (k, v) => SecureStore.setItemAsync(k, v),
   remove: (k) => SecureStore.deleteItemAsync(k),

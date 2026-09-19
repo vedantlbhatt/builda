@@ -4,9 +4,16 @@
  * CommonJS, like targets/widget, because @bacons/apple-targets 4.0.7 does not load ESM or
  * TypeScript target configs. It shares the app's App Group, which is the whole mechanism: the
  * extension writes the link there (`BuilderDropsInbox`) and the app drains it on the next
- * foreground. The extension never talks to the API, for the reason BuilderDropsModule.swift
- * gives: the account's tokens are behind the app's keychain access group, and an extension that
- * could post would be a second client of the API with a second set of rules.
+ * foreground. Since docs/drop-island.md it may ALSO call one route, `POST /v1/drops`, with the
+ * copy of the app's fifteen minute access token the app keeps in the App Group's keychain
+ * (`BuilderDropsCredential`; never the refresh token), so the Mac reads a reel while you are
+ * still in Instagram and the Dynamic Island carries the answer. Any failure falls back to the
+ * queue, which is unchanged. The App Group entitlement is also what grants that keychain item:
+ * an item in an App Group's access group is readable by the targets holding the group and by
+ * nothing else, so no keychain sharing entitlement is added.
+ *
+ * `BuilderDropsCredential.swift`, `BuilderDropsURL.swift` and `BuilderDropsShare.swift` are
+ * symlinks into modules/builder-drops/ios as well, for the reason given below.
  *
  * `BuilderDropsInbox.swift` here is a SYMLINK to the copy in modules/builder-drops/ios. The
  * extension and the app both need the queue's key, its cap and its shape, and they are compiled

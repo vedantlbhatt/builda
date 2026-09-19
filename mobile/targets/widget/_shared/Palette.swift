@@ -204,4 +204,36 @@ enum BuilderPalette {
   /// spectrum.crew.ring, the eight a session's creature is hashed onto (the rule is the phone's,
   /// `src/live/crew.ts`; the widget only draws what it is handed).
   static let crewRing: [String] = ["fox", "whale", "bee", "octopus", "crab", "dog", "cat", "owl"]
+
+  /// spectrum.drop: the hue a shared reel's KIND wears once the Mac has read it (`theme.ts`
+  /// `dropHue`). nil for `unknown`, for a drop not read yet and for a kind this build does not
+  /// know: those are drawn in the warm greys, so a colour always means something was understood.
+  static func dropHue(_ kind: String?, dark: Bool = true) -> Hue? {
+    switch kind {
+    case "skill": return hue(.iris, dark: dark)
+    case "technique": return hue(.tide, dark: dark)
+    case "project": return hue(.orchid, dark: dark)
+    case "tool": return hue(.brass, dark: dark)
+    case "recipe": return hue(.coral, dark: dark)
+    default: return nil
+    }
+  }
+
+  /// spectrum.island: the colour a state springs to in the island (docs/motion.md), on the dark
+  /// ground the island always is. A hue's ink, or the data token the state already means.
+  enum IslandState: String, CaseIterable {
+    case working, thinking, waiting, error, done, reading, sleep
+  }
+
+  static func islandInk(_ state: IslandState) -> Color {
+    switch state {
+    case .working: return hue(.cobalt).ink
+    case .thinking: return hue(.iris).ink
+    case .waiting: return hue(.amber).ink
+    case .error: return srgb(0xE5, 0x48, 0x4D)  // data.del #E5484D
+    case .done: return srgb(0x7B, 0xC9, 0x6F)  // data.add #7BC96F
+    case .reading: return hue(.tide).ink
+    case .sleep: return srgb(0x6B, 0x65, 0x5D)  // surface.textFaint #6B655D
+    }
+  }
 }

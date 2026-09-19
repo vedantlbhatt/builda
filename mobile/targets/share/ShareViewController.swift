@@ -4,37 +4,77 @@ import UniformTypeIdentifiers
 
 /// What comes up when you share a reel into Builda.
 ///
-/// It does three things and stops: read the link out of the item, put it in the App Group
-/// (`BuilderDropsInbox`), and say so. It does not fetch the link, call the API, or read the
-/// person's account. The app drains the queue on its next foreground and everything else happens
-/// there, where the rules about what may be sent already live.
+/// It reads the link out of the item, sends it, and says which of two things happened:
+///
+///   Sent to your Mac            the extension posted it itself (`BuilderDropsShare`), so the Mac
+///                               reads it now and the Dynamic Island can carry the answer while
+///                               you keep scrolling (docs/drop-island.md);
+///   Kept for when Builda opens  it went into the App Group queue (`BuilderDropsInbox`), exactly
+///                               as before, and the app sends it on its next foreground.
+///
+/// ONE ROUTE, ONE SHORT-LIVED TOKEN. The extension may call `POST /v1/drops` and nothing else,
+/// with the copy of the app's fifteen minute access token the app mirrors into the App Group's
+/// keychain (`BuilderDropsCredential`), never the refresh token. Why it may now: a share that
+/// waits for the app to open is a share the Mac reads hours later, and the island has nothing to
+/// show while you are still in Instagram. Why that is safe: the token is worth fifteen minutes at
+/// most, the extension cannot mint another (only the app can refresh, because a second redeemer
+/// of a rotating refresh token is reuse and signs the device out), and the route it calls only
+/// ever makes an inert card: nothing runs until a person taps a move. Any failure at all (no
+/// token, an expired one, four seconds without an answer, a refusal) falls back to the queue, so
+/// the old path is still the floor.
+///
+/// It still does not read the post, fetch the link or look at the account. Normalising the link
+/// is `BuilderDropsURL`, the Swift port of `src/drops/urls.ts`, so the same reel shared here and
+/// pasted in the app is one card.
 ///
 /// THE SHEET IS THE PRODUCT'S OWN. A share extension that shows the system's compose sheet with
 /// a "Post" button is telling the person they are publishing something. Nothing is published
-/// here; something is being kept. So it is Builda's own ground, Builda's own type, the drop's
-/// own sigil growing, and one line that says what happens next.
+/// here; something is being kept. So it is Builda's own ground, Builda's own type, and one line
+/// that says what happens next.
 final class ShareViewController: UIViewController {
   private var handled = false
+  private let model = ShareSheetModel()
 
   override func viewDidLoad() {
     super.viewDidLoad()
     view.backgroundColor = .clear
+    present()
     extract { [weak self] url, text in
       guard let self else { return }
+      guard let url else {
+        self.model.state = .refused
+        return
+      }
+      self.send(url: url, text: text)
+    }
+  }
+
+  /// Straight to the API when the app has left a usable token behind; the queue otherwise, and
+  /// on any failure. The queue write is the same one the extension always made.
+  private func send(url: String, text: String) {
+    guard BuilderDropsCredential.usable() != nil else {
+      BuilderDropsInbox.add(url: url, text: text)
+      model.state = .kept
+      return
+    }
+    model.state = .sending
+    BuilderDropsShare.send(url: url, text: text) { [weak self] outcome in
       DispatchQueue.main.async {
-        guard let url else {
-          self.present(state: .refused)
-          return
+        guard let self else { return }
+        switch outcome {
+        case .sent:
+          self.model.state = .sent
+        case .kept:
+          BuilderDropsInbox.add(url: url, text: text)
+          self.model.state = .kept
         }
-        BuilderDropsInbox.add(url: url, text: text)
-        self.present(state: .kept(url: url))
       }
     }
   }
 
-  private func present(state: ShareSheetState) {
+  private func present() {
     let sheet = UIHostingController(
-      rootView: ShareSheetView(state: state) { [weak self] in self?.finish() }
+      rootView: ShareSheetView(model: model) { [weak self] in self?.finish() }
     )
     sheet.view.backgroundColor = .clear
     addChild(sheet)

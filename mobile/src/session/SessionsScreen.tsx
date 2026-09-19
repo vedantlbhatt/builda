@@ -1,6 +1,6 @@
 /**
  * The Sessions tab, in the house style (design-refs/HOUSE-STYLE.md): this week's hours on the
- * ground in the builder's own ink (no hue slab: docs/motion.md, the pixel diet) with the week drawn
+ * ground in the builder's own ink (its own head, not the hue band every tab used to open on) with the week drawn
  * as seven bars, then the sessions as OPEN rows, no card round any of them, each
  * marked by its creature in its hue, its title, its active time, the tool's real logo and the
  * repository, and its strip drawn on once.

@@ -47,8 +47,8 @@ interface Page {
    */
   armed: SharedValue<number>;
   /**
-   * How many numbers on this page have counted up. The pixel diet (docs/motion.md): a number
-   * counts up ONCE per screen, the first one to play, which is the screen's headline; every other
+   * How many numbers on this page have counted up (docs/motion.md, "The pixels stay"): a number
+   * moves ONCE per screen, the first one to play, which is the screen's headline; every other
    * figure is set still and fades in with its block. Fifty numbers each counting from zero as you
    * scroll was the "numbers all look the same" the owner named.
    */

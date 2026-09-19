@@ -65,6 +65,8 @@ import { EASE } from '../ui/motion';
 import { VERDICT_PATHS, VERDICT_VIEWBOX, verdictDash, verdictStroke } from '../ui/verdicts';
 import { Aura, Face, stateColor } from '../motion';
 import { motionFor } from '../motion/pixelMotion';
+import { SpotlightLayer } from '../ui/bits/components/layers';
+import { SPOT } from '../ui/bits/components/spec';
 import { BandPixels } from '../insights/Band';
 import { morphOpen } from '../motion/MorphNav';
 import { FACE_FOR_TILE } from '../island/feeds';
@@ -119,9 +121,8 @@ function inksFor(hue: Hue, stale: boolean): Inks {
 // ------------------------------------------------------------------ the print
 
 /**
- * How long a block takes to arrive, for callers timing their words after it. The block used to
- * PRINT cell by cell and then to be uncovered by a mask drawing up; neither is on any screen now
- * (docs/motion.md, the pixel diet), and the words keep the same beat.
+ * The beat a tile's words keep after its print starts (`BandPixels` prints the hue itself, in the
+ * tile's own order: docs/motion.md, "The pixels stay").
  */
 export const PRINT_MS = 440;
 
@@ -373,9 +374,41 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
     setBox((b) => (b.w === w && b.h === h ? b : { w, h }));
   }, []);
 
-  // The pixel spotlight under the finger is gone with the rest of the print (the pixel diet); a
-  // press is the tile giving a hair under the thumb, and a tap grows it into the page.
-  const gesture = useMemo(() => Gesture.Manual().enabled(false), []);
+  // The spotlight: a pool of the hue's partner cells under the finger (react-bits SpotlightCard,
+  // `ui/bits/components/SpotlightCard.tsx`), printed on the tile rather than lit over a card.
+  const ox = useSharedValue(0);
+  const oy = useSharedValue(0);
+  const amount = useSharedValue(0);
+  const spotOn = !reduce && !m.stale;
+  const gesture = useMemo(
+    () =>
+      Gesture.Manual()
+        .enabled(spotOn)
+        .onTouchesDown((e) => {
+          const t = e.allTouches[0];
+          if (!t) return;
+          ox.value = t.x;
+          oy.value = t.y;
+          amount.value = withTiming(SPOT.strength, { duration: SPOT.inMs, easing: EASE });
+        })
+        .onTouchesMove((e) => {
+          const t = e.allTouches[0];
+          if (!t) return;
+          ox.value = t.x;
+          oy.value = t.y;
+        })
+        .onTouchesUp(() => {
+          amount.value = withTiming(0, { duration: SPOT.outMs, easing: EASE });
+        })
+        .onTouchesCancelled(() => {
+          amount.value = withTiming(0, { duration: SPOT.outMs, easing: EASE });
+        })
+        .onFinalize(() => {
+          amount.value = withTiming(0, { duration: SPOT.outMs, easing: EASE });
+        }),
+    [spotOn, ox, oy, amount],
+  );
+  const spotHue = useMemo(() => ({ ...hue, ink: ON_HUE }), [hue]);
 
   // The tile grows into the session's page (`motion/MorphNav.tsx`): its own view, its own fill.
   const tileRef = useRef<View>(null);
@@ -417,6 +450,9 @@ function MissionTileImpl({ model: m, creature, animate, variant, width, minHeigh
             {/* The hue itself is the print: no fill under it, so nothing of the colour shows
                 before its cells arrive. Sized from the props until the tile has laid out. */}
             <BandPixels width={box.w || width} solid={box.h || minHeight} ink={ink.fill} motion={motionFor(`tile:${m.id}`)} fringe={0} delay={delay} />
+            {spotOn && box.w > 0 ? (
+              <SpotlightLayer width={box.w} height={box.h} hue={spotHue} originX={ox} originY={oy} strength={amount} radius={SPOT.radius} />
+            ) : null}
 
             <Arrive delay={wordsAt} style={{ gap: v.gap }}>
               <View style={[styles.head, { gap: headGap }]}>

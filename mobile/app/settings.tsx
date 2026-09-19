@@ -70,6 +70,7 @@ import { colors, space, TAP_TARGET } from '../src/theme';
 import { refreshAccent, useAccent, type AccentState } from '../src/theme/accent';
 import { forgetProjectsOnThisPhone } from '../src/projects/nicknames';
 import { cancelWeekCard } from '../src/push/weekly';
+import { resetWeekOffer } from '../src/share/weekOffer';
 import { Button, Hairline, SHAPE, T, TextField, useReduceMotion } from '../src/ui';
 import { HERE } from '../src/copy/device';
 
@@ -227,8 +228,10 @@ export default function SettingsScreen() {
     void refreshAccent();
     // The names and numbers this phone gave the last account's projects (src/projects/nicknames.ts).
     void forgetProjectsOnThisPhone();
-    // Monday's notification for the week card belonged to that account (src/push/weekly.ts).
+    // Monday's notification for the week card belonged to that account (src/push/weekly.ts), and so
+    // did any week held to be said (src/share/weekOffer.ts).
     void cancelWeekCard();
+    resetWeekOffer();
   }, [readLocalName]);
 
   const signOut = useCallback(async () => {

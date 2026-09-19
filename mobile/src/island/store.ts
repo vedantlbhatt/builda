@@ -9,9 +9,14 @@
  */
 import { useSyncExternalStore } from 'react';
 
-import { HOLD_MS, type Activity } from './model';
+import { HOLD_MS, shownActivities, type Activity } from './model';
 
 let items: Activity[] = [];
+/**
+ * Whether the drawn island shows the standing states (a hardware island to sit beside) or only
+ * the passing beats (a desktop window, a phone with a notch or none). Set by `Island.tsx`.
+ */
+let standing = true;
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const listeners = new Set<() => void>();
 const expandListeners = new Set<() => void>();
@@ -89,6 +94,15 @@ export const island = {
     return items;
   },
 
+  /** What the island can actually show on this device (`model.shownActivities`). */
+  visible(): Activity[] {
+    return shownActivities(items, standing);
+  },
+
+  setShowsStanding(on: boolean) {
+    standing = on;
+  },
+
   /**
    * Open the island as if a finger had. For the demo cycle and the debug screen only: in use,
    * expanded is always a person's decision (model.ts `restingMode`).
@@ -113,6 +127,7 @@ export const island = {
     timers.clear();
     items = [];
     said.clear();
+    standing = true;
     emit();
   },
 };

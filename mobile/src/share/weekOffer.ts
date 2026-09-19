@@ -37,21 +37,39 @@ const WEEK_READ = 200;
 let checked: string | null = null;
 /** A week found and not yet said, because the island was busy with something that outranks it. */
 let pending: WeekModel | null = null;
+/** The Monday counted as offered, read at the moment of saying: a check already waiting on the network stops there. */
+let offeredFor: string | null = null;
 
 /**
  * The week counts as offered from this moment: a tap on Monday's notification (Sessions opens the
- * card) calls it at once, before any profile loads, so a pass running at the same time says nothing.
+ * card) calls it at once, before any profile loads, so a pass running at the same time says
+ * nothing, including one already waiting for the profile when the tap came (FOUND IN REVIEW).
  */
 export function markWeekOffered(monday: string): void {
   checked = monday;
+  offeredFor = monday;
   pending = null;
   void cache.setKv(WEEK_OFFERED_KEY, monday).catch(() => undefined);
+}
+
+/**
+ * Forget this launch's state: signing out and deleting the account call it, or a week held for one
+ * account would be said to the next with the first one's hours (FOUND IN REVIEW).
+ */
+export function resetWeekOffer(): void {
+  checked = null;
+  pending = null;
+  offeredFor = null;
 }
 
 /** True when it put the card up, so the milestone card waits for the next pass. */
 export async function offerLastWeek(animal: Animal, nowMs: number): Promise<boolean> {
   const monday = lastWeekOf([], nowMs).days[0]!.date;
-  if (pending && pending.days[0]!.date === monday) return say(pending, monday, animal);
+  if (pending) {
+    // Held only while it is still news: a week held on Wednesday night is not said on Friday.
+    if (pending.days[0]!.date === monday && lastWeekIsNews(nowMs)) return say(pending, monday, animal);
+    pending = null;
+  }
   if (checked === monday) return false;
   checked = monday;
   const offered = await cache.getKv(WEEK_OFFERED_KEY).catch(() => null);
@@ -79,12 +97,13 @@ export async function offerLastWeek(animal: Animal, nowMs: number): Promise<bool
 
 /** Say it where it will be seen, and only then count it as said. */
 async function say(week: WeekModel, monday: string, animal: Animal): Promise<boolean> {
+  if (offeredFor === monday) return false;
   // A desktop whose window is behind another app hears it from the system (`desktopNotice`).
   if (desktopNoticeInstead(WEEK_CARD_NOTIFICATION.title, weekOfferLine(week), 'builder://sessions?card=last-week')) {
     markWeekOffered(monday);
     return true;
   }
-  if (noticeWouldWait(island.snapshot())) {
+  if (noticeWouldWait(island.visible())) {
     pending = week;
     return false;
   }

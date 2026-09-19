@@ -126,6 +126,8 @@ export function lead(activities: readonly Activity[]): Activity | null {
  * Whether something on the island now outranks a notice (a run waiting on you, a session that just
  * shipped). A notice posted under it never leads and is taken down after its hold, unseen: FOUND IN
  * REVIEW, an offer marked as said while an agent was waiting was lost for good. Offers wait instead.
+ * Pass what the island SHOWS (`store.visible`): a phone with no Dynamic Island never draws a waiting
+ * run, and an offer that waited on one there would wait for as long as the run did.
  */
 export function noticeWouldWait(acts: readonly Activity[]): boolean {
   return acts.some((a) => PRIORITY[a.kind] > PRIORITY.notice);

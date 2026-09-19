@@ -323,7 +323,10 @@ export function SessionsScreen() {
         setProfile(fresh);
         graph = fresh.graph;
       } catch {
-        // Offline: the saved profile's week, which is the best this phone has.
+        // Offline: the saved profile's week, which is the best this phone has. On a cold launch from
+        // the tap this tab has no profile yet, so it is read from the cache (FOUND IN REVIEW: with
+        // none, no card showed and the week was already counted as offered).
+        graph = graph ?? (await cache.getProfile().catch(() => null))?.graph ?? null;
       }
       if (!graph) return;
       const last = lastWeekOf(graph, now);

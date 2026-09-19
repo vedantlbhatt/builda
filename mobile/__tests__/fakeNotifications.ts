@@ -29,5 +29,8 @@ mock.module('expo-notifications', () => ({
   cancelScheduledNotificationAsync: async (id: string) => {
     fakeNotifications.cancelled.push(id);
   },
+  dismissNotificationAsync: async (id: string) => {
+    fakeNotifications.presented = fakeNotifications.presented.filter((p) => p !== id);
+  },
   getPresentedNotificationsAsync: async () => fakeNotifications.presented.map((identifier) => ({ request: { identifier } })),
 }));

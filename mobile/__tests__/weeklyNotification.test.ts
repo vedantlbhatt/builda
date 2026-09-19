@@ -34,8 +34,11 @@ describe("Monday's notification", () => {
 
   test('signing out takes it back, and the next account schedules its own', async () => {
     await scheduleWeekCard(3600, at(2026, 10, 7, 8));
+    fake.presented.push(WEEK_CARD_ID);
     await cancelWeekCard();
     expect(fake.cancelled).toEqual([WEEK_CARD_ID]);
+    // One already delivered goes too: it belonged to the account that left.
+    expect(fake.presented).toEqual([]);
     await scheduleWeekCard(3600, at(2026, 10, 7, 9));
     expect(fake.scheduled).toHaveLength(2);
   });

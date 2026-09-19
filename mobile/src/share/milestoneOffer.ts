@@ -31,7 +31,7 @@ async function offer(profile: Profile, animal: Animal): Promise<boolean> {
   const step = milestoneStep(profile.totals.active_seconds, remembered !== null && Number.isFinite(remembered) ? remembered : null);
   if (step.kind === 'none') return false;
   // Under a run that waits on you the notice would never lead: said later, not marked as said now.
-  if (step.kind === 'offer' && noticeWouldWait(island.snapshot())) return false;
+  if (step.kind === 'offer' && noticeWouldWait(island.visible())) return false;
   await cache.setKv(MILESTONE_KEY, String(step.hours));
   if (step.kind === 'remember') return false;
   const ink = creatureHue(animal).ink;

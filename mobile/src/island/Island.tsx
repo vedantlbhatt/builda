@@ -97,6 +97,8 @@ export function Island() {
   // work is on Now and the Lock Screen there, as it is on every such phone.
   const onHardware = !desk && hardware !== null;
   const shown = useMemo(() => shownActivities(acts, onHardware), [acts, onHardware]);
+  // The offers ask the store what would be in their way; it is what this island shows, not the list.
+  useEffect(() => island.setShowsStanding(onHardware), [onHardware]);
   const top = lead(shown);
   const mode: Mode = top ? (expanded && canExpand(top) ? 'expanded' : restingMode(top)) : 'hidden';
 

@@ -18,7 +18,7 @@ import { crewFor } from './crew';
 import { cancelWeekCard, scheduleWeekCard } from '../push/weekly';
 import { weekOf } from '../session/week';
 import { offerMilestone } from '../share/milestoneOffer';
-import { offerLastWeek } from '../share/weekOffer';
+import { offerLastWeek, resetWeekOffer } from '../share/weekOffer';
 
 /**
  * The app's foreground poll for the Lock Screen, the Dynamic Island and the Home Screen widget
@@ -59,6 +59,7 @@ export async function refreshLiveSurfaces(nowMs = Date.now()): Promise<SyncResul
       wasSignedIn = false;
       lastLive = [];
       void cancelWeekCard();
+      resetWeekOffer();
       await endAllLiveActivities();
       clearWidgetSnapshot();
       publishLive([], nowMs);

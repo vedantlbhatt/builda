@@ -10,6 +10,8 @@ import type { Profile } from '../src/data/api';
 
 const kv = new Map<string, string>();
 let profileCalls = 0;
+/** When set, the profile answers only once it resolves: a check caught waiting on the network. */
+let gate: Promise<void> | null = null;
 let graph: { date: string; active_seconds: number }[] = [];
 const opened: string[] = [];
 
@@ -25,6 +27,7 @@ mock.module('../src/data/client', () => ({
   api: {
     profile: async () => {
       profileCalls += 1;
+      if (gate) await gate;
       return { graph, totals: { sessions: 0, active_seconds: 0 }, projects: [] };
     },
   },
@@ -34,7 +37,7 @@ mock.module('../src/share/WeekShare', () => ({ showWeekShare: () => opened.push(
 mock.module('../src/share/MilestoneShare', () => ({ showMilestoneShare: (h: number) => opened.push(`milestone ${h}`) }));
 
 // Dynamic, after the mocks, so the modules see them.
-const { markWeekOffered, offerLastWeek } = await import('../src/share/weekOffer');
+const { markWeekOffered, offerLastWeek, resetWeekOffer } = await import('../src/share/weekOffer');
 const { offerMilestone } = await import('../src/share/milestoneOffer');
 const { island } = await import('../src/island/store');
 const { WEEK_OFFERED_KEY } = await import('../src/session/week');
@@ -56,6 +59,7 @@ const profile = (hours: number): Profile =>
   ({ graph: [], totals: { sessions: 132, active_seconds: hours * H }, projects: [{ key: 'k', name: null, sessions: 1, active_seconds: 1, first_at: '2026-08-12T10:00:00Z', last_at: '2026-09-12T10:00:00Z' }] }) as unknown as Profile;
 
 beforeEach(() => {
+  gate = null;
   fakeNotifications.reset();
   island.reset();
   kv.clear();
@@ -137,6 +141,54 @@ describe('said where it will be seen, and only once', () => {
     graph = [{ date: '2026-10-21', active_seconds: 2 * H }];
     const both = await Promise.all([offerLastWeek('cat', MON_OCT_26), offerLastWeek('cat', MON_OCT_26)]);
     expect(both.filter(Boolean)).toHaveLength(1);
+    expect(posted).toHaveLength(1);
+  });
+});
+
+describe('the second review', () => {
+  const H2 = 2 * H;
+  const waiting = { kind: 'needsYou' as const, id: 'wait:c', sessionId: 'c', repo: 'c', animal: 'cat' as const, ink: '#000000', sentence: 'asks', sinceMs: 0 };
+
+  test('a tap while a check waits on the network: the check comes back and says nothing', async () => {
+    const MON = new Date(2026, 10, 2, 10).getTime(); // last week: Oct 26 to Nov 1
+    graph = [{ date: '2026-10-28', active_seconds: H2 }];
+    let open!: () => void;
+    gate = new Promise<void>((r) => (open = r));
+    const running = offerLastWeek('cat', MON);
+    await new Promise((r) => setTimeout(r, 0));
+    markWeekOffered('2026-10-26');
+    open();
+    expect(await running).toBe(false);
+    expect(posted).toHaveLength(0);
+  });
+
+  test('a held week is not said after Wednesday, and not to the next account', async () => {
+    const MON = new Date(2026, 10, 9, 10).getTime(); // last week: Nov 2 to Nov 8
+    const FRI = new Date(2026, 10, 13, 10).getTime();
+    graph = [{ date: '2026-11-04', active_seconds: H2 }];
+    island.post(waiting);
+    expect(await offerLastWeek('cat', MON)).toBe(false);
+    island.clear('wait:c');
+    expect(await offerLastWeek('cat', FRI)).toBe(false);
+    expect(posted).toHaveLength(0);
+
+    const MON2 = new Date(2026, 10, 16, 10).getTime(); // last week: Nov 9 to Nov 15
+    graph = [{ date: '2026-11-11', active_seconds: 7 * H }];
+    island.post(waiting);
+    expect(await offerLastWeek('cat', MON2)).toBe(false);
+    island.clear('wait:c');
+    resetWeekOffer();
+    graph = [];
+    expect(await offerLastWeek('cat', MON2 + 60_000)).toBe(false);
+    expect(posted).toHaveLength(0);
+  });
+
+  test('on a phone with no Dynamic Island a waiting run is not drawn, so it is not in the way', async () => {
+    const MON = new Date(2026, 10, 23, 10).getTime(); // last week: Nov 16 to Nov 22
+    graph = [{ date: '2026-11-18', active_seconds: H2 }];
+    island.setShowsStanding(false);
+    island.post(waiting);
+    expect(await offerLastWeek('cat', MON)).toBe(true);
     expect(posted).toHaveLength(1);
   });
 });

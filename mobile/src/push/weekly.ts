@@ -53,6 +53,8 @@ export async function cancelWeekCard(): Promise<void> {
   scheduledFor = null;
   try {
     await Notifications.cancelScheduledNotificationAsync(WEEK_CARD_ID);
+    // And one already delivered, still sitting in Notification Center for the account that left.
+    await Notifications.dismissNotificationAsync(WEEK_CARD_ID);
   } catch {
     // Nothing scheduled, or no notifications on this platform.
   }

@@ -53,9 +53,10 @@ import { ANIMAL_KEY } from '../icon';
  *
  * A reel you shared (docs/drop-island.md):
  *
- *   drop=sent|reading|planned|refused|started|end[&stale=10][&render=1]
+ *   drop=sent|reading|planned|refused|started|end[&stale=10][&render=1][&dropId=<drop>&moveId=<move>]
  *              one sample drop's card, driven to that phase through the same `dropState` a real
- *              poll uses (no server); `stale` shortens its stale date
+ *              poll uses (no server); `stale` shortens its stale date; `dropId` and `moveId` put a real
+ *              drop's ids on it, so its Start button starts a move the server has
  *   drop=credential   what the share extension would find in the App Group's keychain
  *   drop=direct&url=<link>   the share extension's own send, run from the app, with no queue
  *              fallback: proves the mirrored token and the one route on a simulator
@@ -93,6 +94,8 @@ function DebugLive() {
           url: first('url') ?? null,
           stale: Number.isInteger(stale) && stale >= 1 && stale <= 3600 ? stale : null,
           render: ['1', 'true', 'yes'].includes((first('render') ?? '').toLowerCase()),
+          id: first('dropId') ?? null,
+          move: first('moveId') ?? null,
         },
       };
     }
@@ -188,8 +191,10 @@ const DROP_PHASES = ['sent', 'reading', 'planned', 'refused', 'started', 'end'] 
 
 async function runDrop(r: DropRequest): Promise<string[]> {
   const out: string[] = [liveActivitiesAvailable() ? 'Live Activities are on' : 'Live Activities are off or not in this build'];
+  out.push(`asked: ${r.action}${r.id ? ` for drop ${r.id}` : ''}${r.move ? ` move ${r.move}` : ''}`);
   if ((DROP_PHASES as readonly string[]).includes(r.action)) {
-    out.push(await debugDropCard(r.action as (typeof DROP_PHASES)[number], r.stale ?? undefined));
+    const real = r.id ? { dropId: r.id, moveId: r.move } : undefined;
+    out.push(await debugDropCard(r.action as (typeof DROP_PHASES)[number], r.stale ?? undefined, Date.now(), real));
   } else if (r.action === 'credential') {
     const s = BuilderDrops?.credentialStatus?.();
     out.push(
@@ -232,7 +237,7 @@ interface DebugPayload {
   widget: boolean;
 }
 
-type DropRequest = { action: string; url: string | null; stale: number | null; render: boolean };
+type DropRequest = { action: string; url: string | null; stale: number | null; render: boolean; id: string | null; move: string | null };
 
 type Request =
   | { kind: 'drop'; drop: DropRequest }

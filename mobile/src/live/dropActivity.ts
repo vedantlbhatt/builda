@@ -169,12 +169,20 @@ const DEBUG_REEL = 'https://www.instagram.com/reel/DGxvBNzR8vC';
  * builds, from rows shaped like the server's, so the Lock Screen and the island can be looked at
  * on a simulator. `staleInSeconds` shortens the stale date to photograph "waiting for your Mac".
  */
-export async function debugDropCard(phase: DropPhase | 'end', staleInSeconds?: number, nowMs = Date.now()): Promise<string> {
+export async function debugDropCard(
+  phase: DropPhase | 'end',
+  staleInSeconds?: number,
+  nowMs = Date.now(),
+  real?: { dropId: string; moveId: string | null }
+): Promise<string> {
   const mod = native();
   if (!mod?.startDrop) return 'no drop Live Activity in this build';
+  // A real drop's ids, so the card's Start button starts a move the server has.
+  const dropId = real?.dropId ?? DEBUG_DROP;
+  const firstMove = real?.moveId ?? 'debug-move-1';
   if (phase === 'end') {
-    await mod.endDrop?.(DEBUG_DROP, null, { dismissAfterSeconds: 0 });
-    shown.delete(DEBUG_DROP);
+    await mod.endDrop?.(dropId, null, { dismissAfterSeconds: 0 });
+    shown.delete(dropId);
     return 'ended the sample drop card';
   }
   const status = phase === 'sent' ? 'waiting' : phase === 'reading' ? 'resolving' : phase === 'started' ? 'planned' : phase;
@@ -186,16 +194,16 @@ export async function debugDropCard(phase: DropPhase | 'end', staleInSeconds?: n
   };
   const moves: MoveLike[] = answered
     ? [
-        { id: 'debug-move-1', position: 0, status: phase === 'started' ? 'queued' : 'offered', title: 'Go find the 5 skills', target: 'this_machine' },
+        { id: firstMove, position: 0, status: phase === 'started' ? 'queued' : 'offered', title: 'Go find the 5 skills', target: 'this_machine' },
         { id: 'debug-move-2', position: 1, status: 'offered', title: 'Try one in a scratch clone', target: 'this_machine' },
         { id: 'debug-move-3', position: 2, status: 'offered', title: 'Keep the list', target: 'none' },
       ]
     : [];
-  const state = dropState(drop, moves, { nowMs, startedMoveId: phase === 'started' ? 'debug-move-1' : null });
+  const state = dropState(drop, moves, { nowMs, startedMoveId: phase === 'started' ? firstMove : null });
   if (!state) return `no card for ${phase}`;
   const host = dropHost(DEBUG_REEL);
   const o = { ...opts(state.phase), ...(staleInSeconds ? { staleInSeconds } : {}) };
-  const id = await mod.startDrop({ dropId: DEBUG_DROP, host, platform: platformOf(host) }, state, o);
-  shown.set(DEBUG_DROP, state.phase);
+  const id = await mod.startDrop({ dropId, host, platform: platformOf(host) }, state, o);
+  shown.set(dropId, state.phase);
   return `drop card ${id}: ${state.phase}, ${state.moves} moves${state.firstMoveId ? `, Start ${state.firstMoveId}` : ''}`;
 }

@@ -18,7 +18,7 @@ same object as the in-app demo island, in a second body.
 | compact leading | the record light: a faint dot while asked, the data red while the Mac films, the data green once the kit is up, a red cross when it could not be made | the in-app island's demo dot, so it is recognisably the same thing; red is what a record light is everywhere; a failure is a cross so red never has to mean two things |
 | compact trailing | how long since you asked, as a system timer (`4:30`, `1:02:00`), or the answer in one word: `kit` in the green, `no kit` in the red | the in-app ear's clock and its word `kit`. A system timer, not a written "4m": a number in the state froze on the Lock Screen for as long as the app was away (`LiveMarks.swift ElapsedTimer` records it) |
 | minimal | the light alone | minimal is shown when another app also has an activity; the light says Builda and where it stands at 26 pt |
-| expanded | the light and "Demo" beside the camera, the timer (or the clock time it landed) on the right, the project's title in the project's own hue, the walk `asked`, `filming`, `kit up` on one hairline with the current stop in the light's colour, and when ready a **Share** button with "Tap to share it anywhere." | the one place with room to act; Share is a link, `builder://ship/<key>`, the screen the in-app island opens when its demo is tapped |
+| expanded | the light and "Demo" beside the camera, the timer (or the clock time it landed) on the right, the project's title in the project's own hue, the walk `asked`, `filming`, `kit up` (or `made`, or `no kit`) on one hairline with the current stop in the light's colour, and when ready a **Share** button with "Tap to share it anywhere." | the one place with room to act; Share is a link, `builder://ship/<key>`, the screen the in-app island opens when its demo is tapped |
 | Lock Screen | the same, on the dark card | for a phone with no Dynamic Island, and for a locked phone |
 
 A failure's walk ends `no kit` in the red and the line under it is the kit screen's own:
@@ -221,11 +221,8 @@ Not verified, and how to verify on a device:
   ActivityKit hands it over; if the process is suspended first, it goes on the next foreground
   sync, and the pushes in between have nowhere to go (the card still counts its timer and moves
   when the app next polls). Only a device shows how often that happens.
-- **The ready card's promise.** Like the in-app island, the card says "The kit is up" for a request
-  the Mac finished `done`, which includes a kit made but not published (a worker run without
-  `--publish-requests`, or a publish that failed); the kit screen then says to publish it on the
-  Mac. Making both islands say so would mean the request carrying whether its kit was published,
-  a server and worker change beyond this branch.
+- **The ready card's promise.** FIXED after the merge: a done request with no kit of its own is
+  `made` on both islands, and on the push (below, "Done is not the same as up").
 - **The in-app island after a relaunch.** FIXED after the merge: the root poll (`resumeDemos`, at most every five minutes) reads every project's requests and tracks the newest queued or claimed one per project again, from when it was asked. Checked on the simulator: request, kill the app, relaunch, and the island shows it.
 
 ## Done is not the same as up (added after the merge)
@@ -234,6 +231,47 @@ A request the Mac finished WITHOUT publishing (a worker run without `--publish-r
 `done`, and both islands used to say "the kit is up" for it. `shipkit/model.kitFromRequest` is now the
 one rule (a kit published at or after the Mac took the request) for the kit screen and the in-app
 island: when the kit is not from this request the in-app island says "The demo of X is made on your
-Mac. Publish it there to share it." and takes the system card down. The server's push for `done` does
-not know either, so while the app is in the background the system card can still say "kit up" until
-the app next opens; fixing that needs the finish route to ask the same question of `ship_kits`.
+Mac. Publish it there to share it." The system card now has a phase for it, `made`, decided by the
+same rule on both sides:
+
+- **The card.** A dim grey light (`spectrum.demo.made`, `surface.textDim`: legible and neutral,
+  because green would promise a Share there is nothing behind), the ear says `made`, the walk ends
+  `asked`, `filming`, `made`, and the line is the in-app notice's own sentence, "Made on your Mac.
+  Publish it there to share it.", with no Share. Renders: `shots/motion/demo-island/demo-*-made.png`
+  and `demo-*-made-long-name.png`, all four surfaces.
+- **The server.** `demo_push.content_state` takes the project's kit publish time (the newest
+  `ship_kits` row, exactly what `GET /v1/projects/{key}/kit` answers as `published_at`) and a done
+  request is `ready` only when that is at or after the request's `claimed_at` (else `created_at`),
+  compared in whole milliseconds, the precision `Date.parse` reads, so the two sides cannot split
+  on a sub millisecond edge; `made` otherwise. The finish route's push says `made` for the default
+  worker and `ready` for `--publish-requests` (which publishes before it finishes).
+- **Made to ready.** `RANK` puts made below ready (asked 0, filming 1, made 2, ready and failed 3),
+  and the kit publish route (`PUT /v1/projects/{key}/kit`) calls `demo_push.after_publish` after its
+  commit, which moves every card of that project still at `made` to `ready`, with the alert and its
+  Share. A second publish is not news; a card for another project is not touched; a card still
+  filming stays filming (its request is still claimed). Migration `0033_demo_activity_made` (after
+  0032) widens the `shown_phase` CHECK; its way back puts a made card at `filming`.
+- **Made is quiet** (`MADE_IS_QUIET`): priority 5, no alert. An alert lights the screen and expands
+  the island, the card's budget for "act on this now, here"; made asks you to act on the Mac, and
+  the ready that follows a publish is the moment worth waking the phone for, which would otherwise
+  be the second alert for one demo.
+- **Holding it.** Made takes an answer's stale date and the server's fifteen minute hold (the
+  Mac's claim poll ends it, and a publish restarts the hold as ready). It is NOT final on the
+  phone: the in-app beat that ends a ready or failed card does not end a made one, so a publish can
+  still move it; the foreground sweep ends it at its stale date.
+- **The phone.** `demoState` reads the same `kitFromRequest`; a done request with no kit time given
+  is `made`, the phase that promises less. `trackDemo`'s done branch moves the system card to
+  whichever the rule says (it used to take it down when the kit was not this request's).
+  `spec/fixtures/demos/activity_state.json` holds both sides to made and ready cases: no kit, the
+  field absent, an older kit from before the claim, a kit at the claim's own instant, one in the
+  claim's millisecond, one a microsecond before it, and a row with no claim time.
+
+Verified for `made` (2026-09-19, branch `claude/motion-demoisland2`): `server/tests/test_demo_island.py`
+against my own `builder_overnight_demoisland_test` migrated to 0033 (and 0033 taken down to 0032 and
+back up, the CHECK read from `pg_constraint` each way): the default finish says made quietly, a publish
+then says ready with the alert and once only, `--publish-requests` goes straight to ready, an older kit
+leaves it made, a publish moves only its own project's cards, a made card comes down after the hold;
+with `test_shipkit.py`, `test_drop_island.py` and `test_boot.py` 86 passed, the whole server suite 577 passed with none skipped, and `make lint` clean.
+`bun test` 2765 pass, `npx tsc --noEmit` clean, `make gen && git diff --exit-code` clean. The made
+renders came from the widget's own renderer on my own simulator. Not verified: a real push reaching a
+phone (no APNs key here), as before.

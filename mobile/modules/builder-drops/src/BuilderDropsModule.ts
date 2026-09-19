@@ -1,6 +1,6 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
-import type { PendingDrop } from './BuilderDrops.types';
+import type { PendingDrop, ShareItemsResult } from './BuilderDrops.types';
 
 declare class BuilderDropsModule extends NativeModule {
   /**
@@ -14,6 +14,12 @@ declare class BuilderDropsModule extends NativeModule {
   takePending(): PendingDrop[];
   /** How many are waiting, without taking them. For Settings and the tests. */
   pendingCount(): number;
+  /**
+   * One share sheet with every file (local file paths or file:// URLs) and the text, for the
+   * ship kit (docs/ship-kit.md). The text also goes on the pasteboard, because some apps drop it
+   * when files come with it. Resolves when the sheet closes: whether it was sent, and where.
+   */
+  shareItems(paths: string[], text?: string | null): Promise<ShareItemsResult>;
 }
 
 /**

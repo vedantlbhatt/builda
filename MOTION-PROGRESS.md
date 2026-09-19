@@ -27,6 +27,18 @@ parallel by subagents in their own worktrees, to be merged here when they report
 
 ## Done
 
+- **The pixel diet** (03a51ad): `Band` is an inset card whose hue grows down on the island spring
+  (`springAt`), no dithered fringe anywhere; a number counts up once per screen (the page's
+  `counted`); Sessions opens on the week (no live slab), Projects on `HoursSplit`, You's creature
+  is a living `Face`.
+- **Now** (78fe98e): `IslandStage`, the island opened full width; tiles are dark cards with a face,
+  a hue wash and the aura on the one that needs you. The radar is gone.
+- **Drops** (d4492dc, a1ca1a3): the wall (`src/drops/wall/`), bands by what happens next, 9:16
+  posters, moves on the card, a drop opens out of its exact poster (`Opening`, `ui/overlay.tsx`).
+- **Real data on the local stack**: the real corpus is synced into the drops stack
+  (`~/.builder-drops-stack/corpus`, symlinks), and this overnight session's transcript is tailed
+  into the hook route (`overnight_stack.sh live <jsonl>`), so the island and Now show a real live
+  session.
 - **Widget faces.** `scripts/gen_widget_creatures.py` draws each animal twice more, lids down and
   eyes up; the Lock Screen and both island presentations draw the phase's face.
 - **The in-app island** (`mobile/src/island/`): fused to the hardware island, the crew, needs

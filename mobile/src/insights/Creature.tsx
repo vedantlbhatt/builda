@@ -1,16 +1,23 @@
 /**
- * The builder's creature, drawn two ways: large, printing itself pixel by pixel onto its band
- * (a `PixelField`, each cell arriving in a random order, then still: one creature per screen,
- * and this one does not idle), and small, as a flat mark beside an archetype's rule.
+ * The builder's creature, drawn two ways: large, arriving on its band, and small, as a flat mark
+ * beside an archetype's rule.
+ *
+ * WHAT CHANGED (docs/motion.md, the pixel diet). The large one used to PRINT itself, each cell
+ * arriving in a random order, on nine screens, the same half second of pixels every time a page
+ * opened. The pixel art stays (it is the identity); the pixel-by-pixel print does not. It arrives
+ * the way everything arrives now: whole, growing from 0.86 on the island spring (`springAt`, read
+ * off its block's clock) and hanging a few points down into place, a beat after its band.
  *
  * The frames are the pack's own (`src/pixel/animals.ts`, frame 0, the rest pose); only the ink
  * is this page's, so the creature wears its hue from the colour sheet.
  */
 import React, { useMemo } from 'react';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Rect } from 'react-native-svg';
 
+import { springAt } from '../motion/spec';
 import { ANIMAL_FRAMES, type Animal } from '../pixel/animals';
-import { cellHash, PixelField, type PixelCell } from './Pixels';
+import { useClock, useReducedSV } from './reveal';
 
 const GRID = 16;
 
@@ -23,24 +30,28 @@ function inked(animal: Animal): { x: number; y: number }[] {
   return out;
 }
 
-/** Large, on a band. `size` snaps down to whole points per cell so pixels stay square. */
-export function CreaturePrint({ animal, size, color, delay = 0, spread = 520 }: { animal: Animal; size: number; color: string; delay?: number; spread?: number }) {
+/**
+ * Large, on a band. `size` snaps down to whole points per cell so pixels stay square. `spread` is
+ * kept for the callers that still pass it (it was the print's length) and no longer read.
+ */
+export function CreaturePrint({ animal, size, color, delay = 0 }: { animal: Animal; size: number; color: string; delay?: number; spread?: number }) {
   const px = Math.max(1, Math.floor(size / GRID));
   const drawn = px * GRID;
-  const cells: PixelCell[] = useMemo(
-    () =>
-      inked(animal).map(({ x, y }) => ({
-        x: x * px,
-        y: y * px,
-        w: px,
-        h: px,
-        color,
-        // Random order, a little biased to the top, like the band it sits on.
-        delay: delay + (cellHash(x, y, 7) * 0.7 + (y / GRID) * 0.3) * spread,
-      })),
-    [animal, px, color, delay, spread],
+  const clock = useClock();
+  const reduced = useReducedSV();
+  const arrive = useAnimatedStyle(() => {
+    if (reduced.value) return { opacity: 1, transform: [{ scale: 1 }, { translateY: 0 }] };
+    const p = springAt(clock.value - delay);
+    return {
+      opacity: Math.min(1, Math.max(0, (clock.value - delay) / 120)),
+      transform: [{ scale: 0.86 + 0.14 * p }, { translateY: (1 - p) * -6 }],
+    };
+  });
+  return (
+    <Animated.View style={[{ width: drawn, height: drawn }, arrive]} accessible accessibilityLabel={`${animal}, your creature`}>
+      <CreatureMark animal={animal} size={drawn} color={color} />
+    </Animated.View>
   );
-  return <PixelField cells={cells} width={drawn} height={drawn} duration={90} grow={false} accessibilityLabel={`${animal}, your creature`} />;
 }
 
 /** Small and still, beside a rule: whole pixels at 16, 20 or 24 points. */

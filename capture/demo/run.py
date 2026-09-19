@@ -13,12 +13,15 @@ import sys
 import time
 
 from . import compose, detect, fallback, manifest, paths, privacy, storyboard, tools
+from . import devices as table
 from . import project as pj
 from . import transcripts as tx
 from .result import Capture, CaptureError
 from .workspace import Sandbox, Workspace, WorkspaceError, prepare
 
-OUR_FILES = ("manifest.json", "demo.mp4", "poster.jpg")
+OUR_FILES = ("manifest.json", "demo.mp4", "poster.jpg", "capture.json")
+#: A web project's desktop pass lives in a folder of its own beside the phone's demo.
+DESKTOP_DIR = "desktop"
 
 
 def say(msg: str = "") -> None:
@@ -133,6 +136,8 @@ def _promote(staging: pathlib.Path, out: pathlib.Path) -> None:
     for p in out.iterdir():
         if p.is_file() and (p.name in OUR_FILES or p.name.startswith("still-")):
             p.unlink()
+        elif p.is_dir() and p.name == DESKTOP_DIR:
+            shutil.rmtree(p)
     for p in sorted(staging.iterdir(), key=lambda x: x.name == "manifest.json"):
         os.replace(p, out / p.name)
     staging.rmdir()
@@ -163,6 +168,79 @@ def check_app(app_arg: str, plan: detect.Plan, ws: Workspace) -> pathlib.Path:
         say(f"    a Debug app: filming a copy pinned to this run's Metro ({copy})")
         return copy
     return app
+
+
+def phone_for(a: argparse.Namespace, story: dict, evidence) -> tuple[dict, str, str | None]:
+    """The device table row an iOS demo is filmed on (`devices.choose_phone`): `--device`, then
+    the storyboard's `device.row`, then the project's own most used simulator, then the default."""
+    explicit = getattr(a, "device", None) or ((story or {}).get("device") or {}).get("row")
+    return table.choose_phone(evidence.commands if evidence else (), explicit=explicit)
+
+
+def check_sizes(cap: Capture) -> None:
+    """Every capture is its device row's size, or the run is refused (`devices.check_capture`,
+    the code `frame_size_mismatch`). A web recording is held to the row's POINTS: Playwright
+    records CSS pixels whatever the device scale, and says so (web.py)."""
+    from .compose import probe
+
+    for c in [cap, cap.desktop] if cap.desktop is not None else [cap]:
+        if c.device is None:
+            continue
+        row = table.by_id(c.device)
+        for st in c.stills:
+            if st.source == "capture" and not st.own_size:
+                table.check_capture(row, *manifest.image_size(st.path), what=st.path.name)
+        if c.video is not None and c.video.exists():
+            info = probe(c.video)
+            web = c.video.suffix == ".webm"
+            want = row if not web else {**row, "pixels": row["points"]}
+            table.check_capture(want, info["width"], info["height"], what=f"the recording {c.video.name}")
+
+
+def place_desktop(cap: Capture, composed: dict | None, staging: pathlib.Path, notes: list[str]) -> list[str]:
+    """A web project's desktop pass into `staging/desktop/`: its stills and its composed video.
+    Returns the files placed, relative to staging."""
+    d = cap.desktop
+    if d is None:
+        return []
+    out = paths.private_dir(staging / DESKTOP_DIR)
+    files: list[str] = []
+    for i, st in enumerate(d.stills[: storyboard.MAX_STILLS], 1):
+        try:
+            placed = place_image(st.path, out, f"still-{i:02d}")
+        except CaptureError as e:
+            notes.append(f"desktop: {e}")
+            continue
+        files.append(f"{DESKTOP_DIR}/{placed.name}")
+    if composed is not None:
+        shutil.copyfile(composed["video"], out / "demo.mp4")
+        shutil.copyfile(composed["poster"], out / "poster.jpg")
+        files += [f"{DESKTOP_DIR}/demo.mp4", f"{DESKTOP_DIR}/poster.jpg"]
+    return files
+
+
+def write_capture(staging: pathlib.Path, cap: Capture, composed: dict | None, desk: dict | None, desktop_files: list[str], desk_refused: list[dict]) -> None:
+    """`capture.json` beside the manifest: which device row the demo was filmed on, where each
+    beat is in the finished video and where its first tap landed, and the desktop pass. The
+    manifest keeps its exact shape (demo_publish reads it); the ship kit reads this."""
+    doc = {
+        "version": 1,
+        "device": cap.device,
+        "timeline": (composed or {}).get("timeline") or [],
+        "poster_at": (composed or {}).get("poster_at"),
+        "stills": [{"label": st.label, "own_size": st.own_size} for st in cap.stills[: storyboard.MAX_STILLS]],
+        "desktop": None,
+    }
+    if cap.desktop is not None and desktop_files:
+        doc["desktop"] = {
+            "device": cap.desktop.device,
+            "files": desktop_files,
+            "labels": [st.label for st in cap.desktop.stills[: storyboard.MAX_STILLS]],
+            "timeline": (desk or {}).get("timeline") or [],
+            "poster_at": (desk or {}).get("poster_at"),
+            "privacy": {"checked": not any("could not run" in r.get("reason", "") for r in desk_refused), "refused": desk_refused},
+        }
+    (staging / "capture.json").write_text(json.dumps(doc, indent=1) + "\n")
 
 
 def is_own(evidence) -> bool:
@@ -306,6 +384,7 @@ def main(a: argparse.Namespace) -> int:
         return 2
     cap: Capture | None = None
     composed: dict | None = None
+    desk_composed: dict | None = None
     if reason is None:
         try:
             if ws is None:
@@ -341,7 +420,9 @@ def main(a: argparse.Namespace) -> int:
                 if a.until == "build":
                     say(f"  built {app}")
                     return 0
-                cap = ios.run(plan, ws, story, app, a.sim, run_dir)
+                row, why, type_id = phone_for(a, story, evidence)
+                say(f"  device: {why}")
+                cap = ios.run(plan, ws, story, app, a.sim, run_dir, row=row, type_id=type_id)
             elif plan.kind == "web":
                 from . import web
 
@@ -351,13 +432,22 @@ def main(a: argparse.Namespace) -> int:
 
                 cap = terminal.run(plan, ws, story, run_dir, sandbox)
             notes.extend(cap.notes)
+            check_sizes(cap)
             (run_dir / "beats.json").write_text(json.dumps(
                 [{"label": b.label, "caption": b.caption, "start": b.start, "end": b.end, "video": str(b.video) if b.video else None} for b in cap.beats],
                 indent=1,
             ))  # fmt: skip
+            row = table.by_id(cap.device) if cap.device else None
             if cap.video is not None and not a.no_video:
                 say("  composing the video")
-                composed = compose.compose(cap.video, cap.beats, run_dir)
+                composed = compose.compose(cap.video, cap.beats, run_dir, device=row)
+            if cap.desktop is not None and cap.desktop.video is not None and not a.no_video:
+                say("  composing the desktop pass")
+                try:
+                    desk_composed = compose.compose(cap.desktop.video, cap.desktop.beats, paths.private_dir(run_dir / DESKTOP_DIR), device=table.by_id(cap.desktop.device))
+                except CaptureError as e:
+                    notes.append(f"the desktop pass is left out: {e}")
+                    cap.desktop = None
         except (CaptureError, WorkspaceError, storyboard.StoryboardError, tools.ToolError) as e:
             reason = str(e)
             say(f"  the run did not finish: {reason}")
@@ -414,6 +504,7 @@ def main(a: argparse.Namespace) -> int:
                 notes.append(f"{placed.name} is {p.relative_to(top) if top and str(p).startswith(str(top)) else p}")
 
     assets = drop_same_pictures(staging, assets, notes)
+    desktop_files = place_desktop(cap, desk_composed, staging, notes) if cap is not None and cap.stills else []
     if not assets:
         shutil.rmtree(staging, ignore_errors=True)
         say(f"\nRefused: {reason or 'nothing to show'}. No demo was written, and nothing was invented in its place.")
@@ -430,6 +521,17 @@ def main(a: argparse.Namespace) -> int:
     except (RuntimeError, tools.ToolError) as e:
         checked, refused = False, []
         say(f"    the check could not run ({e}); the demo is marked unchecked and cannot be published")
+    desk_refused: list[dict] = []
+    if desktop_files and checked:
+        try:
+            d_stills = [staging / f for f in desktop_files if f.endswith(".png") or f.endswith(".jpg")]
+            d_video = staging / DESKTOP_DIR / "demo.mp4"
+            desk_refused, d_read = privacy.check(d_stills, d_video if d_video.exists() else None, names, staging / DESKTOP_DIR / "poster.jpg" if d_video.exists() else None, other_names=others)
+            say(f"    and the desktop pass: read {d_read} images; {len(desk_refused)} refusal(s)")
+        except (RuntimeError, tools.ToolError) as e:
+            desk_refused = [{"file": DESKTOP_DIR, "reason": f"the check could not run: {e}", "text": "", "box": {"x": 0, "y": 0, "width": 0, "height": 0}}]
+    if cap is not None and cap.stills:
+        write_capture(staging, cap, composed, desk_composed, desktop_files, desk_refused)
     m = manifest.build(project.key, kind, m_commit, m_when, assets, refused, checked)
     manifest.write(staging, m)
     _promote(staging, out)

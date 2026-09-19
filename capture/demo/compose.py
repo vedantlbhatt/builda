@@ -40,9 +40,27 @@ FREEZE_MIN = 0.5
 MIN_TOTAL, MAX_TOTAL = 10.0, 30.0
 #: Where a too long video is sped to: under the cap, with room for the crossfades' rounding.
 FIT_TOTAL = 28.0
-#: The caption's bottom edge, as a share of the frame's height from the bottom: above an iOS
-#: tab bar (83 pt of 874 on an iPhone 16 Pro is 9.5%) so it never covers the navigation.
-CAPTION_BOTTOM = 0.115
+#: UIKit's tab bar is 49 points tall on an iPhone in portrait, above the home indicator's safe
+#: area; a caption sits this far above both so it never covers the navigation. The safe area is
+#: the device row's (spec/devices.v1.json): on the iPhone 17 Pro it is 34 points, so the caption's
+#: bottom edge is (34 + 49 + 17.5) / 874 = 11.5% up, which is where every earlier demo put it
+#: when the share was a constant typed for that one phone.
+TAB_BAR_POINTS = 49
+CAPTION_GAP_POINTS = 17.5
+
+
+def caption_bottom(device: dict | None) -> float:
+    """The caption's bottom edge as a share of the frame's height, from the device row: above the
+    home indicator and a tab bar on a phone or tablet, a gap alone in a Mac window or a terminal
+    (pure)."""
+    if device is None:
+        return 0.06
+    h = device["points"][1]
+    if device["family"] == "mac":
+        return round(CAPTION_GAP_POINTS * 2 / h, 4)
+    return round((device["safe_area"]["bottom"] + TAB_BAR_POINTS + CAPTION_GAP_POINTS) / h, 4)
+
+
 CRF_BEAT, CRF_FINAL = 16, 23
 
 
@@ -164,6 +182,7 @@ def beat_command(
     caption_png: str | None = None,
     caption_text_file: str | None = None,
     fontfile: str | None = None,
+    bottom_share: float = 0.115,
 ) -> list[str]:
     w, h = even(size[0]), even(size[1])
     args = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
@@ -185,7 +204,7 @@ def beat_command(
         cur = "[cat]"
     else:
         cur = "[s0]"
-    bottom = round(h * CAPTION_BOTTOM)
+    bottom = round(h * bottom_share)
     if caption_text_file and fontfile:
         fs = round(w * 0.041)
         parts.append(
@@ -306,9 +325,25 @@ def _font() -> str | None:
     return None
 
 
-def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.Path) -> dict:
+def timeline(beats: list[BeatWindow], durations: list[float], speed: float = 1.0, pad: float = 0.0, fade: float = FADE) -> list[dict]:
+    """Where each beat is in the FINISHED video, in its seconds: the social formats zoom and draw
+    a tap ring on this clock (shipkit.frame), so it is computed from the same numbers `join_command`
+    cuts with, never re-estimated (pure). A beat's `start` is where its clip starts, under the
+    crossfade from the one before."""
+    out: list[dict] = []
+    t = 0.0
+    for k, (b, d) in enumerate(zip(beats, durations)):
+        start = t
+        end = start + d / speed + (pad if k == len(durations) - 1 else 0.0)
+        out.append({"label": b.label, "caption": b.caption, "start": round(start, 3), "end": round(end, 3), "tap": list(b.tap) if b.tap else None})
+        t = start + d / speed - fade
+    return out
+
+
+def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.Path, device: dict | None = None) -> dict:
     """demo.mp4 and poster.jpg in `out_dir`. Each beat is a window of `raw`, or of its own clip
-    (`BeatWindow.video`). Returns their facts for the manifest."""
+    (`BeatWindow.video`). `device` is the row it was filmed on, for where the caption sits.
+    Returns their facts for the manifest, and the beats' places in the finished video."""
     if not beats:
         raise CaptureError("nothing to compose: the pass recorded no beats")
     ff = tools.ffmpeg()
@@ -336,7 +371,7 @@ def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.
         cfr, info_raw, _ = source(raw)
         beats = align(cfr, beats, work, info_raw["duration"])
         (work / "aligned.json").write_text(json.dumps([{"label": b.label, "start": b.start, "end": b.end} for b in beats], indent=1))
-    files, durations = [], []
+    files, durations, kept = [], [], []
     freeze_count = 0
     for k, b in enumerate(beats, 1):
         if (b.video or raw) is None:
@@ -355,12 +390,16 @@ def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.
                 cap_png = str(work / f"caption-{k:02d}.png")
                 _run_helper_caption(b.caption, even(size[0]), cap_png)
         out = work / f"beat-{k:02d}.mp4"
-        _run(beat_command(ff, str(src), segs, str(out), size, cap_png, cap_txt, _font() if use_drawtext else None), f"cutting beat {k}")
+        _run(
+            beat_command(ff, str(src), segs, str(out), size, cap_png, cap_txt, _font() if use_drawtext else None, caption_bottom(device)),
+            f"cutting beat {k}",
+        )
         d = probe(out)["duration"]
         if d <= FADE + 0.1:
             continue
         files.append(str(out))
         durations.append(d)
+        kept.append(b)
     if not files:
         raise CaptureError("every beat came out empty after the holds were cut")
     speed, pad = fit(durations)
@@ -378,6 +417,8 @@ def compose(raw: pathlib.Path | None, beats: list[BeatWindow], out_dir: pathlib.
         "freezes": freeze_count,
         "speed": speed,
         "captions": "drawtext" if use_drawtext else "overlay",
+        "timeline": timeline(kept, durations, speed, pad),
+        "poster_at": round(poster_time(durations, speed), 3),
     }
 
 

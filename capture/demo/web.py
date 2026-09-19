@@ -1,4 +1,4 @@
-"""`web`: the dev server in the clone, then Playwright over its routes.
+"""`web`: the dev server in the clone, then Playwright over its routes, as a phone and as a Mac.
 
 The server is the plan's run step (the transcript's command, the package.json script, or
 Railpack's rule), started under the allowlisted environment with `PORT` set, inside the sandbox
@@ -7,15 +7,23 @@ that picks its own port (Vite's 5173, Next's 3000) is found from what it prints.
 
 The driver is a Python script run with the Playwright venv's interpreter (`tools.playwright_python`),
 so capture itself still imports nothing outside the standard library. It records one pass through
-the beats in a phone sized viewport (so the video is portrait like every other demo), takes a
-still of each beat once the page has SETTLED: the network idle, `document.fonts.ready`, every
-image decoded, two animation frames, and two screenshots in a row identical (OpenVidStudio's
-settle rules, docs/research/demo-capture.md section 3). Requests to analytics hosts are aborted
-with `page.route` (section 4, "Phoning home").
+the beats in a PHONE's viewport, a row of spec/devices.v1.json (`devices.web_phone`, or the
+storyboard's `device.row`), and takes a still of each beat once the page has SETTLED: the network
+idle, `document.fonts.ready`, every image decoded, two animation frames, and two screenshots in a
+row identical (OpenVidStudio's settle rules, docs/research/demo-capture.md section 3). Requests to
+analytics hosts are aborted with `page.route` (section 4, "Phoning home").
+
+THE DESKTOP PASS. Every website used to be filmed as a phone and nothing else, so a site people
+open on a laptop was shown only in a shape it is rarely seen in, and the 16:9 post had a phone in
+the middle of a wide frame. The same beats now run a second time in a Mac window (a `mac` row,
+`devices.web_desktop`, or `device.desktop`; `false` skips it), recorded and stilled the same way,
+without the phone's touch emulation. It is optional: a desktop pass whose pictures do not show
+what the storyboard expects is left out with a note, never a reason to lose the phone's demo.
 
 Every beat and still is then held to what its label says, as on iOS (`ios.Driver.expect`): a
 page the server refused (4xx, 5xx) stops the run, and `expect` must be on the settled picture,
-read with Vision (`_verify`).
+read with Vision (`_verify`). A beat's first click also records where it landed (the element's
+box, as fractions of the viewport), which the social formats draw a ring at (`BeatWindow.tap`).
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ import subprocess
 import sys
 import time
 
+from . import devices as table
 from . import tools
 from .detect import Plan
 from .result import BeatWindow, Capture, CaptureError, Still
@@ -41,8 +50,6 @@ BLOCK_HOSTS = (
     "clarity.ms", "fullstory.com", "datadoghq.com", "logrocket.io", "heapanalytics.com",
     "vercel-insights.com", "va.vercel-scripts.com",
 )  # fmt: skip
-VIEWPORT = {"width": 402, "height": 874}
-SCALE = 3
 
 _URL_IN_LOG = re.compile(r"https?://(?:localhost|127\.0\.0\.1|\[::1\]):(\d{2,5})")
 
@@ -51,10 +58,11 @@ import json, sys, time, hashlib
 from playwright.sync_api import sync_playwright
 
 job = json.load(open(sys.argv[1]))
-out = {"beats": [], "stills": [], "notes": [], "checks": []}
+out = {"beats": [], "stills": [], "notes": [], "checks": [], "prefix": ""}
 block = tuple(job["block_hosts"])
-# The last `open` the server refused, as [path, status]; reset at every beat.
-state = {"refused": None}
+# The last `open` the server refused, as [path, status]; reset at every beat. `tap` is where the
+# beat's first click landed, as fractions of the viewport, or None.
+state = {"refused": None, "tap": None, "viewport": job["viewport"]}
 
 def blocked(url):
     host = url.split("/")[2] if "://" in url else ""
@@ -80,6 +88,20 @@ def settle(page, timeout):
         prev = h
         time.sleep(0.4)
 
+def saw_tap(x, y):
+    if state["tap"] is None:
+        vw, vh = state["viewport"]["width"], state["viewport"]["height"]
+        state["tap"] = [round(min(1, max(0, x / vw)), 4), round(min(1, max(0, y / vh)), 4)]
+
+def click(loc):
+    try:
+        box = loc.bounding_box()
+    except Exception:
+        box = None
+    if box:
+        saw_tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    loc.click()
+
 def act(page, a):
     (k, v), = a.items()
     if k == "open":
@@ -91,17 +113,19 @@ def act(page, a):
         settle(page, float(v))
     elif k == "tap":
         if isinstance(v, str):
-            page.get_by_text(v, exact=False).first.click()
+            click(page.get_by_text(v, exact=False).first)
         elif "id" in v:
-            page.locator("#" + v["id"]).first.click()
+            click(page.locator("#" + v["id"]).first)
         elif "text" in v:
             loc = page.get_by_text(v["text"], exact=False).first
             if v.get("optional") and loc.count() == 0:
                 return
-            loc.click()
+            click(loc)
         elif "point" in v:
             x, y = [float(p.strip().rstrip("%")) / 100 for p in v["point"].split(",")]
-            page.mouse.click(x * job["viewport"]["width"], y * job["viewport"]["height"])
+            vw, vh = state["viewport"]["width"], state["viewport"]["height"]
+            saw_tap(x * vw, y * vh)
+            page.mouse.click(x * vw, y * vh)
     elif k == "swipe":
         dy = {"up": 600, "down": -600}.get(v, 0)
         dx = {"left": 400, "right": -400}.get(v, 0)
@@ -114,13 +138,63 @@ def act(page, a):
     elif k == "back":
         page.go_back()
 
-def check(label, pattern, shot, path, optional=False):
+def check(bucket, label, pattern, shot, path, optional=False):
     """What `_verify` needs to hold the picture to its label: the refused open, and the settled
     picture (a beat that is not a still keeps one for Vision)."""
     if pattern and path is None:
-        path = f"{job['run_dir']}/check-{len(out['checks']) + 1:02d}.png"
+        path = f"{job['run_dir']}/check-{bucket['prefix']}{len(bucket['checks']) + 1:02d}.png"
         open(path, "wb").write(shot)
-    out["checks"].append({"label": label, "refused": state["refused"], "pattern": pattern, "shot": path, "optional": optional})
+    bucket["checks"].append({"label": label, "refused": state["refused"], "pattern": pattern, "shot": path, "optional": optional})
+
+def film(browser, bucket, viewport, scale, mobile, video_dir):
+    """One recorded pass through the beats in one viewport: its beats, stills and checks go in
+    `bucket`, and the video's path is returned."""
+    state["viewport"] = viewport
+    ctx = browser.new_context(
+        viewport=viewport, device_scale_factor=scale, is_mobile=mobile, has_touch=mobile,
+        color_scheme=job.get("color_scheme") or "light",
+        record_video_dir=video_dir,
+        # The viewport's own size: Playwright records CSS pixels whatever the device scale and
+        # only ever scales DOWN, so twice the viewport put the page in the top left quarter of a
+        # grey frame (FOUND ON THE FIRST WEB DEMO, 2026-09-14). Softer than the stills.
+        record_video_size={"width": viewport["width"], "height": viewport["height"]},
+    )
+    t0 = time.monotonic()
+    ctx.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
+    page = ctx.new_page()
+    last = None
+    n = 0
+    for b in job["beats"]:
+        state["refused"] = None
+        state["tap"] = None
+        start = time.monotonic() - t0
+        for a in b["actions"]:
+            act(page, a)
+        shot = settle(page, b["settle"])
+        if last is not None and shot == last and b["actions"]:
+            # The page did not change: act once more, then keep what it shows (the run's
+            # manifest step still refuses the same picture twice).
+            bucket["notes"].append("re-shot " + b["label"] + ": the page did not change")
+            for a in b["actions"]:
+                act(page, a)
+            shot = settle(page, b["settle"])
+        last = shot
+        tap = state["tap"]
+        if b.get("film") == "settled":
+            start = time.monotonic() - t0
+            tap = None
+        path = None
+        if b["still"]:
+            n += 1
+            path = f"{job['run_dir']}/{bucket['prefix']}still-{n:02d}.png"
+            open(path, "wb").write(shot)
+            bucket["stills"].append({"path": path, "label": b["label"]})
+        check(bucket, b["label"], b.get("expect"), shot, path)
+        time.sleep(b["hold"])
+        bucket["beats"].append({"label": b["label"], "caption": b["caption"], "start": start, "end": time.monotonic() - t0, "tap": tap})
+    video = page.video.path() if page.video else None
+    ctx.close()
+    return str(video) if video else None, n
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
@@ -128,52 +202,14 @@ with sync_playwright() as p:
     out["video"] = None
     # Nothing is filmed when no beat is (`--no-video` makes every beat a still).
     if job["beats"]:
-        ctx = browser.new_context(
-            viewport=job["viewport"], device_scale_factor=job["scale"], is_mobile=True, has_touch=True,
-            color_scheme=job.get("color_scheme") or "light",
-            record_video_dir=job["video_dir"],
-            # The viewport's own size: Playwright records CSS pixels whatever the device scale and
-            # only ever scales DOWN, so twice the viewport put the page in the top left quarter of a
-            # grey frame (FOUND ON THE FIRST WEB DEMO, 2026-09-14). Softer than the 3x stills.
-            record_video_size={"width": job["viewport"]["width"], "height": job["viewport"]["height"]},
-        )
-        t0 = time.monotonic()
-        ctx.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
-        page = ctx.new_page()
-        last = None
-        for b in job["beats"]:
-            state["refused"] = None
-            start = time.monotonic() - t0
-            for a in b["actions"]:
-                act(page, a)
-            shot = settle(page, b["settle"])
-            if last is not None and shot == last and b["actions"]:
-                # The page did not change: act once more, then keep what it shows (the run's
-                # manifest step still refuses the same picture twice).
-                out["notes"].append("re-shot " + b["label"] + ": the page did not change")
-                for a in b["actions"]:
-                    act(page, a)
-                shot = settle(page, b["settle"])
-            last = shot
-            if b.get("film") == "settled":
-                start = time.monotonic() - t0
-            path = None
-            if b["still"]:
-                n += 1
-                path = f"{job['run_dir']}/still-{n:02d}.png"
-                open(path, "wb").write(shot)
-                out["stills"].append({"path": path, "label": b["label"]})
-            check(b["label"], b.get("expect"), shot, path)
-            time.sleep(b["hold"])
-            out["beats"].append({"label": b["label"], "caption": b["caption"], "start": start, "end": time.monotonic() - t0})
-        video = page.video.path() if page.video else None
-        ctx.close()
-        out["video"] = str(video) if video else None
+        out["video"], n = film(browser, out, job["viewport"], job["scale"], True, job["video_dir"])
+
     def context(viewport, scale):
         c = browser.new_context(viewport=viewport, device_scale_factor=scale, is_mobile=True, has_touch=True, color_scheme=job.get("color_scheme") or "light")
         c.route("**/*", lambda route: route.abort() if blocked(route.request.url) else route.continue_())
         return c
 
+    state["viewport"] = job["viewport"]
     ctx2 = context(job["viewport"], job["scale"])
     page = ctx2.new_page()
     for s in job["stills"]:
@@ -190,11 +226,19 @@ with sync_playwright() as p:
         path = f"{job['run_dir']}/still-{n:02d}.png"
         shot = settle(pg, s["settle"])
         open(path, "wb").write(shot)
-        out["stills"].append({"path": path, "label": s["label"]})
-        check(s["label"], s.get("expect"), shot, path, bool(s.get("optional")))
+        out["stills"].append({"path": path, "label": s["label"], "own_size": bool(own)})
+        check(out, s["label"], s.get("expect"), shot, path, bool(s.get("optional")))
         if own:
             own.close()
     ctx2.close()
+    desk = job.get("desktop")
+    if desk and job["beats"]:
+        d = {"beats": [], "stills": [], "notes": [], "checks": [], "prefix": "desktop-"}
+        try:
+            d["video"], _ = film(browser, d, desk["viewport"], desk["scale"], False, desk["video_dir"])
+            out["desktop"] = d
+        except Exception as e:
+            out["notes"].append("the desktop pass did not finish: " + str(e)[:200])
     browser.close()
 json.dump(out, open(sys.argv[2], "w"))
 '''
@@ -285,6 +329,26 @@ def _verify(checks: list[dict]) -> tuple[list[str], set[str]]:
     return notes, left_out
 
 
+def rows_for(story: dict) -> tuple[dict, dict | None]:
+    """(the phone row, the Mac window row or None) a web demo is filmed in: the storyboard's
+    `device.row` / `device.desktop` (`false` for no desktop pass), a top level `viewport` that is
+    some row's points, else the table's defaults (pure over the table)."""
+    dev = story.get("device") or {}
+    phone = table.web_phone()
+    vp = story.get("viewport") or {}
+    if dev.get("row"):
+        phone = table.by_id(str(dev["row"]))
+    elif vp:
+        phone = next((d for d in table.DEVICES if d["points"] == [vp.get("width"), vp.get("height")] and d["family"] != "mac"), phone)
+    desk = dev.get("desktop")
+    desktop = None if desk is False else table.by_id(str(desk)) if desk else table.web_desktop()
+    return phone, desktop
+
+
+def viewport_of(row: dict) -> dict:
+    return {"width": row["points"][0], "height": row["points"][1]}
+
+
 def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: Sandbox | None = None) -> Capture:
     sandbox = sandbox or Sandbox(work=ws.root, untrusted=False)
     venv_bin = None
@@ -303,6 +367,7 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
     step = plan.step("run")
     if step is None:
         raise CaptureError("no run command found for this web project")
+    phone, desktop = rows_for(story)
     port = _port()
     env = {"PORT": str(port), "HOST": "127.0.0.1", "BROWSER": "none", "NODE_ENV": "development"}
     if venv_bin:
@@ -328,19 +393,20 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
         tools.ensure_chromium(py)
         job = {
             "base": base,
-            "viewport": story.get("viewport") or VIEWPORT,
-            "scale": SCALE,
+            "viewport": viewport_of(phone),
+            "scale": phone["scale"],
             "color_scheme": (story.get("device") or {}).get("appearance"),
             "video_dir": str(run_dir / "video"),
             "run_dir": str(run_dir),
             "block_hosts": list(BLOCK_HOSTS),
             "beats": [b for b in story["beats"] if b["video"]],
             "stills": [{"label": b["label"], "actions": b["actions"], "settle": b["settle"], "expect": b.get("expect"), "viewport": b.get("viewport"), "optional": b.get("optional")} for b in story["beats"] if not b["video"]] + story["stills"],
+            "desktop": {"viewport": viewport_of(desktop), "scale": desktop["scale"], "video_dir": str(run_dir / "desktop-video")} if desktop else None,
         }
         jp, rp = run_dir / "web-job.json", run_dir / "web-result.json"
         jp.write_text(json.dumps(job))
         (run_dir / "drive_web.py").write_text(DRIVER)
-        r = subprocess.run([str(py), str(run_dir / "drive_web.py"), str(jp), str(rp)], capture_output=True, text=True, timeout=1800, check=False)
+        r = subprocess.run([str(py), str(run_dir / "drive_web.py"), str(jp), str(rp)], capture_output=True, text=True, timeout=2400, check=False)
         if r.returncode != 0:
             raise CaptureError(f"the browser pass failed: {r.stderr.strip()[-600:]}")
         res = json.loads(rp.read_text())
@@ -350,12 +416,40 @@ def run(plan: Plan, ws: Workspace, story: dict, run_dir: pathlib.Path, sandbox: 
         for s in servers:
             s.stop()
     checked, left_out = _verify(res.get("checks") or [])
-    stills = [Still(pathlib.Path(s["path"]), s["label"]) for s in res["stills"] if s["path"] not in left_out]
-    beats = [BeatWindow(b["label"], b["caption"], b["start"], b["end"]) for b in res["beats"]]
-    notes = [f"the dev server ran from the clone ({srv.how}) on {base}", f"requests to {len(BLOCK_HOSTS)} analytics hosts were aborted"]
+    stills = [Still(pathlib.Path(s["path"]), s["label"], own_size=bool(s.get("own_size"))) for s in res["stills"] if s["path"] not in left_out]
+    beats = [BeatWindow(b["label"], b["caption"], b["start"], b["end"], tap=_tap(b.get("tap"))) for b in res["beats"]]
+    notes = [
+        f"the dev server ran from the clone ({srv.how}) on {base}",
+        f"requests to {len(BLOCK_HOSTS)} analytics hosts were aborted",
+        f"filmed as a {phone['name']} ({phone['points'][0]}x{phone['points'][1]} points at {phone['scale']:g}x)",
+    ]
     notes.extend(res.get("notes") or [])
     notes.extend(checked)
-    return Capture(stills=stills, video=pathlib.Path(res["video"]) if res.get("video") else None, beats=beats, notes=notes)
+    cap = Capture(stills=stills, video=pathlib.Path(res["video"]) if res.get("video") else None, beats=beats, notes=notes, device=phone["id"])
+    cap.desktop = _desktop(res.get("desktop"), desktop, notes)
+    return cap
+
+
+def _tap(v) -> tuple[float, float] | None:
+    return (float(v[0]), float(v[1])) if isinstance(v, list) and len(v) == 2 else None
+
+
+def _desktop(d: dict | None, row: dict | None, notes: list[str]) -> Capture | None:
+    """The desktop pass, held to its storyboard like the phone's, or None with a note: a desktop
+    pass that does not show what the beats expect is left out, never the reason a demo fails."""
+    if not d or row is None:
+        return None
+    try:
+        checked, left_out = _verify(d.get("checks") or [])
+    except CaptureError as e:
+        notes.append(f"the desktop pass is left out: {e}")
+        return None
+    stills = [Still(pathlib.Path(s["path"]), s["label"]) for s in d["stills"] if s["path"] not in left_out]
+    beats = [BeatWindow(b["label"], b["caption"], b["start"], b["end"], tap=_tap(b.get("tap"))) for b in d["beats"]]
+    notes.append(f"a desktop pass in a {row['name']} ({row['points'][0]}x{row['points'][1]} points): {len(stills)} stills" + (", a video" if d.get("video") else ""))
+    notes.extend(f"desktop: {n}" for n in (d.get("notes") or []))
+    notes.extend(f"desktop: {n}" for n in checked)
+    return Capture(stills=stills, video=pathlib.Path(d["video"]) if d.get("video") else None, beats=beats, device=row["id"])
 
 
 if __name__ == "__main__":  # pragma: no cover

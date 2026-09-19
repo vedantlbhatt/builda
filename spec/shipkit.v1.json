@@ -1,0 +1,156 @@
+{
+  "_comment": [
+    "THE ONLY DEFINITION OF A SHIP KIT (docs/ship-kit.md): what the Mac generates beside a demo so a builder",
+    "can post it, the captions a model may write for it, the request the phone makes for one, and what a",
+    "published kit may carry. scripts/gen_shipkit.py emits capture/shipkit/tables.py (standard library, the",
+    "Mac), capture/shipkit/copy_schema.json (handed to `claude -p --json-schema`), server/builder/shipkit_spec.py",
+    "(the door, Pydantic) and mobile/src/generated/shipkit.ts. Never hand-edit the output.",
+    "",
+    "Frame sizes are NOT here: spec/devices.v1.json is the only place one lives, and the format ids below are",
+    "held to its `formats` by the generator.",
+    "",
+    "A refusal is a code. Every code has its sentence in `refusals`, rendered on the Mac, the server and the",
+    "phone from the same table, so a kit that could not make its 16:9 video says the same words everywhere."
+  ],
+  "version": 1,
+  "max_lengths": {
+    "tweet": 280,
+    "post": 3000,
+    "subject": 120,
+    "label": 80,
+    "name": 60,
+    "why": 300
+  },
+  "platform_limits": {
+    "_comment": "Characters a caption may run to on each platform, as each documents it for a plain post from an ordinary account (2026-09): X 280 (a longer post needs a paid account), Bluesky 300, Threads 500, LinkedIn 3000, Instagram 2200, TikTok 2200 (the 4000 raise is not on every account). The thread variant is X posts of 280 each.",
+    "x": 280,
+    "bluesky": 300,
+    "threads": 500,
+    "linkedin": 3000,
+    "instagram": 2200,
+    "tiktok": 2200
+  },
+  "platform_format": {
+    "_comment": "The format each platform's post shows best: the one the phone's Share selects first for it. Any format can be sent anywhere.",
+    "x": "landscape",
+    "bluesky": "landscape",
+    "threads": "feed",
+    "linkedin": "feed",
+    "instagram": "feed",
+    "tiktok": "vertical"
+  },
+  "thread_max": 5,
+  "caps": {
+    "_comment": "What one published kit may hold. Videos: one per format. Stills: the demo's own, at most 8, and each framed once. The App Store sets: at most 8 a slot. A GIF at most the device table's loop.max_bytes; a video at most the demo channel's 40 MiB; an image at most its 6 MiB.",
+    "videos": 4,
+    "loops": 1,
+    "stills": 8,
+    "framed_stills": 8,
+    "before_after": 4,
+    "app_store_each": 8,
+    "video_bytes": 41943040,
+    "image_bytes": 6291456,
+    "gif_bytes": 8388608,
+    "video_ms": 31000,
+    "pixels": 8192
+  },
+  "enums": {
+    "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
+    "kit_format": ["vertical", "feed", "landscape", "square"],
+    "kit_slot": [
+      "video_vertical", "video_feed", "video_landscape", "video_square",
+      "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad"
+    ],
+    "kit_content_type": ["image/png", "image/jpeg", "image/gif", "video/mp4"],
+    "caption_source": ["model", "template"],
+    "request_status": ["queued", "claimed", "done", "failed", "cancelled"],
+    "request_refusal": [
+      "not_runnable", "capture_failed", "privacy_refused", "kit_failed", "no_checkout", "excluded", "cancelled_on_mac"
+    ],
+    "kit_refusal": [
+      "device_aspect_mismatch", "blank_segment", "render_failed", "invented_number", "names_a_repository",
+      "over_limit", "no_model", "loop_too_large", "aspect_too_far", "no_ipad_capture", "not_an_ios_app",
+      "no_previous_demo", "no_video", "privacy_not_checked"
+    ],
+    "queue_skip": [
+      "not_a_repository", "excluded", "nothing_shipped", "not_demoable", "already_filmed", "already_queued"
+    ],
+    "hue": ["tide", "ember", "iris", "brass", "orchid", "cobalt", "coral", "heather", "amber"]
+  },
+  "refusals": {
+    "device_aspect_mismatch": "the device came out a different shape in this format than it is, so the format was not kept",
+    "blank_segment": "part of the video shows a blank screen, so it was not kept",
+    "render_failed": "this format could not be rendered",
+    "invented_number": "the caption carried a number the session never gave, so it was dropped",
+    "names_a_repository": "the caption named a repository, so it was dropped",
+    "over_limit": "the caption ran past what the platform takes, so it was dropped",
+    "no_model": "no caption could be written: claude is not on this Mac",
+    "loop_too_large": "the GIF came out too large to paste anywhere, so there is none",
+    "aspect_too_far": "the screenshots are not the shape the App Store asks for",
+    "no_ipad_capture": "an iPad screenshot has to be filmed on an iPad: python -m capture demo --device ipad-pro-13 --no-video",
+    "not_an_ios_app": "App Store screenshots are for an iOS app",
+    "no_previous_demo": "there is no earlier demo to compare with yet",
+    "no_video": "the demo has no video, so the kit has stills only",
+    "privacy_not_checked": "the demo's privacy check did not pass, so no kit is made from it",
+    "not_runnable": "this project could not be run on the Mac",
+    "capture_failed": "the Mac could not film it",
+    "privacy_refused": "the Mac found a name or a key on screen and kept the demo to itself",
+    "kit_failed": "the demo was made, and the kit around it was not",
+    "no_checkout": "the Mac has no checkout of this project",
+    "excluded": "this repository is excluded",
+    "cancelled_on_mac": "it was cancelled on the Mac",
+    "not_a_repository": "the session did not run in a repository",
+    "nothing_shipped": "the session committed nothing the app shows",
+    "not_demoable": "the project is not something the Mac can run and film",
+    "already_filmed": "the newest commit is already filmed",
+    "already_queued": "a demo of it is already waiting"
+  },
+  "objects": {
+    "Caption": [
+      {"name": "platform", "type": "enum", "values": "platform", "doc": "Which platform this post is written for."},
+      {"name": "text", "type": "string", "max": "post", "doc": "The post, as it will be pasted. Within the platform's own limit (platform_limits). Every number in it must be one of the numbers in the input, written the same way; no number the input does not have, no claim the input does not make, no hashtag soup (at most three, only where the platform uses them), no dash of any kind."},
+      {"name": "thread", "type": "list", "item": "string", "max": "tweet", "max_items": 5, "doc": "X only: the same story as a thread of 2 to 5 posts, each within 280 characters. Empty for every other platform."}
+    ],
+    "ShareCopy": [
+      {"name": "captions", "type": "list", "item": "Caption", "min_items": 1, "max_items": 6, "doc": "One per platform: x, linkedin, threads, instagram, tiktok, bluesky."}
+    ],
+    "KitCaption": [
+      {"name": "platform", "type": "enum", "values": "platform"},
+      {"name": "text", "type": "string", "max": "post", "doc": "The caption, checked: every number is in the kit's inputs, no repository name, within the platform's limit."},
+      {"name": "thread", "type": "list", "item": "string", "max": "tweet", "max_items": 5, "doc": "X only: the thread variant."},
+      {"name": "source", "type": "enum", "values": "caption_source", "doc": "model: written by the person's own claude and checked; template: made from the inputs with no model, when the model's was dropped or there was none."}
+    ],
+    "Refused": [
+      {"name": "what", "type": "string", "max": "name", "doc": "What was refused: a format id, a platform, `loop`, an App Store slot."},
+      {"name": "code", "type": "enum", "values": "kit_refusal"}
+    ],
+    "KitPresign": [
+      {"name": "publish_id", "type": "hex16", "doc": "A random id the Mac mints for one publish of a kit, so the server tells the new set from the one it replaces."},
+      {"name": "slot", "type": "enum", "values": "kit_slot", "doc": "What the file is in the kit."},
+      {"name": "content_type", "type": "enum", "values": "kit_content_type"},
+      {"name": "bytes", "type": "int", "doc": "1-41943040: the file's size, what the upload must send exactly."},
+      {"name": "width", "type": "int", "doc": "1-8192: pixels across."},
+      {"name": "height", "type": "int", "doc": "1-8192: pixels down."},
+      {"name": "duration_ms", "type": "int", "nullable": true, "doc": "1-31000: a video's length. Null for an image or the GIF."},
+      {"name": "position", "type": "int", "doc": "0-63: its place among the files of its slot."},
+      {"name": "label", "type": "string", "max": "label", "nullable": true, "doc": "What a still shows, the demo's own label (the demo channel's label rule). Null for a video."}
+    ],
+    "KitDocument": [
+      {"name": "shipkit_version", "type": "int", "doc": "== spec version."},
+      {"name": "publish_id", "type": "hex16", "doc": "The publish its files were presigned under."},
+      {"name": "device", "type": "string", "max": "name", "doc": "The row of spec/devices.v1.json the demo was filmed on."},
+      {"name": "hue", "type": "enum", "values": "hue", "doc": "The project hue the formats are drawn in."},
+      {"name": "captions", "type": "list", "item": "KitCaption", "max_items": 6, "doc": "One per platform that has a caption."},
+      {"name": "changelog", "type": "list", "item": "string", "max": "subject", "max_items": 30, "doc": "What changed since the last demo: commit subjects, newest first, as written. Never a commit hash."},
+      {"name": "refused", "type": "list", "item": "Refused", "max_items": 20, "doc": "What the kit could not make, each with its code."}
+    ],
+    "DemoRequestIn": [
+      {"name": "project_key", "type": "sha256hex", "doc": "The project: the repository's salted hash, whole."},
+      {"name": "hue", "type": "enum", "values": "hue", "nullable": true, "doc": "The hue the phone draws the project in, so the kit wears the same one."}
+    ],
+    "DemoRequestFinish": [
+      {"name": "status", "type": "enum", "values": "request_status", "doc": "done or failed; nothing else finishes a request."},
+      {"name": "refusal", "type": "enum", "values": "request_refusal", "nullable": true, "doc": "Why it failed. Null when done."}
+    ]
+  }
+}

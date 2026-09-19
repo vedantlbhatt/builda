@@ -12,6 +12,7 @@
  */
 import type { MediaSourceRef, ProjectMediaItem } from '../data/api';
 import { count } from '../copy/numbers';
+import { DEFAULT_PHONE, DEVICES } from '../generated/devices';
 
 // ------------------------------------------------------------------ where a file came from
 
@@ -55,8 +56,15 @@ export function sourceMark(source: string | null | undefined): string | null {
 
 // ------------------------------------------------------------------ the gallery
 
-/** A phone's screen, width over height (1206 by 2622): the shape of a file that sent no size. */
-export const PHONE_ASPECT = 1206 / 2622;
+/**
+ * The phone demos are filmed on when a project names none: the device table's default row
+ * (spec/devices.v1.json, the only place a frame size lives; docs/ship-kit.md). Its shape is the
+ * shape of a file that sent no size.
+ */
+const FILMED_ON = DEVICES.find((d) => d.id === DEFAULT_PHONE)!;
+
+/** The default phone's screen, width over height: the shape of a file that sent no size. */
+export const PHONE_ASPECT = FILMED_ON.pixels[0] / FILMED_ON.pixels[1];
 
 export interface GalleryEntry {
   id: string;
@@ -333,8 +341,8 @@ export interface StripLayout {
   tuck: number;
 }
 
-/** A recorded phone screen's top safe area over its width: 62 of 402 points on the iPhone the demos are filmed on. */
-export const PHONE_TOP_SHARE = 62 / 402;
+/** A recorded phone screen's top safe area over its width, from the device table: the status bar and island a tuck hides. */
+export const PHONE_TOP_SHARE = FILMED_ON.safe_area.top / FILMED_ON.points[0];
 
 /**
  * Where the video stands under the hero, from the screen's width and the video's shape: a phone

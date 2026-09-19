@@ -38,6 +38,7 @@ import sys
 import time
 import urllib.request
 
+from . import devices as table
 from . import simulator as sim
 from . import tools
 from .pictures import fingerprints, same_picture
@@ -218,6 +219,45 @@ class Driver:
         self.flows = 0
         self.prompted = False
         self.maestro_failures: list[str] = []
+        #: The first tap of the beat being filmed, as screen fractions (`BeatWindow.tap`).
+        self.tap: tuple[float, float] | None = None
+        self._want_tap = False
+
+    def begin_beat(self) -> None:
+        """A new beat: its first tap is looked for again."""
+        self.tap = None
+        self._want_tap = True
+
+    def _saw_tap(self, x: float, y: float) -> None:
+        if self._want_tap:
+            self.tap = (round(min(1.0, max(0.0, x)), 4), round(min(1.0, max(0.0, y)), 4))
+            self._want_tap = False
+            self.note(f"the beat's first tap is at {self.tap[0]:.3f}, {self.tap[1]:.3f} of the screen")
+
+    def locate_text(self, text: str) -> None:
+        """Where a text tap will land: Vision's box for the text on the screen as it is now, the
+        box's centre as a fraction of the screen. Only for a beat's FIRST tap, since it costs a
+        screenshot and a read; a text that is not found leaves the beat with no ring, never a
+        ring in the wrong place."""
+        if not self._want_tap:
+            return
+        from . import privacy
+
+        shot = sim.screenshot(self.udid, self.run_dir / "tap-find.png")
+        try:
+            w, h = _png_size(shot)
+            found = privacy.ocr([shot])
+        except (RuntimeError, ValueError, tools.ToolError):
+            self._want_tap = False
+            return
+        want = text.strip().lower()
+        for r in found:
+            for line in r.get("lines") or []:
+                if want and want in str(line.get("text", "")).lower():
+                    bx, by, bw, bh = line["box"]
+                    self._saw_tap((bx + bw / 2) / w, (by + bh / 2) / h)
+                    return
+        self._want_tap = False
 
     def note(self, msg: str) -> None:
         with self.log.open("a") as f:
@@ -267,6 +307,7 @@ class Driver:
         # Whole percentages: Maestro 2.8 parses "88.5%" as a NumberFormatException (FOUND ON THE
         # SEVENTH RIDEGT RUN). One percent is 4 points across and 9 down, inside any button.
         point = f"{round(found['x'] * 100)}%, {round(found['y'] * 100)}%"
+        self._saw_tap(float(found["x"]), float(found["y"]))
         self.note(f"colour {spec['color']} at {point} ({found['count']} pixels)")
         self.maestro([{"tapOn": {"point": point}}])
 
@@ -349,6 +390,13 @@ class Driver:
                 flush()
                 self.tap_color(v)
                 continue
+            if k == "tap":
+                at = tap_point(v)
+                if at is not None:
+                    self._saw_tap(*at)
+                elif isinstance(v, str) or (isinstance(v, dict) and "text" in v):
+                    flush()
+                    self.locate_text(v if isinstance(v, str) else str(v["text"]))
             if k in ("tap", "swipe", "type", "key", "back", "maestro"):
                 batch.extend(to_maestro(k, v))
                 continue
@@ -363,6 +411,20 @@ class Driver:
                 sim.launch(self.udid, self.bundle_id, self.launch_args)
                 time.sleep(2.0)
         flush()
+
+
+def tap_point(v) -> tuple[float, float] | None:
+    """A point tap's place as screen fractions: `{"point": "50%, 72%"}` is (0.5, 0.72) (pure)."""
+    if not isinstance(v, dict) or "point" not in v:
+        return None
+    m = re.fullmatch(r"\s*([0-9.]+)%\s*,\s*([0-9.]+)%\s*", str(v["point"]))
+    return (float(m.group(1)) / 100, float(m.group(2)) / 100) if m else None
+
+
+def _png_size(path: pathlib.Path) -> tuple[int, int]:
+    from .manifest import image_size
+
+    return image_size(path)
 
 
 def to_maestro(k: str, v) -> list:
@@ -568,7 +630,18 @@ def prewarm(port: int, bundle_id: str, metro: Server | None = None) -> None:
         say(f"prewarming Metro did not finish ({e}); the first launch will bundle")
 
 
-def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str | None, run_dir: pathlib.Path) -> Capture:
+def run(
+    plan: Plan,
+    ws: Workspace,
+    story: dict,
+    app: pathlib.Path,
+    device: str | None,
+    run_dir: pathlib.Path,
+    row: dict | None = None,
+    type_id: str | None = None,
+) -> Capture:
+    """Film the app. `device` is `--sim` (a name or UDID, whose own type decides its row);
+    otherwise the tool's own simulator for `row` (devices.choose_phone), created on `type_id`."""
     info = app_info(app)
     bundle_id = info["bundle_id"] or (plan.expo.bundle_id if plan.expo else None)
     if not bundle_id:
@@ -584,8 +657,13 @@ def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str |
             "whatever Metro answers on localhost:8081. Build it with this tool, or pass it with --app"
         )
     try:
-        dev = sim.resolve(device)
-        say(f"simulator: {dev.name} ({dev.udid}), booting headless")
+        dev = sim.resolve(device, row, type_id)
+        if device:
+            row = table.for_simulator_type(dev.type_id)
+            if row is None:
+                raise table.DeviceError("unknown_device", device=dev.type_id or dev.name)
+        row = row or table.default_phone()
+        say(f"simulator: {dev.name} ({dev.udid}), a {row['name']} ({row['pixels'][0]}x{row['pixels'][1]}), booting headless")
         sim.boot(dev)
     except sim.SimulatorError as e:
         raise CaptureError(str(e)) from e
@@ -630,7 +708,10 @@ def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str |
         drv = Driver(udid, bundle_id, run_dir, launch_args)
         say("launching")
         sim.launch(udid, bundle_id, launch_args)
-        sim.settle(udid, run_dir / "launch.png", timeout=float(story.get("app", {}).get("launch_timeout", 25)), min_wait=3.0)
+        launched, _ = sim.settle(udid, run_dir / "launch.png", timeout=float(story.get("app", {}).get("launch_timeout", 25)), min_wait=3.0)
+        # The screen is the row's before anything is filmed: a device whose screenshots are
+        # another size would be framed as the wrong phone (devices.check_capture).
+        table.check_capture(row, *_png_size(launched), what="the first screenshot of the app")
         drv.run_actions(story.get("setup") or [])
         stills: list[Still] = []
         windows: list[BeatWindow] = []
@@ -644,6 +725,7 @@ def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str |
             say(f"recording {len(beats)} beats")
             for b in beats:
                 t0 = time.monotonic() - t_rec
+                drv.begin_beat()
                 shot, dup = drv.shoot_checked(b["label"], b["actions"], run_dir / f"beat-{len(windows) + 1:02d}.png", b["settle"], kept)
                 if dup:
                     raise CaptureError(
@@ -659,7 +741,9 @@ def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str |
                     shutil.copyfile(shot, dest)
                     stills.append(Still(dest, b["label"]))
                 time.sleep(b["hold"])
-                windows.append(BeatWindow(b["label"], b["caption"], max(0.0, t0), time.monotonic() - t_rec, still=shot))
+                # A beat filmed from where it landed starts after its taps: no ring for it.
+                tap = drv.tap if b.get("film") != "settled" else None
+                windows.append(BeatWindow(b["label"], b["caption"], max(0.0, t0), time.monotonic() - t_rec, still=shot, tap=tap))
                 say(f"beat {len(windows)}: {b['label']} ({windows[-1].end - windows[-1].start:.1f} s raw)")
             rec.stop()
         for s in [b for b in story["beats"] if not b["video"]] + story["stills"]:
@@ -676,7 +760,7 @@ def run(plan: Plan, ws: Workspace, story: dict, app: pathlib.Path, device: str |
         if drv.maestro_failures:
             notes.append(f"Maestro flows that failed: {', '.join(drv.maestro_failures)} (see drive.log)")
         sim.terminate(udid, bundle_id)
-        return Capture(stills=stills, video=rec.path if beats else None, beats=windows, notes=notes)
+        return Capture(stills=stills, video=rec.path if beats else None, beats=windows, notes=notes, device=row["id"])
     except (sim.SimulatorError, ServerError, sb_mod.StoryboardError) as e:
         raise CaptureError(str(e)) from e
     finally:

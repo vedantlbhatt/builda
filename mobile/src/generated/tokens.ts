@@ -467,6 +467,7 @@ export const tokens = {
     "demo": {
       "asked": "surface.textFaint",
       "filming": "data.del",
+      "made": "surface.textDim",
       "ready": "data.add",
       "failed": "data.del"
     }

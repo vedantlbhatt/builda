@@ -31,6 +31,9 @@ enum DemoFixtures {
   static var asked: State { state("asked", askedAgo: 20, movedAgo: 20) }
   /// Picked up half a minute later, filming for four minutes since.
   static var filming: State { state("filming", askedAgo: 4 * 60 + 30, movedAgo: 4 * 60) }
+  /// Thirteen minutes after the ask the Mac finished, and kept the kit: a worker run without
+  /// `--publish-requests`, the default.
+  static var made: State { state("made", askedAgo: 13 * 60, movedAgo: 5) }
   /// Thirteen minutes after the ask, the kit is up.
   static var ready: State { state("ready", askedAgo: 13 * 60, movedAgo: 5) }
   /// `capture_failed`, in the spec's words.

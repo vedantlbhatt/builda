@@ -6,14 +6,17 @@ import WidgetKit
 // renderer draws the exact views to PNGs; `BuilderDemoActivity.swift` only places them.
 //
 // What it says is the in-app island's demo (`src/island/Island.tsx DemoContent`): "Waiting for
-// your Mac", "Your Mac is filming it", "The kit is up", "Tap to share it anywhere.", and for a
-// failure the kit screen's own line (`src/shipkit/model.ts requestView`). Where the request
+// your Mac", "Your Mac is filming it", "The kit is up", "Tap to share it anywhere.", for a demo
+// the Mac made and kept the in-app notice's "Made on your Mac. Publish it there to share it."
+// (`src/island/feeds.ts trackDemo`), and for a failure the kit screen's own line
+// (`src/shipkit/model.ts requestView`). Where the request
 // stands comes from one rule on the phone, `demoStepFor`, which the in-app island reads too, and
 // `__tests__/liveActivityAttributes.test.ts` holds the Swift words to the TypeScript ones, so the
 // island inside the app and the one outside it cannot disagree.
 //
 // Colour is state (docs/motion.md): the record light is `BuilderPalette.demoInk` (spectrum.demo:
-// faint, the data red while filming, the data green once the kit is up), and the project's own
+// faint, the data red while filming, the dim grey for made and kept, the data green once the kit
+// is up), and the project's own
 // hue is its title's colour, the hue the project page wears. Every one from the generated
 // Palette.swift.
 
@@ -21,7 +24,7 @@ import WidgetKit
 @available(iOS 16.1, *)
 struct DemoDisplay {
   enum Phase: String {
-    case asked, filming, ready, failed
+    case asked, filming, made, ready, failed
   }
 
   let requestId: String
@@ -48,8 +51,9 @@ struct DemoDisplay {
     self.isStale = isStale
   }
 
-  /// The Mac has finished with it, one way or the other.
-  var answered: Bool { phase == .ready || phase == .failed }
+  /// The Mac has finished with it, one way or the other. Made counts: the Mac is done, and what
+  /// is left is yours to do there (publish), so the card stops counting and says so.
+  var answered: Bool { phase == .made || phase == .ready || phase == .failed }
 
   /// Past the stale date with no answer: the Mac is asleep, or the worker is not running. The
   /// card stops claiming anything is happening and says when it last heard.
@@ -75,13 +79,20 @@ struct DemoDisplay {
     switch phase {
     case .asked: return 0
     case .filming: return 1
-    case .ready, .failed: return 2
+    case .made, .ready, .failed: return 2
     }
   }
 
-  /// asked, filming, kit up: the walk's three stops. The last is "no kit" for a failure.
+  /// asked, filming, kit up: the walk's three stops. The last is "made" for a demo the Mac kept
+  /// and "no kit" for a failure: the stop says what happened, never what was hoped for.
   var stops: [String] {
-    [DemoCopy.wordAsked, DemoCopy.wordFilming, phase == .failed ? DemoCopy.wordNoKit : DemoCopy.wordKitUp]
+    let last: String
+    switch phase {
+    case .made: last = DemoCopy.wordMade
+    case .failed: last = DemoCopy.wordNoKit
+    default: last = DemoCopy.wordKitUp
+    }
+    return [DemoCopy.wordAsked, DemoCopy.wordFilming, last]
   }
 
   /// The sentence for where it stands, the in-app island's kicker: what VoiceOver reads for the
@@ -95,6 +106,7 @@ struct DemoDisplay {
     switch phase {
     case .asked: return DemoCopy.waiting
     case .filming: return DemoCopy.filming
+    case .made: return DemoCopy.made
     case .ready: return DemoCopy.ready
     case .failed: return DemoCopy.failed
     }
@@ -116,6 +128,8 @@ enum DemoCopy {
   static let waiting = "Waiting for your Mac"
   static let filming = "Your Mac is filming it"
   static let ready = "The kit is up"
+  /// The in-app notice's own sentence for a demo the Mac made and kept (`feeds.ts trackDemo`).
+  static let made = "Made on your Mac. Publish it there to share it."
   static let failed = "No kit this time"
   static func didNotWork(_ why: String?) -> String {
     guard let why else { return "It did not work on your Mac." }
@@ -128,6 +142,7 @@ enum DemoCopy {
   static let wordFilming = "filming"
   static let wordKitUp = "kit up"
   static let wordNoKit = "no kit"
+  static let wordMade = "made"
   static let wordKit = "kit"
 }
 
@@ -192,7 +207,8 @@ struct DemoWalk: View {
 }
 
 /// Ready: Share, a link into the kit (`builder://ship/<key>`), and the in-app island's line
-/// beside it. Failed: the kit screen's sentence for why. Nothing while it is still going.
+/// beside it. Made: where the kit is and what to do, with no Share, because nothing reached the
+/// phone to share. Failed: the kit screen's sentence for why. Nothing while it is still going.
 @available(iOS 17.0, *)
 struct DemoAnswerRow: View {
   let d: DemoDisplay
@@ -215,6 +231,12 @@ struct DemoAnswerRow: View {
           .lineLimit(1)
           .truncationMode(.tail)
       }
+    } else if d.phase == .made {
+      Text(DemoCopy.made)
+        .font(LiveType.font(13, .medium))
+        .foregroundStyle(BuilderPalette.textDim)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
     } else if d.phase == .failed {
       Text(d.failureLine)
         .font(LiveType.font(13, .medium))
@@ -296,14 +318,14 @@ struct DemoCompactLeading: View {
 
 /// Compact trailing: how long since you asked, as a system timer (it keeps counting with the
 /// app away, where a number in the state would freeze), or the answer in one word: "kit" in the
-/// green, "no kit" in the red. 13pt, so "0:00:00" fits the 52pt slot.
+/// green, "made" in the dim grey, "no kit" in the red. 13pt, so "0:00:00" fits the 52pt slot.
 @available(iOS 17.0, *)
 struct DemoCompactTrailing: View {
   let d: DemoDisplay
   var body: some View {
     switch d.phase {
-    case .ready, .failed:
-      Text(d.phase == .ready ? DemoCopy.wordKit : DemoCopy.wordNoKit)
+    case .made, .ready, .failed:
+      Text(d.phase == .ready ? DemoCopy.wordKit : d.phase == .made ? DemoCopy.wordMade : DemoCopy.wordNoKit)
         .font(LiveType.font(13, .semibold))
         .foregroundStyle(d.light)
         .lineLimit(1)

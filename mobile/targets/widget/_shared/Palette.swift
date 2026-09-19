@@ -238,16 +238,18 @@ enum BuilderPalette {
   }
 
   /// spectrum.demo: a demo request's record light (docs/demo-island.md), one per card phase:
-  /// faint while it waits for the Mac, the data red while the Mac films, the data green once the
-  /// kit is up, the data red again (drawn as a cross) for one that could not be made.
+  /// faint while it waits for the Mac, the data red while the Mac films, the dim grey for a demo
+  /// made and kept on the Mac, the data green once the kit is up, the data red again (drawn as a
+  /// cross) for one that could not be made.
   enum DemoState: String, CaseIterable {
-    case asked, filming, ready, failed
+    case asked, filming, made, ready, failed
   }
 
   static func demoInk(_ state: DemoState) -> Color {
     switch state {
     case .asked: return srgb(0x6B, 0x65, 0x5D)  // surface.textFaint #6B655D
     case .filming: return srgb(0xE5, 0x48, 0x4D)  // data.del #E5484D
+    case .made: return srgb(0xA8, 0xA2, 0x9A)  // surface.textDim #A8A29A
     case .ready: return srgb(0x7B, 0xC9, 0x6F)  // data.add #7BC96F
     case .failed: return srgb(0xE5, 0x48, 0x4D)  // data.del #E5484D
     }

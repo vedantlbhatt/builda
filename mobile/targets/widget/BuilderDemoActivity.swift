@@ -51,6 +51,7 @@ struct BuilderDemoActivity: Widget {
 } contentStates: {
   DemoFixtures.asked
   DemoFixtures.filming
+  DemoFixtures.made
   DemoFixtures.ready
   DemoFixtures.failed
 }

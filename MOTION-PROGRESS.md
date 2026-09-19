@@ -37,6 +37,13 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **08:10 to 08:18**: a second review of the fix commit found five more (a tap not stopping a check
+  already waiting on the network; a held week surviving sign out; a held week said after
+  Wednesday; the wait rule counting a run the island never draws on notch phones and desktops; an
+  offline cold launch from the tap showing nothing), all fixed and tested in 599592c. Its message
+  says 2825 pass: the run was 2821 (the number was written before the run finished). The report
+  now fits a phone (it scrolled sideways: the header's padding on top of width 100%), and its status
+  word lost its gradient-clipped shimmer.
 - **08:02 to 08:09**: a review agent read everything since 06:00 and found seven defects, six fixed
   and tested (6b6f8ea): Monday's notification ignored the 04:00 boundary; a tap opened a stale week;
   an offer under a waiting run was marked but never seen; two overlapping passes could both say it;

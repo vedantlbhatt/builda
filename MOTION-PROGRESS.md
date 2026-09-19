@@ -36,6 +36,16 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **06:15**: pixel fields arrive in their own orders (642c470): day grid, agent squares, the
+  glossary collection, term squares; recording `shots/motion/web/fields-own-orders.mp4`. Report v12.
+- **06:10 to 06:30**: desktop Save image for every share card (93acd00). view-shot's `captureRef`
+  threw on the web (`findNodeHandle`), so every share card was dead on the desktop; now
+  html2canvas on the card node (`share/saveCard.web.ts`) and the shell's `image:save` (Downloads,
+  clipboard, shown in Finder; `desktop/src/image.js`, tested). Checked in Chromium: week card and a
+  Wrapped card come out 1080 x 1350 with the dither and creature (`shots/motion/desktop-share/`).
+  The captured week card showed three flaws, fixed: "1 9m" (tabular digits under tracking), Sunday
+  at the edge (no width on a day to come), an empty lower half (columns take the room).
+  Web test tokens: write the rotated pair back in a `finally`, or the next run is refresh reuse.
 - **05:25 to 06:10**: onboarding steps each print their band a different order (`STEP_MOTION`; one
   order program `orderSksl` over each shader's hash; a CanvasKit test holds all eight to the JS
   twin); the eight orders rendered offline into `shots/motion/web/pixel-orders.mp4`; the tile's pixel
@@ -116,10 +126,12 @@ keep the URL; from a new conversation pass the URL.
 
 ## Next
 
-1. Itemize motion everywhere a pixel surface still arrives one way for all: onboarding step bands,
-   Wrapped card art, the pixel fields (contribution grid, glossary collection, count marks).
-2. Recordings of the eight orders for the report.
-3. Then: tests, UI audit, new features. Pixels stay (memory: builda-pixels-stay).
+1. Done at 06:20: the grids of cells take page-distinct orders (`useFieldMotion`, `arrivalMs`).
+   Kept on purpose: Wrapped art prints along its data's axis (time left to right, bars from the
+   foot, bursts from the centre), CountMarks follow the count, the dimensions strip counts left to
+   right. Each is a motion that says something about the data.
+2. Tests, UI audit (no AI tells), new features. Pixels stay (memory: builda-pixels-stay).
+3. Packaged desktop app rebuild; Windows and Linux never launched.
 
 ## Measured
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import drop_push, drops_notify
 from .. import drops_store as store
 from ..auth import CurrentDevice, current_device, current_person
+from ..builder_profile import excluded_keys
 from ..db import db_session
 from ..drops_spec import DropResolution
 from .push import send_drop
@@ -81,6 +83,15 @@ class RefusalIn(BaseModel):
     refusal: str
 
 
+def _id(value: str) -> str:
+    """A drop or move id from the path: a UUID, or 404. FOUND IN REVIEW (2026-09-19): anything
+    else reached Postgres and came back a 500."""
+    try:
+        return str(uuid.UUID(value))
+    except (ValueError, AttributeError, TypeError) as e:
+        raise HTTPException(404, "not found") from e
+
+
 def _uid(device: CurrentDevice) -> str:
     return str(device.user_id)
 
@@ -124,6 +135,7 @@ def board(
 
 @router.get("/drops/{drop_id}")
 def one(drop_id: str, device: CurrentDevice = Depends(current_device)):
+    drop_id = _id(drop_id)
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         drop = store.get_drop(db, uid, drop_id)
@@ -156,12 +168,17 @@ def put_resolution(
 ):
     """What the Mac read and planned. The door is the generated Pydantic model, which forbids
     an undeclared field at every level and enforces the plan-or-refusal rule."""
+    drop_id = _id(drop_id)
     uid = _uid(device)
     payload = body.model_dump(mode="json")
     with db_session(viewer_id=uid) as db:
         before = store.get_drop(db, uid, drop_id)
         if not before:
             raise HTTPException(404, "no such drop")
+        # Put away by its person while the Mac was reading it: the reading is not wanted. FOUND
+        # IN REVIEW (2026-09-19): it broke `drops_archived_ck` and came back a 500.
+        if before.get("archived_at") is not None:
+            raise HTTPException(409, "that drop was archived")
         out = store.apply_resolution(db, uid, drop_id, payload)
         after = store.get_drop(db, uid, drop_id)
     # AFTER the transaction commits, for notify.py's reason: a push failure must never roll back
@@ -193,6 +210,7 @@ def _tell_them_it_was_read(uid: str, drop_id: str, before: dict, after: dict, mo
 @router.put("/drops/{drop_id}/refusal")
 def put_refusal(drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(current_device)):
     """A link the Mac could not read at all: no source block, just the code."""
+    drop_id = _id(drop_id)
     from ..drops_spec import ANALYSIS_ENUM_VALUES
 
     if body.refusal not in ANALYSIS_ENUM_VALUES["drop_refusal"]:
@@ -202,6 +220,8 @@ def put_refusal(drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(c
         before = store.get_drop(db, uid, drop_id)
         if not before:
             raise HTTPException(404, "no such drop")
+        if before.get("archived_at") is not None:
+            raise HTTPException(409, "that drop was archived")
         store.mark_refused(db, uid, drop_id, body.refusal)
         after = store.get_drop(db, uid, drop_id)
     island = drop_push.after_transition(uid, [drop_id])
@@ -216,10 +236,15 @@ def start(
 ):
     """A person tapped it. THE ONLY WAY A MOVE IS EVER QUEUED. On `current_person`: a paired
     machine's token (the agent, an uploader) is refused, or it could start what it planned."""
+    drop_id = _id(drop_id)
+    move_id = _id(move_id)
     if body.repo_key is not None and not _REPO_KEY.match(body.repo_key):
         raise HTTPException(422, "repo_key is the 64 character salted key, never a name")
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
+        # Not in a repository you excluded: nothing about it is kept, so nothing is run there.
+        if body.repo_key is not None and excluded_keys(db, uid, {body.repo_key}):
+            raise HTTPException(409, "that project is excluded from Builda")
         move = store.start_move(
             db, uid, move_id, adjustment=body.adjustment, repo_key=body.repo_key
         )
@@ -239,6 +264,8 @@ def start(
 
 @router.post("/drops/{drop_id}/moves/{move_id}:decline")
 def decline(drop_id: str, move_id: str, device: CurrentDevice = Depends(current_person)):
+    drop_id = _id(drop_id)
+    move_id = _id(move_id)
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         move = store.decline_move(db, uid, move_id)
@@ -260,6 +287,7 @@ def claim_moves(
 @router.post("/drops/moves/{move_id}:finish")
 def finish(move_id: str, body: FinishIn, device: CurrentDevice = Depends(current_device)):
     """The runner says how it went, and which run it was."""
+    move_id = _id(move_id)
     if body.status not in ("done", "failed"):
         raise HTTPException(422, "status is done or failed")
     if body.run_uuid is not None and not _UUID.match(body.run_uuid):
@@ -294,6 +322,7 @@ def archive(
     on: bool = Query(default=True),
     device: CurrentDevice = Depends(current_device),
 ):
+    drop_id = _id(drop_id)
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         if not store.archive(db, uid, drop_id, on=on):
@@ -305,6 +334,7 @@ def archive(
 def remove(drop_id: str, device: CurrentDevice = Depends(current_device)):
     """Gone, with its moves (0028 cascades). Deleting a drop whose move is running does not
     stop the run on the Mac; the run is a Claude Code session and stopping it is done there."""
+    drop_id = _id(drop_id)
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         if not store.delete_drop(db, uid, drop_id):

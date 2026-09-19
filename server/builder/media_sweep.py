@@ -64,7 +64,14 @@ def sweep_all(engine, *, now: datetime | None = None, dry_run: bool = False) -> 
                 "one viewer's rows (none without one): every object would look unkept. "
                 "Use WORKER_DATABASE_URL (builder_worker) or DATABASE_URL (the owner)."
             )
-        stale_sql = "FROM project_media WHERE NOT committed AND created_at < :cutoff"
+        # The WHOLE publish when any row of it was abandoned, not only the rows left uncommitted:
+        # FOUND IN REVIEW (2026-09-19), the committed half then counted as a complete set and the
+        # phone showed half a demo beside the old one (`routes/media.py` warns of exactly this).
+        stale_sql = (
+            "FROM project_media WHERE (user_id, project_key, publish_id) IN ("
+            "SELECT user_id, project_key, publish_id FROM project_media "
+            "WHERE NOT committed AND created_at < :cutoff)"
+        )
         stale = c.execute(
             text(
                 f"SELECT object_key, poster_object_key {stale_sql}"
@@ -73,7 +80,11 @@ def sweep_all(engine, *, now: datetime | None = None, dry_run: bool = False) -> 
             ),
             {"cutoff": cutoff},
         ).all()
-        kit_stale_sql = "FROM ship_kit_media WHERE NOT committed AND created_at < :cutoff"
+        kit_stale_sql = (
+            "FROM ship_kit_media WHERE (user_id, project_key, publish_id) IN ("
+            "SELECT user_id, project_key, publish_id FROM ship_kit_media "
+            "WHERE NOT committed AND created_at < :cutoff)"
+        )
         kit_stale = c.execute(
             text(
                 f"SELECT object_key {kit_stale_sql}"

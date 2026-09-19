@@ -229,6 +229,23 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
             # And its ship kit (0030, docs/ship-kit.md): the videos, the captions and the
             # requests for one. Same order: rows here, objects after the commit.
             _, kit_objects = ship_kit.forget_project(db, str(device.user_id), body.repo_hash)
+            # And its drop moves (0028, docs/drops.md): a move keeps the key of the repository it
+            # was run in and the last words the run said about it, which name its files. FOUND IN
+            # REVIEW (2026-09-19): they outlived the sweep. A move waiting to run there will not.
+            db.execute(
+                text(
+                    "UPDATE drop_moves SET status = 'declined' "
+                    "WHERE user_id = :u AND repo_key = :k AND status = 'queued'"
+                ),
+                {"u": str(device.user_id), "k": body.repo_hash},
+            )
+            db.execute(
+                text(
+                    "UPDATE drop_moves SET repo_key = NULL, outcome = NULL "
+                    "WHERE user_id = :u AND repo_key = :k"
+                ),
+                {"u": str(device.user_id), "k": body.repo_hash},
+            )
         elif body.visibility == "anonymous":
             # Dropping to anonymous must strip the name and the title everywhere it was
             # already stored, not just stop sending them from now on.

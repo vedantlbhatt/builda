@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from ..auth import (
@@ -35,10 +35,12 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
 class DeviceStartRequest(BaseModel):
-    machine_id: str
-    label: str
-    platform: str = "macos"
-    agent_version: str
+    # Bounded: this is the one write anyone can make without an account (FOUND IN REVIEW,
+    # 2026-09-19: a multi megabyte label was accepted and kept). A machine id is a sha256.
+    machine_id: str = Field(min_length=1, max_length=128)
+    label: str = Field(min_length=1, max_length=120)
+    platform: str = Field(default="macos", min_length=1, max_length=32)
+    agent_version: str = Field(min_length=1, max_length=64)
 
 
 class DeviceStartResponse(BaseModel):
@@ -57,6 +59,9 @@ def device_start(body: DeviceStartRequest):
     user_code = new_user_code()
 
     with db_session() as db:
+        # Grants that expired a day ago are nobody's any more: a successful poll deletes its own,
+        # and without this every abandoned start stayed for good.
+        db.execute(text("DELETE FROM device_grants WHERE expires_at < now() - interval '1 day'"))
         db.execute(
             text(
                 """

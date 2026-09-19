@@ -450,13 +450,10 @@ def test_refresh_rotates_and_reuse_actually_revokes(client, pairing_user):
     pair1 = r.json()
     assert pair1["refresh_token"] != pair0["refresh_token"]
 
-    # The new access token is genuinely usable.
-    r = client.post(
-        "/v1/auth/device/approve",
-        json={"user_code": "XXXX-XXXX"},
-        headers={"authorization": f"Bearer {pair1['access_token']}"},
-    )
-    assert r.status_code == 404, "authenticated, but no such pairing code"
+    # The new access token is genuinely usable (a machine's route: approving a pairing is a
+    # person's, `current_person`, and answers a machine 403 whatever its token).
+    r = client.get("/v1/drops", headers={"authorization": f"Bearer {pair1['access_token']}"})
+    assert r.status_code == 200, "authenticated"
 
     # The successor is redeemed, so the phone had the answer: the spent token is not a
     # retry any more (REFRESH_RETRY_GRACE_SECONDS), and replaying it is reuse.
@@ -594,15 +591,15 @@ def test_revoked_device_is_401_within_the_token_ttl(client, pairing_user):
     pair = client.post("/v1/auth/device/poll", json={"device_code": code}).json()
     headers = {"authorization": f"Bearer {pair['access_token']}"}
 
-    r = client.post("/v1/auth/device/approve", json={"user_code": "XXXX-XXXX"}, headers=headers)
-    assert r.status_code == 404
+    r = client.get("/v1/drops", headers=headers)
+    assert r.status_code == 200
 
     with owner_engine().begin() as c:
         c.execute(
             text("UPDATE devices SET revoked_at = now() WHERE user_id = :u"), {"u": pairing_user}
         )
 
-    r = client.post("/v1/auth/device/approve", json={"user_code": "XXXX-XXXX"}, headers=headers)
+    r = client.get("/v1/drops", headers=headers)
     assert r.status_code == 401
     r = client.post("/v1/auth/refresh", json={"refresh_token": pair["refresh_token"]})
     assert r.status_code == 401, "a revoked device cannot refresh its way back in"
@@ -713,3 +710,20 @@ def test_only_the_phones_sign_in_flips_a_switch_or_links(
             {"u": r.json()["user_id"]},
         ).all()
     assert [tuple(f) for f in flows] == [("ios", "sign_in"), ("linux", "device_flow")]
+
+
+def test_a_machine_cannot_approve_a_pairing(client, pairing_user):
+    """FOUND IN REVIEW (2026-09-19): approve was on `current_device`, so a stolen machine token
+    could mint more machine tokens. Approving is a person's, from their phone or desktop app."""
+    code = _approved_grant(client, pairing_user)
+    pair = client.post("/v1/auth/device/poll", json={"device_code": code}).json()
+    started = client.post(
+        "/v1/auth/device/start",
+        json={"machine_id": "c" * 64, "label": "another", "agent_version": "0.1"},
+    ).json()
+    r = client.post(
+        "/v1/auth/device/approve",
+        json={"user_code": started["user_code"]},
+        headers={"authorization": f"Bearer {pair['access_token']}"},
+    )
+    assert r.status_code == 403

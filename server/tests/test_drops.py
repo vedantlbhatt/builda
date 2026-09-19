@@ -246,7 +246,7 @@ def test_a_move_only_leaves_offered_through_the_tap(client, paired):
     # offered move is the planner's latest word, not a row a client can hold on to.
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
     started = client.post(
-        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers
+        f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers)
     )
     assert started.status_code == 200
     assert started.json()["move"]["status"] == "queued"
@@ -259,8 +259,9 @@ def test_a_double_tap_queues_once(client, paired):
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
     path = f"/v1/drops/{drop['id']}/moves/{move['id']}:start"
-    first = client.post(path, json={}, headers=headers)
-    second = client.post(path, json={}, headers=headers)
+    phone = _phone_for(headers)
+    first = client.post(path, json={}, headers=phone)
+    second = client.post(path, json={}, headers=phone)
     assert (first.status_code, second.status_code) == (200, 409)
     assert "already queued" in second.json()["detail"]
     assert len(_rows("SELECT id FROM drop_moves WHERE status = 'queued'")) == 1
@@ -275,7 +276,7 @@ def test_the_persons_own_words_travel_and_are_kept(client, paired):
     r = client.post(
         f"/v1/drops/{drop['id']}/moves/{move['id']}:start",
         json={"adjustment": said, "repo_key": None},
-        headers=headers,
+        headers=_phone_for(headers),
     )
     assert r.json()["move"]["adjustment"] == said
 
@@ -288,7 +289,7 @@ def test_a_repo_key_has_to_be_a_key_and_never_a_name(client, paired):
     r = client.post(
         f"/v1/drops/{drop['id']}/moves/{move['id']}:start",
         json={"repo_key": "RideGT"},
-        headers=headers,
+        headers=_phone_for(headers),
     )
     assert r.status_code == 422
 
@@ -302,8 +303,8 @@ def test_a_second_resolution_leaves_a_decided_move_alone(client, paired):
         headers=headers,
     )
     moves = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"]
-    client.post(f"/v1/drops/{drop['id']}/moves/{moves[0]['id']}:start", json={}, headers=headers)
-    client.post(f"/v1/drops/{drop['id']}/moves/{moves[1]['id']}:decline", headers=headers)
+    client.post(f"/v1/drops/{drop['id']}/moves/{moves[0]['id']}:start", json={}, headers=_phone_for(headers))
+    client.post(f"/v1/drops/{drop['id']}/moves/{moves[1]['id']}:decline", headers=_phone_for(headers))
 
     client.put(
         f"/v1/drops/{drop['id']}/resolution",
@@ -332,7 +333,7 @@ def test_the_runner_finishes_a_move_and_points_it_at_its_session(client, paired)
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
 
     claimed = client.post("/v1/drops/moves:claim", headers=headers).json()["moves"]
     assert len(claimed) == 1 and claimed[0]["id"] == move["id"]
@@ -357,7 +358,7 @@ def test_a_run_id_that_is_not_a_uuid_is_refused(client, paired):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
     client.post("/v1/drops/moves:claim", headers=headers)
     r = client.post(
         f"/v1/drops/moves/{move['id']}:finish",
@@ -378,7 +379,7 @@ def test_the_claim_carries_the_drops_own_title(client, paired):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
     claimed = client.post("/v1/drops/moves:claim", headers=headers).json()["moves"][0]
     assert claimed["drop_title"] == "5 beginner Claude Skills to install"
     assert claimed["drop_kind"] == "skill"
@@ -418,7 +419,7 @@ def test_a_board_is_one_persons(client, paired, created_users):
     assert client.get("/v1/drops", headers=other).json()["drops"] == []
     assert client.get(f"/v1/drops/{drop['id']}", headers=other).status_code == 404
     start_path = f"/v1/drops/{drop['id']}/moves/{move['id']}:start"
-    assert client.post(start_path, json={}, headers=other).status_code == 404
+    assert client.post(start_path, json={}, headers=_phone_for(other)).status_code == 404
     res_path = f"/v1/drops/{drop['id']}/resolution"
     assert client.put(res_path, json=_resolution(), headers=other).status_code == 404
     assert client.delete(f"/v1/drops/{drop['id']}", headers=other).status_code == 404
@@ -543,7 +544,7 @@ def test_a_finished_move_says_what_it_did(client, paired, monkeypatch):
     drop = _share(client, headers).json()["drop"]
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=headers)
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(headers))
     client.post("/v1/drops/moves:claim", headers=headers)
     client.post(
         f"/v1/drops/moves/{move['id']}:finish",
@@ -569,3 +570,18 @@ def test_a_push_that_fails_does_not_lose_the_upload(client, paired, monkeypatch)
     r = client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
     assert r.status_code == 200
     assert client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["drop"]["kind"] == "skill"
+
+
+def test_a_paired_machine_cannot_start_or_decline_a_move(client, paired):
+    """FOUND IN REVIEW (2026-09-19): start was on `current_device`, so a paired machine (the
+    agent, a `capture pair` box) could write a move and start it, and the Mac would run it. Only
+    a person's own app starts: the phone, or the desktop app paired from it."""
+    _uid, headers = paired
+    drop = _share(client, headers).json()["drop"]
+    client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=headers)
+    move = client.get(f"/v1/drops/{drop['id']}", headers=headers).json()["moves"][0]
+    base = f"/v1/drops/{drop['id']}/moves/{move['id']}"
+    assert client.post(f"{base}:start", json={}, headers=headers).status_code == 403
+    assert client.post(f"{base}:decline", headers=headers).status_code == 403
+    assert _rows("SELECT status FROM drop_moves WHERE id = :i", i=move["id"])[0].status == "offered"
+    assert client.post(f"{base}:start", json={}, headers=_phone_for(headers)).status_code == 200

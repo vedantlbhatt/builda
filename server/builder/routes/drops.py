@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import drop_push, drops_notify
 from .. import drops_store as store
-from ..auth import CurrentDevice, current_device
+from ..auth import CurrentDevice, current_device, current_person
 from ..db import db_session
 from ..drops_spec import DropResolution
 from .push import send_drop
@@ -212,9 +212,10 @@ def put_refusal(drop_id: str, body: RefusalIn, device: CurrentDevice = Depends(c
 
 @router.post("/drops/{drop_id}/moves/{move_id}:start")
 def start(
-    drop_id: str, move_id: str, body: StartIn, device: CurrentDevice = Depends(current_device)
+    drop_id: str, move_id: str, body: StartIn, device: CurrentDevice = Depends(current_person)
 ):
-    """A person tapped it. THE ONLY WAY A MOVE IS EVER QUEUED."""
+    """A person tapped it. THE ONLY WAY A MOVE IS EVER QUEUED. On `current_person`: a paired
+    machine's token (the agent, an uploader) is refused, or it could start what it planned."""
     if body.repo_key is not None and not _REPO_KEY.match(body.repo_key):
         raise HTTPException(422, "repo_key is the 64 character salted key, never a name")
     uid = _uid(device)
@@ -237,7 +238,7 @@ def start(
 
 
 @router.post("/drops/{drop_id}/moves/{move_id}:decline")
-def decline(drop_id: str, move_id: str, device: CurrentDevice = Depends(current_device)):
+def decline(drop_id: str, move_id: str, device: CurrentDevice = Depends(current_person)):
     uid = _uid(device)
     with db_session(viewer_id=uid) as db:
         move = store.decline_move(db, uid, move_id)

@@ -359,7 +359,7 @@ def test_each_transition_moves_the_card_forward_once(client, paired, apns):
     move = client.get(f"/v1/drops/{drop['id']}", headers=mac).json()["moves"][0]
     assert (
         client.post(
-            f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=mac
+            f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(mac)
         ).status_code
         == 200
     )
@@ -447,7 +447,7 @@ def test_no_push_ever_reaches_somebody_who_did_not_share_it(client, paired, crea
     client.post("/v1/drops:claim", headers=mac)
     client.put(f"/v1/drops/{drop['id']}/resolution", json=_resolution(), headers=mac)
     move = client.get(f"/v1/drops/{drop['id']}", headers=mac).json()["moves"][0]
-    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=mac)
+    client.post(f"/v1/drops/{drop['id']}/moves/{move['id']}:start", json={}, headers=_phone_for(mac))
 
     sent = apns.posts[before:]
     assert [p for p in sent if "0a" * 40 in p["url"] or "0b" * 40 in p["url"]] == []

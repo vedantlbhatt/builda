@@ -55,6 +55,8 @@ class CurrentDevice:
     #: `devices.grant_flow` (0024), read with the revocation check. None only for a device
     #: made without the route (a test's hand built one); `current_phone` refuses it too.
     grant_flow: str | None = None
+    #: `devices.platform`, read with it: `ios`, `macos` (the agent), `desktop-macos` (the app).
+    platform: str | None = None
 
 
 @dataclass
@@ -489,6 +491,27 @@ def current_phone(request: Request) -> CurrentDevice:
     return device
 
 
+#: Device flow platforms that are a person's own Builda app (the desktop shell pairs through the
+#: device flow and shows the phone's screens), as opposed to an agent or an uploader.
+PERSON_APP_PLATFORMS = ("desktop-macos", "desktop-windows", "desktop-linux")
+PERSON_ONLY = "only the Builda app does this: tap it on your phone, or in Builda on your computer"
+
+
+def current_person(request: Request) -> CurrentDevice:
+    """A person's own app: the phone (Sign in with Apple or Google), or the desktop app they
+    paired from it. FOUND IN REVIEW (2026-09-19): starting a drop's move was on `current_device`,
+    so any paired machine (a `capture pair` box, the Mac agent itself) could write a move and
+    start it, and the Mac would run it with Claude Code in the chosen repository: a move is
+    supposed to be inert until a PERSON taps it. The agent and the uploaders plan and run; only
+    an app with a person in front of it starts."""
+    device = current_device(request)
+    if device.grant_flow == SIGN_IN:
+        return device
+    if device.grant_flow is not None and device.platform in PERSON_APP_PLATFORMS:
+        return device
+    raise HTTPException(403, PERSON_ONLY)
+
+
 def optional_current_device(request: Request) -> CurrentDevice | None:
     """The sign-in routes' half-open door: no header means "create", a header means "link".
 
@@ -538,7 +561,7 @@ def _device_from_bearer(token: str) -> CurrentDevice:
 
     with db_session(viewer_id=str(device.user_id)) as db:
         row = db.execute(
-            text("SELECT revoked_at, grant_flow FROM devices WHERE id = :d"),
+            text("SELECT revoked_at, grant_flow, platform FROM devices WHERE id = :d"),
             {"d": str(device.device_id)},
         ).first()
     # No row covers both "deleted" and "belongs to someone else": under the owner policy
@@ -546,6 +569,7 @@ def _device_from_bearer(token: str) -> CurrentDevice:
     if row is None or row.revoked_at is not None:
         raise HTTPException(401, "device revoked")
     device.grant_flow = row.grant_flow
+    device.platform = row.platform
     return device
 
 

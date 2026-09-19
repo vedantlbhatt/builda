@@ -10,6 +10,7 @@ from ..auth import (
     CurrentDevice,
     ProviderIdentity,
     current_device,
+    current_person,
     issue_access_token,
     issue_refresh_token,
     new_user_code,
@@ -150,7 +151,7 @@ class DeviceApproveRequest(BaseModel):
 
 
 @router.post("/device/approve")
-def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(current_device)):
+def device_approve(body: DeviceApproveRequest, device: CurrentDevice = Depends(current_person)):
     """Approve a pairing code from an already-signed-in surface."""
     with db_session(viewer_id=str(device.user_id)) as db:
         updated = db.execute(

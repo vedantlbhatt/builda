@@ -29,7 +29,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .. import demo_push, objectstore, ship_kit
 from .. import project_media as pm
-from ..auth import CurrentDevice, current_device
+from ..auth import CurrentDevice, current_device, current_person
 from ..builder_profile import excluded_keys
 from ..db import db_session
 from ..shipkit_spec import (
@@ -86,7 +86,7 @@ def _req(r) -> dict:
 
 
 @router.post("/demos/requests", status_code=201)
-def request_demo(body: DemoRequestIn, device: CurrentDevice = Depends(current_device)):
+def request_demo(body: DemoRequestIn, device: CurrentDevice = Depends(current_person)):
     """Ask the Mac for a demo of one of your projects. The live request is answered when there
     is one (200), a new one otherwise (201)."""
     uid = str(device.user_id)
@@ -214,7 +214,7 @@ def finish_request(
 
 
 @router.delete("/demos/requests/{request_id}")
-def cancel_request(request_id: str, device: CurrentDevice = Depends(current_device)):
+def cancel_request(request_id: str, device: CurrentDevice = Depends(current_person)):
     """The phone takes back a request that has not ended."""
     uid = str(device.user_id)
     rid = _uuid(request_id)

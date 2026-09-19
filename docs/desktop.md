@@ -193,6 +193,7 @@ found by reading every screenshot and recording each morph:
 | a row, a tile or a band growing over the sidebar and the list that were about to stay | `MorphNav` grows to the window | it grows into the pane the route opens in, or over everything right of the sidebar when the list arrives with it |
 | a poster opening as an overlay over the whole window, with no route under it | the phone's `wall/Opening.tsx` | the poster grows into the pane and `/drop/<id>` opens there |
 | Esc under the pair share preview went back a page and left the preview up | the overlay is not a route | overlays register their own close; Esc asks them first |
+| "That drop is not here" under a poster growing into the pane | the route draws "not here" while its board is still loading | nothing until the board answers |
 | a grey square behind the Now stage and each wall card on hover | the wash follows the pressable, which was square | the pressables carry their shape's corner |
 | "Blocked call to navigator.vibrate" in the shell's log on opening a project | expo-haptics on web | `ui/haptics.web.ts` does nothing |
 
@@ -246,7 +247,7 @@ how where it matters. Rows marked "before the merge" were verified on the old UI
 | Recap sheet (`?recap=1`) | same code; a full-window sheet | before the merge: opening verified, posting not exercised |
 | Photos and a voice note on a post | same code (expo-image-picker, expo-av on web) | not exercised |
 | Drops wall: being built, pick a move (Start on the poster), what you made of them, every poster, search | same code, in the list column (520) | verified rendering, scrolled top to bottom; search, Start and the paste field not exercised |
-| A drop opening out of its poster | the poster's picture grows into the pane and `/drop/<id>` opens there (the phone's Opening overlay is not used) | verified, recorded |
+| A drop opening out of its poster | the poster's picture grows into the pane and `/drop/<id>` opens there (the phone's Opening overlay is not used) | verified, recorded; the route loads its own board, so the pane is empty ground for as long as that takes (1.5 to 2 s on the local stack while the Sessions sync filled the connection pool), where the phone's Opening is handed the drop |
 | A drop: the post, its moves, Start, the repo picker | same code, beside the wall | verified reading; Start not exercised |
 | The pair (the reel beside what you made) and its share image | same code; the preview is a modal over the window, Esc closes it | preview and Esc verified; Share does nothing useful (expo-sharing has no sheet in Electron) |
 | Sharing a reel INTO Builda (iOS share extension) | paste a link on the wall, Cmd/Ctrl+Shift+V, `builder://drop?url=` | wired; not exercised end to end |
@@ -291,8 +292,9 @@ Kept under `shots/` (gitignored), from this worktree's build against the local s
 - `shots/motion/desktop2/app/`: the Electron shell's own capture (`BUILDA_CAPTURE`), at 2x, the
   main window's routes and the island window on the live run and every sample; `capture.log` has
   no error.
-- `shots/motion/desktop2/motion1/`, `motion2/`: morphs recorded frame by frame (a row, a tile, a
-  poster, a band, the Now stage's entrance, the Settings tour), with contact sheets. Headless
+- `shots/motion/desktop2/motion1/` to `motion4/`: morphs recorded frame by frame (a row, a tile, a
+  poster, a band, the Now stage's entrance, the Settings tour), with contact sheets; `motion3` and
+  `motion4` are on the build with the motion branch merged in again. Headless
   Chromium screenshots at roughly one frame per 60 to 100 ms, so they show WHERE things go, not
   whether the spring feels right; that needs a person at a screen.
 
@@ -315,7 +317,9 @@ host hook, null on a phone); `src/island/demo.ts` (`playIslandTour(only?)`, ever
 given); `app/settings.tsx` and `app/(tabs)/drops.tsx` (a desktop branch behind `useIsDesktop()`);
 `src/ui/overlay.tsx` (`onDismiss`, `dismiss`, which only the desktop's Esc calls);
 `src/drops/wall/PairShare.tsx`, `src/drops/wall/Opening.tsx` (register their close);
-`src/drops/wall/Cards.tsx` (radii on fill-less pressables). New, desktop or web only:
+`src/drops/wall/Cards.tsx` (radii on fill-less pressables); `app/drop/[id].tsx` (nothing drawn,
+rather than "That drop is not here", until its board has answered: this one is a change on the
+phone too, for a deep link at a cold start). New, desktop or web only:
 `src/desktop/morphTarget(.web).ts`, `src/desktop/islandHost(.web).ts`, `src/ui/haptics.web.ts`.
 
 ## What is left
@@ -328,6 +332,8 @@ given); `app/settings.tsx` and `app/(tabs)/drops.tsx` (a desktop branch behind `
   The pair preview's Share button is the phone's and does nothing useful here.
 - The in-app island and the desktop island window are two pages: a notice the app posts ("Sent to
   your Mac") shows in the app's window only. A bridge message would let the window say it too.
+- A drop opened from the wall waits on its route's own board request; handing the route the
+  wall's row (a shared board, or the row through the push) would take away the empty pane.
 - The Settings tour on a desktop plays only the passing states; the standing ones are the desktop
   island's, which has samples (`BUILDA_ISLAND_SAMPLE`) but no tour of its own.
 - Not seen on the merged UI: the Now stage waiting (amber) and quiet (asleep), a drop's Start, the

@@ -9,7 +9,7 @@
  * reading its own pixels: every screen exactly as the page drew it (the window's title bar and
  * traffic lights are the system's, and are not in these), and the island on its transparent
  * ground. The island's expansion is recorded frame by frame (`beginFrameSubscription`) and
- * encoded with ffmpeg by `scripts/capture.mjs`.
+ * encoded with ffmpeg by `scripts/island-video.mjs`.
  *
  * Routes come from `BUILDA_CAPTURE_ROUTES` (comma separated), else every tab and Settings.
  */
@@ -40,16 +40,38 @@ async function run(o) {
   };
   // Every error and warning either page prints goes in the log beside the pictures.
   const listen = (/** @type {import('electron').WebContents} */ wc, /** @type {string} */ who) =>
-    wc.on('console-message', (/** @type {any} */ e, /** @type {any} */ level, /** @type {any} */ message) => {
-      const lv = e?.level ?? level;
-      const msg = e?.message ?? message;
-      if (lv === 'error' || lv === 'warning' || lv === 2 || lv === 3) log(`[${who} ${lv}] ${String(msg).slice(0, 400)}`);
+    wc.on('console-message', (/** @type {any} */ e) => {
+      if (e.level === 'error' || e.level === 'warning') log(`[${who} ${e.level}] ${String(e.message).slice(0, 400)}`);
     });
   listen(o.main.webContents, 'main');
   try {
     const main = o.main;
     await new Promise((r) => (main.webContents.isLoading() ? main.webContents.once('did-finish-load', r) : r(null)));
     await wait(Number(process.env.BUILDA_CAPTURE_SETTLE ?? 6000));
+
+    // The pairing, end to end: read the code the sign in shows, leave it for whoever approves it
+    // (`pair-code.txt`), and wait for the page to sign itself in and start over.
+    if (process.env.BUILDA_CAPTURE_PAIR === '1') {
+      let code = null;
+      for (let i = 0; i < 60 && !code; i++) {
+        const text = await main.webContents.executeJavaScript('document.body.innerText').catch(() => '');
+        code = /\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/.exec(String(text))?.[1] ?? null;
+        if (!code) await wait(500);
+      }
+      if (!code) throw new Error('no pairing code on the page');
+      await shoot(main.webContents, path.join(dir, '00-sign-in.png'));
+      fs.writeFileSync(path.join(dir, 'pair-code.txt'), code);
+      log(`pairing code ${code}; waiting for the phone`);
+      const reloaded = await new Promise((resolve) => {
+        const t = setTimeout(() => resolve(false), 90_000);
+        main.webContents.once('did-finish-load', () => {
+          clearTimeout(t);
+          resolve(true);
+        });
+      });
+      log(reloaded ? 'approved: the page signed in and reloaded' : 'not approved within 90 s');
+      await wait(Number(process.env.BUILDA_CAPTURE_SETTLE ?? 6000));
+    }
 
     const routes = (process.env.BUILDA_CAPTURE_ROUTES ?? '/now,/sessions,/drops,/projects,/you,/settings').split(',').filter(Boolean);
     let i = 0;

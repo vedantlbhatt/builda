@@ -6,6 +6,7 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { roleStyle } from '../../ui/typeStyle';
 import { SHIMMER_MS, STAGGER_MS, WHEEL, springConfig } from './motion';
@@ -48,7 +49,19 @@ function Line({ row, i, active, past }: { row: WheelRow; i: number; active: bool
         <Text numberOfLines={1} style={[active ? styles.active : styles.rest, { color: active ? INK : past ? DIM : FAINT }]}>
           {row.text}
         </Text>
-        <Animated.View pointerEvents="none" style={[styles.light, light]} />
+        {/* The light: a soft band of the ink, clear at both edges, crossing the words. */}
+        <Animated.View pointerEvents="none" style={[styles.light, light]}>
+          <Svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 10">
+            <Defs>
+              <LinearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor={INK} stopOpacity={0} />
+                <Stop offset="0.5" stopColor={INK} stopOpacity={0.16} />
+                <Stop offset="1" stopColor={INK} stopOpacity={0} />
+              </LinearGradient>
+            </Defs>
+            <Rect x={0} y={0} width={100} height={10} fill="url(#sweep)" />
+          </Svg>
+        </Animated.View>
       </View>
       {row.corner ? <Text style={[styles.corner, { color: FAINT }]}>{row.corner}</Text> : null}
     </Animated.View>
@@ -63,5 +76,5 @@ const styles = StyleSheet.create({
   active: { ...roleStyle('row') },
   rest: { ...roleStyle('meta') },
   corner: { ...roleStyle('mono') },
-  light: { position: 'absolute', top: 0, bottom: 0, width: '30%', backgroundColor: withAlpha(INK, 0.08) },
+  light: { position: 'absolute', top: 0, bottom: 0, width: '34%' },
 });

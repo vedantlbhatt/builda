@@ -9,6 +9,13 @@ parallel by subagents in their own worktrees, to be merged here when they report
 `claude/motion-mac` (the notch island in SwiftUI), `claude/motion-shipkit` (the demo ship kit),
 `claude/motion-desktop` (Electron + react-native-web, Mac and Windows).
 
+## The report
+
+https://claude.ai/artifact/C7dfZJDEG9q8wdciD8eLHv, built by
+`/private/tmp/claude-501/-Users-vedantbhatt/312de8a5-69ba-47fc-a21e-51a07c7dcf44/scratchpad/report/build.py`
+(template.html + status.json + media from `shots/motion/web`). Republish the same file path to
+keep the URL; from a new conversation pass the URL.
+
 ## Running it
 
 - API: `OVERNIGHT_HOME=~/.builder-drops-stack OVERNIGHT_DB=builder_overnight_drops

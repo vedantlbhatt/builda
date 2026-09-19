@@ -19,9 +19,10 @@ keep the URL; from a new conversation pass the URL.
 
 - API: `OVERNIGHT_HOME=~/.builder-drops-stack OVERNIGHT_DB=builder_overnight_drops
   OVERNIGHT_TEST_DB=builder_overnight_drops_test OVERNIGHT_PORT=8788 bash scripts/overnight_stack.sh up`
-- Simulator: iPhone 16 Pro `231E27A6-ADA7-48AA-8230-302A04689772` has the build from this worktree
-  (API baked to 127.0.0.1:8788, both extensions). Sign it in:
-  `... overnight_stack.sh sim 231E27A6-ADA7-48AA-8230-302A04689772 --onboarded`.
+- Simulator: the iPhone 16 Pro on iOS 18.2 has the build from this worktree (API baked to
+  127.0.0.1:8788, both extensions); its UDID is `xcrun simctl list devices | grep "iPhone 16 Pro"`
+  (never written here: `test_public_repo` keeps machine identifiers out of tracked files). Sign it
+  in: `... overnight_stack.sh sim <udid> --onboarded`.
   Another agent boots its own "Builda Measure" simulator: ALWAYS pass the UDID, never `booted`.
 - Metro: `cd mobile && EXPO_PUBLIC_ISLAND_DEMO=1 npx expo start --port 8081` (the env var makes
   the island cycle through every state for screenshots; drop it for real use).

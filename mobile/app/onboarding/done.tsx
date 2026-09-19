@@ -24,6 +24,7 @@ import { PixelBurst } from '../../src/onboarding/PixelBurst';
 import { Pop } from '../../src/onboarding/Pop';
 import { foundFor, loadAnimal, loadTools, preselect, suggestedAnimal } from '../../src/onboarding/selection';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { ChromeTracker } from '../../src/onboarding/StepFrame';
 import { useStepPage } from '../../src/onboarding/stepPage';
 import { BAND_TITLE, CREATURE_NAME, display } from '../../src/onboarding/type';
@@ -272,7 +273,7 @@ export default function DoneStep() {
       <ChromeTracker index={chromeIndex('done')} />
       <RevealPage page={page}>
         <Section style={{ flex: 1 }}>
-          <StepBand hue={hue} inset={insets.top + space.md} fill>
+          <StepBand motion={STEP_MOTION.done} hue={hue} inset={insets.top + space.md} fill>
             <Animated.View style={titleStyle}>
               <T role="label" style={[BAND_TITLE, { color: ON_HUE }]}>
                 {DONE.label}

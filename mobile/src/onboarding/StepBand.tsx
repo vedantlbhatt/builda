@@ -8,6 +8,7 @@ import { FRINGE } from '../insights/Band';
 import { ease, phase } from '../insights/motion';
 import { Block, useClock } from '../insights/reveal';
 import { useReduceMotion } from '../ui/motion';
+import { modeOf, type PixelMotion } from '../motion/pixelMotion';
 import { STEP_BAND_SKSL } from './bandShader';
 import { BAND_SHIFT, GUTTER } from './flow';
 import { colorUniform } from './shaders';
@@ -57,11 +58,13 @@ export interface StepBandProps {
   fill?: boolean;
   /** The dissolve under it. Default the analysis band's 36pt. */
   fringe?: number;
+  /** How it prints (`bandShader.STEP_MOTION`, one per step). */
+  motion?: PixelMotion;
   contentStyle?: StyleProp<ViewStyle>;
   style?: StyleProp<ViewStyle>;
 }
 
-export function StepBand({ hue, children, print = true, inset = 0, fill = false, fringe = FRINGE, contentStyle, style }: StepBandProps) {
+export function StepBand({ hue, children, print = true, inset = 0, fill = false, fringe = FRINGE, motion = 'rain', contentStyle, style }: StepBandProps) {
   const [box, setBox] = useState({ w: 0, h: 0 });
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -70,7 +73,7 @@ export function StepBand({ hue, children, print = true, inset = 0, fill = false,
   return (
     <Block enter={false} style={[fill ? { flex: 1 } : null, style]}>
       <View style={fill ? { flex: 1 } : undefined}>
-        <BandCanvas width={box.w} solid={box.h} fringe={fringe} ink={hue.ink} print={print} />
+        <BandCanvas width={box.w} solid={box.h} fringe={fringe} ink={hue.ink} print={print} motion={motion} />
         <View
           onLayout={onLayout}
           style={[{ paddingTop: inset, paddingHorizontal: GUTTER, paddingBottom: 22 }, fill ? { flex: 1 } : null, contentStyle]}
@@ -83,7 +86,7 @@ export function StepBand({ hue, children, print = true, inset = 0, fill = false,
   );
 }
 
-function BandCanvas({ width, solid, fringe, ink, print }: { width: number; solid: number; fringe: number; ink: string; print: boolean }) {
+function BandCanvas({ width, solid, fringe, ink, print, motion }: { width: number; solid: number; fringe: number; ink: string; print: boolean; motion: PixelMotion }) {
   const clock = useClock();
   const reduced = useReduceMotion();
   const source = bandEffect();
@@ -112,6 +115,9 @@ function BandCanvas({ width, solid, fringe, ink, print }: { width: number; solid
   }, [ink, reduced, ink0, ink1, shift]);
 
   const still = print ? 0 : 1;
+  const mode = modeOf(motion);
+  const cols = Math.max(1, Math.ceil(width / CELL));
+  const rows = Math.max(1, Math.ceil((solid + fringe) / CELL));
   const uniforms = useDerivedValue(() => ({
     cell: CELL,
     solid,
@@ -121,6 +127,10 @@ function BandCanvas({ width, solid, fringe, ink, print }: { width: number; solid
     block: BAND_SHIFT.block,
     ink0: ink0.value,
     ink1: ink1.value,
+    mode,
+    cols,
+    rows,
+    origin: [0.5, 1],
   }));
 
   const height = solid + fringe;

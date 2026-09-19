@@ -24,15 +24,15 @@ import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react
 import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated';
 
 import { morphOpen } from '../motion/MorphNav';
-import { modeOf, motionFor, PIXEL_MOTIONS, type PixelMotion } from '../motion/pixelMotion';
+import { modeOf, motionFor, orderSksl, PIXEL_MOTIONS, type PixelMotion } from '../motion/pixelMotion';
 import { MONO_FAMILY } from '../theme';
 import { ease, phase, RISE } from './motion';
 import { GROUND, ON_HUE, type Hue } from './palette';
 import { Block, useClock, usePageOrder, useReducedSV } from './reveal';
 
 /**
- * The same orders as `pixelMotion.cellOrder`, cell for cell (its `cellHash` with seed 0 is this
- * `hash`), so a band and a JS print that share an order scatter alike.
+ * The orders are `pixelMotion.orderSksl` over this `hash` (`pixelMotion.cellHash` with seed 0 in
+ * JS), so a band and a JS print that share an order scatter alike.
  */
 const BAND_SKSL = `
 uniform float cell;
@@ -49,32 +49,7 @@ float b2(float2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }
 float b8(float2 a) { return b2(a * 0.25) * 0.0625 + b2(a * 0.5) * 0.25 + b2(a); }
 float hash(float2 c) { return fract(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453); }
 
-float orderOf(float2 c) {
-  float u = cols <= 1.0 ? 0.0 : c.x / (cols - 1.0);
-  float v = rows <= 1.0 ? 0.0 : c.y / (rows - 1.0);
-  float h = hash(c);
-  if (mode < 0.5) { return h * 0.55 + v * 0.45; }
-  if (mode < 1.5) { return v * 0.9 + h * 0.1; }
-  if (mode < 2.5) {
-    float aspect = cols / max(1.0, rows);
-    float2 d = float2((u - origin.x) * aspect, v - origin.y);
-    float far = length(float2(max(origin.x, 1.0 - origin.x) * aspect, max(origin.y, 1.0 - origin.y)));
-    return length(d) / max(far, 0.0001) * 0.85 + h * 0.15;
-  }
-  if (mode < 3.5) {
-    float speed = 0.45 + 0.55 * hash(float2(c.x + 78.43, 40.7));
-    return (1.0 - v) * speed + h * 0.08;
-  }
-  if (mode < 4.5) { return mod(c.x + c.y, 2.0) * 0.5 + v * 0.42 + h * 0.08; }
-  if (mode < 5.5) { return hash(floor(c / 8.0) + float2(35.65, 18.5)) * 0.72 + h * 0.28; }
-  if (mode < 6.5) {
-    float2 d = float2(u - 0.5, v - 0.5);
-    float r = min(1.0, length(d) / 0.7072);
-    float a = fract(atan(d.y, d.x) / 6.2831853 + 0.5);
-    return r * 0.7 + a * 0.22 + h * 0.08;
-  }
-  return u * 0.82 + h * 0.18;
-}
+${orderSksl('hash')}
 
 half4 main(float2 p) {
   float2 c = floor(p / cell);
@@ -82,7 +57,7 @@ half4 main(float2 p) {
   float d = y < solid ? 1.0 : clamp(1.0 - (y - solid) / fringe, 0.0, 1.0);
   if (d <= 0.0) { return half4(0.0); }
   float on = b8(p / cell) < d * 0.999 ? 1.0 : 0.0;
-  float arrived = clamp(orderOf(c), 0.0, 1.0) < reveal * 1.02 ? 1.0 : 0.0;
+  float arrived = clamp(orderOf(c, mode, cols, rows, origin), 0.0, 1.0) < reveal * 1.02 ? 1.0 : 0.0;
   return ink * half(on * arrived);
 }
 `;

@@ -3,7 +3,7 @@
  * them without a GPU. Pure: no React Native.
  *
  * It is the analysis page's band (`insights/Band.tsx`: a full bleed field of the hue that PRINTS
- * ITSELF, its cells arriving in a random order biased top to bottom, then a dissolve under it
+ * ITSELF, its cells arriving in the step's own order (`STEP_MOTION`), then a dissolve under it
  * through the 8x8 Bayer dither into the warm ground) with one thing added for the creature step:
  * the band can change hue, and when it does its cells switch from the old hue to the new one in
  * a second random order, a block of four cells at a time (react-bits PixelTransition's order),
@@ -14,6 +14,7 @@
  * by the kit's tests), composed here.
  */
 import { BAYER_SKSL, HASH_SKSL } from '../ui/bits/components/fills';
+import { cellOrderWith, orderSksl, type PixelMotion } from '../motion/pixelMotion';
 import { hash12 } from './shaders';
 
 export const STEP_BAND_SKSL = `
@@ -25,26 +26,50 @@ uniform float shift;
 uniform float block;
 uniform half4 ink0;
 uniform half4 ink1;
+uniform float mode;
+uniform float cols;
+uniform float rows;
+uniform float2 origin;
 ${BAYER_SKSL}
 ${HASH_SKSL}
+${orderSksl('hash12')}
 half4 main(float2 p) {
   float2 c = floor(p / cell);
   float y = (c.y + 0.5) * cell;
-  float total = solid + fringe;
   float d = y < solid ? 1.0 : clamp(1.0 - (y - solid) / fringe, 0.0, 1.0);
   if (d <= 0.0) { return half4(0.0); }
   float on = b8(p / cell) < d * 0.999 ? 1.0 : 0.0;
-  float order = hash12(c) * 0.55 + (y / total) * 0.45;
+  float order = orderOf(c, mode, cols, rows, origin);
   float arrived = order < reveal * 1.02 ? 1.0 : 0.0;
   half4 ink = hash12(floor(p / block) + float2(71.0, 113.0)) < shift ? ink1 : ink0;
   return ink * half(on * arrived);
 }`;
 
-/** When a cell of the band arrives, 0 first to about 1 last: random, biased to the top. */
-export function bandArrival(col: number, row: number, cell: number, total: number): number {
-  const y = (row + 0.5) * cell;
-  return hash12(col, row) * 0.55 + (total > 0 ? y / total : 0) * 0.45;
+/**
+ * When a cell of the band arrives, 0 first to 1 last, in the step's order (`motion/pixelMotion.ts`
+ * over `hash12`, the program's twin). `rain`, random biased to the top, is the old print.
+ */
+export function bandArrival(col: number, row: number, cell: number, total: number, motion: PixelMotion = 'rain', cols = 1): number {
+  const rows = Math.max(1, Math.ceil(total / cell));
+  return cellOrderWith(hash12, motion, col, row, cols, rows);
 }
+
+/**
+ * Each onboarding step prints its band its own way, all eight different, so the flow reads as a
+ * sequence of distinct pages rather than one page eight times: hello opens from the centre, the
+ * name scans in, the creature's stage lands in blocks, the tools interlace, connect ripples out,
+ * notifications rise, done wipes across, the app icon picker rains.
+ */
+export const STEP_MOTION = {
+  hello: 'spiral',
+  name: 'scan',
+  creature: 'blocks',
+  tools: 'interlace',
+  connect: 'ripple',
+  notify: 'rise',
+  done: 'wipe',
+  icon: 'rain',
+} as const satisfies Record<string, PixelMotion>;
 
 /** Whether the block a point sits in has switched to the new hue at `shift` (0 to 1). */
 export function bandShifted(x: number, y: number, block: number, shift: number): boolean {

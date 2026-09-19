@@ -55,7 +55,7 @@ export function modeOf(m: PixelMotion): number {
   return PIXEL_MOTIONS.indexOf(m);
 }
 
-/** The shader's hash, in JS, so a JS print and a shader band scatter alike. */
+/** The band shader's hash, in JS, so a JS print and a shader band scatter alike. */
 export function cellHash(x: number, y: number, seed = 0): number {
   const v = Math.sin((x + seed * 7.13) * 12.9898 + (y + seed * 3.7) * 78.233) * 43758.5453;
   return v - Math.floor(v);
@@ -65,21 +65,25 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
+/** A 2D hash in [0, 1): the band's sine one, or onboarding's sine-free `hash12`. */
+export type Hash2 = (x: number, y: number) => number;
+
 /**
- * When cell (x, y) of a `cols` by `rows` grid switches on, 0 to 1. `origin` is the ripple's centre
- * as a fraction of the grid (a tap), defaulting to the top left.
+ * When cell (x, y) of a `cols` by `rows` grid switches on, 0 to 1, under hash `H`. The SkSL twin is
+ * `orderSksl` below, cell for cell. `origin` is the ripple's centre as a fraction of the grid (a
+ * tap), defaulting to the top left.
  */
-export function cellOrder(m: PixelMotion, x: number, y: number, cols: number, rows: number, seed = 0, origin: { x: number; y: number } = { x: 0, y: 0 }): number {
+export function cellOrderWith(H: Hash2, m: PixelMotion, x: number, y: number, cols: number, rows: number, origin: { x: number; y: number } = { x: 0, y: 0 }): number {
   const u = cols <= 1 ? 0 : x / (cols - 1);
   const v = rows <= 1 ? 0 : y / (rows - 1);
-  const h = cellHash(x, y, seed);
+  const h = H(x, y);
   switch (m) {
     case 'rain':
       return clamp01(h * 0.55 + v * 0.45);
     case 'scan':
       return clamp01(v * 0.9 + h * 0.1);
     case 'ripple': {
-      const aspect = rows > 0 ? cols / Math.max(1, rows) : 1;
+      const aspect = cols / Math.max(1, rows);
       const dx = (u - origin.x) * aspect;
       const dy = v - origin.y;
       const far = Math.hypot(Math.max(origin.x, 1 - origin.x) * aspect, Math.max(origin.y, 1 - origin.y)) || 1;
@@ -87,26 +91,63 @@ export function cellOrder(m: PixelMotion, x: number, y: number, cols: number, ro
     }
     case 'rise': {
       // Each column has its own speed; within a column, the foot first.
-      const speed = 0.45 + 0.55 * cellHash(x, 0, seed + 11);
+      const speed = 0.45 + 0.55 * H(x + 78.43, 40.7);
       return clamp01((1 - v) * speed + h * 0.08);
     }
     case 'interlace':
       return clamp01(((x + y) % 2) * 0.5 + v * 0.42 + h * 0.08);
-    case 'blocks': {
-      const bx = Math.floor(x / 8);
-      const by = Math.floor(y / 8);
-      return clamp01(cellHash(bx, by, seed + 5) * 0.72 + h * 0.28);
-    }
+    case 'blocks':
+      return clamp01(H(Math.floor(x / 8) + 35.65, Math.floor(y / 8) + 18.5) * 0.72 + h * 0.28);
     case 'spiral': {
       const dx = u - 0.5;
       const dy = v - 0.5;
       const r = Math.min(1, Math.hypot(dx, dy) / 0.7072);
-      const a = (Math.atan2(dy, dx) / (2 * Math.PI) + 0.5) % 1;
+      const a = (((Math.atan2(dy, dx) / (2 * Math.PI) + 0.5) % 1) + 1) % 1;
       return clamp01(r * 0.7 + a * 0.22 + h * 0.08);
     }
     case 'wipe':
       return clamp01(u * 0.82 + h * 0.18);
   }
+}
+
+/** `cellOrderWith` under the band's sine hash, `seed` shifting the scatter. */
+export function cellOrder(m: PixelMotion, x: number, y: number, cols: number, rows: number, seed = 0, origin: { x: number; y: number } = { x: 0, y: 0 }): number {
+  return cellOrderWith((a, b) => cellHash(a, b, seed), m, x, y, cols, rows, origin);
+}
+
+/**
+ * `cellOrderWith` in SkSL, calling a hash named `H` the program already defines (`hash` in the
+ * band, onboarding's sine-free `hash12` in the step band). Seven thresholds on `mode` and the last
+ * order as the fall through, in `PIXEL_MOTIONS` order.
+ */
+export function orderSksl(H: string): string {
+  return `
+float orderOf(float2 c, float mode, float cols, float rows, float2 origin) {
+  float u = cols <= 1.0 ? 0.0 : c.x / (cols - 1.0);
+  float v = rows <= 1.0 ? 0.0 : c.y / (rows - 1.0);
+  float h = ${H}(c);
+  if (mode < 0.5) { return h * 0.55 + v * 0.45; }
+  if (mode < 1.5) { return v * 0.9 + h * 0.1; }
+  if (mode < 2.5) {
+    float aspect = cols / max(1.0, rows);
+    float2 d = float2((u - origin.x) * aspect, v - origin.y);
+    float far = length(float2(max(origin.x, 1.0 - origin.x) * aspect, max(origin.y, 1.0 - origin.y)));
+    return length(d) / max(far, 0.0001) * 0.85 + h * 0.15;
+  }
+  if (mode < 3.5) {
+    float speed = 0.45 + 0.55 * ${H}(float2(c.x + 78.43, 40.7));
+    return (1.0 - v) * speed + h * 0.08;
+  }
+  if (mode < 4.5) { return mod(c.x + c.y, 2.0) * 0.5 + v * 0.42 + h * 0.08; }
+  if (mode < 5.5) { return ${H}(floor(c / 8.0) + float2(35.65, 18.5)) * 0.72 + h * 0.28; }
+  if (mode < 6.5) {
+    float2 d = float2(u - 0.5, v - 0.5);
+    float r = min(1.0, length(d) / 0.7072);
+    float a = fract(atan(d.y, d.x) / 6.2831853 + 0.5);
+    return r * 0.7 + a * 0.22 + h * 0.08;
+  }
+  return u * 0.82 + h * 0.18;
+}`;
 }
 
 /**

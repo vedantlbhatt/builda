@@ -11,6 +11,7 @@ import { pathFor } from '../../src/onboarding/flow';
 import { HueButton } from '../../src/onboarding/HueButton';
 import { useLanded } from '../../src/onboarding/landing';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { StepFrame, useBandInset } from '../../src/onboarding/StepFrame';
 import { Timeline, type TimelineRow } from '../../src/onboarding/Timeline';
 import { BAND_TITLE, HEADLINE } from '../../src/onboarding/type';
@@ -75,7 +76,7 @@ export default function NotifyStep() {
   }, [next]);
 
   const band = (
-    <StepBand hue={accent} inset={inset}>
+    <StepBand motion={STEP_MOTION.notify} hue={accent} inset={inset}>
       <T role="label" style={[BAND_TITLE, { color: ON_HUE }]}>
         {NOTIFY.label}
       </T>

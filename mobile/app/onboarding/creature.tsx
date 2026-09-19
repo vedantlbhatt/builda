@@ -18,6 +18,7 @@ import { useLanded } from '../../src/onboarding/landing';
 import { Wipe } from '../../src/onboarding/Rise';
 import { loadAnimal, saveAnimal, suggestedAnimal } from '../../src/onboarding/selection';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { StepFrame, useBandInset } from '../../src/onboarding/StepFrame';
 import { BAND_TITLE, CREATURE_NAME, display } from '../../src/onboarding/type';
 import { setAccentCreature } from '../../src/theme/accent';
@@ -157,7 +158,7 @@ export default function CreatureStep() {
   const words2 = display(size);
 
   const band = (
-    <StepBand hue={hue} inset={inset} fill print={!fromName}>
+    <StepBand motion={STEP_MOTION.creature} hue={hue} inset={inset} fill print={!fromName}>
       <T role="label" style={[BAND_TITLE, { color: ON_HUE }]}>
         {CREATURE.label}
       </T>

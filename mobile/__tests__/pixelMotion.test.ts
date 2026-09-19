@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { cellOrder, modeOf, motionFor, NUM_MOTIONS, numFrame, numMotionFor, PIXEL_MOTIONS, takeOrder, tickStep, type PixelMotion } from '../src/motion/pixelMotion';
+import { cellOrder, modeOf, orderSksl, motionFor, NUM_MOTIONS, numFrame, numMotionFor, PIXEL_MOTIONS, takeOrder, tickStep, type PixelMotion } from '../src/motion/pixelMotion';
 
 const COLS = 40;
 const ROWS = 24;
@@ -43,7 +43,8 @@ describe('each pixel surface arrives its own way', () => {
 
   test("the band's shader has a branch for every order, in the same numbering", () => {
     const band = readFileSync(join(import.meta.dir, '../src/insights/Band.tsx'), 'utf8');
-    const branches = band.match(/if \(mode < \d\.5\)/g) ?? [];
+    expect(band).toContain("orderSksl('hash')");
+    const branches = orderSksl('hash').match(/if \(mode < \d\.5\)/g) ?? [];
     // Seven thresholds and the last order as the fall through.
     expect(branches.length).toBe(PIXEL_MOTIONS.length - 1);
     expect(modeOf('rain')).toBe(0);

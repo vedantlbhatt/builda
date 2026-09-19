@@ -19,6 +19,7 @@ import { HueButton } from '../../src/onboarding/HueButton';
 import { APPLE_NAME_KEY } from '../../src/onboarding/keys';
 import { NAME_MAX, nameUsable, prefillName, submitName } from '../../src/onboarding/names';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { StepFrame, useBandInset } from '../../src/onboarding/StepFrame';
 import { displayInput, HEADLINE_SCALE } from '../../src/onboarding/type';
 import { useAccent } from '../../src/theme/accent';
@@ -219,7 +220,7 @@ export default function NameStep() {
   );
 
   const band = (
-    <StepBand hue={accent} inset={inset} print={printBand}>
+    <StepBand motion={STEP_MOTION.name} hue={accent} inset={inset} print={printBand}>
       <BlurText text={NAME.label} role="headline" weight={700} color={ON_HUE} delay={LABEL_AT_MS} />
       <View style={{ height: NAME_BOX, flexDirection: 'row', alignItems: 'center' }}>
         {initial !== null && (

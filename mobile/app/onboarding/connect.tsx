@@ -22,6 +22,7 @@ import { ACTION_HEIGHT, HueButton, LEDGE } from '../../src/onboarding/HueButton'
 import { APPLE_NAME_KEY } from '../../src/onboarding/keys';
 import { appleCallName } from '../../src/onboarding/names';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { StepFrame, useBandInset } from '../../src/onboarding/StepFrame';
 import { BAND_CAPTION, BAND_FIGURE, BAND_TITLE, HEADLINE } from '../../src/onboarding/type';
 import { useAccent } from '../../src/theme/accent';
@@ -214,7 +215,7 @@ export default function ConnectStep() {
   const headline = signedIn === false ? CONNECT.signedOutHeadline : signedIn === true ? CONNECT.headline : ' ';
 
   const band = (
-    <StepBand hue={accent} inset={inset}>
+    <StepBand motion={STEP_MOTION.connect} hue={accent} inset={inset}>
       <T role="label" style={[BAND_TITLE, { color: ON_HUE }]}>
         {CONNECT.label}
       </T>

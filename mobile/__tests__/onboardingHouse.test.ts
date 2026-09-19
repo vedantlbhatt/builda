@@ -14,6 +14,7 @@ import { fitSize } from '../src/insights/format';
 import { BAYER_SKSL, HASH_SKSL } from '../src/ui/bits/components/fills';
 import { T as DUR } from '../src/ui/motionSpec';
 import { tokens } from '../src/generated/tokens';
+import { modeOf, PIXEL_MOTIONS } from '../src/motion/pixelMotion';
 import { bandArrival, bandDensity, bandShifted, STEP_BAND_SKSL } from '../src/onboarding/bandShader';
 import { creatureWord, grouped, readsList, sessionsCaption, sessionWord } from '../src/onboarding/copy';
 import { covered, coverWith, currentDissolve, finish, isCovering, reveal, resetDissolve } from '../src/onboarding/dissolve';
@@ -350,7 +351,10 @@ describe('the band’s program, drawn (CanvasKit)', () => {
   const NEW = '#F9833E';
   const fx = CK.RuntimeEffect.Make(STEP_BAND_SKSL)!;
   const band = (reveal: number, shift: number) => {
-    const sh = fx.makeShader([tokens.dither.cell, SOLID, FR, reveal, shift, BAND_SHIFT.block, ...colorUniform(OLD), ...colorUniform(NEW)]);
+    // mode 0 (rain, the old print), the grid in cells, the ripple's origin (unused by rain).
+    const cols = Math.ceil(W / tokens.dither.cell);
+    const rows = Math.ceil(H / tokens.dither.cell);
+    const sh = fx.makeShader([tokens.dither.cell, SOLID, FR, reveal, shift, BAND_SHIFT.block, ...colorUniform(OLD), ...colorUniform(NEW), 0, cols, rows, 0.5, 1]);
     const px = draw(sh, W, H);
     sh.delete();
     return px;
@@ -443,5 +447,43 @@ describe('the cover’s program over one colour, drawn (CanvasKit)', () => {
       }
     }
     expect(checked).toBeGreaterThan(8);
+  });
+});
+
+describe('every pixel order, drawn (CanvasKit) against its JavaScript twin', () => {
+  const W = 72;
+  const SOLID = 72;
+  const FR = 12;
+  const H = SOLID + FR;
+  const cell = tokens.dither.cell;
+  const cols = Math.ceil(W / cell);
+  const rows = Math.ceil(H / cell);
+  const INK = '#F9833E';
+  const fx = CK.RuntimeEffect.Make(STEP_BAND_SKSL)!;
+
+  test('at half way through the print, a cell is inked in the shader exactly when the twin says it has arrived', () => {
+    for (const m of PIXEL_MOTIONS) {
+      const reveal = 0.5;
+      // Origin 0,0: the JS twin's default, so the ripple is compared from the same point.
+      const sh = fx.makeShader([cell, SOLID, FR, reveal, 0, BAND_SHIFT.block, ...colorUniform(INK), ...colorUniform(INK), modeOf(m), cols, rows, 0, 0]);
+      const px = draw(sh, W, H);
+      sh.delete();
+      let checked = 0;
+      for (let row = 0; row < Math.floor(SOLID / cell); row++) {
+        for (let col = 0; col < cols; col++) {
+          const want = bandArrival(col, row, cell, H, m, cols);
+          // A cell within a hair of the line is a float32 question (the kit's own caveat), and so is
+          // a hash within a hair of 1: in float32 its fract can wrap to 0 (cell 17,13 hashes to
+          // 0.9971 in doubles and printed at the very start in the shader).
+          if (Math.abs(want - reveal * 1.02) < 0.01) continue;
+          const hs = [hash12(col, row), hash12(col + 78.43, 40.7), hash12(Math.floor(col / 8) + 35.65, Math.floor(row / 8) + 18.5)];
+          if (hs.some((h) => h > 0.99 || h < 0.01)) continue;
+          const inked = rgbOf(px, W, col * cell + 1, row * cell + 1)[3]! > 0;
+          expect({ m, col, row, inked }).toEqual({ m, col, row, inked: want < reveal * 1.02 });
+          checked++;
+        }
+      }
+      expect(checked).toBeGreaterThan(400);
+    }
   });
 });

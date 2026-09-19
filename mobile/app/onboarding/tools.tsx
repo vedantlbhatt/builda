@@ -16,6 +16,7 @@ import { HueButton } from '../../src/onboarding/HueButton';
 import { useLanded } from '../../src/onboarding/landing';
 import { foundFor, initialTools, loadTools, marksInOrder, preselect, saveTools } from '../../src/onboarding/selection';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { StepFrame, useBandInset } from '../../src/onboarding/StepFrame';
 import { ToolTiles } from '../../src/onboarding/ToolTiles';
 import { BAND_CAPTION, BAND_FIGURE, BAND_TITLE, HEADLINE, TOOLS_FIGURE_MAX } from '../../src/onboarding/type';
@@ -119,7 +120,7 @@ export default function ToolsStep() {
   );
 
   const band = (
-    <StepBand hue={accent} inset={inset}>
+    <StepBand motion={STEP_MOTION.tools} hue={accent} inset={inset}>
       <T role="label" style={[BAND_TITLE, { color: ON_HUE }]}>
         {TOOLS.label}
       </T>

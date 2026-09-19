@@ -17,6 +17,7 @@ import { canCover } from '../../src/onboarding/PixelDissolve';
 import { ReadsLine } from '../../src/onboarding/ReadsLine';
 import { Rise } from '../../src/onboarding/Rise';
 import { StepBand } from '../../src/onboarding/StepBand';
+import { STEP_MOTION } from '../../src/onboarding/bandShader';
 import { useStepPage } from '../../src/onboarding/stepPage';
 import { HEADLINE, HINT } from '../../src/onboarding/type';
 import { useAccent } from '../../src/theme/accent';
@@ -188,7 +189,7 @@ export default function HelloStep() {
         <Section style={{ flex: 1 }}>
           <GestureDetector gesture={pan}>
             <View style={{ flex: 1 }}>
-              <StepBand hue={accent} inset={insets.top} fill>
+              <StepBand motion={STEP_MOTION.hello} hue={accent} inset={insets.top} fill>
                 <Animated.View style={[{ flex: 1 }, lifted]}>
                   {/* The one centred thing is Bit: it is what is being looked at. */}
                   <View onLayout={onStage} style={{ flex: 1, marginHorizontal: -GUTTER, alignItems: 'center', justifyContent: 'center' }}>

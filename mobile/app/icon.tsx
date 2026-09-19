@@ -17,6 +17,7 @@ import { HueButton } from '../src/onboarding/HueButton';
 import { ANIMAL_KEY } from '../src/onboarding/keys';
 import { loadAnimal, saveAnimal, suggestedAnimal } from '../src/onboarding/selection';
 import { StepBand } from '../src/onboarding/StepBand';
+import { STEP_MOTION } from '../src/onboarding/bandShader';
 import { useStepPage } from '../src/onboarding/stepPage';
 import { CREATURE_NAME, display } from '../src/onboarding/type';
 import { setAccentCreature } from '../src/theme/accent';
@@ -87,7 +88,7 @@ export default function IconScreen() {
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <RevealPage page={page}>
         <Section style={{ flex: 1 }}>
-          <StepBand hue={hue} inset={space.md} fill>
+          <StepBand motion={STEP_MOTION.icon} hue={hue} inset={space.md} fill>
             {/* Left aligned, like every heading. Only the creature is centred: it is the thing
                 being looked at. The bar already says "Your creature". */}
             <T role="body" weight={500} style={{ color: ON_HUE }}>

@@ -37,6 +37,12 @@ keep the URL; from a new conversation pass the URL.
 
 ## Done
 
+- **07:37 to 07:45**: CLAUDE.md says the ground truth corpus was garbage collected (Claude Code keeps
+  30 days; oldest RideGT file Aug 20, reference measured by Aug 15), so that suite's local failure
+  is the truthful result (8a25d98). Monday's notification for last week's card (ee4f3eb): scheduled
+  for 09:00 next Monday while this week has hours, a tap opens Sessions with the card
+  (`builder://sessions?card=last-week`), never both with the island. One shared fake of
+  expo-notifications (`__tests__/fakeNotifications.ts`): bun's module mocks are process wide.
 - **07:27 to 07:30**: CI had been red on every push since 2026-09-14 (main too): the `contract`
   gate runs `make gen` on a bare Python, `gen_live_fixtures.py` reaches `notify.needs_you_title`,
   and `notify.py` imported SQLAlchemy at the top, so the gate died on the import and reference,

@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import type { BoardResponse, DropRow, MoveRow } from '../drops/types';
 import type { DemoRequestRow, ShipKitResponse } from '../shipkit/types';
+import type { TrailerNote } from '../trailer/model';
 
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
@@ -1066,6 +1067,21 @@ export class Api {
   /** A project's published ship kit, or `{kit: null}`; 404 for a project that is not yours. */
   shipKit(key: string): Promise<{ kit: ShipKitResponse | null }> {
     return this.request('GET', `/v1/projects/${encodeURIComponent(key)}/kit`);
+  }
+
+  /** The notes on this project's trailer and your Mac's answers, newest first (docs/trailers.md). */
+  trailerNotes(key: string): Promise<{ notes: TrailerNote[] }> {
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}/trailer/notes`);
+  }
+
+  /** Ask your Mac to change this project's trailer, in your own words. */
+  sendTrailerNote(key: string, body: string): Promise<{ note: TrailerNote }> {
+    return this.request('POST', `/v1/projects/${encodeURIComponent(key)}/trailer/notes`, { body: { body } });
+  }
+
+  /** Take back a note your Mac has not picked up yet. */
+  cancelTrailerNote(id: string): Promise<{ note: TrailerNote }> {
+    return this.request('DELETE', `/v1/trailer/notes/${encodeURIComponent(id)}`);
   }
 
   /** Ask your Mac for a demo of this project; the live request when there is one already. */

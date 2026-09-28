@@ -98,6 +98,46 @@ POST   /v1/factions  POST /v1/factions:join {code}  GET /v1/factions/{slug}/boar
 PATCH  /v1/factions/{slug}/members/me   {share_hours}
 ```
 
+## Stars and releases (0037)
+
+A person follows PEOPLE (above); a star follows a PROJECT. Somebody else's public project can be
+starred; its owner publishes RELEASES about it (a title, notes, up to five highlights, how many
+commits, whether a trailer came with it), and the project's stargazers and the owner's followers
+read them, newest first, in `GET /v1/releases/following`. Still no ranking: a project list is
+ordered by its star count, which is a sum.
+
+**Public, once.** A project is public when its owner marked the repository public on the phone
+(`repo_visibility`) AND the profile's name rule gives it a name (`repos.public_name`, a repository
+they have a session in and have not excluded). Both, because `repos` is shared: somebody else's
+public upload of the same repository names it for everyone in it, and that must never make your
+project starrable. The rule is `project_is_public`; the name is `project_public_name`, the same
+function `builder_profile.project_names` now reads. To anyone but its owner a private project has
+no name, no key (a key is one HMAC for everybody in that repository, so handing it out links the
+private project to the same repository's public one) and no star count.
+
+**Who reads a release** (`can_view_release`, SECURITY DEFINER): its owner, always; anyone else
+only once it is published, and then when it is public on a public project, or they follow the
+owner (accepted), or they starred the project while it is public. A draft is the owner's alone. A
+star on a project that goes private is dormant and grants nothing. Star counts come from
+`star_count` and never say who: a star is readable only by who gave it.
+
+**Drafts come from the Mac, publishing from a person.** With `release_settings.drafts_to_phone` on
+(the phone's switch; `every_commits`, `cadence` and `on_shipped` say when), the Mac PUTs a draft,
+which replaces the project's one live draft. The phone edits it, publishes it or dismisses it; a
+paired machine can do none of those. A release that names the project's repository while the project
+is not public is refused `names_a_repository`, at publish and on any edit of a published one; the
+server checks only the name it knows (`repos.public_name`).
+
+**One push, once.** Publishing asks `claim_release_audience`, which marks the release notified and
+answers who to tell (accepted followers, and stargazers while the project is public) to its owner
+once and never again; each gets one banner through the ordinary APNs path (`push.send_release`),
+`data: {kind: "release", release_id, url: "builder://release/<id>"}`. The phone has no route for
+that kind yet (`mobile/src/push/route.ts` answers null for it), so until it has one a tap opens the
+app where it was; `GET /v1/releases/{id}` is what that route will read.
+
+Excluding the repository deletes its releases, its settings, every star on it and your own stars
+under its key; deleting the account cascades. The routes are in routes/releases.py's docstring.
+
 ## What is deliberately absent
 
 Challenges, digests, reactions beyond kudos, reposts, DMs, an explore tab, and any ranking

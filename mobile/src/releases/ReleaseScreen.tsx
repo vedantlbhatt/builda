@@ -6,7 +6,7 @@
  */
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { api } from '../data/client';
 import { SPECTRUM } from '../insights/palette';
@@ -14,6 +14,7 @@ import { preferredHue } from '../projects/model';
 import { T, useColors } from '../ui';
 import { isMine, carriesLine, sayReleaseError, starsLine, whenLine, type MyRelease, type TheirRelease } from './model';
 import { PixelStar } from './PixelStar';
+import { ReleaseFilm } from './ReleaseFilm';
 
 const GUTTER = 20;
 
@@ -21,6 +22,7 @@ export function ReleaseScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
   const c = useColors();
+  const { width } = useWindowDimensions();
   const [release, setRelease] = useState<MyRelease | TheirRelease | null>(null);
   const [star, setStar] = useState<{ on: boolean; stars: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +89,11 @@ export function ReleaseScreen() {
                 {meta}
               </T>
             ) : null}
+            {release.has_trailer ? (
+              <View style={styles.film}>
+                <ReleaseFilm releaseId={release.id} width={Math.min(width - GUTTER * 2, 520)} ink={ink} label={release.title} />
+              </View>
+            ) : null}
             {release.highlights.length ? (
               <View style={styles.points}>
                 <View style={[styles.rule, { backgroundColor: ink }]} />
@@ -134,5 +141,6 @@ const styles = StyleSheet.create({
   rule: { width: 3 },
   pointWords: { flex: 1, gap: 8 },
   notes: { marginTop: 22 },
+  film: { marginTop: 18 },
   more: { marginTop: 28 },
 });

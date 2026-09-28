@@ -1101,6 +1101,11 @@ export class Api {
     return this.request('GET', `/v1/releases/${encodeURIComponent(id)}`);
   }
 
+  /** The trailer a release went out with, for anyone who may read it; null when there is none. */
+  releaseTrailer(id: string): Promise<{ trailer: { url: string | null; slot: string; width: number; height: number } | null }> {
+    return this.request('GET', `/v1/releases/${encodeURIComponent(id)}/trailer`);
+  }
+
   /** Change a draft's (or a published release's) words, or who a draft goes to. */
   editRelease(id: string, body: Partial<Pick<MyRelease, 'title' | 'notes' | 'highlights' | 'visibility'>>): Promise<{ release: MyRelease }> {
     return this.request('PATCH', `/v1/releases/${encodeURIComponent(id)}`, { body });

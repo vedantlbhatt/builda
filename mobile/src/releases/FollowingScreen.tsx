@@ -6,13 +6,14 @@
  */
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { api } from '../data/client';
 import { SPECTRUM } from '../insights/palette';
 import { preferredHue } from '../projects/model';
 import { T, useColors } from '../ui';
 import { sayReleaseError, starsLine, whenLine, type TheirRelease } from './model';
+import { ReleaseFilm } from './ReleaseFilm';
 
 const GUTTER = 20;
 
@@ -69,6 +70,9 @@ export function FollowingScreen() {
 }
 
 function Row({ r, onPress }: { r: TheirRelease; onPress: () => void }) {
+  const { width } = useWindowDimensions();
+  // The words' column: the page less its gutters, the rule and the gap beside it.
+  const filmWidth = Math.min(width - GUTTER * 2 - 15, 480);
   const ink = SPECTRUM[r.project_key && r.project_key.length === 64 ? preferredHue(r.project_key) : 'tide'].ink;
   const who = r.owner_display_name ?? (r.owner_handle ? `@${r.owner_handle}` : 'A builder');
   const meta = [whenLine(r.published_at, Date.now()), starsLine(r.stars)].filter(Boolean).join(' · ');
@@ -84,6 +88,11 @@ function Row({ r, onPress }: { r: TheirRelease; onPress: () => void }) {
             <T role="row" weight={600}>
               {r.title}
             </T>
+            {r.has_trailer ? (
+              <View style={styles.film}>
+                <ReleaseFilm releaseId={r.id} width={filmWidth} ink={ink} label={r.title} />
+              </View>
+            ) : null}
             {r.highlights.slice(0, 2).map((h) => (
               <T key={h} role="meta">
                 {h}
@@ -107,4 +116,5 @@ const styles = StyleSheet.create({
   rowInner: { flexDirection: 'row', gap: 12 },
   rule: { width: 3 },
   words: { flex: 1, gap: 3 },
+  film: { marginVertical: 6 },
 });

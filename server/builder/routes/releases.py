@@ -11,6 +11,7 @@ every read (a route that forgot a check would leak nothing, only misreport). The
     GET    /v1/me/releases?status=&project_key=          my own releases
     GET    /v1/releases/following?before=&before_id=     releases of what I starred and who I follow
     GET    /v1/releases/{id}                             one release I may read
+    GET    /v1/releases/{id}/trailer                     the trailer it went out with (0040)
     PATCH  /v1/releases/{id}                             edit a draft or a published release
     POST   /v1/releases/{id}:publish                     the phone publishes a draft
     POST   /v1/releases/{id}:dismiss                     the phone dismisses a draft
@@ -39,9 +40,11 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from sqlalchemy import text
 
+from .. import objectstore
 from .. import project_media as pm
 from .. import releases as rel
 from ..auth import CurrentDevice, current_device, current_person
@@ -518,6 +521,63 @@ def get_release(release_id: str, device: CurrentDevice = Depends(current_device)
     if r is None:
         raise HTTPException(404, "not_found")
     return {"release": rel.mine(r) if str(r.owner_id) == uid else rel.theirs(r)}
+
+
+def _trailer_url(release_id: str, object_key: str) -> str | None:
+    """Where a reader reads the release's trailer: `/v1/release-media/<id>` with the bearer on the
+    local stack (the check runs again there), a presigned GET in production."""
+    kind = objectstore.media_backend()
+    if kind == "file":
+        return f"/v1/release-media/{release_id}"
+    if kind == "s3":
+        return objectstore.presign_get(
+            object_key, pm.READ_URL_SECONDS, store=objectstore.media_store()
+        )
+    return None
+
+
+def _trailer_row(db, rid: str):
+    return db.execute(text("SELECT * FROM release_trailer(CAST(:r AS uuid))"), {"r": rid}).first()
+
+
+@router.get("/releases/{release_id}/trailer")
+def release_trailer(release_id: str, device: CurrentDevice = Depends(current_device)):
+    """The trailer a release went out with, for anyone who may read the release (0040's
+    `release_trailer`: `can_view_release`, and the owner's current kit still carrying that very
+    version), or `{trailer: null}`. Every other kit file stays its owner's."""
+    rid = _uuid(release_id)
+    with db_session(viewer_id=str(device.user_id)) as db:
+        row = _trailer_row(db, rid)
+    if row is None:
+        return {"trailer": None}
+    return {
+        "trailer": {
+            "url": _trailer_url(rid, row.object_key),
+            "slot": row.slot,
+            "width": row.width,
+            "height": row.height,
+        }
+    }
+
+
+@router.get("/release-media/{release_id}")
+def read_release_media(release_id: str, device: CurrentDevice = Depends(current_device)):
+    """The local stack's read of a release's trailer, streamed after the same check."""
+    rid = _uuid(release_id)
+    if objectstore.media_backend() != "file":
+        raise HTTPException(404, "not_found")
+    with db_session(viewer_id=str(device.user_id)) as db:
+        row = _trailer_row(db, rid)
+    if row is None:
+        raise HTTPException(404, "not_found")
+    path = objectstore.file_path(row.object_key)
+    if not path.is_file():
+        raise HTTPException(404, "not_found")
+    return FileResponse(
+        path,
+        media_type=row.content_type,
+        headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.patch("/releases/{release_id}")

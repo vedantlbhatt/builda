@@ -209,3 +209,22 @@ The widths are a judgement: 6.4 points a character is Verdana's average at 11 po
 shields.io badges are set in, so it sits beside them without a clip. MEASURED on the local stack
 (2026-09-28): `builda: 1 star · released sep 28` for the public project, the plain mark for a
 handle that does not exist.
+
+## A release's trailer, for its readers
+
+A release that carries a trailer plays it where it is read: the release's own screen and the
+Following feed (`mobile/src/releases/ReleaseFilm.tsx`). `GET /v1/releases/{id}/trailer` answers
+the one film, or null, through 0040's `release_trailer`, and nothing else of the kit:
+
+* the viewer must be able to read the release (0037's `can_view_release`, unchanged);
+* the release must carry a trailer, and the owner's CURRENT kit must carry that very version: a
+  film the owner has since replaced is not served under a release that went out with another, and
+  a kit taken down takes the film with it;
+* then the square (it crops least in a feed), else 4:5, 9:16, 16:9.
+
+Publishing a release with its trailer is the owner showing that film to the release's readers;
+every other kit file stays its owner's alone. On the local stack the film streams from
+`/v1/release-media/{id}` after the same check; in production it is a presigned read.
+
+The owner's own row offers "share it with the trailer": the kit's film and the release's words as
+X takes them, through the share sheet.

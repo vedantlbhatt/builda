@@ -24,7 +24,9 @@ import {
   captionCount,
   captionFor,
   fallbackLine,
+  filmFor,
   fileName,
+  loops,
   initialSelection,
   kitView,
   PLATFORM_NAMES,
@@ -246,6 +248,77 @@ describe('one share', () => {
     let s = selectionReducer(initialSelection(view), { type: 'format', format: 'feed' });
     s = selectionReducer(s, { type: 'toggle', id: 's1' });
     expect(sharePayload(view, s)!.files.map((f) => f.id)).toEqual(['s1']);
+  });
+});
+
+describe('a kit with a trailer', () => {
+  const mp4 = 'video/mp4' as const;
+  const TRAILED: ShipKitResponse = {
+    ...KIT,
+    files: [...KIT.files, file('t9', 'trailer_vertical', 0, mp4), file('t1', 'trailer_square', 0, mp4), file('tl', 'trailer_loop', 0, 'image/gif')],
+    document: { ...KIT.document, trailer: { version: 3, seconds: 20, scenes: ['open', 'screens', 'end'] } },
+  };
+  const view = kitView(TRAILED);
+
+  test('it opens on the trailer, at the platform format when the trailer has it', () => {
+    const s = initialSelection(view);
+    expect(s.cuts).toEqual(['trailer', 'recording']);
+    expect(s.cut).toBe('trailer');
+    expect(view.trailer).toEqual({ version: 3, seconds: 20 });
+    // x prefers 16:9; the trailer has no landscape here, so it opens on the first it has.
+    expect(s.format).toBe('vertical');
+    expect(filmFor(view.tabs.find((t) => t.id === 'vertical')!, 'trailer')!.id).toBe('t9');
+  });
+
+  test('the recording keeps the format when it has one there, else moves to where it does', () => {
+    let s = initialSelection(view);
+    s = selectionReducer(s, { type: 'cut', cut: 'recording', view });
+    expect(s.format).toBe('vertical');
+    s = selectionReducer(s, { type: 'cut', cut: 'trailer', view });
+    s = selectionReducer(s, { type: 'format', format: 'square' });
+    s = selectionReducer(s, { type: 'cut', cut: 'recording', view });
+    // No square recording: back to where the platform wants it, which the recording has.
+    expect(s.format).toBe('landscape');
+    expect(s.filmed).toEqual(['vertical', 'landscape']);
+  });
+
+  test('the share says trailer and names the file so', () => {
+    let s = initialSelection(view);
+    s = selectionReducer(s, { type: 'toggle', id: 'tl' });
+    const p = sharePayload(view, s)!;
+    expect(p.files.map((f) => f.name)).toEqual(['trailer-vertical.mp4', 'trailer-loop.gif']);
+    expect(p.label).toBe('Share the 9:16 trailer and 1 picture');
+  });
+
+  test('the README GIFs, the trailer first', () => {
+    expect(loops(view).map((f) => f.id)).toEqual(['tl', 'g']);
+  });
+
+  test('a kit published again under the screen: a trailer that arrives is shown, the rest stays', () => {
+    const before = kitView(KIT);
+    let s = initialSelection(before);
+    s = selectionReducer(s, { type: 'platform', platform: 'linkedin' });
+    s = selectionReducer(s, { type: 'edit', platform: 'linkedin', text: 'mine' });
+    s = selectionReducer(s, { type: 'toggle', id: 's1' });
+    s = selectionReducer(s, { type: 'kit', view });
+    expect(s.cut).toBe('trailer');
+    expect(s.cuts).toEqual(['trailer', 'recording']);
+    expect(s.edits.linkedin).toBe('mine');
+    // Same ids in this fixture, so the pick stays; a new publish has new ids and it goes.
+    expect(s.picked).toEqual(['s1']);
+    s = selectionReducer(s, { type: 'kit', view: kitView({ ...TRAILED, files: TRAILED.files.filter((f) => f.id !== 's1') }) });
+    expect(s.picked).toEqual([]);
+    // The recording chosen by hand stays the recording on the next publish.
+    s = selectionReducer(s, { type: 'cut', cut: 'recording', view });
+    s = selectionReducer(s, { type: 'kit', view });
+    expect(s.cut).toBe('recording');
+  });
+
+  test('a kit with no trailer opens on the recording, as it always did', () => {
+    const s = initialSelection(kitView(KIT));
+    expect(s.cuts).toEqual(['recording']);
+    expect(s.cut).toBe('recording');
+    expect(kitView(KIT).trailer).toBeNull();
   });
 });
 

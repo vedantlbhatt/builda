@@ -8,7 +8,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../data/client';
-import { anyPending, conversation, type TrailerNote } from './model';
+import { anyPending, conversation, sayNoteError, type TrailerNote } from './model';
 
 /** A cut takes the Mac a minute or two; a read every eight seconds sees the answer land soon after. */
 export const POLL_MS = 8_000;
@@ -28,7 +28,7 @@ export function useTrailerNotes(key: string | null) {
         setError(null);
       }
     } catch (e) {
-      if (live.current) setError(e instanceof Error ? e.message : 'The notes could not be read.');
+      if (live.current) setError(sayNoteError(e, 'The notes could not be read.'));
     }
   }, [key]);
 
@@ -59,7 +59,7 @@ export function useTrailerNotes(key: string | null) {
         setError(null);
         return true;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'The note did not reach the server.');
+        setError(sayNoteError(e, 'The note did not reach the server.'));
         return false;
       } finally {
         setSending(false);
@@ -73,7 +73,7 @@ export function useTrailerNotes(key: string | null) {
       const r = await api.cancelTrailerNote(id);
       setNotes((ns) => (ns ?? []).map((n) => (n.id === id ? r.note : n)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'It could not be taken back.');
+      setError(sayNoteError(e, 'It could not be taken back.'));
     }
   }, []);
 

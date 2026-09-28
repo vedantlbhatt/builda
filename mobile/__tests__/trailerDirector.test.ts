@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { TRAILER_ENUMS } from '../src/generated/trailer';
-import { answerOf, anyPending, canSend, conversation, sayChange, sayRefusal, type TrailerNote } from '../src/trailer/model';
+import { answerOf, anyPending, canSend, conversation, doneMark, FIRST_CUT, onMacOnly, sayChange, sayNoteError, sayRefusal, type TrailerNote } from '../src/trailer/model';
 import { havePython, python } from './pythonRef';
 
 const SAMPLES: Record<string, [string | null, string | null]> = {
@@ -85,5 +85,36 @@ describe('a note, from the server row alone', () => {
     expect(canSend('shorter', 4)).toBe(true);
     expect(canSend('shorter', 5)).toBe(false);
     expect(canSend('x'.repeat(501), 0)).toBe(false);
+  });
+});
+
+describe('a refused request', () => {
+  test('is said in words, never as the server code', () => {
+    expect(sayNoteError(new Error('too_many_notes'), 'x')).toBe('Five notes are already waiting for your Mac.');
+    expect(sayNoteError(new Error('some_new_code'), 'The note did not reach the server.')).toBe('The note did not reach the server.');
+    expect(sayNoteError(new Error('Builda is not reachable right now.'), 'x')).toBe('Builda is not reachable right now.');
+    expect(sayNoteError('nope', 'fallback')).toBe('fallback');
+  });
+});
+
+describe('a version and where it is', () => {
+  test('a note with no version before it says the Mac cut the first one', () => {
+    const a = answerOf(note({ status: 'done', from_version: null, to_version: 1, changes: [{ code: 'hue', before: 'tide', after: 'ember' }] }));
+    expect(a).toEqual({ kind: 'done', version: 1, lines: [FIRST_CUT, 'the colour is ember now'] });
+  });
+
+  test('a version the kit does not carry yet is said to be on the Mac, and only then', () => {
+    const done = (id: string, v: number) => note({ id, status: 'done', to_version: v });
+    expect(onMacOnly([done('a', 2), done('b', 3)], 2)).toBe(3);
+    expect(onMacOnly([done('a', 2), done('b', 3)], 3)).toBeNull();
+    expect(onMacOnly([done('a', 1)], null)).toBe(1);
+    expect(onMacOnly([note({ status: 'failed', refusal: 'no_node' })], null)).toBeNull();
+  });
+
+  test('an answer landing changes the mark, a poll with nothing new does not', () => {
+    const a = note({ id: 'a', status: 'claimed' });
+    expect(doneMark([a])).toBe('');
+    expect(doneMark([{ ...a, status: 'done' }])).toBe('a');
+    expect(doneMark(null)).toBe('');
   });
 });

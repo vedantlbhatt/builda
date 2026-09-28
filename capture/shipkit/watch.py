@@ -17,6 +17,11 @@ spec/shipkit.v1.json `request_refusal`). A request is never filmed from a checko
 worked in: the transcripts are the evidence that the repository is the person's own (run.py
 `is_own`), which is also what lets the capture run without a sandbox.
 
+THE TRAILER'S NOTES. With a server, each loop also claims the owner's notes on a trailer (the
+director, `capture/trailer/notes.py`) and answers them FIRST: a note is a render of a few minutes
+with the owner looking at the phone for the answer, and a demo is half an hour nobody is waiting
+on. One worker still, so a render never runs beside a simulator.
+
 A kit stays on the Mac until `kit --publish` and a yes, the demo channel's rule. The one exception
 is opt in, given on the Mac: `watch --publish-requests` sends the kit of a demo the PHONE asked for
 (`kit --publish --yes`, the same listing and the same second privacy read), because a person who
@@ -200,6 +205,14 @@ def work(p: pathlib.Path, no_model: bool, req: Requests | None, publish_to: str 
         if req and job.get("request_id"):
             req.finish(job["request_id"], "failed", "kit_failed")
         return "failed"
+    try:
+        from capture.trailer import notes as tnotes
+
+        v = tnotes.refresh(key, say=lambda m: say(f"  trailer: {m}"))
+        if v is not None:
+            say(f"  the trailer is cut again from this demo (version {v})")
+    except Exception as e:  # noqa: BLE001 - a trailer that did not render never costs the kit
+        say(f"  the trailer was not cut again ({e}); the kit goes without a new one")
     if publish_to and job.get("kind") == "request":
         rc = run_child([sys.executable, "-m", "capture", "demo", "kit", path, "--publish", "--yes", "--server", publish_to], KIT_TIMEOUT, log)
         say(f"  {'published the kit' if rc == 0 else f'the publish ended {rc}; the kit is on this Mac (see {log})'}")
@@ -221,23 +234,31 @@ def main(a: argparse.Namespace) -> int:
             skip, found = queue.judge(job)
             verdict = f"skip: {tables.REFUSALS[skip]} ({skip})" if skip else f"film {found.get('path')} ({found.get('project_kind')})"
             say(f"  {p.name}: {verdict}")
+        if req:
+            say("  trailer notes: claimed only by a running worker, one at a time")
         say("dry run: nothing was claimed, moved or filmed")
         return 0
     held = lock()
     if held is None:
         say("another demo worker is running (one at a time: two simulators at once ran this Mac out of memory)")
         return 0
-    say(f"watching {queue.root()}" + (f" and the requests on {server}" if server else ""))
+    say(f"watching {queue.root()}" + (f" and the requests and trailer notes on {server}" if server else ""))
+    from capture.trailer import notes as tnotes
+
+    director = tnotes.Notes(server) if server else None
+    publish_to = server if getattr(a, "publish_requests", False) else None
     for p in queue.jobs("running"):
         # A worker that died left its job here; nobody else can be running it (the lock), so
         # it goes back to the front of the queue rather than sitting in `running` forever.
         os.replace(p, queue.state_dir("pending") / p.name)
     while True:
+        if director:
+            tnotes.take(director, publish_to=publish_to, use_model=not a.no_model, say=say)
         if req:
             take_requests(req, dry_run=False)
         p = queue.claim_next()
         if p is not None:
-            work(p, a.no_model, req, server if getattr(a, "publish_requests", False) else None)
+            work(p, a.no_model, req, publish_to)
             if a.once:
                 return 0
             continue

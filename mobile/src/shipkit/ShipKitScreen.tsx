@@ -1,6 +1,9 @@
 /**
  * `builder://ship/<key>`: a project's ship kit, and one Share (docs/ship-kit.md).
  *
+ * A kit with a trailer (docs/trailers.md) opens on it, with the recording one word away, and under
+ * the trailer the director: notes to your Mac in your own words, and its answers.
+ *
  * Plain on purpose: the motion system is being rebuilt beside this (docs/motion.md), so the screen
  * is built from `src/ui` and its own few styles, and every rule it follows is in `model.ts`, where
  * `bun test` holds it. From the top: the format tabs over the video at that format's own shape,
@@ -11,8 +14,9 @@
  */
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useMemo, useReducer, useState } from 'react';
+import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Platform as RNPlatform, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import type { MediaSourceRef } from '../data/api';
 import { api } from '../data/client';
@@ -20,11 +24,15 @@ import { expoVideo } from '../demos/video';
 import type { Platform } from '../generated/shipkit';
 import { preferredHue } from '../projects/model';
 import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
+import { SPRING } from '../motion/springs';
+import { Director } from '../trailer/Director';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
 import { useReduceMotion } from '../ui/motion';
 import {
   captionCount,
   captionFor,
+  filmFor,
+  loops,
   initialSelection,
   kitView,
   PLATFORM_NAMES,
@@ -34,6 +42,7 @@ import {
   shareHeldBack,
   sharePayload,
   threadFor,
+  type Cut,
   type KitView,
 } from './model';
 import { shareSelection } from './share';
@@ -55,7 +64,7 @@ export function ShipKitScreen() {
   const name = typeof params.name === 'string' && params.name ? params.name : 'your project';
   const key = typeof params.key === 'string' ? params.key.toLowerCase() : '';
   const hue = typeof params.hue === 'string' && params.hue ? params.hue : key.length === 64 ? preferredHue(key) : null;
-  const { kit, requests, error, asking, request, cancel } = useShipKit(key.length === 64 ? key : null);
+  const { kit, requests, error, asking, request, cancel, reload } = useShipKit(key.length === 64 ? key : null);
   const view = useMemo(() => (kit.kind === 'ready' ? kitView(kit.kit) : null), [kit]);
   const c = useColors();
 
@@ -65,7 +74,7 @@ export function ShipKitScreen() {
       <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={styles.page}>
         {kit.kind === 'unknown' ? <T tone="dim">Reading the kit.</T> : null}
         {kit.kind === 'missing' ? <T tone="dim">This project is not one of yours, or it is excluded.</T> : null}
-        {view ? <KitBody view={view} ink={inkFor(kit.kind === 'ready' ? kit.kit.document.hue : null, hue)} /> : null}
+        {view ? <KitBody view={view} projectKey={key} ink={inkFor(kit.kind === 'ready' ? kit.kit.document.hue : null, hue) ?? kitInk(key)} reload={reload} /> : null}
         {kit.kind === 'none' ? (
           <View style={styles.block}>
             <T role="title">No kit yet</T>
@@ -98,14 +107,23 @@ function inkFor(docHue: string | null, pageHue: string | null): string | undefin
   return h ? SPECTRUM[h].ink : undefined;
 }
 
-function KitBody({ view, ink }: { view: KitView; ink?: string }) {
+function KitBody({ view, projectKey, ink, reload }: { view: KitView; projectKey: string; ink: string; reload: () => Promise<void> }) {
   const [s, dispatch] = useReducer(selectionReducer, view, initialSelection);
+  // A new publish under the screen (a note's version, a new demo): the choice follows the new kit.
+  const shown = useRef(view);
+  useEffect(() => {
+    if (shown.current === view) return;
+    shown.current = view;
+    dispatch({ type: 'kit', view });
+  }, [view]);
   const [sharing, setSharing] = useState(false);
   const [after, setAfter] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const inner = width - GUTTER * 2;
   const c = useColors();
   const tab = view.tabs.find((t) => t.id === s.format) ?? view.tabs[0]!;
+  const film = filmFor(tab, s.cut);
+  const noun = s.cut === 'trailer' ? 'trailer' : 'video';
   const payload = sharePayload(view, s, RNPlatform.OS === 'web' ? 'Save' : 'Share');
   const heldBack = payload ? shareHeldBack(view, s) : null;
   const caption = captionFor(view, s);
@@ -130,23 +148,28 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
     { title: 'Screens', files: view.stills },
     { title: 'Framed for a carousel', files: view.framed },
     { title: 'Before and after', files: view.beforeAfter },
-    { title: 'A GIF for a README', files: view.loop ? [view.loop] : [] },
+    { title: 'A GIF for a README', files: loops(view) },
     { title: 'App Store screenshots', files: view.appStore },
   ].filter((g) => g.files.length);
 
   return (
     <View>
-      <View style={styles.tabs} accessibilityRole="tablist">
+      {s.cuts.length > 1 ? <CutChoice cut={s.cut} onPick={(cut) => dispatch({ type: 'cut', cut, view })} /> : null}
+      {s.cut === 'trailer' && view.trailer ? (
+        <T role="mono" tone="dim" style={styles.cutLine}>{`version ${view.trailer.version} · ${Math.round(view.trailer.seconds)} s`}</T>
+      ) : null}
+      <View style={[styles.tabs, s.cuts.length > 1 ? styles.block : null]} accessibilityRole="tablist">
         {view.tabs.map((t) => {
           const on = t.id === s.format;
+          const has = filmFor(t, s.cut) !== null;
           return (
             <Pressable
               key={t.id}
               onPress={() => dispatch({ type: 'format', format: t.id })}
               accessibilityRole="tab"
-              accessibilityState={{ selected: on, disabled: !t.video }}
-              accessibilityLabel={`${t.label}, ${t.for}${t.video ? '' : ', no video in this shape'}`}
-              style={[styles.tab, { borderColor: on ? c.text : c.border, backgroundColor: on ? c.raised : 'transparent', opacity: t.video ? 1 : 0.45 }]}
+              accessibilityState={{ selected: on, disabled: !has }}
+              accessibilityLabel={`${t.label}, ${t.for}${has ? '' : `, no ${noun} in this shape`}`}
+              style={[styles.tab, { borderColor: on ? c.text : c.border, backgroundColor: on ? c.raised : 'transparent', opacity: has ? 1 : 0.45 }]}
             >
               <T role="row" weight={on ? 600 : undefined}>
                 {t.label}
@@ -158,18 +181,23 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
       <T role="meta" tone="dim" style={styles.gap}>
         {tab.for}
       </T>
-      {tab.video ? <KitVideo file={tab.video} width={Math.min(inner, 420 * tab.aspect)} aspect={tab.aspect} /> : <T tone="dim">No video was made in this shape.</T>}
-      {tab.video ? (
+      {film ? <KitVideo file={film} width={Math.min(inner, 420 * tab.aspect)} aspect={tab.aspect} /> : <T tone="dim">{`No ${noun} was made in this shape.`}</T>}
+      {film ? (
         <View style={styles.switchRow}>
-          <T>Send the video</T>
+          <T>{`Send the ${noun}`}</T>
           <Switch
             value={s.video}
             onValueChange={(on) => dispatch({ type: 'video', on })}
             trackColor={{ true: ink, false: GROUND.raised }}
             ios_backgroundColor={GROUND.raised}
-            accessibilityLabel="Send the video"
+            accessibilityLabel={`Send the ${noun}`}
             style={{ marginRight: SWITCH_OVERHANG }}
           />
+        </View>
+      ) : null}
+      {s.cut === 'trailer' || !s.cuts.includes('trailer') ? (
+        <View style={styles.block}>
+          <Director projectKey={projectKey} ink={ink} kitVersion={view.trailer?.version ?? null} onAnswer={reload} />
         </View>
       ) : null}
 
@@ -247,6 +275,61 @@ function KitBody({ view, ink }: { view: KitView; ink?: string }) {
           ))}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * The trailer or the recording, as two words: the chosen one in the text colour, the other faint,
+ * and a rule in the text colour under the chosen one that slides across on a pick. Two words, not a
+ * segmented control: it is the one choice on the screen that changes everything under it.
+ */
+const CUTS = ['trailer', 'recording'] as const;
+
+function CutChoice({ cut, onPick }: { cut: Cut; onPick: (cut: Cut) => void }) {
+  const c = useColors();
+  // Where each word sits, measured, so the rule lands under the word as it is set at any type size.
+  const [spans, setSpans] = useState<Partial<Record<Cut, { x: number; w: number }>>>({});
+  const x = useSharedValue(0);
+  const w = useSharedValue(0);
+  const placed = useRef(false);
+  const at = spans[cut];
+  useEffect(() => {
+    if (!at) return;
+    if (!placed.current) {
+      // The first placement is where it is, not a slide in from the left edge.
+      x.value = at.x;
+      w.value = at.w;
+      placed.current = true;
+      return;
+    }
+    x.value = withSpring(at.x, SPRING.content);
+    w.value = withSpring(at.w, SPRING.content);
+  }, [at?.x, at?.w]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rule = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }], width: w.value }));
+  return (
+    <View style={styles.cuts} accessibilityRole="tablist">
+      {CUTS.map((k) => {
+        const on = k === cut;
+        return (
+          <Pressable
+            key={k}
+            onPress={() => onPick(k)}
+            onLayout={(e) => {
+              const { x: lx, width } = e.nativeEvent.layout;
+              setSpans((o) => (o[k]?.x === lx && o[k]?.w === width ? o : { ...o, [k]: { x: lx, w: width } }));
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            hitSlop={8}
+          >
+            <T role="title" tone={on ? 'text' : 'faint'}>
+              {k === 'trailer' ? 'Trailer' : 'Recording'}
+            </T>
+          </Pressable>
+        );
+      })}
+      <Animated.View pointerEvents="none" style={[styles.cutRule, { backgroundColor: c.text, opacity: at ? 1 : 0 }, rule]} />
     </View>
   );
 }
@@ -377,6 +460,9 @@ const styles = StyleSheet.create({
   block: { marginTop: 28 },
   gap: { marginTop: 8 },
   tabs: { flexDirection: 'row', gap: 8 },
+  cuts: { flexDirection: 'row', gap: 22, alignItems: 'flex-end', paddingBottom: 8 },
+  cutRule: { position: 'absolute', left: 0, bottom: 0, height: 2 },
+  cutLine: { marginTop: 8 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderCurve: 'continuous', borderWidth: 1 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: TILE_GAP, marginTop: 10 },

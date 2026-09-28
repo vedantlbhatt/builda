@@ -40,6 +40,20 @@ export interface FormatTab {
   /** What it is for: "Reels, TikTok, YouTube Shorts, Stories". */
   for: string;
   video: KitFileRow | null;
+  /** The trailer cut at this format (`trailer_<format>`), drawn from the demo rather than filmed. */
+  trailer: KitFileRow | null;
+}
+
+/**
+ * Which film the share sends: the TRAILER (the cut, docs/trailers.md) or the RECORDING (the demo as
+ * filmed). A kit with a trailer opens on it, because it is the one made to be posted; the recording
+ * stays one tap away for a post that wants the real screens moving.
+ */
+export type Cut = 'trailer' | 'recording';
+
+/** A format's film for a cut: the trailer or the recording, or null when that cut has none there. */
+export function filmFor(tab: FormatTab, cut: Cut): KitFileRow | null {
+  return cut === 'trailer' ? tab.trailer : tab.video;
 }
 
 export interface KitView {
@@ -48,6 +62,10 @@ export interface KitView {
   framed: KitFileRow[];
   beforeAfter: KitFileRow[];
   loop: KitFileRow | null;
+  /** The trailer's own GIF, for a README. */
+  trailerLoop: KitFileRow | null;
+  /** The trailer's cut as the document says it, or null when the kit carries no trailer. */
+  trailer: { version: number; seconds: number } | null;
   appStore: KitFileRow[];
   captions: Partial<Record<Platform, KitCaption>>;
   changelog: string[];
@@ -77,11 +95,14 @@ export function kitView(kit: ShipKitResponse): KitView {
       aspect: f.size[0] / f.size[1],
       for: f.for,
       video: bySlot(files, `video_${f.id}`)[0] ?? null,
+      trailer: bySlot(files, `trailer_${f.id}`)[0] ?? null,
     })),
     stills: bySlot(files, 'still'),
     framed: bySlot(files, 'framed_still'),
     beforeAfter: bySlot(files, 'before_after'),
     loop: bySlot(files, 'loop')[0] ?? null,
+    trailerLoop: bySlot(files, 'trailer_loop')[0] ?? null,
+    trailer: kit.document.trailer ? { version: kit.document.trailer.version, seconds: kit.document.trailer.seconds } : null,
     appStore: [...bySlot(files, 'app_store_iphone'), ...bySlot(files, 'app_store_ipad')],
     captions,
     changelog: kit.document.changelog ?? [],
@@ -94,6 +115,10 @@ export function kitView(kit: ShipKitResponse): KitView {
 // ------------------------------------------------------------------ the selection
 
 export interface Selection {
+  /** The trailer or the recording: which film the format's tab shows and the share sends. */
+  cut: Cut;
+  /** The cuts this kit has any film for, trailer first. */
+  cuts: readonly Cut[];
   format: KitFormat;
   /** Whether the format's video goes with the share. */
   video: boolean;
@@ -104,11 +129,13 @@ export interface Selection {
   edits: Partial<Record<Platform, string>>;
   /** The person chose a format by hand: a platform's pick no longer moves it. */
   formatByHand: boolean;
-  /** The formats this kit has a video for, so a platform's pick never lands on one without. */
+  /** The formats the chosen cut has a film for, so a platform's pick never lands on one without. */
   filmed: readonly KitFormat[];
 }
 
 export type SelectionAction =
+  | { type: 'cut'; cut: Cut; view: KitView }
+  | { type: 'kit'; view: KitView }
   | { type: 'format'; format: KitFormat }
   | { type: 'video'; on: boolean }
   | { type: 'toggle'; id: string }
@@ -116,17 +143,49 @@ export type SelectionAction =
   | { type: 'edit'; platform: Platform; text: string }
   | { type: 'revert'; platform: Platform };
 
-/** Where the screen opens: the first platform with a caption, its best format, its video on. */
-export function initialSelection(view: KitView | null): Selection {
-  const platform = PLATFORMS.find((p) => view?.captions[p]) ?? 'x';
+const filmedFor = (view: KitView | null, cut: Cut): KitFormat[] => (view?.tabs ?? []).filter((t) => filmFor(t, cut)).map((t) => t.id);
+
+/** The format a platform shows best, else the first this cut has a film for, else the platform's own. */
+function formatFor(view: KitView | null, cut: Cut, platform: Platform): KitFormat {
   const want = PLATFORM_FORMAT[platform];
-  const format = view?.tabs.find((t) => t.id === want && t.video)?.id ?? view?.tabs.find((t) => t.video)?.id ?? want;
-  const filmed = (view?.tabs ?? []).filter((t) => t.video).map((t) => t.id);
-  return { format, video: filmed.length > 0, picked: [], platform, edits: {}, formatByHand: false, filmed };
+  return view?.tabs.find((t) => t.id === want && filmFor(t, cut))?.id ?? view?.tabs.find((t) => filmFor(t, cut))?.id ?? want;
+}
+
+/**
+ * Where the screen opens: the trailer when the kit has one, the first platform with a caption, its
+ * best format, its film on.
+ */
+const cutsOf = (view: KitView | null): Cut[] => (['trailer', 'recording'] as const).filter((c) => filmedFor(view, c).length > 0);
+
+export function initialSelection(view: KitView | null): Selection {
+  const cuts = cutsOf(view);
+  const cut: Cut = cuts[0] ?? 'recording';
+  const platform = PLATFORMS.find((p) => view?.captions[p]) ?? 'x';
+  const filmed = filmedFor(view, cut);
+  return { cut, cuts, format: formatFor(view, cut, platform), video: filmed.length > 0, picked: [], platform, edits: {}, formatByHand: false, filmed };
 }
 
 export function selectionReducer(s: Selection, a: SelectionAction): Selection {
   switch (a.type) {
+    case 'cut': {
+      // The other film keeps the format when it has one there (the person is comparing the two at
+      // one shape), else moves to where it does.
+      const filmed = filmedFor(a.view, a.cut);
+      const format = filmed.includes(s.format) ? s.format : formatFor(a.view, a.cut, s.platform);
+      return { ...s, cut: a.cut, filmed, format };
+    }
+    case 'kit': {
+      // The kit was published again under the screen (a note's new version, a new demo). What the
+      // person chose stays where it still can; a trailer that was not there before is shown, since
+      // it is what they were waiting for. Every file id is new in a new publish, so picks by id go.
+      const cuts = cutsOf(a.view);
+      const arrived = cuts.includes('trailer') && !s.cuts.includes('trailer');
+      const cut: Cut = arrived ? 'trailer' : cuts.includes(s.cut) ? s.cut : (cuts[0] ?? 'recording');
+      const filmed = filmedFor(a.view, cut);
+      const format = filmed.includes(s.format) ? s.format : formatFor(a.view, cut, s.platform);
+      const ids = new Set([...a.view.stills, ...a.view.framed, ...a.view.beforeAfter, ...loops(a.view), ...a.view.appStore].map((f) => f.id));
+      return { ...s, cuts, cut, filmed, format, video: s.video || (filmed.length > 0 && s.filmed.length === 0), picked: s.picked.filter((id) => ids.has(id)) };
+    }
     case 'format':
       return { ...s, format: a.format, formatByHand: true };
     case 'video':
@@ -203,12 +262,17 @@ const EXT: Readonly<Record<KitFileRow['content_type'], string>> = { 'image/png':
 export function fileName(f: KitFileRow, format?: KitFormat): string {
   const n = String(f.position).padStart(2, '0');
   const stem =
-    f.slot.startsWith('video_') ? `demo-${format ?? f.slot.slice(6)}` : f.slot === 'loop' ? 'demo-loop' : f.slot === 'framed_still' ? `screen-${n}-framed` : f.slot === 'before_after' ? `before-after-${n}` : f.slot.startsWith('app_store') ? `app-store-${n}` : `screen-${n}`;
+    f.slot.startsWith('video_') ? `demo-${format ?? f.slot.slice(6)}` : f.slot === 'trailer_loop' ? 'trailer-loop' : f.slot.startsWith('trailer_') ? `trailer-${format ?? f.slot.slice(8)}` : f.slot === 'loop' ? 'demo-loop' : f.slot === 'framed_still' ? `screen-${n}-framed` : f.slot === 'before_after' ? `before-after-${n}` : f.slot.startsWith('app_store') ? `app-store-${n}` : `screen-${n}`;
   return `${stem}.${EXT[f.content_type]}`;
 }
 
 function counted(n: number, one: string): string {
   return `${n} ${one}${n === 1 ? '' : 's'}`;
+}
+
+/** The GIFs for a README, the trailer's first: the screen's "A GIF for a README" row, in its order. */
+export function loops(view: KitView): KitFileRow[] {
+  return [view.trailerLoop, view.loop].filter((f): f is KitFileRow => f !== null);
 }
 
 /**
@@ -220,13 +284,14 @@ function counted(n: number, one: string): string {
 export function sharePayload(view: KitView, s: Selection, verb: 'Share' | 'Save' = 'Share'): SharePayload | null {
   const files: ShareFile[] = [];
   const tab = view.tabs.find((t) => t.id === s.format) ?? null;
-  if (s.video && tab?.video) files.push({ id: tab.video.id, url: tab.video.url, contentType: 'video/mp4', name: fileName(tab.video, tab.id) });
-  const order = [...view.stills, ...view.framed, ...view.beforeAfter, ...(view.loop ? [view.loop] : []), ...view.appStore];
+  const film = tab ? filmFor(tab, s.cut) : null;
+  if (s.video && tab && film) files.push({ id: film.id, url: film.url, contentType: 'video/mp4', name: fileName(film, tab.id) });
+  const order = [...view.stills, ...view.framed, ...view.beforeAfter, ...loops(view), ...view.appStore];
   for (const f of order) if (s.picked.includes(f.id)) files.push({ id: f.id, url: f.url, contentType: f.content_type, name: fileName(f) });
   if (!files.length) return null;
   const video = files.some((f) => f.contentType === 'video/mp4');
   const pictures = files.length - (video ? 1 : 0);
-  const what = [video ? `the ${tab?.label ?? ''} video`.replace('  ', ' ') : null, pictures ? counted(pictures, 'picture') : null].filter(Boolean).join(' and ');
+  const what = [video ? `the ${tab?.label ?? ''} ${s.cut === 'trailer' ? 'trailer' : 'video'}`.replace('  ', ' ') : null, pictures ? counted(pictures, 'picture') : null].filter(Boolean).join(' and ');
   return { files, text: captionFor(view, s), label: `${verb} ${what}` };
 }
 

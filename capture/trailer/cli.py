@@ -16,14 +16,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import pathlib
 import sys
 
 from capture.demo import privacy
 from capture.demo.result import CaptureError
 
 from . import cut as cutmod
-from . import direct, facts, render, tables
+from . import direct, make, render, tables
 
 
 def say(msg: str = "") -> None:
@@ -74,50 +73,15 @@ def resolve(a: argparse.Namespace):
     return project.key, project, project.checkout, names, others
 
 
-def crew_creature(key: str) -> str:
-    """A project's creature when nobody names one: the crew ring by its key (never Bit)."""
-    ring = ["fox", "whale", "bee", "octopus", "crab", "dog", "cat", "owl"]
-    return ring[cutmod.fnv(key) % len(ring)]
-
-
-def report_project(path: str | None, key: str) -> dict | None:
-    if not path:
-        return None
-    doc = json.loads(pathlib.Path(path).expanduser().read_text())
-    block = (doc.get("report") or doc).get("projects") or {}
-    return next((p for p in block.get("projects") or [] if p.get("key") == key), None)
-
-
 def cmd_trailer(a: argparse.Namespace) -> int:
-    from capture.shipkit import kit
-
     try:
         key, _project, src, names, others = resolve(a)
-        demo = kit.load_demo(key)
+        f = make.facts_for(key, src, names, others, title=a.title, allow=tuple(a.allow_name or ()), line=a.line,
+                           cta=a.cta, hue=a.hue, creature=a.creature, report=a.report, shipped=a.shipped)
     except CaptureError as e:
         say(f"Refused: {tables.REFUSALS['no_demo']} ({e})")
         return 1
-    leaks = lambda texts: privacy.label_leaks(texts, names, others)  # noqa: E731
-    prev = kit.previous_kit(demo, src)
-    since = json.loads((prev / "manifest.json").read_text())["commit"] if prev else None
-    log = kit.changelog(src, since, demo.commit, cap=12)
-    title = facts.choose_title(typed=a.title, allowed=tuple(a.allow_name or ()), shipped=kit.shipped_for(key, a.shipped), leaks=leaks)
-    words = {}
-    for field in ("line", "cta"):
-        text = getattr(a, field)
-        if text:
-            words[field] = {"text": direct.dedash(text.strip())[0][: tables.MAX_LENGTHS[field]], "source": "person"}
-    f = facts.gather(
-        demo, src=src, hue=a.hue or kit.preferred_hue(key), creature=a.creature or crew_creature(key), title=title,
-        line=words.get("line"), cta=words.get("cta"), changelog=log, since_last_demo=since is not None,
-        report_project=report_project(a.report, key),
-    )
-    old = render.current(key)
-    if old and not a.fresh and not cutmod.validate(old, f):
-        c = old
-    else:
-        c = cutmod.first_cut(f)
-        c["version"] = max(render.history(key), default=0) + 1
+    c, _first = make.cut_for(key, f, fresh=a.fresh)
     problems = cutmod.validate(c, f)
     if problems:
         say("Refused: the cut does not fit the facts: " + "; ".join(problems[:3]))

@@ -246,17 +246,25 @@ async function render() {
     const poster = path.join(out, `poster-${format}.jpg`);
     const pt = Math.max(0, tl.seconds - 0.35);
     spawnSync(ffmpeg(), ['-y', '-v', 'error', '-ss', String(pt), '-i', mp4, '-frames:v', '1', '-q:v', '2', poster]);
-    made.push({ format, file: path.basename(mp4), poster: path.basename(poster), bytes: fs.statSync(mp4).size, seconds: tl.seconds, ms: Date.now() - f0 });
+    // The pixel size as the env sets it (the device table's, scaled, even), which the kit's publish
+    // lists and the server holds each file to.
+    const fmt = house.format(format);
+    const s = Number(arg('scale', '1'));
+    const [width, height] = s === 1 ? [fmt.w, fmt.h] : [Math.max(2, Math.round((fmt.w * s) / 2) * 2), Math.max(2, Math.round((fmt.h * s) / 2) * 2)];
+    made.push({ format, file: path.basename(mp4), poster: path.basename(poster), bytes: fs.statSync(mp4).size, seconds: tl.seconds, width, height, ms: Date.now() - f0 });
     process.stderr.write(`${format}: ${mp4} in ${((Date.now() - f0) / 1000).toFixed(1)} s\n`);
   }
   if (flag('gif') && formats.includes('square')) {
     const loop = house.devices.loop;
     const gif = path.join(out, 'trailer.gif');
+    let side = 0;
     for (const [fps, size] of [[loop.fps, loop.size[0]], [10, 480], [8, 400]]) {
       spawnSync(ffmpeg(), ['-y', '-v', 'error', '-i', path.join(out, 'trailer-square.mp4'), '-vf', `fps=${fps},scale=${size}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3`, gif]);
+      side = size;
       if (fs.existsSync(gif) && fs.statSync(gif).size <= loop.max_bytes) break;
     }
-    if (fs.existsSync(gif)) made.push({ format: 'loop', file: 'trailer.gif', bytes: fs.statSync(gif).size });
+    // Square in, square out: `scale=N:-1` of a square is N by N.
+    if (fs.existsSync(gif)) made.push({ format: 'loop', file: 'trailer.gif', bytes: fs.statSync(gif).size, width: side, height: side });
   }
   fs.writeFileSync(path.join(out, 'render.json'), JSON.stringify({ version: house.spec.version, cut: cut.version, seconds: tl.seconds, fps: tl.fps, made, ms: Date.now() - t0 }, null, 2));
   if (!flag('keep-work')) fs.rmSync(work, { recursive: true, force: true });

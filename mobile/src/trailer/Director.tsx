@@ -5,59 +5,101 @@
  * `call it "RideGT"`); your Mac changes the cut, renders it again and answers with what it did. The
  * answer is the spec's sentences for the changes it made (`model.answerOf`), never a model's prose,
  * so what the screen says is what the new version is. Every answer names its version, and "go back
- * to version 2" is a note like any other.
+ * to version 2" is a note like any other. A project with no trailer yet can be sent a note too: the
+ * Mac cuts the first version from the demo, then reads the note against it.
  *
  * The house rules: your words are the lead line, the Mac's answer sits under them against a column
  * of cells in the project's hue (the strip's own mark, not a bubble), and while the Mac is cutting,
  * three cells in the hue rise in turn, the `rise` order as a loop that stops the moment the answer
  * lands. The starters under the field are words you can tap, not buttons: each fills the field
- * with a note the Mac reads without a model.
+ * with a note the Mac reads without a model. The parent pads it; it lays out to the width it gets.
  */
-import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 
-import { GUTTER, type } from '../insights/kit';
-import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
-import { Button, TextField } from '../ui';
+import { GROUND } from '../insights/palette';
+import { Button, T, TextField } from '../ui';
 import { useReduceMotion } from '../ui/motion';
-import { answerOf, canSend, NOTE_MAX, STARTERS, type TrailerNote } from './model';
+import { answerOf, canSend, conversation, doneMark, NOTE_MAX, onMacOnly, STARTERS, type TrailerNote } from './model';
 import { useTrailerNotes } from './useNotes';
 
 /** A cell, in points: the band's (tokens.dither.cell) doubled, so three read at a glance. */
 const CELL = 6;
+/** The conversation shows its latest few; the rest are a tap away, as the changelog's are. */
+const SHOWN = 4;
 
-export function Director({ projectKey, hue }: { projectKey: string; hue: HueName }) {
+export function Director({
+  projectKey,
+  ink,
+  kitVersion,
+  onAnswer,
+}: {
+  projectKey: string;
+  ink: string;
+  /** The trailer version the kit on screen carries; null when it carries none. */
+  kitVersion: number | null;
+  /** An answer landed: the kit may carry the new version now. Resolves once it is read again. */
+  onAnswer?: () => Promise<unknown> | void;
+}) {
+  const hasTrailer = kitVersion !== null;
   const { notes, error, sending, send, cancel, waiting } = useTrailerNotes(projectKey);
+  // When a note turns done, the kit is read again before anything says the version is elsewhere.
+  const mark = doneMark(notes);
+  const seen = useRef<string | null>(null);
+  const [settling, setSettling] = useState(false);
+  useEffect(() => {
+    if (notes === null) return;
+    const first = seen.current === null;
+    const changed = seen.current !== mark;
+    seen.current = mark;
+    if (first || !changed || !onAnswer) return;
+    setSettling(true);
+    void Promise.resolve(onAnswer()).finally(() => setSettling(false));
+  }, [mark, notes, onAnswer]);
+  const elsewhere = notes && !settling ? onMacOnly(notes, kitVersion) : null;
   const [text, setText] = useState('');
-  const ink = SPECTRUM[hue].ink;
+  const [all, setAll] = useState(false);
   const ok = canSend(text, waiting);
+  const talk = notes ? conversation(notes) : [];
+  const shown = all ? talk : talk.slice(-SHOWN);
+  const earlier = talk.length - shown.length;
+  const starters = hasTrailer ? STARTERS : ['make a trailer', ...STARTERS.slice(0, 2)];
 
   return (
     <View style={styles.wrap}>
-      <Text maxFontSizeMultiplier={1.4} style={type.heading}>
-        Direct it
-      </Text>
-      {notes && notes.length ? (
+      <T role="headline">{hasTrailer ? 'Direct it' : 'A trailer'}</T>
+      {!hasTrailer && !talk.length ? (
+        <T tone="dim">Your Mac cuts one from this demo, in the app's own pixels, and renders it in every shape.</T>
+      ) : null}
+      {earlier > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => setAll(true)} hitSlop={8}>
+          <T role="meta" tone="dim">{`${earlier} earlier`}</T>
+        </Pressable>
+      ) : null}
+      {shown.length ? (
         <View style={styles.list}>
-          {notes.map((n) => (
+          {shown.map((n) => (
             <NoteRow key={n.id} note={n} ink={ink} onCancel={() => void cancel(n.id)} />
           ))}
         </View>
+      ) : null}
+      {elsewhere !== null ? (
+        <T role="meta" tone="dim">{`Version ${elsewhere} is on your Mac. It shows here once its kit is published there.`}</T>
       ) : null}
       <View style={styles.field}>
         <TextField
           value={text}
           onChangeText={(t) => setText(t.slice(0, NOTE_MAX))}
-          placeholder="What should change?"
+          placeholder={hasTrailer ? 'What should change?' : 'What should it show?'}
           multiline
           maxLength={NOTE_MAX}
-          accessibilityLabel="What should change in the trailer"
+          accessibilityLabel={hasTrailer ? 'What should change in the trailer' : 'What the trailer should show'}
           style={styles.input}
         />
         <Button
           label="Send"
-          kind="primary"
+          kind="secondary"
           size="compact"
           block={false}
           disabled={!ok}
@@ -71,20 +113,16 @@ export function Director({ projectKey, hue }: { projectKey: string; hue: HueName
         />
       </View>
       <View style={styles.starters}>
-        {STARTERS.map((s, i) => (
+        {starters.map((s, i) => (
           <Pressable key={s} onPress={() => setText(s)} accessibilityRole="button" accessibilityLabel={`Write: ${s}`} hitSlop={8}>
-            {({ pressed }) => (
-              <Text maxFontSizeMultiplier={1.4} style={[type.dim, { color: pressed ? GROUND.text : GROUND.dim }]}>
-                {i ? ` · ${s}` : s}
-              </Text>
-            )}
+            {({ pressed }) => <T role="meta" tone={pressed ? 'text' : 'dim'}>{i ? ` · ${s}` : s}</T>}
           </Pressable>
         ))}
       </View>
       {error ? (
-        <Text maxFontSizeMultiplier={1.4} style={type.dim}>
+        <T role="meta" tone="del">
           {error}
-        </Text>
+        </T>
       ) : null}
     </View>
   );
@@ -94,50 +132,54 @@ function NoteRow({ note, ink, onCancel }: { note: TrailerNote; ink: string; onCa
   const a = answerOf(note);
   return (
     <View style={styles.note}>
-      <Text maxFontSizeMultiplier={1.4} style={type.lead}>
+      <T role="row" weight={600}>
         {note.body}
-      </Text>
+      </T>
       <View style={styles.answer}>
         <View style={[styles.rule, { backgroundColor: a.kind === 'done' ? ink : GROUND.raised }]} />
         <View style={styles.answerWords}>
           {a.kind === 'waiting' || a.kind === 'cutting' ? (
             <View style={styles.working}>
               <Working ink={ink} running={a.kind === 'cutting'} />
-              <Text maxFontSizeMultiplier={1.4} style={type.body}>
+              <T role="meta" tone="dim">
                 {a.line}
-              </Text>
+              </T>
               {note.status === 'queued' ? (
                 <Pressable onPress={onCancel} accessibilityRole="button" accessibilityLabel="Take the note back" hitSlop={8}>
-                  <Text maxFontSizeMultiplier={1.4} style={type.dim}>
+                  <T role="meta" tone="dim" weight={600}>
                     take back
-                  </Text>
+                  </T>
                 </Pressable>
               ) : null}
             </View>
           ) : null}
           {a.kind === 'done' ? (
             <>
-              {a.lines.map((l) => (
-                <Text key={l} maxFontSizeMultiplier={1.4} style={type.body}>
-                  {l}
-                </Text>
-              ))}
+              {a.lines.length ? (
+                a.lines.map((l) => (
+                  <T key={l} role="meta">
+                    {l}
+                  </T>
+                ))
+              ) : (
+                <T role="meta">rendered again</T>
+              )}
               {a.version !== null ? (
-                <Text maxFontSizeMultiplier={1.4} style={type.mono}>
+                <T role="mono" tone="dim">
                   {`version ${a.version}`}
-                </Text>
+                </T>
               ) : null}
             </>
           ) : null}
-          {a.kind === 'refused' && a.line ? (
-            <Text maxFontSizeMultiplier={1.4} style={type.body}>
-              {a.line}
-            </Text>
+          {a.kind === 'refused' ? (
+            <T role="meta" tone="dim">
+              {a.line ?? 'Your Mac could not do that one.'}
+            </T>
           ) : null}
           {a.kind === 'cancelled' ? (
-            <Text maxFontSizeMultiplier={1.4} style={type.dim}>
+            <T role="meta" tone="faint">
               {a.line}
-            </Text>
+            </T>
           ) : null}
         </View>
       </View>
@@ -171,15 +213,15 @@ function Cell({ i, ink, running }: { i: number; ink: string; running: boolean })
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: GUTTER, gap: 14 },
-  list: { gap: 18 },
-  note: { gap: 8 },
+  wrap: { gap: 12 },
+  list: { gap: 18, marginTop: 4 },
+  note: { gap: 6 },
   answer: { flexDirection: 'row', gap: 12 },
   rule: { width: 3 },
-  answerWords: { flex: 1, gap: 4 },
+  answerWords: { flex: 1, gap: 3 },
   working: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   cells: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: CELL + 4 },
-  field: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  field: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 4 },
   input: { flex: 1, minHeight: 44 },
   starters: { flexDirection: 'row', flexWrap: 'wrap' },
 });

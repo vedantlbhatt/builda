@@ -36,7 +36,7 @@ export function useKits(keys: readonly string[]): { kits: Record<string, KitSeen
         setKits((s) => ({ ...s, [k]: seen }));
         if (got.kit) {
           // A string comparison: `trailer_landscape` is a slot of kits published since the trailer (docs/trailers.md).
-          const playable = got.kit.files.filter((f) => (f.slot as string) === 'trailer_landscape' || f.slot === 'video_landscape');
+          const playable = got.kit.files.filter((f) => f.slot === 'trailer_landscape' || f.slot === 'video_landscape');
           const made: Record<string, MediaSourceRef> = {};
           for (const f of playable) made[f.id] = await api.mediaSource(f.url);
           if (live.current) setSources((s) => ({ ...s, ...made }));

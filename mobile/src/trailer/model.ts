@@ -10,7 +10,7 @@
  * 1.15 · scenes change by a straight cut now", which is what was done, and a code this build does
  * not know says nothing rather than a debug string.
  */
-import { TRAILER_CHANGES, TRAILER_REFUSALS, TRAILER_WORDS, type ChangeCode, type NoteRefusal, type NoteStatus } from '../generated/trailer';
+import { TRAILER_CHANGES, TRAILER_REFUSALS, TRAILER_WORDS, type ChangeCode, type NoteRefusal, type NoteSource, type NoteStatus } from '../generated/trailer';
 
 export interface TrailerChange {
   code: string;
@@ -29,7 +29,7 @@ export interface TrailerNote {
   to_version: number | null;
   changes: TrailerChange[];
   refusal: string | null;
-  source: 'rules' | 'model' | null;
+  source: NoteSource | null;
 }
 
 /** Which words say a change's values: a scene, a figure, the sound, the camera, a transition. */
@@ -64,6 +64,9 @@ export function sayRefusal(code: string | null): string | null {
   return TRAILER_REFUSALS[code as NoteRefusal];
 }
 
+/** A done note with no version before it: the Mac cut the first one. */
+export const FIRST_CUT = 'cut the first version from the demo';
+
 export type NoteAnswer =
   | { kind: 'waiting'; line: string }
   | { kind: 'cutting'; line: string }
@@ -78,8 +81,11 @@ export function answerOf(n: TrailerNote): NoteAnswer {
       return { kind: 'waiting', line: 'Waiting for your Mac' };
     case 'claimed':
       return { kind: 'cutting', line: 'Your Mac is cutting it' };
-    case 'done':
-      return { kind: 'done', version: n.to_version, lines: n.changes.map(sayChange).filter((s): s is string => s !== null) };
+    case 'done': {
+      const lines = n.changes.map(sayChange).filter((s): s is string => s !== null);
+      // No version before it: this note made the project's first trailer (spec NoteFinish).
+      return { kind: 'done', version: n.to_version, lines: n.from_version === null ? [FIRST_CUT, ...lines] : lines };
+    }
     case 'failed':
       return { kind: 'refused', line: sayRefusal(n.refusal) };
     case 'cancelled':
@@ -107,4 +113,39 @@ export const NOTE_MAX = 500;
 export function canSend(text: string, pending: number): boolean {
   const t = text.trim();
   return t.length > 0 && t.length <= NOTE_MAX && pending < 5;
+}
+
+/**
+ * A refused request's words. The server refuses with a code (`routes/trailer.py`); the screen never
+ * shows one. A sentence (offline, a timeout) passes through as it is.
+ */
+const NOTE_ERRORS: Readonly<Record<string, string>> = {
+  too_many_notes: 'Five notes are already waiting for your Mac.',
+  empty_note: 'Write what should change first.',
+  not_found: 'This project is not one of yours, or it is excluded.',
+  not_queued: 'Your Mac already took that one. Its answer is on the way.',
+  bad_key: 'This project is not one of yours, or it is excluded.',
+};
+
+export function sayNoteError(e: unknown, fallback: string): string {
+  const m = e instanceof Error ? e.message : '';
+  if (m in NOTE_ERRORS) return NOTE_ERRORS[m]!;
+  return / /.test(m) && !/_/.test(m) ? m : fallback;
+}
+
+/**
+ * The newest version a note made that the kit on screen does not carry yet, or null. The Mac
+ * publishes the kit before it finishes a note when its worker runs with `--publish-requests`, so
+ * this is the Mac that made it and was not told to send it: the screen says where it is.
+ */
+export function onMacOnly(notes: readonly TrailerNote[], kitVersion: number | null): number | null {
+  const made = notes.filter((n) => n.status === 'done' && n.to_version !== null).map((n) => n.to_version!);
+  if (!made.length) return null;
+  const newest = Math.max(...made);
+  return kitVersion === null || newest > kitVersion ? newest : null;
+}
+
+/** The ids of the notes answered done, as one string: when it changes, an answer just landed. */
+export function doneMark(notes: readonly TrailerNote[] | null): string {
+  return (notes ?? []).filter((n) => n.status === 'done').map((n) => n.id).join(',');
 }

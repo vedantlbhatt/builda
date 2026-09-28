@@ -157,12 +157,12 @@ class Cut(unittest.TestCase):
         text = (ROOT / "mobile/src/motion/pixelMotion.ts").read_text()
         for name in tables.ENUMS["arrival"]:
             self.assertIn(f"'{name}'", text)
-        from capture.trailer import cli
+        from capture.trailer import make
 
         tokens = json.loads((ROOT / "design/tokens.json").read_text())
         ring = tokens["spectrum"]["crew"]["ring"]
-        self.assertIn(cli.crew_creature("ab" * 32), ring)
-        self.assertNotEqual(cli.crew_creature("cd" * 32), "bit")
+        self.assertIn(make.crew_creature("ab" * 32), ring)
+        self.assertNotEqual(make.crew_creature("cd" * 32), "bit")
 
 
 class Director(unittest.TestCase):

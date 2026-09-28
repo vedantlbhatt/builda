@@ -394,7 +394,8 @@ def answer(note: str, old: dict, facts: dict, history: dict[int, dict], leaks, u
     if a.cut is None:
         a = model(note, old, facts, use_model)
         if a.cut is None:
-            return Answer(refusal=a.refusal if use_model else "not_understood", source=a.source)
+            # With the model off, nobody but the rules read it, and the answer says so.
+            return Answer(refusal=a.refusal if use_model else "not_understood", source=a.source if use_model else "rules")
     new, code = gate(old, a.cut, facts, note, leaks)
     if code:
         return Answer(refusal=code, source=a.source)

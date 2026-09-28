@@ -15,7 +15,11 @@ WHAT IS CHECKED AGAIN HERE, because the kit was made from more than the demo was
   key; a line that does (`privacy.label_leaks`) is left out of what is sent, and the listing says
   how many were;
 - the document goes through the spec's own shape (`tables`) before it is sent, so a caption the
-  server would refuse is refused here with the same sentence.
+  server would refuse is refused here with the same sentence;
+- the TRAILER (docs/trailers.md), when this project has a finished render of its current cut, rides
+  in its own slots. Every word it draws came from its facts file (a title, a line, commit subjects,
+  the demo's labels), so those words are read once more against this Mac's names, and a trailer
+  whose words name a repository is left out of the publish, which goes on without it and says so.
 
 A commit hash, a file name, the project's name and the kit's inputs never travel: the document
 has no field for any of them.
@@ -31,7 +35,7 @@ import secrets
 import sys
 
 from capture import client as cl
-from capture.demo import paths, privacy
+from capture.demo import devices, paths, privacy
 from capture.demo import project as pj
 
 from . import kit as kmod
@@ -42,9 +46,54 @@ FORMAT_SLOT = {f: f"video_{f}" for f in tables.ENUMS["kit_format"]}
 APP_STORE_SLOT = {"iphone_69": "app_store_iphone", "ipad_13": "app_store_ipad"}
 
 
+def trailer_of(kit_dir: pathlib.Path, names=(), others=()) -> tuple[list[dict], dict | None, str | None]:
+    """(the trailer's files, the document's `trailer`, why it is left out) for the kit beside it.
+
+    Only a whole render of the CURRENT cut goes: not a draft (half size, no blur), not a render of a
+    cut the owner has since changed (the director saves the cut before it renders)."""
+    d = kit_dir.parent / "trailer"
+    try:
+        made = json.loads((d / "render" / "render.json").read_text())
+        cut = json.loads((d / "cut.json").read_text())
+        facts = json.loads((d / "facts.json").read_text())
+    except (OSError, ValueError):
+        return [], None, None
+    if made.get("draft"):
+        return [], None, "the trailer on this Mac is a draft; cut it again without --draft to send it"
+    if made.get("cut") != cut.get("version"):
+        return [], None, f"the trailer on this Mac is version {made.get('cut')} and its cut is {cut.get('version')}; render it again to send it"
+    from capture.trailer import make
+
+    if privacy.label_leaks(make.words_of(facts), tuple(names), tuple(others)):
+        return [], None, "a word the trailer draws names a repository or carries a key, so it stays on this Mac"
+    sizes = {f["id"]: f["size"] for f in devices.FORMATS} | {"loop": devices.LOOP["size"]}
+    out: list[dict] = []
+    for m in made.get("made") or []:
+        path = d / "render" / m["file"]
+        if not path.is_file():
+            continue
+        if m["format"] == "loop":
+            slot, ms = "trailer_loop", None
+        elif m["format"] in tables.ENUMS["kit_format"]:
+            slot, ms = f"trailer_{m['format']}", min(tables.CAPS["trailer_ms"], round(float(m["seconds"]) * 1000))
+        else:
+            continue
+        w, h = m.get("width"), m.get("height")
+        if not (w and h):
+            w, h = sizes[m["format"]]
+        out.append({"path": path, "slot": slot, "content_type": CONTENT_TYPES[path.suffix.lower()], "bytes": path.stat().st_size,
+                    "width": int(w), "height": int(h), "duration_ms": ms, "position": 0, "label": None})  # fmt: skip
+    if not any(f["slot"] != "trailer_loop" for f in out):
+        return [], None, None
+    scenes = [s["kind"] for s in cut.get("scenes") or [] if s.get("kind") in tables.ENUMS["trailer_scene"]]
+    doc = {"version": int(cut["version"]), "seconds": float(made.get("seconds") or cut["seconds"]), "scenes": scenes[:10]}
+    return out, doc, None
+
+
 def files_of(kit: dict, kit_dir: pathlib.Path) -> list[dict]:
     """Every file the kit sends, as presign bodies without the publish id, in upload order: the
-    videos, the loop, the stills, the framed stills, before and after, the App Store sets."""
+    videos, the loop, the stills, the framed stills, before and after, the App Store sets. The
+    trailer's are `trailer_of`'s, added by `main` after its own check."""
     out: list[dict] = []
 
     def add(path: pathlib.Path, slot: str, pos: int, w: int, h: int, label: str | None = None, ms: int | None = None) -> None:
@@ -111,6 +160,8 @@ def main(a: argparse.Namespace) -> int:
     kit = json.loads((kit_dir / "kit.json").read_text())
     names, others = kmod.names_for(project, a)
     files = files_of(kit, kit_dir)
+    trailer_files, trailer_doc, trailer_why = trailer_of(kit_dir, names, others)
+    files += trailer_files
     pictures = [f["path"] for f in files if f["content_type"] in ("image/png", "image/jpeg")]
     print(f"Reading {len(pictures)} pictures once more for names and keys (Apple Vision)...", file=sys.stderr)
     refused, _ = privacy.check(pictures, None, names, other_names=others)
@@ -121,12 +172,17 @@ def main(a: argparse.Namespace) -> int:
         return 3
     publish_id = secrets.token_hex(8)
     doc, dropped = document(kit, kit_dir, publish_id, names, others)
+    doc["trailer"] = trailer_doc
     total = sum(f["bytes"] for f in files)
     print(f"This sends the ship kit of {project.display_name} to {server}, owner only:")
     for f in files:
         print(f"  {f['slot']:<18} {f['path'].name:<26} {f['width']}x{f['height']}  {f['bytes'] / 1e6:6.2f} MB")
     print(f"  captions for {', '.join(c['platform'] for c in doc['captions'])}; {len(doc['changelog'])} changelog lines"
           + (f" ({dropped} left out: they named a repository or carried a key)" if dropped else ""))  # fmt: skip
+    if trailer_doc:
+        print(f"  the trailer, version {trailer_doc['version']}: {trailer_doc['seconds']:g} s, {' · '.join(trailer_doc['scenes'])}")
+    elif trailer_why:
+        print(f"  no trailer: {trailer_why}")
     print(f"  {len(files)} files, {total / 1e6:.2f} MB. No commit hash, file name or project name is in any of it.")
     if a.dry_run:
         print("Dry run: nothing was sent.")

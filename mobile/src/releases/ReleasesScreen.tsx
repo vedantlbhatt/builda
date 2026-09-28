@@ -10,7 +10,7 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Platform as RNPlatform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 
 import { api, API_BASE_URL } from '../data/client';
@@ -20,6 +20,8 @@ import { PLATFORM_LIMITS } from '../generated/shipkit';
 import { copyText } from '../onboarding/clipboard';
 import { preferredHue } from '../projects/model';
 import { composeUrl, PLATFORM_NAMES } from '../shipkit/model';
+import { shareSelection } from '../shipkit/share';
+import type { KitFileRow } from '../shipkit/types';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
 import { useReduceMotion } from '../ui/motion';
 import {
@@ -34,7 +36,9 @@ import {
   HIGHLIGHTS_MAX,
   NOTES_MAX,
   POST_TO,
+  releaseFilm,
   releasePost,
+  releaseShare,
   sayReleaseError,
   settingsLine,
   starsLine,
@@ -60,6 +64,7 @@ export function ReleasesScreen() {
   const [settings, setSettings] = useState<ReleaseSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
+  const [film, setFilm] = useState<KitFileRow | null>(null);
 
   const read = useCallback(async () => {
     if (key.length !== 64) return;
@@ -67,6 +72,11 @@ export function ReleasesScreen() {
       const [r, s] = await Promise.all([api.myReleases(key), api.releaseSettings(key)]);
       setReleases(r.releases);
       setSettings(s.settings);
+      // The trailer a release can go out with: the kit's, which only its owner can read.
+      void api
+        .shipKit(key)
+        .then((k) => setFilm(k.kit ? releaseFilm(k.kit.files) : null))
+        .catch(() => setFilm(null));
       setError(null);
     } catch (e) {
       setError(sayReleaseError(e, 'The releases could not be read.'));
@@ -109,7 +119,7 @@ export function ReleasesScreen() {
           <View style={styles.block}>
             <T role="headline">Out</T>
             {out.map((r) => (
-              <Released key={r.id} release={r} ink={ink} arriving={r.id === fresh} />
+              <Released key={r.id} release={r} ink={ink} arriving={r.id === fresh} film={r.has_trailer ? film : null} />
             ))}
           </View>
         ) : null}
@@ -233,7 +243,7 @@ function DraftEditor({ release, ink, onGone, onSaved }: { release: MyRelease; in
 
 // ------------------------------------------------------------------ what went out
 
-function Released({ release, ink, arriving }: { release: MyRelease; ink: string; arriving: boolean }) {
+function Released({ release, ink, arriving, film }: { release: MyRelease; ink: string; arriving: boolean; film: KitFileRow | null }) {
   const meta = [whenLine(release.published_at, Date.now()), release.visibility === 'public' ? 'to everyone' : 'to followers', release.stars ? starsLine(release.stars) : null].filter(Boolean).join(' · ');
   return (
     <View style={styles.released}>
@@ -251,7 +261,47 @@ function Released({ release, ink, arriving }: { release: MyRelease; ink: string;
           {meta}
         </T>
         <PostLine release={release} />
+        {film ? <ShareWithTrailer release={release} film={film} /> : null}
       </View>
+    </View>
+  );
+}
+
+/**
+ * The release as a post with a picture: the trailer from the kit and the release's words, through
+ * the share sheet (on a desktop, saved to a folder with the words copied), so X, Instagram or
+ * TikTok get the film and the caption in one go.
+ */
+function ShareWithTrailer({ release, film }: { release: MyRelease; film: KitFileRow }) {
+  const [busy, setBusy] = useState(false);
+  const [after, setAfter] = useState<string | null>(null);
+  const payload = releaseShare(release, film, RNPlatform.OS === 'web' ? 'Save' : 'Share');
+  return (
+    <View style={styles.gap}>
+      <Pressable
+        accessibilityRole="button"
+        disabled={busy}
+        onPress={() => {
+          setBusy(true);
+          setAfter(null);
+          void shareSelection(payload)
+            .then((o) => setAfter(o.line))
+            .catch((e) => setAfter(e instanceof Error ? e.message : 'The trailer did not come down.'))
+            .finally(() => setBusy(false));
+        }}
+        hitSlop={6}
+      >
+        {({ pressed }) => (
+          <T role="meta" weight={600} tone={pressed || busy ? 'text' : 'dim'}>
+            {busy ? 'getting the trailer ready' : payload.label.toLowerCase()}
+          </T>
+        )}
+      </Pressable>
+      {after ? (
+        <T role="meta" tone="faint">
+          {after}
+        </T>
+      ) : null}
     </View>
   );
 }

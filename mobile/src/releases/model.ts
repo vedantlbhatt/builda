@@ -303,3 +303,26 @@ export function badgeUrl(base: string, handle: string, key: string): string {
 export function badgeMarkdown(base: string, handle: string, key: string): string {
   return `![builda](${badgeUrl(base, handle, key)})`;
 }
+
+// ------------------------------------------------------------------ a release with its trailer
+
+/** The trailer film a release goes out with: the square first (it crops least in a feed), then
+ *  the feed's 4:5, the vertical, the wide. Null when the kit carries none. */
+export function releaseFilm<F extends { slot: string; url: string }>(files: readonly F[]): F | null {
+  for (const slot of ['trailer_square', 'trailer_feed', 'trailer_vertical', 'trailer_landscape']) {
+    const f = files.find((x) => x.slot === slot && x.url);
+    if (f) return f;
+  }
+  return null;
+}
+
+/** The share: the trailer and the release's words, as X takes them (the tightest limit, so the
+ *  words fit wherever the sheet sends them). */
+export function releaseShare(r: Pick<MyRelease, 'title' | 'highlights'>, film: { id: string; url: string; slot: string }, verb: 'Share' | 'Save') {
+  const format = film.slot.replace('trailer_', '');
+  return {
+    files: [{ id: film.id, url: film.url, contentType: 'video/mp4' as const, name: `release-trailer-${format}.mp4` }],
+    text: releasePost(r, 280),
+    label: `${verb} it with the trailer`,
+  };
+}

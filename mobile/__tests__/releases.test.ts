@@ -162,3 +162,17 @@ describe('the README badge', () => {
     expect(badgeMarkdown('https://api.example.com', 'vedant', key)).toBe(`![builda](https://api.example.com/v1/badge/vedant/${key}.svg)`);
   });
 });
+
+describe('a release with its trailer', () => {
+  test('the square first, and the words as X takes them', async () => {
+    const { releaseFilm, releaseShare } = await import('../src/releases/model');
+    const f = (slot: string, url = `/v1/kit-media/${slot}`) => ({ id: slot, slot, url });
+    expect(releaseFilm([f('video_square'), f('trailer_vertical'), f('trailer_square')])!.slot).toBe('trailer_square');
+    expect(releaseFilm([f('trailer_landscape'), f('trailer_vertical')])!.slot).toBe('trailer_vertical');
+    expect(releaseFilm([f('video_square'), f('trailer_square', '')])).toBeNull();
+    const p = releaseShare({ title: 'Buses you can catch', highlights: ['Leave now times'] }, f('trailer_square'), 'Share');
+    expect(p.files).toEqual([{ id: 'trailer_square', url: '/v1/kit-media/trailer_square', contentType: 'video/mp4', name: 'release-trailer-square.mp4' }]);
+    expect(p.text).toBe('Buses you can catch\n\n· Leave now times');
+    expect(p.label).toBe('Share it with the trailer');
+  });
+});

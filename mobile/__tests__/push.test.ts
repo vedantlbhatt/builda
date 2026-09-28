@@ -165,3 +165,12 @@ describe("last week's card, by notification", () => {
     expect(nextWeekCardAt(at(2026, 9, 27, 23, 30)).getTime()).toBe(at(2026, 9, 28, 9));
   });
 });
+
+describe('a release push', () => {
+  test('opens the release, from its id or its url, and nothing without one', () => {
+    expect(routeForNotification({ kind: 'release', release_id: '8f1c', url: 'builder://release/8f1c' })).toBe('/release/8f1c');
+    expect(routeForNotification({ kind: 'release', url: 'builder://release/77aa' })).toBe('/release/77aa');
+    expect(routeForNotification({ kind: 'release', session_id: 'abc' })).toBeNull();
+    expect(routeForNotification({ kind: 'release', release_id: '../x' })).toBeNull();
+  });
+});

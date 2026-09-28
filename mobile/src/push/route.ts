@@ -33,7 +33,13 @@ export type SessionRoute = `/session/${string}` | `/session/${string}?recap=1`;
  * stopped the app ("Modally presented controllers are being reshuffled").
  */
 export type DropRoute = `/drop/${string}`;
-export type TapRoute = SessionRoute | DropRoute | typeof WEEK_CARD_ROUTE;
+/**
+ * A release (`server/builder/releases.py`, kind `release`): a project someone starred, or a builder
+ * someone follows, shipped. It opens the release itself (`app/release/[id].tsx`).
+ */
+export const RELEASE_KIND = 'release';
+export type ReleaseRoute = `/release/${string}`;
+export type TapRoute = SessionRoute | DropRoute | ReleaseRoute | typeof WEEK_CARD_ROUTE;
 
 /**
  * Where a notification's data points, or null when it points nowhere.
@@ -50,6 +56,13 @@ export function routeForNotification(data: unknown): TapRoute | null {
   const d = data as Record<string, unknown>;
   const kindRaw = typeof d.kind === 'string' ? d.kind : null;
   if (kindRaw === WEEK_CARD_KIND) return WEEK_CARD_ROUTE;
+  if (kindRaw === RELEASE_KIND) {
+    const v = d.release_id;
+    const fromUrl = typeof d.url === 'string' ? d.url.match(/^builder:\/\/release\/([^/?#\s]+)$/)?.[1] ?? null : null;
+    const releaseId = typeof v === 'string' && isSafeId(v) ? v : fromUrl && isSafeId(fromUrl) ? fromUrl : null;
+    // A release push without an id opens nothing, never a session of the same id.
+    return releaseId ? `/release/${releaseId}` : null;
+  }
   if (kindRaw && DROP_KINDS.has(kindRaw)) {
     const dropId = dropIdFrom(d);
     return dropId ? `/drop/${dropId}` : null;

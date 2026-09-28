@@ -160,6 +160,10 @@ export default function RootLayout() {
                 <Stack.Screen name="compare" options={{ title: '' }} />
                 {/* A project's ship kit and one Share (src/shipkit/, docs/ship-kit.md). */}
                 <Stack.Screen name="ship/[key]" options={{ title: 'Share what you built' }} />
+                {/* A project's releases, and one release (a release push opens it): src/releases/. */}
+                <Stack.Screen name="releases/[key]" options={{ title: 'Releases' }} />
+                <Stack.Screen name="release/[id]" options={{ title: '' }} />
+                <Stack.Screen name="following" options={{ title: 'Following' }} />
                 {/* Settings wears the chapter pages' large title bar, set in the screen. */}
                 <Stack.Screen name="settings" options={{ title: 'Settings' }} />
                 <Stack.Screen name="pair" options={{ title: 'Connect your Mac' }} />

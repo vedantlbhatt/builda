@@ -4,6 +4,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 
 import type { Cursor, FollowState, UserPage } from '../../src/data/api';
 import { api } from '../../src/data/client';
+import { TheirProjects } from '../../src/releases/TheirProjects';
 import { FeedList } from '../../src/social/FeedList';
 import { colors, hitSlopToReach, radius, space, typeRoles } from '../../src/theme';
 
@@ -95,6 +96,7 @@ export default function UserScreen() {
           </Text>
         </Pressable>
       )}
+      <TheirProjects handle={profile.handle} isYou={profile.is_you} />
     </View>
   ) : null;
 

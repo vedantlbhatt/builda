@@ -32,6 +32,8 @@ import { GUTTER, type } from '../insights/kit';
 import { REPORT_COMMAND } from '../insights/model';
 import { SPECTRUM, type Hue } from '../insights/palette';
 import { Section } from '../insights/reveal';
+import { followingWords, withDraft } from '../releases/model';
+import { useDraftKeys, useFollowingCount } from '../releases/useDrafts';
 import { useAccent } from '../theme/accent';
 import { ChapterPage } from '../you/ChapterPage';
 import { useBuilderProfile } from '../you/hooks';
@@ -70,6 +72,8 @@ export function ProjectsScreen() {
   const { previews, reload: reloadPreviews } = useDemoPreviews(keys);
   const { kits, sources, reload: reloadKits } = useKits(keys);
   const phone = useDoorRecency(keys);
+  const drafts = useDraftKeys();
+  const following = useFollowingCount();
 
   const rows: ProjectRowModel[] = useMemo(() => {
     const now = Date.now();
@@ -82,17 +86,18 @@ export function ProjectsScreen() {
         name: d.label.text,
         hue: d.hue,
         hours: d.hours ? d.hours.final : null,
-        meta: rowMeta(recent ? recent.title : d.stage, recent ? recent.doorLine : d.lastSession),
+        meta: withDraft(rowMeta(recent ? recent.title : d.stage, recent ? recent.doorLine : d.lastSession), drafts.has(d.key)),
         weeks: weekCells(series.get(d.key)),
         visual: stageVisual(kits[d.key] ?? { kind: 'unknown' }, previews[d.key]?.prints),
         a11y: d.a11y,
       };
     });
-  }, [doors, block, report, phone, kits, previews, weekly]);
+  }, [doors, block, report, phone, kits, previews, weekly, drafts]);
 
   const stageW = Math.min(width, STAGE_MAX);
   // The door at the foot never wears the last row's hue, so the two never read as one band.
   const compareHue = SPECTRUM[rows[rows.length - 1]?.hue === 'cobalt' ? 'heather' : 'cobalt'];
+  const followingHue = SPECTRUM[compareHue === SPECTRUM.cobalt ? 'amber' : 'coral'];
   const reload = () => {
     reloadKits();
     reloadPreviews();
@@ -140,6 +145,17 @@ export function ProjectsScreen() {
                   </Band>
                 </Section>
               ) : null}
+              {stage >= rows.length ? (
+                <Section style={rows.length > 1 ? styles.following : styles.compare}>
+                  <Band hue={followingHue} title="Following" href="/following" accessibilityLabel="Releases from the projects you starred and the builders you follow. Opens the page.">
+                    <BandWords>
+                      <Text maxFontSizeMultiplier={1.3} style={type.bandCaption}>
+                        {followingWords(following)}
+                      </Text>
+                    </BandWords>
+                  </Band>
+                </Section>
+              ) : null}
             </View>
           ) : null}
         </>
@@ -152,4 +168,5 @@ const styles = StyleSheet.create({
   lead: { paddingHorizontal: GUTTER, paddingTop: 4, paddingBottom: 20, gap: 12 },
   centred: { alignSelf: 'center', width: STAGE_MAX },
   compare: { marginTop: 56 },
+  following: { marginTop: 20 },
 });

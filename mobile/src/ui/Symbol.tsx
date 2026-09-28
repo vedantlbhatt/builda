@@ -52,6 +52,7 @@ const FALLBACK_PATHS: Partial<Record<string, string>> = {
   'xmark': 'M6 6l12 12M18 6L6 18',
   'checkmark': 'M5 12.5l4.5 4.5L19 7',
   'plus': 'M12 5v14M5 12h14',
+  'minus': 'M5 12h14',
 };
 
 function FallbackSymbol({ name, size, color, style }: { name: string; size: number; color: string; style?: StyleProp<ViewStyle> }) {

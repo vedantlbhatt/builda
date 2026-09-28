@@ -36,6 +36,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { n } from '../copy/numbers';
 import { DemoGallery } from '../demos/Gallery';
 import { HeroDemo } from '../demos/PageDemo';
+import { ReleaseDoor } from '../releases/ReleaseDoor';
 import { ShipKitDoor } from '../shipkit/ShipKitDoor';
 import { useProjectDemo, type DemoLoad } from '../demos/useDemo';
 import { Band, BandWords } from '../insights/Band';
@@ -176,6 +177,7 @@ export function ProjectPage() {
                   onDemoDeleted={demoDeleted}
                 />
                 <ShipKitDoor projectKey={page.detail.key} color={own.ink} hue={page.hue} name={page.detail.label.text} always={demo.kind !== 'none'} />
+                <ReleaseDoor projectKey={page.detail.key} color={own.ink} hue={page.hue} name={page.detail.label.text} />
                 {page.time && stage >= 1 ? <TimeChapter page={page} hue={SPECTRUM[timeHue!]} inner={inner} /> : null}
                 {page.build && stage >= 2 ? <BuildChapter page={page} hue={SPECTRUM[buildHue!]} inner={inner} /> : null}
                 {page.shipping && stage >= 3 ? <ShippingChapter page={page} hue={SPECTRUM[shipHue!]} spark={page.hue} inner={inner} /> : null}

@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { BoardResponse, DropRow, MoveRow } from '../drops/types';
 import type { DemoRequestRow, ShipKitResponse } from '../shipkit/types';
 import type { TrailerNote } from '../trailer/model';
+import type { MyRelease, ReleaseSettings, ReleaseStatus, StarredProject, TheirProject, TheirRelease } from '../releases/model';
 
 import type { BuilderNarrative } from '../generated/narrative';
 import type { BuilderReport, ReportProject, ReportProjectComparison } from '../generated/report';
@@ -1082,6 +1083,65 @@ export class Api {
   /** Take back a note your Mac has not picked up yet. */
   cancelTrailerNote(id: string): Promise<{ note: TrailerNote }> {
     return this.request('DELETE', `/v1/trailer/notes/${encodeURIComponent(id)}`);
+  }
+
+  // ------------------------------------------------------------------ releases and stars
+
+  /** My releases, drafts and published, newest first; one project's with `key`. */
+  myReleases(key?: string, status?: ReleaseStatus): Promise<{ releases: MyRelease[] }> {
+    const q = new URLSearchParams();
+    if (key) q.set('project_key', key);
+    if (status) q.set('status', status);
+    const qs = q.toString();
+    return this.request('GET', `/v1/me/releases${qs ? `?${qs}` : ''}`);
+  }
+
+  /** One release: the owner's whole view, or the reader's. */
+  release(id: string): Promise<{ release: MyRelease | TheirRelease }> {
+    return this.request('GET', `/v1/releases/${encodeURIComponent(id)}`);
+  }
+
+  /** Change a draft's (or a published release's) words, or who a draft goes to. */
+  editRelease(id: string, body: Partial<Pick<MyRelease, 'title' | 'notes' | 'highlights' | 'visibility'>>): Promise<{ release: MyRelease }> {
+    return this.request('PATCH', `/v1/releases/${encodeURIComponent(id)}`, { body });
+  }
+
+  publishRelease(id: string): Promise<{ release: MyRelease }> {
+    return this.request('POST', `/v1/releases/${encodeURIComponent(id)}:publish`);
+  }
+
+  dismissRelease(id: string): Promise<{ release: MyRelease }> {
+    return this.request('POST', `/v1/releases/${encodeURIComponent(id)}:dismiss`);
+  }
+
+  releaseSettings(key: string): Promise<{ settings: ReleaseSettings }> {
+    return this.request('GET', `/v1/projects/${encodeURIComponent(key)}/release-settings`);
+  }
+
+  setReleaseSettings(key: string, body: Partial<Omit<ReleaseSettings, 'project_key' | 'updated_at'>>): Promise<{ settings: ReleaseSettings }> {
+    return this.request('PUT', `/v1/projects/${encodeURIComponent(key)}/release-settings`, { body });
+  }
+
+  /** Releases of the projects I starred and the builders I follow, newest first. */
+  followingReleases(cursor?: { before: string; before_id: string }): Promise<{ releases: TheirRelease[]; next_before: string | null; next_before_id: string | null }> {
+    const qs = cursor ? `?before=${encodeURIComponent(cursor.before)}&before_id=${encodeURIComponent(cursor.before_id)}` : '';
+    return this.request('GET', `/v1/releases/following${qs}`);
+  }
+
+  theirProjects(handle: string): Promise<{ projects: TheirProject[] }> {
+    return this.request('GET', `/v1/users/${encodeURIComponent(handle)}/projects`);
+  }
+
+  myStars(): Promise<{ projects: StarredProject[] }> {
+    return this.request('GET', '/v1/me/stars');
+  }
+
+  star(handle: string, key: string): Promise<{ key: string; starred: boolean; stars: number | null }> {
+    return this.request('POST', `/v1/users/${encodeURIComponent(handle)}/projects/${encodeURIComponent(key)}/star`);
+  }
+
+  unstar(handle: string, key: string): Promise<{ key: string; starred: boolean; stars: number | null }> {
+    return this.request('DELETE', `/v1/users/${encodeURIComponent(handle)}/projects/${encodeURIComponent(key)}/star`);
   }
 
   /** Ask your Mac for a demo of this project; the live request when there is one already. */

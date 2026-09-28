@@ -19,6 +19,7 @@ from .routes import (
     shipkit,
     social,
     sync,
+    trailer,
     users,
 )
 from .settings import settings
@@ -63,6 +64,9 @@ app.include_router(media.router)
 # shipkit BEFORE sessions too: `/v1/demos/requests:claim` and `/v1/projects/{key}/kit:presign`
 # are literals a `{something}/{id}` route would otherwise take as ids.
 app.include_router(shipkit.router)
+# trailer BEFORE sessions for the same reason: `POST /v1/trailer/notes:claim` is a literal a
+# `{something}/{id}` route would take as an id.
+app.include_router(trailer.router)
 app.include_router(sessions.router)
 app.include_router(push.router)
 # The drop island's tokens (docs/drop-island.md), beside the session cards' in /v1/push.

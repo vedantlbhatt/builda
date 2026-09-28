@@ -109,6 +109,8 @@ def assert_policies_present() -> None:
         # token is another person's Lock Screen, as for 0022.
         "drop_activity_tokens",
         "demo_activity_tokens",
+        # 0035. The owner's own words about a project's trailer, for their Mac. Owner only.
+        "trailer_notes",
     }
     with engine().connect() as conn:
         rows = conn.execute(

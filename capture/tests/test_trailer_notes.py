@@ -105,13 +105,15 @@ class NoteAnswers(unittest.TestCase):
             body = notes.answer(self.note("make a trailer"), use_model=False, resolve=no_names, render_fn=Rendered())
         self.assertEqual(body["refusal"], "no_demo")
 
-    def test_after_a_new_demo_a_trailer_is_cut_again_and_none_is_made_unasked(self):
+    def test_after_a_new_demo_the_trailer_is_cut_and_a_first_one_made_unless_turned_off(self):
         r = Rendered()
-        self.assertIsNone(notes.refresh(KEY, resolve=no_names, render_fn=r))
+        self.assertIsNone(notes.refresh(KEY, resolve=no_names, render_fn=r, make_first=False))
         self.assertEqual(r.cuts, [])
-        notes.answer(self.note("make a trailer"), use_model=False, resolve=no_names, render_fn=Rendered())
+        # For everyone: a project with no trailer gets its first after a demo, as the kit is made.
         self.assertEqual(notes.refresh(KEY, resolve=no_names, render_fn=r), 1)
-        self.assertEqual(r.cuts, [1])
+        # The next demo keeps the owner's cut when it still fits, at its version.
+        self.assertEqual(notes.refresh(KEY, resolve=no_names, render_fn=r), 1)
+        self.assertEqual(r.cuts, [1, 1])
 
 
 class Worker(unittest.TestCase):

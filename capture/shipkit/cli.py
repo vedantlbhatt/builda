@@ -62,6 +62,7 @@ def make_parser() -> argparse.ArgumentParser:
     w.add_argument("--server", default=None, help="claim the phone's requests from this server too")
     w.add_argument("--every", type=float, default=30.0, help="seconds between looks at the queue")
     w.add_argument("--no-model", action="store_true", help="kits without a claude call")
+    w.add_argument("--no-trailers", action="store_true", help="do not cut a first trailer for a project that has none")
     w.add_argument("--publish-requests", action="store_true",
                    help="send the kit of a demo the PHONE asked for without asking again (starting the worker with this is the yes)")
 

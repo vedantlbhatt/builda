@@ -95,8 +95,10 @@ Under the trailer is the conversation:
 
 The worker answers notes BEFORE it films anything: a note is a render of a minute or so with you
 looking at the phone, a demo is half an hour nobody is waiting on. It is still one worker, so a
-render never runs beside a simulator. After it films a new demo it cuts the trailer again from it,
-so a published kit never carries a trailer of screens the app no longer has.
+render never runs beside a simulator. After it films a new demo it cuts the trailer from it: the
+owner's cut again when it still fits, and for a project with no trailer yet, its first (the owner:
+"the demo thing for everyone"; `--no-trailers` leaves that to the owner). So every kit the worker
+makes carries a trailer, and never one of screens the app no longer has.
 
 MEASURED ON THE LOCAL STACK (2026-09-28, Linux, 4 cores, the square format only, with a stand in for
 Apple Vision, which exists only on a Mac): "make a trailer" answered with version 1; "make it orange

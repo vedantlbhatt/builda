@@ -179,11 +179,14 @@ def take(client: Notes, *, publish_to: str | None, use_model: bool = True, forma
     return len(got)
 
 
-def refresh(key: str, say: Callable[[str], None] = print, resolve=names_of, render_fn=render.render) -> int | None:
+def refresh(key: str, say: Callable[[str], None] = print, resolve=names_of, render_fn=render.render,
+            make_first: bool = True) -> int | None:
     """After a new demo, the project's trailer cut again from it: the owner's cut when it still
-    fits the new demo, else a first cut as the next version. The version rendered, or None when the
-    project has no trailer (nobody asked for one, so none is made). Raises what the render raises."""
-    if render.current(key) is None:
+    fits the new demo, else a first cut as the next version. A project with no trailer yet gets its
+    first, made for it as the kit is (the owner, 2026-09-28: "the demo thing for everyone"), unless
+    `make_first` is off (`demo watch --no-trailers`). The version rendered, or None when none was
+    made. Raises what the render raises."""
+    if render.current(key) is None and not make_first:
         return None
     src, names, others = resolve(key)
     f = make.facts_for(key, src, names, others)

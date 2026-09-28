@@ -17,6 +17,10 @@ spec/shipkit.v1.json `request_refusal`). A request is never filmed from a checko
 worked in: the transcripts are the evidence that the repository is the person's own (run.py
 `is_own`), which is also what lets the capture run without a sandbox.
 
+THE TRAILER. After every demo it films, the worker cuts the project's trailer from it (a first one
+when there is none, `--no-trailers` to leave that to the owner), so the kit it publishes carries a
+trailer of the screens the app has now.
+
 THE TRAILER'S NOTES. With a server, each loop also claims the owner's notes on a trailer (the
 director, `capture/trailer/notes.py`) and answers them FIRST: a note is a render of a few minutes
 with the owner looking at the phone for the answer, and a demo is half an hour nobody is waiting
@@ -172,7 +176,7 @@ def run_child(args: list[str], timeout: int, log: pathlib.Path) -> int:
     return r.returncode
 
 
-def work(p: pathlib.Path, no_model: bool, req: Requests | None, publish_to: str | None = None) -> str:
+def work(p: pathlib.Path, no_model: bool, req: Requests | None, publish_to: str | None = None, trailers: bool = True) -> str:
     """Run one claimed job to its end; returns the state it ended in."""
     job = queue.read(p)
     skip, found = queue.judge(job)
@@ -212,9 +216,9 @@ def work(p: pathlib.Path, no_model: bool, req: Requests | None, publish_to: str 
     try:
         from capture.trailer import notes as tnotes
 
-        v = tnotes.refresh(key, say=lambda m: say(f"  trailer: {m}"))
+        v = tnotes.refresh(key, say=lambda m: say(f"  trailer: {m}"), make_first=trailers)
         if v is not None:
-            say(f"  the trailer is cut again from this demo (version {v})")
+            say(f"  the trailer is cut from this demo (version {v})")
     except Exception as e:  # noqa: BLE001 - a trailer that did not render never costs the kit
         say(f"  the trailer was not cut again ({e}); the kit goes without a new one")
     if publish_to and job.get("kind") == "request":
@@ -270,7 +274,7 @@ def main(a: argparse.Namespace) -> int:
             take_requests(req, dry_run=False)
         p = queue.claim_next()
         if p is not None:
-            work(p, a.no_model, req, publish_to)
+            work(p, a.no_model, req, publish_to, trailers=not getattr(a, "no_trailers", False))
             if a.once:
                 return 0
             continue

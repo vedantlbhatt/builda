@@ -10,6 +10,8 @@
     python -m capture demo hook                        the Claude Code SessionEnd hook's command
                                                        (reads the hook's JSON on stdin, queues)
     python -m capture demo hook --install              print the settings.json entry to add
+    python -m capture demo trailer [PATH | --key KEY]  cut the project's trailer (docs/trailers.md)
+    python -m capture demo direct --key KEY "NOTE"     change the trailer by a note, in your words
 
 Answered before the `demo` generator's parser (capture/cli.py), as `demo --publish` is, so a
 project folder that happened to be called `watch` is still reachable as `./watch`.
@@ -20,7 +22,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-VERBS = ("kit", "queue", "watch", "hook")
+VERBS = ("kit", "queue", "watch", "hook", "trailer", "direct")
 
 
 def claims(argv: list[str]) -> bool:
@@ -63,6 +65,13 @@ def make_parser() -> argparse.ArgumentParser:
     w.add_argument("--publish-requests", action="store_true",
                    help="send the kit of a demo the PHONE asked for without asking again (starting the worker with this is the yes)")
 
+    from capture.trailer import cli as trailer_cli
+
+    trailer_cli.add_arguments(
+        sub.add_parser("trailer", help="cut the project's trailer from its demo, and render it (docs/trailers.md)"),
+        sub.add_parser("direct", help="change the trailer by a note in your own words, and render the new cut"),
+    )
+
     h = sub.add_parser("hook", help="the SessionEnd hook: queue a candidate from the hook's JSON")
     h.add_argument("--install", action="store_true", help="print the settings.json entry, change nothing")
     h.add_argument("--dry-run", action="store_true", help="say what it would queue, and queue nothing")
@@ -79,6 +88,10 @@ def main(argv: list[str]) -> int:
         from . import kit
 
         return kit.main(a)
+    if a.verb in ("trailer", "direct"):
+        from capture.trailer import cli as trailer_cli
+
+        return trailer_cli.cmd_trailer(a) if a.verb == "trailer" else trailer_cli.cmd_direct(a)
     if a.verb == "queue":
         from . import queue
 

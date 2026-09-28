@@ -27,7 +27,7 @@ of it leaves the Mac until `python -m capture demo kit --publish` lists every fi
 | `framed/still-NN.png` 1080x1350 | a carousel of screens | each still in the 4:5 frame |
 | `before-after-NN.png` 2160x1080 | "look how it changed" | the same screen at the last demo and now, paired by label, side by side, each half dated by the day its commit was made |
 | `app-store/iphone_69/NN.png` 1320x2868 | App Store Connect's required iPhone size | an iOS app's stills, scaled uniformly and centre cropped only when within 1% of the slot's shape |
-| `share-copy.json` | a caption per platform: X (and a thread), LinkedIn, Threads, Instagram, TikTok, Bluesky | your own `claude -p`, then checked (below) |
+| `share-copy.json` | a caption per platform: X (and a thread), LinkedIn, Threads, Instagram, TikTok, Bluesky, Reddit (a post's title), Facebook, and a GitHub README block | your own `claude -p`, then checked (below) |
 | `changelog.json`, `.md` | what is new since the last demo | the commit subjects between the two demos' commits |
 | `kit.json`, `checks.json` | every file and its size; every refusal with its code; the measurements | |
 
@@ -356,3 +356,22 @@ above an old kit, "Shared." after a dismissed sheet, "since the last demo" on a 
   `demo hook --install` prints the entry.
 - Publishing went to the local stack's file store, not the production object store; the presign
   and commit routes are the demos' own, which production already serves.
+
+## Posting it: Reddit, Facebook, a README, and a compose link
+
+Nine platforms since 2026-09-28 (`spec/shipkit.v1.json`, appended so every older code keeps its
+place). Reddit's caption is a video post's TITLE (300), which is all most subreddits show beside a
+video; Facebook's is held to the kit's own 3000; GitHub's is a README section (1500) with its points
+as asterisks, since the house has no dashes.
+
+Choosing GitHub on the phone picks the README GIF (the trailer's, else the demo's loop) and turns
+the video off, and the words become the block to paste: the GIF as a Markdown image named as the
+share names the file (`![demo](docs/trailer-loop.gif)`), then the lines. Save the GIF into `docs/`,
+paste the block, and the README plays the trailer.
+
+Under the Share button, "Open X with these words" opens the platform's own compose page with the
+caption already in it, for X, Bluesky, Threads, Reddit and LinkedIn: the fast way to post from the
+desktop app, where there is no share sheet. None can carry a file, so the video goes by the sheet
+or Save first. JUDGEMENT CALL, NOT CHECKED: the addresses are the ones each platform documented as
+of 2026-09 (LinkedIn's `shareActive` is widely used and undocumented); the container this was built
+in could not reach any of them. Instagram, TikTok and Facebook take no text this way.

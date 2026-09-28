@@ -907,19 +907,22 @@ def gen_kit_md(c: dict) -> str:
 A ship kit is what your Mac makes beside a demo so you can post it: the demo in four shapes
 for the platforms (9:16, 4:5, 16:9, 1:1) with your device drawn around it, a GIF, the stills
 framed, the same screen before and after, App Store screenshots for an iOS app, a caption
-for each of {platforms}, and the subjects of the commits since your last demo. It is made on
+for each of {platforms}, the subjects of the commits since your last demo, and, when the
+project has one, its trailer in the same four shapes and as a GIF. It is made on
 your Mac and stays there. Nothing sends it until you run
 `python -m capture demo kit --publish`, which reads every picture for names and keys once
 more, lists every file and its size, and waits for your yes.
 
-A publish sends at most {caps["videos"]} videos (MP4, at most {caps["video_ms"] // 1000} seconds and {_size(caps["video_bytes"])} each), one GIF
+A publish sends at most {caps["videos"]} videos of the demo (MP4, at most {caps["video_ms"] // 1000} seconds and {_size(caps["video_bytes"])} each), at
+most {caps["trailers"]} of the trailer (MP4, at most {caps["trailer_ms"] // 1000} seconds and {_size(caps["video_bytes"])} each), a GIF of each
 (at most {_size(caps["gif_bytes"])}) and pictures (PNG or JPEG, at most {_size(caps["image_bytes"])} each), each with only its
 numbers (size, width, height, length, its place) and, for a still, the demo's own label.
 Then one document: the captions (each within its platform's limit, and every number in it
 one your own session record gave), the commit subjects as you wrote them (never a commit
 hash; a subject that names a repository or carries something shaped like a key is left
-out), the device it was filmed on, the colour it is drawn in, and what could not be made.
-Never a file name or the project's name.
+out), the device it was filmed on, the colour it is drawn in, what could not be made, and,
+for a trailer, which version of its cut it is, how long it runs and what each scene shows
+as a code (never the words on screen). Never a file name or the project's name.
 
 Only you can see a kit, whatever you share, and nothing of it is in a post, a feed, a share,
 a push or a Live Activity. Its files are kept in the same private store as your demos and

@@ -14,7 +14,7 @@ THREAD_MAX = 5
 ENUMS: dict[str, list[str]] = {
     "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
     "kit_format": ["vertical", "feed", "landscape", "square"],
-    "kit_slot": ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad"],
+    "kit_slot": ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad", "trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square", "trailer_loop"],
     "kit_content_type": ["image/png", "image/jpeg", "image/gif", "video/mp4"],
     "caption_source": ["model", "template"],
     "request_status": ["queued", "claimed", "done", "failed", "cancelled"],
@@ -22,6 +22,7 @@ ENUMS: dict[str, list[str]] = {
     "kit_refusal": ["device_aspect_mismatch", "blank_segment", "render_failed", "invented_number", "names_a_repository", "over_limit", "no_model", "loop_too_large", "aspect_too_far", "no_ipad_capture", "not_an_ios_app", "no_previous_demo", "no_video", "privacy_not_checked"],
     "queue_skip": ["not_a_repository", "excluded", "nothing_shipped", "not_demoable", "already_filmed", "already_queued"],
     "hue": ["tide", "ember", "iris", "brass", "orchid", "cobalt", "coral", "heather", "amber"],
+    "trailer_scene": ["open", "screens", "figure", "days", "changelog", "stack", "end"],
 }
 
 #: Character caps by size class.
@@ -57,6 +58,7 @@ PLATFORM_FORMAT: dict[str, str] = {
 #: What one published kit may hold.
 CAPS: dict[str, int] = {
     "videos": 4,
+    "trailers": 4,
     "loops": 1,
     "stills": 8,
     "framed_stills": 8,
@@ -66,6 +68,7 @@ CAPS: dict[str, int] = {
     "image_bytes": 6291456,
     "gif_bytes": 8388608,
     "video_ms": 31000,
+    "trailer_ms": 41000,
     "pixels": 8192,
 }
 

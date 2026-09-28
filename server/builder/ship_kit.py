@@ -8,10 +8,12 @@ piece of that module that is the same rule rather than writing a second one: the
 you excluded it).
 
 WHAT IS DIFFERENT. A kit holds up to four videos (one per format), a GIF, stills, framed stills,
-before and after pairs and App Store sets (spec/shipkit.v1.json `caps`), so it has a table of its
-own and a PREFIX of its own, `ship-kit/<user>/<project>/`: the demo sweep keeps what
-`project_media` rows name under `project-media/`, this sweep keeps what `ship_kit_media` rows
-name under `ship-kit/`, and neither can take the other's objects for orphans.
+before and after pairs and App Store sets (spec/shipkit.v1.json `caps`), and the project's trailer
+beside them in slots of its own (four videos up to `caps.trailer_ms` long and a GIF, 0036), so
+it has a table of its own and a PREFIX of its own, `ship-kit/<user>/<project>/`: the demo sweep
+keeps what `project_media` rows name under `project-media/`, this sweep keeps what
+`ship_kit_media` rows name under `ship-kit/`, and neither can take the other's objects for
+orphans.
 """
 
 from __future__ import annotations
@@ -30,10 +32,14 @@ log = logging.getLogger("builder.ship_kit")
 
 EXTENSIONS = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "video/mp4": "mp4"}
 PREFIX = "ship-kit/"
+#: The trailer's video slots (spec/shipkit.v1.json, the end of `kit_slot`): one per format, like the
+#: demo's, and held to `caps.trailer_ms` rather than `caps.video_ms`. Its GIF is `trailer_loop`.
+TRAILER_VIDEO_SLOTS = {"trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square"}
 #: The slots each content type may fill.
 SLOT_TYPES = {
-    "video/mp4": {"video_vertical", "video_feed", "video_landscape", "video_square"},
-    "image/gif": {"loop"},
+    "video/mp4": {"video_vertical", "video_feed", "video_landscape", "video_square"}
+    | TRAILER_VIDEO_SLOTS,
+    "image/gif": {"loop", "trailer_loop"},
     "image/png": {"still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad"},
     "image/jpeg": {"still", "framed_still", "before_after"},
 }
@@ -49,6 +55,11 @@ SLOT_CAPS = {
     "before_after": SHIPKIT_CAPS["before_after"],
     "app_store_iphone": SHIPKIT_CAPS["app_store_each"],
     "app_store_ipad": SHIPKIT_CAPS["app_store_each"],
+    "trailer_vertical": 1,
+    "trailer_feed": 1,
+    "trailer_landscape": 1,
+    "trailer_square": 1,
+    "trailer_loop": SHIPKIT_CAPS["loops"],
 }
 
 
@@ -58,6 +69,12 @@ def size_cap(content_type: str) -> int:
     if content_type == "image/gif":
         return SHIPKIT_CAPS["gif_bytes"]
     return SHIPKIT_CAPS["image_bytes"]
+
+
+def duration_cap(slot: str) -> int:
+    """How long a video in this slot may run: a trailer's cut up to `caps.trailer_ms`, a demo's
+    format up to `caps.video_ms`."""
+    return SHIPKIT_CAPS["trailer_ms"] if slot in TRAILER_VIDEO_SLOTS else SHIPKIT_CAPS["video_ms"]
 
 
 def presign_refusal(doc: KitPresign) -> tuple[int, str] | None:
@@ -80,8 +97,9 @@ def presign_refusal(doc: KitPresign) -> tuple[int, str] | None:
     if not 0 <= doc.position <= 63:
         return 422, "a position is 0 to 63"
     if doc.content_type == "video/mp4":
-        if doc.duration_ms is None or not 1 <= doc.duration_ms <= SHIPKIT_CAPS["video_ms"]:
-            return 422, f"a video needs duration_ms, 1 to {SHIPKIT_CAPS['video_ms']}"
+        longest = duration_cap(doc.slot)
+        if doc.duration_ms is None or not 1 <= doc.duration_ms <= longest:
+            return 422, f"a video in {doc.slot} needs duration_ms, 1 to {longest}"
         if doc.label is not None:
             return 422, "a video carries no label"
     elif doc.duration_ms is not None:

@@ -29,6 +29,7 @@ SHIPKIT_MAX_LENGTHS: dict[str, int] = {
 
 SHIPKIT_CAPS: dict[str, int] = {
     "videos": 4,
+    "trailers": 4,
     "loops": 1,
     "stills": 8,
     "framed_stills": 8,
@@ -38,6 +39,7 @@ SHIPKIT_CAPS: dict[str, int] = {
     "image_bytes": 6291456,
     "gif_bytes": 8388608,
     "video_ms": 31000,
+    "trailer_ms": 41000,
     "pixels": 8192,
 }
 
@@ -53,7 +55,7 @@ PLATFORM_LIMITS: dict[str, int] = {
 SHIPKIT_ENUM_VALUES: dict[str, list[str]] = {
     "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
     "kit_format": ["vertical", "feed", "landscape", "square"],
-    "kit_slot": ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad"],
+    "kit_slot": ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad", "trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square", "trailer_loop"],
     "kit_content_type": ["image/png", "image/jpeg", "image/gif", "video/mp4"],
     "caption_source": ["model", "template"],
     "request_status": ["queued", "claimed", "done", "failed", "cancelled"],
@@ -61,6 +63,7 @@ SHIPKIT_ENUM_VALUES: dict[str, list[str]] = {
     "kit_refusal": ["device_aspect_mismatch", "blank_segment", "render_failed", "invented_number", "names_a_repository", "over_limit", "no_model", "loop_too_large", "aspect_too_far", "no_ipad_capture", "not_an_ios_app", "no_previous_demo", "no_video", "privacy_not_checked"],
     "queue_skip": ["not_a_repository", "excluded", "nothing_shipped", "not_demoable", "already_filmed", "already_queued"],
     "hue": ["tide", "ember", "iris", "brass", "orchid", "cobalt", "coral", "heather", "amber"],
+    "trailer_scene": ["open", "screens", "figure", "days", "changelog", "stack", "end"],
 }
 
 SHIPKIT_ENUM_FIELDS: dict[str, dict[str, str]] = {
@@ -69,6 +72,7 @@ SHIPKIT_ENUM_FIELDS: dict[str, dict[str, str]] = {
     "KitCaption": {"platform": "platform", "source": "caption_source"},
     "Refused": {"code": "kit_refusal"},
     "KitPresign": {"slot": "kit_slot", "content_type": "kit_content_type"},
+    "KitTrailer": {},
     "KitDocument": {"hue": "hue"},
     "DemoRequestIn": {"hue": "hue"},
     "DemoRequestFinish": {"status": "request_status", "refusal": "request_refusal"},
@@ -155,7 +159,7 @@ class KitPresign(BaseModel):
     bytes: int = Field(ge=1, le=41943040)
     width: int = Field(ge=1, le=8192)
     height: int = Field(ge=1, le=8192)
-    duration_ms: int | None = Field(default=None, ge=1, le=31000)
+    duration_ms: int | None = Field(default=None, ge=1, le=41000)
     position: int = Field(ge=0, le=63)
     label: str | None = Field(default=None, max_length=80)
 
@@ -170,6 +174,25 @@ class KitPresign(BaseModel):
         return v
 
 
+class KitTrailer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1, le=1000)
+    seconds: float
+    scenes: list[str] = Field(max_length=10)
+
+    @field_validator("scenes")
+    @classmethod
+    def _validate_scenes_codes(cls, v, info):
+        allowed = SHIPKIT_ENUM_VALUES["trailer_scene"]
+        bad = [x for x in (v or []) if x not in allowed]
+        if bad:
+            raise ValueError(
+                '%s has %r, not in %r' % (info.field_name, bad, allowed)
+            )
+        return v
+
+
 class KitDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -180,6 +203,7 @@ class KitDocument(BaseModel):
     captions: list[KitCaption] = Field(max_length=6)
     changelog: list[Annotated[str, Field(max_length=120)]] = Field(max_length=30)
     refused: list[Refused] = Field(max_length=20)
+    trailer: KitTrailer | None = None
 
     @field_validator("hue")
     @classmethod

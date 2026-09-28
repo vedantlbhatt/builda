@@ -29,6 +29,7 @@ ENUMS: dict[str, list[str]] = {
     "note_status": ["queued", "claimed", "done", "failed", "cancelled"],
     "change_code": ["seconds", "pace", "hue", "title", "line", "cta", "creature", "mood", "camera", "transition", "scene_added", "scene_removed", "scene_moved", "figure", "screens", "first", "reverted", "rerendered"],
     "note_refusal": ["not_understood", "no_model", "invented_number", "names_a_repository", "needs_new_capture", "over_limit", "nothing_to_change", "no_such_version", "render_failed", "no_trailer", "no_node", "no_demo"],
+    "note_source": ["rules", "model"],
 }
 
 #: Character caps by size class.

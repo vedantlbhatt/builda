@@ -18,6 +18,7 @@ export type Creature = "bit" | "cat" | "dog" | "fox" | "owl" | "bee" | "whale" |
 export type NoteStatus = "queued" | "claimed" | "done" | "failed" | "cancelled";
 export type ChangeCode = "seconds" | "pace" | "hue" | "title" | "line" | "cta" | "creature" | "mood" | "camera" | "transition" | "scene_added" | "scene_removed" | "scene_moved" | "figure" | "screens" | "first" | "reverted" | "rerendered";
 export type NoteRefusal = "not_understood" | "no_model" | "invented_number" | "names_a_repository" | "needs_new_capture" | "over_limit" | "nothing_to_change" | "no_such_version" | "render_failed" | "no_trailer" | "no_node" | "no_demo";
+export type NoteSource = "rules" | "model";
 
 /** Legal values for every enum, in spec order. */
 export const TRAILER_ENUMS = {
@@ -33,6 +34,7 @@ export const TRAILER_ENUMS = {
   note_status: ["queued", "claimed", "done", "failed", "cancelled"],
   change_code: ["seconds", "pace", "hue", "title", "line", "cta", "creature", "mood", "camera", "transition", "scene_added", "scene_removed", "scene_moved", "figure", "screens", "first", "reverted", "rerendered"],
   note_refusal: ["not_understood", "no_model", "invented_number", "names_a_repository", "needs_new_capture", "over_limit", "nothing_to_change", "no_such_version", "render_failed", "no_trailer", "no_node", "no_demo"],
+  note_source: ["rules", "model"],
 } as const;
 
 /** Every refusal code's sentence, the same words the Mac prints. */
@@ -174,4 +176,24 @@ export interface CutEdit {
   changes: Change[];
   /** Set instead of a cut when the note cannot be done by changing the cut. */
   refusal?: NoteRefusal | null;
+}
+
+export interface NoteIn {
+  /** The owner's words, as typed on the phone: what to change. At least one character once trimmed. (max 500 chars) */
+  body: string;
+}
+
+export interface NoteFinish {
+  /** done or failed; nothing else finishes a note. */
+  status: NoteStatus;
+  /** 1-1000: the version of the cut the note was read against. Null when the project had no trailer yet. */
+  from_version?: number | null;
+  /** 1-1000: the version the note made. Required when done, null when failed. */
+  to_version?: number | null;
+  /** Every difference the new version made, one per thing changed. Empty when failed. (max 12 items) */
+  changes: Change[];
+  /** Why it failed. Required when failed, null when done. */
+  refusal?: NoteRefusal | null;
+  /** Who read the note: rules, the Mac's own; model, claude on the Mac. */
+  source?: NoteSource | null;
 }

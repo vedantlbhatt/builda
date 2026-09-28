@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from sqlalchemy import text
 
-from .. import builder_profile, live_store, quotes, ship_kit
+from .. import builder_profile, live_store, quotes, ship_kit, trailer_notes
 from .. import project_media as pm
 from ..auth import CurrentDevice, current_device, current_phone, current_uploader
 from ..contract import ANONYMOUS_FIELDS, CONTRACT_VERSION, PUBLIC_FIELDS
@@ -229,6 +229,8 @@ def set_visibility(body: VisibilityUpdate, device: CurrentDevice = Depends(curre
             # And its ship kit (0030, docs/ship-kit.md): the videos, the captions and the
             # requests for one. Same order: rows here, objects after the commit.
             _, kit_objects = ship_kit.forget_project(db, str(device.user_id), body.repo_hash)
+            # And its trailer notes (0035): the owner's words about the project's trailer.
+            trailer_notes.forget_project(db, str(device.user_id), body.repo_hash)
             # And its drop moves (0028, docs/drops.md): a move keeps the key of the repository it
             # was run in and the last words the run said about it, which name its files. FOUND IN
             # REVIEW (2026-09-19): they outlived the sweep. A move waiting to run there will not.

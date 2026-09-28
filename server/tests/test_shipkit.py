@@ -36,7 +36,8 @@ from test_sync import (  # noqa: F401 - fixtures are picked up by name
     owner_engine,
 )
 
-from builder.shipkit_spec import SHIPKIT_ENUM_VALUES, SHIPKIT_VERSION
+from builder import ship_kit
+from builder.shipkit_spec import SHIPKIT_CAPS, SHIPKIT_ENUM_VALUES, SHIPKIT_VERSION
 
 pytestmark = pytest.mark.skipif(not TEST_DB, reason="set BUILDER_TEST_DB to run")
 _SHARED_FIXTURES = (app_env, client, created_users, store)
@@ -407,6 +408,145 @@ def test_excluding_the_repository_and_deleting_the_account_take_the_kit(
     assert _files(store) == set()
 
 
+# ------------------------------------------------------------------ the trailer (0036)
+
+
+TRAILER = {"version": 3, "seconds": 20.5, "scenes": ["open", "screens", "figure", "end"]}
+
+
+def test_a_kit_carries_the_projects_trailer(client, store, created_users):
+    a = _person(client, created_users)
+    pub = _pub()
+    longest = SHIPKIT_CAPS["trailer_ms"]
+    _send(client, a, _file(pub, "video_vertical", MP4, "video/mp4"), MP4)
+    ids = {
+        "trailer_vertical": _send(
+            client, a, _file(pub, "trailer_vertical", MP4, "video/mp4", duration_ms=longest), MP4
+        ),
+        "trailer_square": _send(
+            client,
+            a,
+            _file(pub, "trailer_square", MP4, "video/mp4", width=1080, height=1080),
+            MP4,
+        ),
+        "trailer_loop": _send(
+            client, a, _file(pub, "trailer_loop", GIF, "image/gif", width=600, height=600), GIF
+        ),
+    }
+    r = client.put(
+        f"/v1/projects/{a['key']}/kit", json=_doc(pub, trailer=TRAILER), headers=a["mac"]
+    )
+    assert r.status_code == 200, r.text
+    kit = _kit(client, a).json()["kit"]
+    assert kit["document"]["trailer"] == TRAILER
+    files = {f["slot"]: f for f in kit["files"]}
+    assert set(files) == {"video_vertical", "trailer_vertical", "trailer_square", "trailer_loop"}
+    assert files["trailer_vertical"]["duration_ms"] == longest, "a trailer runs past a demo's cap"
+    assert files["trailer_loop"]["content_type"] == "image/gif"
+    assert {files[s]["id"] for s in ids} == set(ids.values())
+    assert client.get(files["trailer_loop"]["url"], headers=a["phone"]).content == GIF
+    assert client.get(files["trailer_vertical"]["url"], headers=a["phone"]).content == MP4
+    b = _person(client, created_users)
+    assert _kit(client, a, headers=b["phone"]).status_code == 404, "owner only, trailer included"
+    assert client.get(files["trailer_vertical"]["url"], headers=b["phone"]).status_code == 404
+
+
+def test_a_kit_with_no_trailer_is_still_a_kit(client, store, created_users):
+    """What every Mac before the trailer sends: no `trailer` key at all, or null."""
+    a = _person(client, created_users)
+    pub, _ = _publish(client, a)
+    assert _kit(client, a).json()["kit"]["document"]["trailer"] is None
+
+
+def test_the_trailers_door(client, store, created_users):
+    a = _person(client, created_users)
+    pub = _pub()
+    url = f"/v1/projects/{a['key']}/kit:presign"
+    longest = SHIPKIT_CAPS["trailer_ms"]
+
+    def presign(body):
+        return client.post(url, json=body, headers=a["mac"])
+
+    over_demo = _file(pub, "video_feed", MP4, "video/mp4", duration_ms=SHIPKIT_CAPS["video_ms"] + 1)
+    assert presign(over_demo).status_code == 422, "a demo's video is still held to video_ms"
+    over = _file(pub, "trailer_feed", MP4, "video/mp4", duration_ms=longest + 1)
+    assert presign(over).status_code == 422
+    assert presign(_file(pub, "trailer_loop", MP4, "video/mp4")).status_code == 422, "a GIF slot"
+    gif_video = _file(pub, "trailer_square", GIF, "image/gif", duration_ms=None)
+    assert presign(gif_video).status_code == 422, "a trailer video is an MP4"
+    assert (
+        presign(_file(pub, "trailer_feed", PNG, "image/png", duration_ms=None)).status_code == 422
+    )
+    no_len = _file(pub, "trailer_landscape", MP4, "video/mp4", duration_ms=None)
+    assert presign(no_len).status_code == 422, "a trailer has a length"
+    _send(client, a, _file(pub, "trailer_feed", MP4, "video/mp4", duration_ms=longest), MP4)
+    again = presign(_file(pub, "trailer_feed", MP4, "video/mp4", 1))
+    assert again.status_code == 409, "one trailer video a format"
+
+    kit = f"/v1/projects/{a['key']}/kit"
+    for bad in (
+        {**TRAILER, "seconds": 0},
+        {**TRAILER, "seconds": longest / 1000 + 0.5},
+    ):
+        r = client.put(kit, json=_doc(pub, trailer=bad), headers=a["mac"])
+        assert (r.status_code, r.json()["detail"]) == (422, "trailer_seconds"), bad
+    for bad in (
+        {**TRAILER, "scenes": ["open", "a dog on a beach", "end"]},
+        {**TRAILER, "scenes": ["screens"] * 11},
+        {**TRAILER, "version": 0},
+        {**TRAILER, "title": "Rocket"},
+        {"version": 3, "seconds": 20.5},
+    ):
+        r = client.put(kit, json=_doc(pub, trailer=bad), headers=a["mac"])
+        assert r.status_code == 422, bad
+    assert _kit(client, a).json() == {"kit": None}, "nothing refused was shown"
+    ok = client.put(kit, json=_doc(pub, trailer=TRAILER), headers=a["mac"])
+    assert ok.status_code == 200, ok.text
+
+
+def test_the_database_holds_the_trailers_shape_too(two_users):
+    """The CHECKs 0036 wrote, below every route: a trailer MP4 may run to trailer_ms in a trailer
+    slot and nowhere else, and a GIF lives in a loop slot."""
+    from sqlalchemy.exc import IntegrityError
+
+    a, _ = two_users
+    row = (
+        "INSERT INTO ship_kit_media (user_id, project_key, publish_id, slot, object_key, "
+        "content_type, width, height, duration_ms, bytes, position) VALUES (CAST(:u AS uuid), "
+        ":k, :p, :s, :o, :ct, 10, 10, :d, 10, 0)"
+    )
+
+    def insert(slot: str, content_type: str, duration_ms: int | None) -> None:
+        with owner_engine().begin() as c:
+            c.execute(
+                text(row),
+                {
+                    "u": a,
+                    "k": "d" * 64,
+                    "p": uuid.uuid4().hex[:16],
+                    "s": slot,
+                    "o": f"ship-kit/{a}/{uuid.uuid4().hex}",
+                    "ct": content_type,
+                    "d": duration_ms,
+                },
+            )
+
+    longest = SHIPKIT_CAPS["trailer_ms"]
+    insert("trailer_vertical", "video/mp4", longest)
+    insert("trailer_loop", "image/gif", None)
+    insert("video_feed", "video/mp4", SHIPKIT_CAPS["video_ms"])
+    for slot, content_type, ms in (
+        ("video_feed", "video/mp4", SHIPKIT_CAPS["video_ms"] + 1),
+        ("trailer_feed", "video/mp4", longest + 1),
+        ("trailer_feed", "image/gif", None),
+        ("still", "image/gif", None),
+        ("trailer_loop", "video/mp4", 1000),
+        ("trailer_poster", "image/png", None),
+    ):
+        with pytest.raises(IntegrityError):
+            insert(slot, content_type, ms)
+
+
 # ------------------------------------------------------------------ RLS, below the routes
 
 
@@ -450,8 +590,8 @@ def test_the_policies_hold_below_the_routes(two_users):
 # ------------------------------------------------------------------ the migration and the spec
 
 
-def test_every_check_list_in_the_migration_is_the_specs_enum():
-    src = (ROOT / "server/alembic/versions/0030_ship_kits.py").read_text()
+def _consts(name: str) -> dict:
+    src = (ROOT / f"server/alembic/versions/{name}").read_text()
     consts = {}
     for node in ast.parse(src).body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
@@ -459,14 +599,50 @@ def test_every_check_list_in_the_migration_is_the_specs_enum():
                 consts[node.targets[0].id] = ast.literal_eval(node.value)
             except ValueError:
                 continue
+    return consts
+
+
+def _codes(sql_list: str) -> list[str]:
+    return re.findall(r"'([^']+)'", sql_list)
+
+
+#: The trailer's slots, which 0036 appended to the spec's `kit_slot` (spec/trailer.v1.json).
+TRAILER_SLOTS = [
+    "trailer_vertical",
+    "trailer_feed",
+    "trailer_landscape",
+    "trailer_square",
+    "trailer_loop",
+]
+
+
+def test_every_check_list_in_the_migration_is_the_specs_enum():
+    consts = _consts("0030_ship_kits.py")
     for const, enum in [
         ("REQUEST_STATUS", "request_status"),
         ("REQUEST_REFUSAL", "request_refusal"),
         ("HUE", "hue"),
-        ("KIT_SLOT", "kit_slot"),
         ("KIT_CONTENT_TYPE", "kit_content_type"),
     ]:
-        assert re.findall(r"'([^']+)'", consts[const]) == SHIPKIT_ENUM_VALUES[enum], const
+        assert _codes(consts[const]) == SHIPKIT_ENUM_VALUES[enum], const
+    # 0030's slot list is the spec's as it stood then: every slot before the trailer's, which 0036
+    # appended, and 0036's list is the spec's whole enum (a contract value is also a migration).
+    spec = SHIPKIT_ENUM_VALUES["kit_slot"]
+    assert spec[-len(TRAILER_SLOTS) :] == TRAILER_SLOTS
+    assert _codes(consts["KIT_SLOT"]) == spec[: -len(TRAILER_SLOTS)]
+    later = _consts("0036_trailer_kit_slots.py")
+    assert _codes(later["KIT_SLOT"]) == spec
+    assert _codes(later["OLD_KIT_SLOT"]) == _codes(consts["KIT_SLOT"]), (
+        "the downgrade restores 0030"
+    )
+    assert _codes(later["TRAILER_SLOTS"]) == TRAILER_SLOTS
+    assert set(_codes(later["TRAILER_VIDEO_SLOTS"])) == ship_kit.TRAILER_VIDEO_SLOTS
+    assert (later["VIDEO_MS"], later["TRAILER_MS"]) == (
+        SHIPKIT_CAPS["video_ms"],
+        SHIPKIT_CAPS["trailer_ms"],
+    )
+    trailer = json.loads((ROOT / "spec/trailer.v1.json").read_text())
+    assert SHIPKIT_ENUM_VALUES["trailer_scene"] == trailer["enums"]["scene_kind"]
 
 
 def test_the_generated_door_is_the_spec():

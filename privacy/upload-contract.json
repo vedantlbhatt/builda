@@ -1342,7 +1342,8 @@
     "doc": [
       "SHIP KITS (docs/ship-kit.md). What the Mac makes beside a demo so it can be posted: the demo in four social",
       "formats, a GIF, framed stills, before and after pairs, App Store screenshots, a caption per platform and the",
-      "commit subjects since the last demo. Made on the Mac, kept there, and sent only by `python -m capture demo kit",
+      "commit subjects since the last demo, and the project's trailer (spec/trailer.v1.json) in the same four formats and",
+      "as a GIF, with its version, length and scene codes. Made on the Mac, kept there, and sent only by `python -m capture demo kit",
       "--publish`, which lists every file and waits for a yes. Owner only, in the demos' private store; never in a",
       "post, feed, share, push or activity. Its shapes are spec/shipkit.v1.json (KitPresign per file, KitDocument once).",
       "A request for a demo from the phone (`POST /v1/demos/requests`) carries only the project's key and its hue."

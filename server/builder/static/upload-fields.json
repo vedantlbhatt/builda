@@ -317,7 +317,10 @@
         "publish_id",
         "refused.code",
         "refused.what",
-        "shipkit_version"
+        "shipkit_version",
+        "trailer.scenes",
+        "trailer.seconds",
+        "trailer.version"
       ]
     },
     "project_media": {

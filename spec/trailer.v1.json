@@ -144,6 +144,10 @@
       "no_trailer",
       "no_node",
       "no_demo"
+    ],
+    "note_source": [
+      "rules",
+      "model"
     ]
   },
   "refusals": {
@@ -389,6 +393,55 @@
         "type": "enum",
         "values": "note_refusal",
         "doc": "Set instead of a cut when the note cannot be done by changing the cut.",
+        "nullable": true
+      }
+    ],
+    "NoteIn": [
+      {
+        "name": "body",
+        "type": "string",
+        "max": "note",
+        "doc": "The owner's words, as typed on the phone: what to change. At least one character once trimmed."
+      }
+    ],
+    "NoteFinish": [
+      {
+        "name": "status",
+        "type": "enum",
+        "values": "note_status",
+        "doc": "done or failed; nothing else finishes a note."
+      },
+      {
+        "name": "from_version",
+        "type": "int",
+        "doc": "1-1000: the version of the cut the note was read against. Null when the project had no trailer yet.",
+        "nullable": true
+      },
+      {
+        "name": "to_version",
+        "type": "int",
+        "doc": "1-1000: the version the note made. Required when done, null when failed.",
+        "nullable": true
+      },
+      {
+        "name": "changes",
+        "type": "list",
+        "item": "Change",
+        "max_items": 12,
+        "doc": "Every difference the new version made, one per thing changed. Empty when failed."
+      },
+      {
+        "name": "refusal",
+        "type": "enum",
+        "values": "note_refusal",
+        "doc": "Why it failed. Required when failed, null when done.",
+        "nullable": true
+      },
+      {
+        "name": "source",
+        "type": "enum",
+        "values": "note_source",
+        "doc": "Who read the note: rules, the Mac's own; model, claude on the Mac.",
         "nullable": true
       }
     ]

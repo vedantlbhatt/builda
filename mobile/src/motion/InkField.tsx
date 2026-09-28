@@ -60,6 +60,12 @@ export interface InkFieldProps {
   playing: boolean;
   /** Its own stirring, so two fields never pour alike. */
   seed?: number;
+  /**
+   * Never rests while playing: a swirl travels across the pool, left to right, like a render's
+   * playhead (`HEAD_MS` a pass). For a wait that has work happening behind it (the director's
+   * "your Mac is cutting it"), so the ink moves exactly as long as the work does.
+   */
+  restless?: boolean;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
@@ -121,7 +127,11 @@ function toImage(bytes: Uint8Array, cols: number, rows: number): SkImage | null 
   return Skia.Image.MakeImage({ width: cols, height: rows, alphaType: AlphaType.Opaque, colorType: ColorType.RGBA_8888 }, Skia.Data.fromBytes(bytes), cols * 4);
 }
 
-export function InkField({ width, height, ink, deep, ground, playing, seed = 7, style, children }: InkFieldProps) {
+/** One pass of a restless field's travelling swirl, and how often it pushes. */
+const HEAD_MS = 2600;
+const PUSH_MS = 420;
+
+export function InkField({ width, height, ink, deep, ground, playing, seed = 7, restless = false, style, children }: InkFieldProps) {
   const reduce = useReduceMotion();
   const focused = useScreenFocused();
   const active = useAppActive();
@@ -151,11 +161,19 @@ export function InkField({ width, height, ink, deep, ground, playing, seed = 7, 
   useEffect(() => {
     if (!running) return;
     let last = Date.now();
+    let pushed = 0;
+    let turn = 1;
     const id = setInterval(() => {
       const s = sim.current;
       if (!s) return;
       const now = Date.now();
-      if (now - lastTouch.current > REST_MS) {
+      if (restless && now - pushed > PUSH_MS) {
+        // The playhead: where it is on its pass, a swirl there, turning the other way each push.
+        const head = (now % HEAD_MS) / HEAD_MS;
+        s.fl.swirl(1 + head * (s.fl.nx - 1), s.fl.ny * 0.62, Math.max(2, Math.min(s.fl.nx, s.fl.ny) * 0.45), turn * 1.6);
+        turn = -turn;
+        pushed = now;
+      } else if (!restless && now - lastTouch.current > REST_MS) {
         clearInterval(id);
         return;
       }
@@ -165,7 +183,7 @@ export function InkField({ width, height, ink, deep, ground, playing, seed = 7, 
       setImage(toImage(bytes.current, cols, rows));
     }, 1000 / RATE);
     return () => clearInterval(id);
-  }, [running, cols, rows, colors, awake]);
+  }, [running, cols, rows, colors, awake, restless]);
 
   // A finger stirs: its drag since the last move, pushed into the flow under it, with a little ink.
   const prev = useRef<{ x: number; y: number } | null>(null);

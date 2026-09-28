@@ -18,7 +18,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 
-import { GROUND } from '../insights/palette';
+import { GROUND, SPECTRUM } from '../insights/palette';
+import { InkField } from '../motion/InkField';
 import { Button, T, TextField } from '../ui';
 import { useReduceMotion } from '../ui/motion';
 import { answerOf, canSend, conversation, doneMark, NOTE_MAX, onMacOnly, STARTERS, type TrailerNote } from './model';
@@ -26,6 +27,14 @@ import { useTrailerNotes } from './useNotes';
 
 /** A cell, in points: the band's (tokens.dither.cell) doubled, so three read at a glance. */
 const CELL = 6;
+/** The cutting strip's height: a few rows of cells, a band, not a panel. */
+const CUT_H = 22;
+
+/** A hue's partner (the deep ink) from its ink, for the strip; the ink itself when unknown. */
+function partnerOf(ink: string): string {
+  const h = Object.values(SPECTRUM).find((x) => x.ink === ink);
+  return h ? h.partner : ink;
+}
 /** The conversation shows its latest few; the rest are a tap away, as the changelog's are. */
 const SHOWN = 4;
 
@@ -138,9 +147,10 @@ function NoteRow({ note, ink, onCancel }: { note: TrailerNote; ink: string; onCa
       <View style={styles.answer}>
         <View style={[styles.rule, { backgroundColor: a.kind === 'done' ? ink : GROUND.raised }]} />
         <View style={styles.answerWords}>
+          {a.kind === 'cutting' ? <Cutting ink={ink} seed={note.id.charCodeAt(0) + note.id.length} /> : null}
           {a.kind === 'waiting' || a.kind === 'cutting' ? (
             <View style={styles.working}>
-              <Working ink={ink} running={a.kind === 'cutting'} />
+              {a.kind === 'waiting' ? <Working ink={ink} running={false} /> : null}
               <T role="meta" tone="dim">
                 {a.line}
               </T>
@@ -187,7 +197,22 @@ function NoteRow({ note, ink, onCancel }: { note: TrailerNote; ink: string; onCa
   );
 }
 
-/** Three cells rising in turn while the Mac works; still (the first lit) under Reduce Motion. */
+/**
+ * While the Mac cuts: a strip of the trailer's own ink, the fluid the wipe is made of, in the
+ * project's hue, stirred by a swirl that crosses it like a render's playhead. It moves exactly as
+ * long as the Mac works, and the answer replaces it. Under Reduce Motion it is the settled pool.
+ */
+function Cutting({ ink, seed }: { ink: string; seed: number }) {
+  const [w, setW] = useState(0);
+  const deep = partnerOf(ink);
+  return (
+    <View onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))} style={styles.cutting} accessible={false}>
+      {w > 0 ? <InkField width={w} height={CUT_H} ink={ink} deep={deep} ground={GROUND.bg} playing restless seed={seed} /> : null}
+    </View>
+  );
+}
+
+/** Three cells, the first lit: the note is on the server and no Mac has it yet. */
 function Working({ ink, running }: { ink: string; running: boolean }) {
   return (
     <View style={styles.cells} accessible={false}>
@@ -220,6 +245,7 @@ const styles = StyleSheet.create({
   rule: { width: 3 },
   answerWords: { flex: 1, gap: 3 },
   working: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cutting: { height: CUT_H, marginBottom: 6, overflow: 'hidden' },
   cells: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: CELL + 4 },
   field: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 4 },
   input: { flex: 1, minHeight: 44 },

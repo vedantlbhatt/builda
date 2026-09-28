@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Written by hand, not generated. Its bounds are the server's (server/builder/releases.py TITLE_MAX, NOTES_MAX, HIGHLIGHTS_MAX, HIGHLIGHT_MAX) and capture/tests/test_releases.py holds them there. Handed to `claude -p --json-schema` by capture/releases/draft.py.",
+  "title": "ReleaseDraft",
+  "description": "The draft of a release note about a project, which its builder reads, edits and publishes from the phone. Every sentence describes work that is in the input. A title with a number the input does not contain, written the same way, gets the whole answer thrown away; a sentence or a highlight with one is deleted. Plain words, no dashes.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "description": "What this release is about, in a few plain words. No number the input does not have, no repository or file name, no dash, no full stop at the end. (max 80 chars)",
+      "type": "string",
+      "maxLength": 80
+    },
+    "notes": {
+      "description": "Two to four short plain sentences: what changed and why it matters to somebody using it. Every number must be one the input gives, written the same way. No dash of any kind. (max 1200 chars)",
+      "type": "string",
+      "maxLength": 1200
+    },
+    "highlights": {
+      "description": "Up to five, each one thing that changed, rewritten from the commits or the session record as a plain sentence a person would say. Capital first letter, no full stop at the end, no dash. (each max 120 chars, max 5 items)",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 120
+      },
+      "maxItems": 5
+    }
+  },
+  "required": [
+    "title",
+    "notes",
+    "highlights"
+  ],
+  "additionalProperties": false
+}

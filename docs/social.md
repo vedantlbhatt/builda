@@ -138,6 +138,41 @@ app where it was; `GET /v1/releases/{id}` is what that route will read.
 Excluding the repository deletes its releases, its settings, every star on it and your own stars
 under its key; deleting the account cascades. The routes are in routes/releases.py's docstring.
 
+### How the Mac drafts
+
+The demo worker (`python -m capture demo watch --server URL`) looks at most every ten minutes, and
+only at the projects whose owner turned `drafts_to_phone` on; `python -m capture release check` is
+the same look once, by hand, and `--dry-run` says what it would draft without sending or recording
+anything. For each project it counts the commits in its checkout's own history (HEAD: a release
+says what shipped, and work parked on another branch did not), merges left out, and drafts when the
+first of these fires. "The baseline" is the later of the last published release and the last draft
+this Mac made.
+
+* `shipped`: `on_shipped` is on, and a build post (`python -m analysis shipped`) or a demo kit
+  appeared after the baseline.
+* `commits`: the commits after the baseline reach `every_commits`.
+* `cadence`: `weekly` or `biweekly`, and 7 or 14 days have passed since the baseline (with neither a
+  release nor a draft, since the Mac first saw the switch on), and something is new since the last
+  published release. A release about nothing is not drafted.
+* `asked`: `python -m capture release draft [PATH | --key KEY]`, whatever the state.
+
+It never drafts twice for one state: when the newest commit, the last published release, the build
+post and the kit are all what they were at the last draft, nothing fires, and a dismissed draft
+stays dismissed until something changes. What each draft was made from is kept in
+`~/.builder/demos/releases/<key>.json`, owner only. A 403 `drafts_off` (the owner turned it off since
+the Mac last read the settings) is one line in the worker's log and is tried again at the next look.
+
+The words come from rules first. The highlights are the commit subjects since the last published
+release, with `feat:` and `fix(scope):` taken off, merges and `fixup!` commits dropped, features
+before fixes before chores; the first of them is the title; the notes say what the build post says
+the project is, what it says is new when it was written after the last release, how many commits,
+and whether the published kit carries a trailer. Then, unless `--no-model`, the person's own `claude`
+rewrites them plainly. Both are held to the captions' checks (docs/ship-kit.md), which can only
+remove: a number the input does not hold, a repository's name, a key or an email address takes out
+the sentence or the highlight it is in, and a model title with one sends the whole draft back to
+the rules' words. Dashes are rewritten, never refused. Nothing is published from the Mac: the owner
+reads the draft on the phone, changes any word, and publishes or dismisses it.
+
 ## What is deliberately absent
 
 Challenges, digests, reactions beyond kudos, reposts, DMs, an explore tab, and any ranking

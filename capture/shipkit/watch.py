@@ -22,6 +22,10 @@ director, `capture/trailer/notes.py`) and answers them FIRST: a note is a render
 with the owner looking at the phone for the answer, and a demo is half an hour nobody is waiting
 on. One worker still, so a render never runs beside a simulator.
 
+RELEASE DRAFTS. With a server, after the notes and at most every ten minutes, the worker also
+drafts a release for each project whose owner turned drafts on (capture/releases/draft.py `check`).
+Anything that goes wrong there is one line in the log and the loop goes on.
+
 A kit stays on the Mac until `kit --publish` and a yes, the demo channel's rule. The one exception
 is opt in, given on the Mac: `watch --publish-requests` sends the kit of a demo the PHONE asked for
 (`kit --publish --yes`, the same listing and the same second privacy read), because a person who
@@ -243,9 +247,11 @@ def main(a: argparse.Namespace) -> int:
         say("another demo worker is running (one at a time: two simulators at once ran this Mac out of memory)")
         return 0
     say(f"watching {queue.root()}" + (f" and the requests and trailer notes on {server}" if server else ""))
+    from capture.releases import draft as releases
     from capture.trailer import notes as tnotes
 
     director = tnotes.Notes(server) if server else None
+    releases_due = releases.Due(releases.CHECK_EVERY)
     publish_to = server if getattr(a, "publish_requests", False) else None
     for p in queue.jobs("running"):
         # A worker that died left its job here; nobody else can be running it (the lock), so
@@ -254,6 +260,12 @@ def main(a: argparse.Namespace) -> int:
     while True:
         if director:
             tnotes.take(director, publish_to=publish_to, use_model=not a.no_model, say=say)
+        if server and releases_due():
+            # Release drafts for the phone (capture/releases/draft.py), at most every ten minutes.
+            try:
+                releases.check(releases.Api(server), use_model=not a.no_model, say=say, quiet=True)
+            except Exception as e:  # noqa: BLE001 (a release draft never stops the worker)
+                say(f"  releases: not checked ({e})")
         if req:
             take_requests(req, dry_run=False)
         p = queue.claim_next()

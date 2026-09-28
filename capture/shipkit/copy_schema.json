@@ -6,12 +6,12 @@
   "type": "object",
   "properties": {
     "captions": {
-      "description": "One per platform: x, linkedin, threads, instagram, tiktok, bluesky. (1 to 6 items)",
+      "description": "One per platform: x, linkedin, threads, instagram, tiktok, bluesky, reddit, facebook, github. (1 to 9 items)",
       "type": "array",
       "items": {
         "$ref": "#/$defs/Caption"
       },
-      "maxItems": 6,
+      "maxItems": 9,
       "minItems": 1
     }
   },
@@ -32,7 +32,10 @@
             "threads",
             "instagram",
             "tiktok",
-            "bluesky"
+            "bluesky",
+            "reddit",
+            "facebook",
+            "github"
           ]
         },
         "text": {

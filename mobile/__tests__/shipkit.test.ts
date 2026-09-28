@@ -23,6 +23,7 @@ import { PLATFORM_FORMAT, SHIPKIT_REFUSALS } from '../src/generated/shipkit';
 import {
   captionCount,
   captionFor,
+  composeUrl,
   fallbackLine,
   filmFor,
   fileName,
@@ -312,6 +313,26 @@ describe('a kit with a trailer', () => {
     s = selectionReducer(s, { type: 'cut', cut: 'recording', view });
     s = selectionReducer(s, { type: 'kit', view });
     expect(s.cut).toBe('recording');
+  });
+
+  test('GitHub is a README block: the GIF picked, the video off, the image line above the words', () => {
+    const withReadme: ShipKitResponse = { ...TRAILED, document: { ...TRAILED.document, captions: [...(TRAILED.document.captions ?? []), { platform: 'github', text: 'A bus route finder.\n\n* Search a building', thread: [], source: 'template' }] } };
+    const v = kitView(withReadme);
+    const s = selectionReducer(initialSelection(v), { type: 'platform', platform: 'github', view: v });
+    expect(s.video).toBe(false);
+    expect(s.picked).toEqual(['tl']);
+    const p = sharePayload(v, s)!;
+    expect(p.files.map((f) => f.name)).toEqual(['trailer-loop.gif']);
+    expect(p.text).toBe('![demo](docs/trailer-loop.gif)\n\nA bus route finder.\n\n* Search a building');
+    // Choosing it again does not pick the GIF twice, and leaving GitHub keeps what was picked.
+    const again = selectionReducer(selectionReducer(s, { type: 'platform', platform: 'x', view: v }), { type: 'platform', platform: 'github', view: v });
+    expect(again.picked).toEqual(['tl']);
+  });
+
+  test('a compose link carries the words for the platforms that take them, and none for the rest', () => {
+    expect(composeUrl('x', 'a bus app & more')).toBe('https://x.com/intent/post?text=a%20bus%20app%20%26%20more');
+    expect(composeUrl('reddit', 'A bus app')).toBe('https://www.reddit.com/submit?title=A%20bus%20app');
+    for (const p of ['instagram', 'tiktok', 'facebook', 'github'] as const) expect(composeUrl(p, 'x')).toBeNull();
   });
 
   test('a kit with no trailer opens on the recording, as it always did', () => {

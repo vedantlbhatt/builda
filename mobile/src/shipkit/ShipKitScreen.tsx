@@ -15,7 +15,7 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Platform as RNPlatform, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
+import { Linking, Platform as RNPlatform, Pressable, ScrollView, StyleSheet, Switch, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import type { MediaSourceRef } from '../data/api';
@@ -31,6 +31,7 @@ import { useReduceMotion } from '../ui/motion';
 import {
   captionCount,
   captionFor,
+  composeUrl,
   filmFor,
   loops,
   initialSelection,
@@ -130,6 +131,7 @@ function KitBody({ view, projectKey, ink, reload }: { view: KitView; projectKey:
   const count = captionCount(caption, s.platform);
   const thread = threadFor(view, s.platform);
   const edited = s.edits[s.platform] !== undefined;
+  const compose = caption.trim() && !count.over ? composeUrl(s.platform, caption) : null;
 
   const share = async () => {
     if (!payload || heldBack) return;
@@ -220,7 +222,7 @@ function KitBody({ view, projectKey, ink, reload }: { view: KitView; projectKey:
             return (
               <Pressable
                 key={p}
-                onPress={() => dispatch({ type: 'platform', platform: p })}
+                onPress={() => dispatch({ type: 'platform', platform: p, view })}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 style={[styles.chip, { borderColor: on ? c.text : c.border, backgroundColor: on ? c.raised : 'transparent' }]}
@@ -262,6 +264,15 @@ function KitBody({ view, projectKey, ink, reload }: { view: KitView; projectKey:
         <T role="meta" tone="dim" style={styles.gap}>
           {after}
         </T>
+      ) : null}
+      {compose ? (
+        <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(compose)} hitSlop={8} style={styles.gap}>
+          {({ pressed }) => (
+            <T role="meta" tone={pressed ? 'text' : 'dim'} weight={600}>
+              {`Open ${PLATFORM_NAMES[s.platform]} with these words`}
+            </T>
+          )}
+        </Pressable>
       ) : null}
 
       {view.changelog.length ? <Changelog title={view.changelogTitle} lines={view.changelog} /> : null}

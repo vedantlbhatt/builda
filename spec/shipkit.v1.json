@@ -22,22 +22,28 @@
     "why": 300
   },
   "platform_limits": {
-    "_comment": "Characters a caption may run to on each platform, as each documents it for a plain post from an ordinary account (2026-09): X 280 (a longer post needs a paid account), Bluesky 300, Threads 500, LinkedIn 3000, Instagram 2200, TikTok 2200 (the 4000 raise is not on every account). The thread variant is X posts of 280 each.",
+    "_comment": "Characters a caption may run to on each platform, as each documents it for a plain post from an ordinary account (2026-09): X 280 (a longer post needs a paid account), Bluesky 300, Threads 500, LinkedIn 3000, Instagram 2200, TikTok 2200 (the 4000 raise is not on every account), Reddit 300 (a post's TITLE, which is all a video post carries on most subreddits), Facebook 63206, held here to 3000 (max_lengths.post, the kit's own cap on any post). GitHub is a README block in Markdown: a title, the trailer's GIF and a few lines, 1500. The thread variant is X posts of 280 each.",
     "x": 280,
     "bluesky": 300,
     "threads": 500,
     "linkedin": 3000,
     "instagram": 2200,
-    "tiktok": 2200
+    "tiktok": 2200,
+    "reddit": 300,
+    "facebook": 3000,
+    "github": 1500
   },
   "platform_format": {
-    "_comment": "The format each platform's post shows best: the one the phone's Share selects first for it. Any format can be sent anywhere.",
+    "_comment": "The format each platform's post shows best: the one the phone's Share selects first for it. Any format can be sent anywhere. GitHub's is the square because the README GIF is cut from it.",
     "x": "landscape",
     "bluesky": "landscape",
     "threads": "feed",
     "linkedin": "feed",
     "instagram": "feed",
-    "tiktok": "vertical"
+    "tiktok": "vertical",
+    "reddit": "feed",
+    "facebook": "feed",
+    "github": "square"
   },
   "thread_max": 5,
   "caps": {
@@ -57,7 +63,7 @@
     "pixels": 8192
   },
   "enums": {
-    "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
+    "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky", "reddit", "facebook", "github"],
     "kit_format": ["vertical", "feed", "landscape", "square"],
     "kit_slot": [
       "video_vertical", "video_feed", "video_landscape", "video_square",
@@ -116,7 +122,7 @@
       {"name": "thread", "type": "list", "item": "string", "max": "tweet", "max_items": 5, "doc": "X only: the same story as a thread of 2 to 5 posts, each within 280 characters. Empty for every other platform."}
     ],
     "ShareCopy": [
-      {"name": "captions", "type": "list", "item": "Caption", "min_items": 1, "max_items": 6, "doc": "One per platform: x, linkedin, threads, instagram, tiktok, bluesky."}
+      {"name": "captions", "type": "list", "item": "Caption", "min_items": 1, "max_items": 9, "doc": "One per platform: x, linkedin, threads, instagram, tiktok, bluesky, reddit, facebook, github."}
     ],
     "KitCaption": [
       {"name": "platform", "type": "enum", "values": "platform"},
@@ -149,7 +155,7 @@
       {"name": "publish_id", "type": "hex16", "doc": "The publish its files were presigned under."},
       {"name": "device", "type": "string", "max": "name", "doc": "The row of spec/devices.v1.json the demo was filmed on."},
       {"name": "hue", "type": "enum", "values": "hue", "doc": "The project hue the formats are drawn in."},
-      {"name": "captions", "type": "list", "item": "KitCaption", "max_items": 6, "doc": "One per platform that has a caption."},
+      {"name": "captions", "type": "list", "item": "KitCaption", "max_items": 9, "doc": "One per platform that has a caption."},
       {"name": "changelog", "type": "list", "item": "string", "max": "subject", "max_items": 30, "doc": "What changed since the last demo: commit subjects, newest first, as written. Never a commit hash."},
       {"name": "refused", "type": "list", "item": "Refused", "max_items": 20, "doc": "What the kit could not make, each with its code."},
       {"name": "trailer", "type": "object", "item": "KitTrailer", "nullable": true, "doc": "The project's trailer, when the kit carries its files (the trailer_ slots): which cut, how long, and what its scenes show. Null when it carries none."}

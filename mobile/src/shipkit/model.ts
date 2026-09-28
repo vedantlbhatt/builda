@@ -27,7 +27,53 @@ export const PLATFORM_NAMES: Readonly<Record<Platform, string>> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
   bluesky: 'Bluesky',
+  reddit: 'Reddit',
+  facebook: 'Facebook',
+  github: 'GitHub',
 };
+
+/**
+ * The platform's own compose page with the caption already in it, for a platform that has one: the
+ * fast way to post from a desktop, where there is no share sheet, and a second way on the phone.
+ * None can carry a file, so the video goes by the share sheet or Save first. Instagram, TikTok and
+ * Facebook take no text this way, and a README is edited in the repository.
+ *
+ * JUDGEMENT CALL, NOT CHECKED FROM HERE: these are the addresses each platform documented for a
+ * prefilled post as of 2026-09 (LinkedIn's `shareActive` is widely used but undocumented). The
+ * build container this was written in could not reach any of them.
+ */
+export function composeUrl(platform: Platform, text: string): string | null {
+  const t = encodeURIComponent(text);
+  switch (platform) {
+    case 'x':
+      return `https://x.com/intent/post?text=${t}`;
+    case 'bluesky':
+      return `https://bsky.app/intent/compose?text=${t}`;
+    case 'threads':
+      return `https://www.threads.com/intent/post?text=${t}`;
+    case 'reddit':
+      return `https://www.reddit.com/submit?title=${t}`;
+    case 'linkedin':
+      return `https://www.linkedin.com/feed/?shareActive=true&text=${t}`;
+    default:
+      return null;
+  }
+}
+
+/** Where a README's GIF goes, as the block says: the folder most READMEs keep their pictures in. */
+export const README_DIR = 'docs';
+
+/**
+ * The words one Share carries. GitHub's are a README block: the picked GIF as a Markdown image
+ * above the kit's lines, named as the share names the file, so saving the GIF into `docs/` and
+ * pasting the block is the whole job.
+ */
+export function shareText(view: KitView, s: Selection, files: readonly { name: string; contentType: string }[]): string {
+  const text = captionFor(view, s);
+  if (s.platform !== 'github') return text;
+  const gif = files.find((f) => f.contentType === 'image/gif');
+  return gif ? `![demo](${README_DIR}/${gif.name})${text ? `\n\n${text}` : ''}` : text;
+}
 
 // ------------------------------------------------------------------ the kit
 
@@ -139,7 +185,8 @@ export type SelectionAction =
   | { type: 'format'; format: KitFormat }
   | { type: 'video'; on: boolean }
   | { type: 'toggle'; id: string }
-  | { type: 'platform'; platform: Platform }
+  /** `view` lets GitHub pick the README's GIF: a README shows a GIF, not a video. */
+  | { type: 'platform'; platform: Platform; view?: KitView }
   | { type: 'edit'; platform: Platform; text: string }
   | { type: 'revert'; platform: Platform };
 
@@ -197,7 +244,10 @@ export function selectionReducer(s: Selection, a: SelectionAction): Selection {
       // the format to 4:5, and the video the person had on left the share without a word.
       const want = PLATFORM_FORMAT[a.platform];
       const keep = s.formatByHand || (s.filmed.length > 0 && !s.filmed.includes(want));
-      return { ...s, platform: a.platform, format: keep ? s.format : want };
+      const next = { ...s, platform: a.platform, format: keep ? s.format : want };
+      const gif = a.platform === 'github' && s.platform !== 'github' && a.view ? loops(a.view)[0] : undefined;
+      if (!gif) return next;
+      return { ...next, video: false, picked: s.picked.includes(gif.id) ? s.picked : [...s.picked, gif.id] };
     }
     case 'edit':
       return { ...s, edits: { ...s.edits, [a.platform]: a.text } };
@@ -292,7 +342,7 @@ export function sharePayload(view: KitView, s: Selection, verb: 'Share' | 'Save'
   const video = files.some((f) => f.contentType === 'video/mp4');
   const pictures = files.length - (video ? 1 : 0);
   const what = [video ? `the ${tab?.label ?? ''} ${s.cut === 'trailer' ? 'trailer' : 'video'}`.replace('  ', ' ') : null, pictures ? counted(pictures, 'picture') : null].filter(Boolean).join(' and ');
-  return { files, text: captionFor(view, s), label: `${verb} ${what}` };
+  return { files, text: shareText(view, s, files), label: `${verb} ${what}` };
 }
 
 /**

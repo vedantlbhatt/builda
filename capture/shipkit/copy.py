@@ -43,7 +43,7 @@ PROMPT_PATH = HERE / "copy_prompt.txt"
 PLATFORMS: list[str] = tables.ENUMS["platform"]
 #: Every number counts in a caption (the module docstring, rule 1).
 STRICT = -1
-#: Sonnet, like the analyst and the drop planner: six short posts, and the ceiling is the checks.
+#: Sonnet, like the analyst and the drop planner: nine short posts, and the ceiling is the checks.
 DEFAULT_MODEL = "sonnet"
 
 
@@ -164,6 +164,15 @@ def template(platform: str, i: Inputs) -> str | None:
     if not head:
         return None
     head = head.rstrip(".") + "."
+    if platform == "reddit":
+        # A title: the one sentence, no second one tacked on.
+        return _cut(head, tables.PLATFORM_LIMITS[platform])
+    if platform == "github":
+        # A README block: the line, then what is new as points (the phone adds the GIF above it).
+        points = [f"* {c.rstrip('.')}" for c in i.changes[:4] if c.strip() and c.strip().lower() != head.lower().rstrip(".")]
+        lines = [_cut(head, 300), *(["", *points] if points else [])]
+        text = "\n".join(lines)
+        return text if len(text) <= tables.PLATFORM_LIMITS[platform] else lines[0]
     extra = i.changes[0].rstrip(".") + "." if i.changes else ""
     body = f"{head} {extra}".strip() if extra and extra.lower() != head.lower() else head
     return _cut(body, tables.PLATFORM_LIMITS[platform])

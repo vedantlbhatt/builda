@@ -205,7 +205,7 @@ there. Deleting your account, or excluding the repository, deletes every demo it
 A ship kit is what your Mac makes beside a demo so you can post it: the demo in four shapes
 for the platforms (9:16, 4:5, 16:9, 1:1) with your device drawn around it, a GIF, the stills
 framed, the same screen before and after, App Store screenshots for an iOS app, a caption
-for each of x, linkedin, threads, instagram, tiktok, bluesky, the subjects of the commits since your last demo, and, when the
+for each of x, linkedin, threads, instagram, tiktok, bluesky, reddit, facebook, github, the subjects of the commits since your last demo, and, when the
 project has one, its trailer in the same four shapes and as a GIF. It is made on
 your Mac and stays there. Nothing sends it until you run
 `python -m capture demo kit --publish`, which reads every picture for names and keys once

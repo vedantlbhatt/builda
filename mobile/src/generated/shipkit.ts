@@ -2,7 +2,7 @@
 
 export const SHIPKIT_VERSION = 1;
 
-export type Platform = "x" | "linkedin" | "threads" | "instagram" | "tiktok" | "bluesky";
+export type Platform = "x" | "linkedin" | "threads" | "instagram" | "tiktok" | "bluesky" | "reddit" | "facebook" | "github";
 export type KitFormat = "vertical" | "feed" | "landscape" | "square";
 export type KitSlot = "video_vertical" | "video_feed" | "video_landscape" | "video_square" | "loop" | "still" | "framed_still" | "before_after" | "app_store_iphone" | "app_store_ipad" | "trailer_vertical" | "trailer_feed" | "trailer_landscape" | "trailer_square" | "trailer_loop";
 export type KitContentType = "image/png" | "image/jpeg" | "image/gif" | "video/mp4";
@@ -16,7 +16,7 @@ export type TrailerScene = "open" | "screens" | "figure" | "days" | "changelog" 
 
 /** Legal values for every enum, in spec order. */
 export const SHIPKIT_ENUMS = {
-  platform: ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
+  platform: ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky", "reddit", "facebook", "github"],
   kit_format: ["vertical", "feed", "landscape", "square"],
   kit_slot: ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad", "trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square", "trailer_loop"],
   kit_content_type: ["image/png", "image/jpeg", "image/gif", "video/mp4"],
@@ -37,6 +37,9 @@ export const PLATFORM_LIMITS: Readonly<Record<Platform, number>> = {
   linkedin: 3000,
   instagram: 2200,
   tiktok: 2200,
+  reddit: 300,
+  facebook: 3000,
+  github: 1500,
 };
 
 /** The format each platform's post shows best: what Share selects first for it. */
@@ -47,6 +50,9 @@ export const PLATFORM_FORMAT: Readonly<Record<Platform, KitFormat>> = {
   linkedin: "feed",
   instagram: "feed",
   tiktok: "vertical",
+  reddit: "feed",
+  facebook: "feed",
+  github: "square",
 };
 
 /** Every refusal code's sentence, the same words the Mac prints. */
@@ -89,7 +95,7 @@ export interface Caption {
 }
 
 export interface ShareCopy {
-  /** One per platform: x, linkedin, threads, instagram, tiktok, bluesky. (1 to 6 items) */
+  /** One per platform: x, linkedin, threads, instagram, tiktok, bluesky, reddit, facebook, github. (1 to 9 items) */
   captions: Caption[];
 }
 
@@ -147,7 +153,7 @@ export interface KitDocument {
   device: string;
   /** The project hue the formats are drawn in. */
   hue: Hue;
-  /** One per platform that has a caption. (max 6 items) */
+  /** One per platform that has a caption. (max 9 items) */
   captions: KitCaption[];
   /** What changed since the last demo: commit subjects, newest first, as written. Never a commit hash. (each max 120 chars, max 30 items) */
   changelog: string[];

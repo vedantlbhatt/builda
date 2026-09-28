@@ -251,6 +251,13 @@ class Captions(unittest.TestCase):
             self.assertIsNone(kcopy.check({"platform": p, "text": t, "thread": []}, src))
         self.assertIsNone(kcopy.template("x", kcopy.Inputs()), "nothing in, nothing out")
 
+    def test_a_reddit_title_is_one_sentence_and_a_readme_block_lists_what_is_new(self):
+        i = kcopy.Inputs(what="A bus route finder for campus", changes=["Search a building by name", "Leave now times"])
+        self.assertEqual(kcopy.template("reddit", i), "A bus route finder for campus.")
+        self.assertEqual(kcopy.template("github", i), "A bus route finder for campus.\n\n* Search a building by name\n* Leave now times")
+        self.assertNotIn("- ", kcopy.template("github", i), "points are asterisks: the house has no dashes")
+        self.assertEqual(kcopy.template("github", kcopy.Inputs(what="A bus route finder")), "A bus route finder.")
+
     def test_without_a_model_every_platform_gets_a_checked_template(self):
         i = kcopy.Inputs(shows=["the live map, buses from a recorded day"], facts={"stills in the demo": 4})
         doc = kcopy.write(i, use_model=False)

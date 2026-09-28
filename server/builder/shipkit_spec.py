@@ -50,10 +50,13 @@ PLATFORM_LIMITS: dict[str, int] = {
     "linkedin": 3000,
     "instagram": 2200,
     "tiktok": 2200,
+    "reddit": 300,
+    "facebook": 3000,
+    "github": 1500,
 }
 
 SHIPKIT_ENUM_VALUES: dict[str, list[str]] = {
-    "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
+    "platform": ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky", "reddit", "facebook", "github"],
     "kit_format": ["vertical", "feed", "landscape", "square"],
     "kit_slot": ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad", "trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square", "trailer_loop"],
     "kit_content_type": ["image/png", "image/jpeg", "image/gif", "video/mp4"],
@@ -111,7 +114,7 @@ class Caption(BaseModel):
 class ShareCopy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    captions: list[Caption] = Field(max_length=6)
+    captions: list[Caption] = Field(max_length=9)
 
 
 class KitCaption(BaseModel):
@@ -200,7 +203,7 @@ class KitDocument(BaseModel):
     publish_id: Hex16
     device: str = Field(max_length=60)
     hue: str
-    captions: list[KitCaption] = Field(max_length=6)
+    captions: list[KitCaption] = Field(max_length=9)
     changelog: list[Annotated[str, Field(max_length=120)]] = Field(max_length=30)
     refused: list[Refused] = Field(max_length=20)
     trailer: KitTrailer | None = None

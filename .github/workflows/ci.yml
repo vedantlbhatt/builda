@@ -73,6 +73,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+        # Pinned, and every file run in its own global (`--isolate`, below). bun's module mocks are
+        # process wide without it, so which mock a file saw depended on the order files ran in:
+        # FOUND 2026-09-28, the green 2026-09-19 commit of claude/motion re-run unchanged failed 19
+        # tests on the same bun (1.4.2), each of which passes alone, and one file had only ever
+        # passed on another file's leaked mock of react-native. 1.4.2 is the last bun this suite
+        # ran green on and the first with --isolate here.
+        with: { bun-version: '1.4.2' }
       # Some phone ports are pinned to the engine by running it (`__tests__/pythonRef.ts`), and a
       # machine with python3 must run those cleanly. `builder.drops_notify` reads its enums from
       # the generated Pydantic spec, so the runner's python3 needs Pydantic, at the server's pin.
@@ -88,7 +95,7 @@ jobs:
         working-directory: mobile
         # Decodes the same golden fixtures the Swift suite does. Without this the phone and
         # the Mac can disagree about what a session looked like while both appear to work.
-        run: bun test
+        run: bun test --isolate
 
   backend:
     needs: contract

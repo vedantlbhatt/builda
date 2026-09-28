@@ -10,6 +10,12 @@ import { describe, expect, mock, test } from 'bun:test';
 
 mock.module('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }));
 mock.module('expo-constants', () => ({ default: { expoConfig: { version: '0.1.0-test', extra: { apiBaseUrl: 'http://127.0.0.1:8787' } } } }));
+// The count is handed its server (`countSessions({ sessions })`), so the real client and cache are
+// never called; they only have to load, and loading them reaches native modules bun cannot parse.
+// FOUND 2026-09-28 under `bun test --isolate`: this file had only ever passed on another file's
+// leaked mocks of these (bun's module mocks are process wide without isolation).
+mock.module('../src/data/client', () => ({ api: {} }));
+mock.module('../src/data/cache', () => ({}));
 
 const { countSessions } = await import('../src/onboarding/facts');
 const { DONE, doneName, sessionsArrived, sessionsCaption, toolsFound } = await import('../src/onboarding/copy');

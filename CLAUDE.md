@@ -536,7 +536,7 @@ make doctor       diagnostics, records, rollups
 make share        render the last notable session to a PNG
 
 ./scripts/make_app.sh          assemble Builder.app
-cd mobile && bun test          strip conformance, same fixtures as Swift
+cd mobile && bun test --isolate   strip conformance, same fixtures as Swift (each file in its own global)
 cd server && pytest            contract, RLS, boot guard, auth bootstrap
 make measure                   boundary rules over your corpus, read-only
 make analyze T=<jsonl>         digest + your own Claude Code -> SessionAnalysis

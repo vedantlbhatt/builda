@@ -8,7 +8,7 @@ gen_analysis.py's, as gen_shipkit.py borrows them. Four outputs:
                                       imported: capture is standard library only
     capture/trailer/edit_schema.json  the document `claude -p --json-schema` is asked for when a note
                                       needs a model: CutEdit and what it reaches, nothing else
-    server/builder/trailer_spec.py    Pydantic, `extra="forbid"`: a cut, a change, the Mac's answer
+    server/builder/trailer_spec.py    Pydantic, `extra="forbid"`: a cut, a change, a note and the Mac's answer
     mobile/src/generated/trailer.ts   the same shapes, and every sentence the phone says about a note
 
 `check` refuses a spec whose output would compile and still be wrong: a string with no cap, a code
@@ -209,9 +209,10 @@ def gen_py(s: dict) -> str:
         for owner, fs in s["objects"].items()
     )
     return f'''{BANNER_PY}
-"""The trailer at the server's door (docs/trailers.md): a note's answer from the Mac (the new
-version, its changes as codes, or a refusal code). The note itself is the owner's words and is
-bounded by `TRAILER_MAX_LENGTHS["note"]` in routes/trailer.py.
+"""The trailer at the server's door (docs/trailers.md): the phone's note (`NoteIn`, the owner's
+words, bounded by `TRAILER_MAX_LENGTHS["note"]`) and the Mac's answer to it (`NoteFinish`: the new
+version, its changes as codes, or a refusal code). routes/trailer.py is the rest of the door: a
+done note has a version and no refusal, a failed one a refusal and no version.
 
 `extra="forbid"` and the bounds are this door's half; a change's sentence is the phone's to say.
 """

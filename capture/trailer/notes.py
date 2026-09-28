@@ -145,7 +145,8 @@ def publish(key: str, server: str, log_path, run=subprocess.run) -> int:
     return r.returncode
 
 
-def take(client: Notes, *, publish_to: str | None, use_model: bool = True, say: Callable[[str], None] = print) -> int:
+def take(client: Notes, *, publish_to: str | None, use_model: bool = True, formats: list[str] | None = None,
+         say: Callable[[str], None] = print) -> int:
     """Claim the owner's notes and answer each one; how many were claimed. A server that does not
     answer never stops the demo queue behind it."""
     from capture.demo import paths
@@ -159,7 +160,7 @@ def take(client: Notes, *, publish_to: str | None, use_model: bool = True, say: 
         key = n["project_key"]
         say(f"  note {n['id'][:8]} on {key[:12]}: {n['body'][:60]!r}")
         try:
-            body = answer(n, use_model=use_model, say=lambda m: say(f"    {m}"))
+            body = answer(n, use_model=use_model, formats=formats, say=lambda m: say(f"    {m}"))
         except Exception as e:  # noqa: BLE001 - one bad note must not strand the others claimed with it
             say(f"    it broke: {e}")
             body = failed("render_failed")

@@ -167,12 +167,27 @@ const screens = {
       }
     });
     // The beats' words as a wheel: the one on screen now in full, the ones before it above, smaller
-    // and in the dim ink, rolling up on the WHEEL spring. At most three, and only a beat's own label.
+    // and in the dim ink, rolling up on the WHEEL spring. The current and the one before it, and only a beat's own label.
     withPresence(ctx, { opacity: pr.opacity, scale: 1, rise: pr.rise }, lay.W / 2, lay.H / 2, () => {
       wheel(ctx, env, plan.map((b) => b.label).filter(Boolean), plan, t);
     });
   },
 };
+
+/**
+ * A label's lines at a size that fits `max` lines in `width`: the size steps down (to 0.64 of the
+ * asked) before a word is dropped, and no word ever is. FOUND IN THE DIRECTOR RUN (2026-09-28): the
+ * wheel cut "pick a place on campus" to two lines in the square format and lost "campus".
+ */
+function fit(ctx, text, width, size, weight, max) {
+  let s = size;
+  let lines = T.wrap(ctx, text, width, { size: s, weight });
+  while (lines.length > max && s > size * 0.64) {
+    s *= 0.92;
+    lines = T.wrap(ctx, text, width, { size: s, weight });
+  }
+  return { lines, size: s };
+}
 
 function wheel(ctx, env, labels, plan, t) {
   const { lay, pace } = env;
@@ -184,24 +199,43 @@ function wheel(ctx, env, labels, plan, t) {
   const idx = current === -1 ? plan.length - 1 : current;
   const since = t - (plan[idx]?.s0 ?? 0);
   const roll = clamp(spring(since, motion.WHEEL, pace), 0, 1.1);
-  const baseY = lay.side ? w.y + w.h * 0.62 : w.y + size * 1.1;
   const x = w.x;
-  for (let k = Math.max(0, idx - 2); k <= idx; k++) {
+  // Each label set at its own size and measured, so the stack is laid out by real heights: a label
+  // that takes two lines pushes the one before it up by two, never onto it.
+  const blocks = [];
+  // One label before the current: two climbed into the band's fringe once a label took two lines,
+  // and dim words on the dither do not read.
+  const keep = 1;
+  for (let k = Math.max(0, idx - keep); k <= idx; k++) {
     const label = plan[k]?.label;
     if (!label) continue;
-    const back = idx - k; // 0 is current
-    const y = baseY - (back - (1 - roll)) * lineH * (lay.side ? 1.05 : 1);
-    const isCur = back === 0;
-    const a = isCur ? clamp(roll * 1.2) : clamp(1 - back * 0.34);
-    const lines = T.wrap(ctx, label.toLowerCase(), w.w, { size: isCur ? size : size * 0.82, weight: isCur ? 700 : 600 });
-    if (lay.side) {
-      lines.slice(0, 2).forEach((ln, li) => T.text(ctx, ln, x, y + li * lineH * 0.9 - (back ? 0 : 0), { size: isCur ? size : size * 0.82, weight: isCur ? 700 : 600, color: isCur ? SURFACE.text : SURFACE.textDim, a, track: -0.3 * lay.pt }));
-    } else {
-      // Stacked: only the current label and the one before it, below the device.
-      if (back > 1) continue;
-      const yy = w.y + size * 1.2 + (isCur ? lineH * 0.95 : 0) + (1 - roll) * lineH * (isCur ? 0.8 : 1) - (isCur ? 0 : roll * lineH * 0.2);
-      lines.slice(0, 2).forEach((ln, li) => T.text(ctx, ln, x, yy + li * lineH * 0.92, { size: isCur ? size : size * 0.82, weight: isCur ? 700 : 600, color: isCur ? SURFACE.text : SURFACE.textDim, a: isCur ? a : a * (1 - roll * 0.25), track: -0.3 * lay.pt }));
-    }
+    const back = idx - k;
+    const cur = back === 0;
+    const weight = cur ? 700 : 600;
+    const f = fit(ctx, label.toLowerCase(), w.w, cur ? size : size * 0.82, weight, cur ? 3 : 2);
+    const lh = f.size * 1.32 * 0.9;
+    blocks.push({ back, cur, weight, lines: f.lines, size: f.size, lh, h: f.lines.length * lh });
+  }
+  const gap = lineH * 0.3;
+  const now = blocks.find((b) => b.cur);
+  // The whole stack rises by the arriving label's height as the WHEEL spring settles.
+  const shift = (1 - roll) * ((now?.h ?? lineH) + gap);
+  let top;
+  if (lay.side) {
+    // Beside the device: the current label's top at 0.62 of the words box, the one before above it.
+    top = w.y + w.h * 0.62 - (now ? now.h * 0.2 : 0);
+  } else {
+    // Below the device: the one before it on top, the current under it.
+    const prev = blocks.find((b) => b.back === 1);
+    top = w.y + size * 0.4 + (prev ? prev.h + gap : 0);
+  }
+  let above = top + shift;
+  for (const b of [...blocks].sort((p, q) => p.back - q.back)) {
+    const y = b.cur ? top + shift : (above -= b.h + gap);
+    const a = b.cur ? clamp(roll * 1.2) : clamp(1 - b.back * 0.34) * (lay.side ? 1 : 1 - roll * 0.25);
+    b.lines.forEach((ln, li) =>
+      T.text(ctx, ln, x, y + b.size + li * b.lh, { size: b.size, weight: b.weight, color: b.cur ? SURFACE.text : SURFACE.textDim, a, track: -0.3 * lay.pt }),
+    );
   }
 }
 

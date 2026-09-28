@@ -153,3 +153,12 @@ describe('a release, posted elsewhere', () => {
     expect(releasePost({ title: 'x'.repeat(90), highlights: [] }, 80)).toHaveLength(80);
   });
 });
+
+describe('the README badge', () => {
+  test('its address and the Markdown to paste', async () => {
+    const { badgeMarkdown, badgeUrl } = await import('../src/releases/model');
+    const key = 'ab'.repeat(32);
+    expect(badgeUrl('https://api.example.com/', 'vedant', key)).toBe(`https://api.example.com/v1/badge/vedant/${key}.svg`);
+    expect(badgeMarkdown('https://api.example.com', 'vedant', key)).toBe(`![builda](https://api.example.com/v1/badge/vedant/${key}.svg)`);
+  });
+});

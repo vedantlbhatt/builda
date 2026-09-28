@@ -77,7 +77,7 @@ check-gen: gen
 		drops/tables.py drops/schema.json \
 		capture/demo/devices_table.py capture/shipkit/tables.py capture/shipkit/copy_schema.json \
 		capture/trailer/tables.py capture/trailer/edit_schema.json server/builder/trailer_spec.py \
-		server/builder/shipkit_spec.py \
+		server/builder/shipkit_spec.py server/builder/palette.py \
 		server/builder/analysis_spec.py server/builder/report_spec.py \
 		server/builder/narrative_spec.py server/builder/shipped_spec.py \
 		server/builder/live_spec.py server/builder/quotes_spec.py server/builder/media_spec.py analysis \

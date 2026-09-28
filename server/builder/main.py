@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .boot import run_startup_checks
 from .routes import (
     auth_routes,
+    badge,
     capture_keys,
     demo_activity,
     drop_activity,
@@ -80,6 +81,7 @@ app.include_router(users.router)
 # releases BEFORE social too: `/v1/users/{handle}/projects` sits under social's
 # `/v1/users/{handle}`; and `/v1/releases/following` is declared ahead of `/v1/releases/{id}`.
 app.include_router(releases.router)
+app.include_router(badge.router)
 app.include_router(social.router)
 
 

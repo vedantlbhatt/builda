@@ -185,3 +185,27 @@ that is not a sum. Each of those is a product, not a feature, and each makes the
 before it makes it better. Co-op sessions (two people, one repo, overlapping time — the
 `merge_group_id` seam and the GiST index already exist for it) come after factions, because
 factions produce the social graph that makes co-op detection worth surfacing.
+
+## The README badge
+
+A public project's badge for a GitHub README, in the app's own pixels (`builder/badge.py`, the one
+route `GET /v1/badge/{handle}/{key}.svg`, routes/badge.py):
+
+    ![builda](https://<server>/v1/badge/<handle>/<key>.svg)
+
+The pixel star in the project's hue beside "builda", then the hue itself carrying its stars and the
+day it last went out to everyone ("1 star · released sep 28"), joined by the band's dithered fringe
+(`palette.BAYER8`, emitted by `make gen` from design/tokens.json with the ground, the text and the
+nine hues, the only colours the server draws with).
+
+It is read by anyone, so it reads the database as nobody. A number shows only for a project a
+stranger may already see (`can_see_projects`, `project_is_public`), and of a release only its date,
+through `badge_release_at` (0039: the newest that went out to everyone; `can_view_release` still
+shows no release to a reader who is not signed in). Everything else, an unknown handle or a
+malformed key included, is the same plain mark, so guessing learns nothing. No words of the owner's
+are drawn. The phone offers the Markdown, and copies it, on a public project's releases screen.
+
+The widths are a judgement: 6.4 points a character is Verdana's average at 11 points, the face
+shields.io badges are set in, so it sits beside them without a clip. MEASURED on the local stack
+(2026-09-28): `builda: 1 star · released sep 28` for the public project, the plain mark for a
+handle that does not exist.

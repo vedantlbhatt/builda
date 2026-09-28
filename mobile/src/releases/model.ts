@@ -291,3 +291,15 @@ export function releasePost(r: Pick<MyRelease, 'title' | 'highlights'>, limit: n
   }
   return out;
 }
+
+// ------------------------------------------------------------------ the README badge
+
+/** A public project's README badge (server `/v1/badge/{handle}/{key}.svg`, builder/badge.py). */
+export function badgeUrl(base: string, handle: string, key: string): string {
+  return `${base.replace(/\/+$/, '')}/v1/badge/${encodeURIComponent(handle)}/${key}.svg`;
+}
+
+/** The Markdown to paste into a README: the badge, nothing else to keep in step. */
+export function badgeMarkdown(base: string, handle: string, key: string): string {
+  return `![builda](${badgeUrl(base, handle, key)})`;
+}

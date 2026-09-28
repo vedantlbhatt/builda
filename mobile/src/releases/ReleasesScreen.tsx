@@ -7,20 +7,24 @@
  * release itself: when a draft goes out, it joins the list with its rule built cell by cell from the
  * bottom (`ShipRule`), the strip's own mark in the project's hue, on the POP spring.
  */
+import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 
-import { api } from '../data/client';
+import { api, API_BASE_URL } from '../data/client';
 import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
 import { SPRING } from '../motion/springs';
 import { PLATFORM_LIMITS } from '../generated/shipkit';
+import { copyText } from '../onboarding/clipboard';
 import { preferredHue } from '../projects/model';
 import { composeUrl, PLATFORM_NAMES } from '../shipkit/model';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
 import { useReduceMotion } from '../ui/motion';
 import {
+  badgeMarkdown,
+  badgeUrl,
   CADENCE_WORDS,
   draftLine,
   draftOf,
@@ -110,6 +114,7 @@ export function ReleasesScreen() {
           </View>
         ) : null}
 
+        <BadgeBlock projectKey={key} />
         {settings ? <SettingsBlock settings={settings} ink={ink} projectKey={key} onChange={setSettings} onError={setError} /> : null}
         {error ? (
           <T role="meta" tone="del" style={styles.gap}>
@@ -304,6 +309,54 @@ function RuleCell({ i, ink, arriving }: { i: number; ink: string; arriving: bool
   return <Animated.View style={[styles.ruleCell, { backgroundColor: ink }, style]} />;
 }
 
+// ------------------------------------------------------------------ the README badge
+
+/**
+ * For a public project only (a private one's badge is the plain mark, so it is not offered): the
+ * badge as it draws now, and its Markdown to paste into the README, copied with one tap.
+ */
+function BadgeBlock({ projectKey }: { projectKey: string }) {
+  const [handle, setHandle] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const me = await api.getMe();
+        if (!me.handle) return;
+        const r = await api.theirProjects(me.handle);
+        if (alive && r.projects.some((p) => p.key === projectKey)) setHandle(me.handle);
+      } catch {
+        // No badge is offered on a read that failed: a private project's badge says nothing.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [projectKey]);
+  if (!handle) return null;
+  const md = badgeMarkdown(API_BASE_URL, handle, projectKey);
+  return (
+    <View style={styles.block}>
+      <T role="headline">A badge for your README</T>
+      <T role="meta" tone="dim" style={styles.gap}>
+        Its stars and when it last went out to everyone, in the app's pixels.
+      </T>
+      <Image source={{ uri: badgeUrl(API_BASE_URL, handle, projectKey) }} style={styles.badge} contentFit="contain" contentPosition="left" accessibilityLabel="The badge as it draws now" />
+      <T role="mono" tone="dim" selectable style={styles.gap}>
+        {md}
+      </T>
+      <Pressable accessibilityRole="button" onPress={() => setCopied(copyText(md))} hitSlop={8} style={styles.gap}>
+        {({ pressed }) => (
+          <T role="meta" weight={600} tone={pressed ? 'text' : 'dim'}>
+            {copied ? 'copied' : 'copy it'}
+          </T>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 // ------------------------------------------------------------------ settings
 
 function SettingsBlock({
@@ -401,5 +454,6 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   stepper: { flexDirection: 'row', gap: 18 },
   postLine: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 },
+  badge: { width: 240, height: 20, marginTop: 12 },
   step: { minWidth: 24, alignItems: 'center' },
 });

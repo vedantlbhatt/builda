@@ -851,3 +851,52 @@ def test_the_highlights_check_holds_in_the_database(client, created_users):
             c.execute(
                 text(insert), {"o": a["uid"], "k": uuid.uuid4().hex * 2, "h": json.dumps(bad)}
             )
+
+
+# ----------------------------------------------------------------------------- the README badge
+
+
+def _badge(client, handle: str, key: str) -> str:
+    r = client.get(f"/v1/badge/{handle}/{key}.svg")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("image/svg+xml")
+    assert "max-age" in r.headers["cache-control"]
+    return r.text
+
+
+def test_the_badge_says_only_what_a_stranger_may_know(client, created_users, pushes):
+    from builder import badge
+
+    private = _someone(client, created_users)
+    plain = _badge(client, private["handle"], private["key"])
+    assert "star" not in plain and "released" not in plain and "builda" in plain
+    assert _badge(client, "nobody-at-all", private["key"]) == plain, "no handle and private alike"
+    assert _badge(client, private["handle"], "not-a-key") == plain
+    owner = _owner(client, created_users)
+    assert "0 stars" in _badge(client, owner["handle"], owner["key"])
+    assert _star(client, private, owner).status_code == 200
+    one = _badge(client, owner["handle"], owner["key"])
+    assert "1 star<" in one and badge.palette.HUES[badge.preferred_hue(owner["key"])][0] in one
+    _published(client, owner)
+    assert "released" not in _badge(client, owner["handle"], owner["key"]), "followers only"
+    _published(client, owner, visibility="public", title="Stop times")
+    out = _badge(client, owner["handle"], owner["key"])
+    assert "released " in out and " · " in out
+    assert "Stop times" not in out, "no words of the owner's are drawn"
+
+
+def test_the_badge_words_and_its_hue_are_the_phones(client):
+    import datetime as dt
+
+    from builder import badge
+
+    assert badge.words(12, dt.datetime(2026, 9, 28, tzinfo=dt.UTC)) == "12 stars · released sep 28"
+    assert badge.words(1, None) == "1 star"
+    assert badge.words(None, None) is None
+    ts = (ROOT / "mobile/src/projects/model.ts").read_text()
+    ring = re.search(r"export const PROJECT_HUES[^=]*= \[([^\]]+)\]", ts).group(1)
+    assert tuple(re.findall(r"'(\w+)'", ring)) == badge.PROJECT_HUES
+    assert badge.preferred_hue("00000009" + "0" * 56) == badge.PROJECT_HUES[9 % 8]
+    drawn = badge.svg("ab" * 32, 3, None)
+    assert not re.search(r"[—–]| - ", drawn), "no dash"
+    assert drawn.startswith("<svg") and 'shape-rendering="crispEdges"' in drawn

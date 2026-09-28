@@ -111,6 +111,12 @@ def assert_policies_present() -> None:
         "demo_activity_tokens",
         # 0035. The owner's own words about a project's trailer, for their Mac. Owner only.
         "trailer_notes",
+        # 0037. Who starred what (a star is its giver's), a project's releases (a draft is its
+        # owner's alone, a published one read through can_view_release) and when the Mac may
+        # draft one. With RLS off every draft and every stargazer would be everyone's.
+        "project_stars",
+        "releases",
+        "release_settings",
     }
     with engine().connect() as conn:
         rows = conn.execute(

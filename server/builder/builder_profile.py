@@ -650,23 +650,23 @@ def excluded_keys(db, user_id: str, keys: set[str]) -> set[str]:
 def project_names(db, user_id: str, keys: set[str]) -> dict[str, str]:
     """The PUBLIC name of each repository key that has one, exactly as a session gets its
     `repo_name`: `repos.public_name`, which only an upload in public mode ever sets and
-    visibility `anonymous` clears, and only for a repository the viewer has a session in, so
-    a key typed into a report can never fetch a name its sender does not already see. A
-    private repository has no name here, ever: the phone labels it."""
+    visibility `anonymous` clears, and only for a repository the viewer has a session in and
+    has not excluded, so a key typed into a report can never fetch a name its sender does not
+    already see. A private repository has no name here, ever: the phone labels it.
+
+    The rule is ONE function, `project_public_name` (0037), which the stars and releases read
+    too (to anyone but the owner it answers only while the project is public). `user_id` is the
+    viewer here, as at every caller: the owner reading their own projects."""
     if not keys:
         return {}
     rows = db.execute(
         text(
-            """
-            SELECT r.repo_hash, r.public_name FROM repos r
-            WHERE r.repo_hash = ANY(:k) AND r.public_name IS NOT NULL
-              AND NOT session_repo_excluded(CAST(:u AS uuid), r.id)
-              AND EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = :u AND s.repo_id = r.id)
-            """
+            "SELECT k.key, project_public_name(CAST(:u AS uuid), k.key) AS name "
+            "FROM unnest(CAST(:k AS text[])) AS k(key)"
         ),
         {"u": user_id, "k": sorted(keys)},
     ).all()
-    return {r.repo_hash: r.public_name for r in rows}
+    return {r.key: r.name for r in rows if r.name is not None}
 
 
 def held_report(db, user_id: str, report: dict | None) -> tuple[dict | None, dict[str, str]]:

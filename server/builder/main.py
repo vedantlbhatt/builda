@@ -15,6 +15,7 @@ from .routes import (
     media,
     privacy,
     push,
+    releases,
     sessions,
     shipkit,
     social,
@@ -76,6 +77,9 @@ app.include_router(privacy.router)
 # users BEFORE social: `/v1/users/me` must be registered ahead of `/v1/users/{handle}`,
 # or the literal "me" is handed to the profile route as a handle.
 app.include_router(users.router)
+# releases BEFORE social too: `/v1/users/{handle}/projects` sits under social's
+# `/v1/users/{handle}`; and `/v1/releases/following` is declared ahead of `/v1/releases/{id}`.
+app.include_router(releases.router)
 app.include_router(social.router)
 
 

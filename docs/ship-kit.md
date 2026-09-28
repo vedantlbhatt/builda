@@ -266,6 +266,23 @@ DELETE /v1/projects/{key}/kit
 GET    /v1/kit-media/{id}                                 the local stack's read, with the bearer
 ```
 
+**The director's notes** (migration `0035_trailer_notes`, routes/trailer.py). The chat on a
+project's trailer is a demo request's life, row for row: the phone sends a note in the owner's
+words (`NoteIn`, a person's app only, at most five waiting a project), the owner's Mac claims up to
+five with `FOR UPDATE SKIP LOCKED` (and takes back any claim ten minutes old, counted from the
+claim), cuts a new version and finishes the note `done` with `to_version` and the changes as
+spec/trailer.v1.json `change_code`s, or `failed` with a `note_refusal` and nothing made
+(`NoteFinish`). The phone words both from the spec. Owner only; excluding the repository deletes
+the notes. Every refusal is a code (`too_many_notes`, `not_claimed`, `not_queued`, ...).
+
+```
+POST   /v1/projects/{key}/trailer/notes      {body}       201 {note}
+GET    /v1/projects/{key}/trailer/notes?limit=30          {notes: [...]} newest first
+POST   /v1/trailer/notes:claim                            {notes: [{id, project_key, body, created_at}]}
+POST   /v1/trailer/notes/{id}:finish         NoteFinish   {note}
+DELETE /v1/trailer/notes/{id}                             {note}, only while queued
+```
+
 ## Commands
 
 ```bash

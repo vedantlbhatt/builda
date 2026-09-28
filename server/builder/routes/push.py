@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 from sqlalchemy import text
 
-from .. import drops_notify, live_push, notify
+from .. import drops_notify, live_push, notify, releases
 from ..auth import CurrentDevice, current_device
 from ..db import db_session
 from ..settings import settings
@@ -357,6 +357,17 @@ def send_drop(user_id: str, title: str, body: str, drop_id: str, kind: str) -> i
         "data": drops_notify.push_data(drop_id, kind),
     }
     return _send_alert(user_id, payload, collapse_id=drops_notify.collapse_id(drop_id))
+
+
+def send_release(user_id: str, title: str, body: str, release_id: str) -> int:
+    """A release banner to one reader of it: a follower of its owner or a stargazer of its project
+    (`releases.claim_release_audience` decided who, once). Same delivery as every other banner, for
+    the reason `send_drop` gives; a tap opens the release (`releases.push_data`)."""
+    payload = {
+        "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+        "data": releases.push_data(release_id),
+    }
+    return _send_alert(user_id, payload, collapse_id=releases.collapse_id(release_id))
 
 
 def apns_payload(

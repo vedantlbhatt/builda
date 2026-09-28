@@ -573,6 +573,12 @@ python -m drops watch [--once]     claim shared links, resolve them, run the mov
 python -m drops doctor             yt-dlp, claude, the cookie door, the schema, the corpus
 python3 scripts/drops_corpus.py    resolve and plan drops/tests/corpus/urls.txt, and cache it
 scripts/overnight_stack.sh up|sync|live T|token|phone|test|status   the local end to end stack, API on 127.0.0.1:8787
+python -m capture demo trailer [PATH | --key KEY] [--draft]  cut the project's trailer from its demo and render it (docs/trailers.md)
+python -m capture demo direct --key KEY "NOTE"   change the trailer by a note in your words; rules first, claude only when they understand nothing
+python -m capture demo watch --publish-requests  the one worker: trailer notes first, release drafts every 10 min, then the demo queue
+python -m capture release draft|check [--dry-run] [--no-model]  a release draft for the phone to publish (docs/social.md)
+node trailer/bin/render.js sheet --facts F --cut C --format square --every 0.5 --out S.png  a contact sheet of a cut, fast
+node trailer/test/smoke.js         every scene at a quarter size, as CI renders it
 ```
 
 Design notes worth reading before touching the corresponding code: `docs/session-boundaries.md`
@@ -584,7 +590,9 @@ rejected with the evidence), `brief.md` and `PROGRESS.md` (the overnight brief a
 `docs/overnight-engine.md` (the fifteen wrapped cards, the live engine, vocabulary, the burn and profile
 fixes, each deviation with its measurement), `docs/overnight-integration.md` (how the engine reaches the
 phone: report v2, contract v4, the live spec, pushes, the opt in quotes and file names, and every
-deviation), `docs/hooks-capture.md` (the hook channel and the live watcher).
+deviation), `docs/hooks-capture.md` (the hook channel and the live watcher), `docs/trailers.md` (the
+trailer: its spec, the renderer and what it borrows from the app, the director from phone to Mac and back,
+and what was measured).
 
 ## What each suite is actually for
 

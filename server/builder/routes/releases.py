@@ -355,11 +355,26 @@ def my_stars(device: CurrentDevice = Depends(current_device)):
 # ------------------------------------------------------------------------------ releases
 
 
+def send_draft_push(user_id: str, key: str, title: str) -> None:
+    """After a NEW draft has committed, best effort: one banner to its owner (a replaced draft is
+    the same draft rewritten, and says nothing again). Logged, never retried."""
+    try:
+        push.send_release_draft(user_id, rel.DRAFT_TITLE, title, key)
+    except Exception:  # noqa: BLE001 - a banner that failed must never fail the draft
+        log.exception("release draft push for %s failed; not retried", key[:12])
+
+
 @router.put("/projects/{key}/releases/draft")
-def put_draft(key: str, body: DraftIn, device: CurrentDevice = Depends(current_device)):
+def put_draft(
+    key: str,
+    body: DraftIn,
+    background: BackgroundTasks,
+    device: CurrentDevice = Depends(current_device),
+):
     """The Mac drafts a release for one of the owner's projects, or replaces the one live draft
     (its id, its visibility and when it was first drafted stay). Only while the owner has turned
-    `drafts_to_phone` on for that project (403 `drafts_off`)."""
+    `drafts_to_phone` on for that project (403 `drafts_off`). A NEW draft sends its owner one
+    banner, which opens the project's releases."""
     uid = str(device.user_id)
     _key(key)
     title = _title(body.title)
@@ -405,6 +420,8 @@ def put_draft(key: str, body: DraftIn, device: CurrentDevice = Depends(current_d
             },
         ).one()
         out = _release(db, str(row.id))
+    if row.inserted:
+        background.add_task(send_draft_push, uid, key, title)
     return {"release": rel.mine(out), "replaced": not row.inserted}
 
 

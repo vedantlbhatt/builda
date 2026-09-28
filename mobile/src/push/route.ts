@@ -39,7 +39,13 @@ export type DropRoute = `/drop/${string}`;
  */
 export const RELEASE_KIND = 'release';
 export type ReleaseRoute = `/release/${string}`;
-export type TapRoute = SessionRoute | DropRoute | ReleaseRoute | typeof WEEK_CARD_ROUTE;
+/**
+ * The owner's own banner when their Mac writes a new release draft (kind `release_draft`): it opens
+ * the project's releases, where the draft waits to be read and published.
+ */
+export const RELEASE_DRAFT_KIND = 'release_draft';
+export type ReleasesRoute = `/releases/${string}`;
+export type TapRoute = SessionRoute | DropRoute | ReleaseRoute | ReleasesRoute | typeof WEEK_CARD_ROUTE;
 
 /**
  * Where a notification's data points, or null when it points nowhere.
@@ -62,6 +68,10 @@ export function routeForNotification(data: unknown): TapRoute | null {
     const releaseId = typeof v === 'string' && isSafeId(v) ? v : fromUrl && isSafeId(fromUrl) ? fromUrl : null;
     // A release push without an id opens nothing, never a session of the same id.
     return releaseId ? `/release/${releaseId}` : null;
+  }
+  if (kindRaw === RELEASE_DRAFT_KIND) {
+    const key = typeof d.project_key === 'string' ? d.project_key.toLowerCase() : '';
+    return /^[0-9a-f]{64}$/.test(key) ? `/releases/${key}` : null;
   }
   if (kindRaw && DROP_KINDS.has(kindRaw)) {
     const dropId = dropIdFrom(d);

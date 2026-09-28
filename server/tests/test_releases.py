@@ -512,6 +512,35 @@ def test_can_view_release(client, created_users):
     assert (item["name"], item["project_key"]) == (None, None), "and its name is gone with it"
 
 
+def test_a_new_draft_tells_its_owner_once_and_a_rewrite_says_nothing(
+    client, created_users, monkeypatch
+):
+    from builder.routes import push
+
+    sent: list[tuple[str, str, str, str]] = []
+
+    def record(user_id, title, body, key):
+        sent.append((user_id, title, body, key))
+        return 1
+
+    monkeypatch.setattr(push, "send_release_draft", record)
+    a = _someone(client, created_users)
+    _drafts_on(client, a)
+    url = f"/v1/projects/{a['key']}/releases/draft"
+    assert client.put(url, json=_draft_body(), headers=a["mac"]).status_code == 200
+    assert len(sent) == 1
+    uid, title, body, key = sent[0]
+    assert (title, body, key) == ("A release draft is waiting", "Live buses on the map", a["key"])
+    client.put(url, json=_draft_body(title="Stop times"), headers=a["mac"])
+    assert len(sent) == 1, "the same draft rewritten is not news"
+    data = rel.draft_push_data(a["key"])
+    assert data == {
+        "kind": "release_draft",
+        "project_key": a["key"],
+        "url": f"builder://releases/{a['key']}",
+    }
+
+
 def test_one_persons_drafts_and_settings_are_theirs(client, created_users):
     a = _someone(client, created_users)
     b = _someone(client, created_users)

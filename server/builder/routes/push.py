@@ -370,6 +370,16 @@ def send_release(user_id: str, title: str, body: str, release_id: str) -> int:
     return _send_alert(user_id, payload, collapse_id=releases.collapse_id(release_id))
 
 
+def send_release_draft(user_id: str, title: str, body: str, project_key: str) -> int:
+    """The owner's banner when their Mac writes a new release draft (`put_draft`): the draft's own
+    title, and a tap opens the project's releases, where it waits to be read and published."""
+    payload = {
+        "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+        "data": releases.draft_push_data(project_key),
+    }
+    return _send_alert(user_id, payload, collapse_id=releases.draft_collapse_id(project_key))
+
+
 def apns_payload(
     title: str, body: str, session_id: str, *, unattended: bool, kind: str | None = None
 ) -> dict:

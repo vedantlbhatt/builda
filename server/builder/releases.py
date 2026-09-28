@@ -54,6 +54,9 @@ MINE_MAX = 50
 #: The words a release's push says when the owner has neither a display name nor a handle.
 SOMEONE = "A builder"
 KIND_RELEASE = "release"
+#: The owner's own banner when their Mac writes a NEW draft: it opens the project's releases.
+KIND_DRAFT = "release_draft"
+DRAFT_TITLE = "A release draft is waiting"
 
 COLUMNS = (
     "r.id, r.owner_id, r.project_key, r.status, r.title, r.notes, r.highlights, r.commits, "
@@ -185,6 +188,16 @@ def collapse_id(release_id: str) -> str:
 
 def push_data(release_id: str) -> dict[str, str]:
     return {"kind": KIND_RELEASE, "release_id": release_id, "url": release_url(release_id)}
+
+
+def draft_push_data(key: str) -> dict[str, str]:
+    """A new draft's banner opens the project's releases, where it waits to be read."""
+    return {"kind": KIND_DRAFT, "project_key": key, "url": f"{APP_SCHEME}://releases/{key}"}
+
+
+def draft_collapse_id(key: str) -> str:
+    """One banner a project: a second draft before the first was read replaces it."""
+    return f"draft:{key}"[:63]
 
 
 def compose(display_name: str | None, handle: str | None, name: str | None, title: str) -> tuple:

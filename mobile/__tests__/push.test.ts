@@ -173,4 +173,11 @@ describe('a release push', () => {
     expect(routeForNotification({ kind: 'release', session_id: 'abc' })).toBeNull();
     expect(routeForNotification({ kind: 'release', release_id: '../x' })).toBeNull();
   });
+
+  test('a new draft opens the project releases, and only for a real key', () => {
+    const key = 'ab'.repeat(32);
+    expect(routeForNotification({ kind: 'release_draft', project_key: key, url: `builder://releases/${key}` })).toBe(`/releases/${key}`);
+    expect(routeForNotification({ kind: 'release_draft', project_key: 'nope' })).toBeNull();
+    expect(routeForNotification({ kind: 'release_draft' })).toBeNull();
+  });
 });

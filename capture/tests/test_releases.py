@@ -596,3 +596,69 @@ class TheServersRules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FeatureFinished(Temp):
+    """A feature is finished when git says so: a version tag, or a branch merged into the line of
+    work (0038's `tagged` and `merged`). Either leads the draft's title."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo = Repo(self.root)
+        for i in range(1, 4):
+            self.repo.commit(f"feat: step {i}", T0 + 100 * i)
+        self.published = {"id": "p", "published_at": dt.datetime.fromtimestamp(T0 + 350, dt.UTC).isoformat()}
+
+    def test_a_branch_name_is_the_feature_in_words(self):
+        self.assertEqual(draft.feature_words("feature/leave-now-times"), "Leave now times")
+        self.assertEqual(draft.feature_words("ABC-123-fix-login"), "Fix login")
+        self.assertEqual(draft.feature_words("someone/stop_times"), "Stop times")
+        for says_nothing in ("main", "origin/master", "wip", "1234", "develop"):
+            self.assertIsNone(draft.feature_words(says_nothing), says_nothing)
+
+    def test_a_merged_feature_is_drafted_and_leads_the_title(self):
+        self.repo.git("checkout", "-q", "-b", "feature/leave-now-times")
+        self.repo.commit("feat: leave now times on every trip", T0 + 400)
+        self.repo.git("checkout", "-q", "main")
+        self.repo.git("merge", "-q", "--no-ff", "feature/leave-now-times", "-m", "Merge branch 'feature/leave-now-times'", when=T0 + 500)
+        f = draft.gather(KEY, self.repo.path, self.published, {})
+        self.assertEqual(f.merged, ["Leave now times"])
+        self.assertEqual(draft.decide(settings(every_commits=50, on_shipped=False), f, {}, NOW), ("merged", "merged"))
+        w = draft.write(f, use_model=False)
+        self.assertEqual(w.title, "Leave now times")
+        self.assertIn("Leave now times on every trip", w.highlights)
+        # The same merge, seen again: no second draft.
+        state = draft.record({}, f, "merged", w, NOW)
+        again = draft.gather(KEY, self.repo.path, self.published, state)
+        self.assertEqual(draft.decide(settings(every_commits=50, on_shipped=False), again, state, NOW + 60)[0], None)
+
+    def test_a_new_tag_is_drafted_and_names_the_release(self):
+        self.repo.commit("feat: stops drawn along the route", T0 + 400)
+        self.repo.git("tag", "-a", "v1.2.0", "-m", "v1.2.0", when=T0 + 450)
+        f = draft.gather(KEY, self.repo.path, self.published, {})
+        self.assertEqual((f.tag, f.tag_at), ("v1.2.0", float(T0 + 450)))
+        self.assertEqual(draft.decide(settings(every_commits=50), f, {}, NOW), ("tagged", "tagged"))
+        w = draft.write(f, use_model=False)
+        self.assertEqual(w.title, "v1.2.0 · Stops drawn along the route")
+        self.assertFalse(any(ch in w.title for ch in "\u2014\u2013"), "no dash, the middle dot")
+
+    def test_a_tag_older_than_the_release_is_not_news(self):
+        self.repo.git("tag", "v1.0.0", when=T0 + 300)
+        f = draft.gather(KEY, self.repo.path, self.published, {})
+        self.assertEqual(f.tag, "v1.0.0")
+        self.assertNotEqual(draft.decide(settings(every_commits=50, on_shipped=False), f, {}, NOW)[0], "tagged")
+        self.assertFalse(draft.write(facts(commits=2, subjects=["feat: a thing"], tag="v1.0.0", tag_at=float(T0 + 300),
+                                           published_id="p", published_at=float(T0 + 350)), use_model=False).title.startswith("v1.0.0"))  # fmt: skip
+
+    def test_the_server_takes_both_new_triggers(self):
+        import ast
+        import re
+
+        src = (REPO / "server/builder/releases.py").read_text()
+        triggers = next(ast.literal_eval(n.value) for n in ast.parse(src).body
+                        if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "TRIGGERS")  # fmt: skip
+        for t in ("tagged", "merged"):
+            self.assertIn(t, triggers)
+        mig = (REPO / "server/alembic/versions/0038_release_triggers.py").read_text()
+        self.assertIn("'tagged', 'merged'", re.sub(r"\s+", " ", mig))
+

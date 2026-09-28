@@ -29,9 +29,10 @@ from .notify import APP_SCHEME
 
 log = logging.getLogger("builder.releases")
 
-# 0037's CHECK lists, and the door's: test_releases.py holds the migration to these.
+# 0037's CHECK lists (0038's for the triggers), and the door's: test_releases.py holds them.
 STATUSES = ("draft", "published", "dismissed")
-TRIGGERS = ("commits", "shipped", "cadence", "asked")
+# 0037's four, then 0038's: a new tag, a branch merged (a feature finished).
+TRIGGERS = ("commits", "shipped", "cadence", "asked", "tagged", "merged")
 VISIBILITIES = ("followers", "public")
 CADENCES = ("none", "weekly", "biweekly")
 TITLE_MAX = 80

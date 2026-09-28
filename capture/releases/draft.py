@@ -19,6 +19,10 @@ FACTS, for one project (`gather`):
 
 TRIGGERS (`decide`), first match wins, each only while `drafts_to_phone` is on. "The baseline" is
 the later of the last published release and the last draft this Mac made.
+  tagged   a tag in HEAD's history made after the baseline and not the one the last draft saw: the
+           owner named a version (0038). The title leads with it.
+  merged   a branch merged into HEAD's first parent line after the baseline, not the merge the last
+           draft saw: a feature landed (0038). The title is the branch's name, in words.
   shipped  `on_shipped`, and a build post or a kit whose id is not the one the last draft saw and
            whose file was written after the baseline (with no baseline at all, any).
   commits  the commits after the baseline reach `every_commits`.
@@ -76,7 +80,7 @@ PROMPT_PATH = HERE / "draft_prompt.txt"
 
 # server/builder/releases.py, restated because capture imports nothing of the server; the test
 # reads that file with `ast` and holds every one of these to it.
-TRIGGERS = ("commits", "shipped", "cadence", "asked")
+TRIGGERS = ("commits", "shipped", "cadence", "asked", "tagged", "merged")
 CADENCES = ("none", "weekly", "biweekly")
 TITLE_MAX = 80
 NOTES_MAX = 1200
@@ -172,6 +176,51 @@ def newest(src: pathlib.Path) -> str | None:
     return out or None
 
 
+def newest_tag(src: pathlib.Path) -> tuple[str | None, float | None]:
+    """(the newest tag in HEAD's history, when it was made): an annotated tag's own date, a light
+    one's commit's."""
+    out = (_git(src, "for-each-ref", "refs/tags", "--merged", "HEAD", "--sort=-creatordate", "--count=1",
+                "--format=%(refname:short) %(creatordate:unix)") or "").strip()  # fmt: skip
+    name, _, at = out.rpartition(" ")
+    return (name or None, float(at)) if name and at.isdigit() else (None, None)
+
+
+#: A merge commit's subject, to the branch it brought in: git's own words and a forge's.
+_MERGED = re.compile(
+    r"^Merge (?:pull request #\d+ from [^/\s]+/(?P<pr>\S+)|(?:remote-tracking )?branch '(?:origin/)?(?P<br>[^']+)')"
+)
+#: Branches that are a line of work themselves, not a feature landing on one.
+_TRUNKS = {"main", "master", "develop", "dev", "trunk", "staging", "release", "production", "prod"}
+_TICKET = re.compile(r"^(?:[A-Za-z]+-\d+|\d+)$")
+
+
+def feature_words(branch: str) -> str | None:
+    """A branch's name as the feature it is: `feature/leave-now-times` is "Leave now times"; a trunk,
+    a ticket number alone or one word says nothing and is None (pure)."""
+    last = re.sub(r"^[A-Za-z]+-\d+[-_]*", "", branch.strip().rsplit("/", 1)[-1])
+    if last.lower() in _TRUNKS:
+        return None
+    parts = [w for w in re.split(r"[-_.\s]+", last) if w and not _TICKET.match(w)]
+    if len(parts) < 2:
+        return None
+    return capital(" ".join(w.lower() if not w.isupper() else w for w in parts))
+
+
+def merges_since(src: pathlib.Path, since: float | None, cap: int = 10) -> tuple[list[str], str | None]:
+    """(the features merged into HEAD's first parent line after `since`, newest first, in words;
+    the newest such merge's commit)."""
+    out = _git(src, "log", "HEAD", "--first-parent", "--merges", f"-n{cap}", "--format=%H%x00%s", *_after(since)) or ""
+    words, head = [], None
+    for ln in out.splitlines():
+        sha, _, subject = ln.partition("\x00")
+        m = _MERGED.match(subject.strip())
+        w = feature_words(m.group("pr") or m.group("br")) if m else None
+        if w and w not in words:
+            words.append(w)
+            head = head or sha
+    return words, head
+
+
 def subjects_since(src: pathlib.Path, since: float | None, cap: int = SUBJECTS_CAP) -> list[str]:
     """The subjects of the newest `cap` commits after `since`, newest first, as written."""
     out = _git(src, "log", "HEAD", "--no-merges", f"-n{cap}", "--format=%s", *_after(since)) or ""
@@ -200,10 +249,17 @@ class Facts:
     kit_at: float | None = None
     has_trailer: bool = False
     trailer_version: int | None = None
+    #: The newest tag in HEAD's history and when it was made (the `tagged` trigger, the title).
+    tag: str | None = None
+    tag_at: float | None = None
+    #: Features merged since the baseline, in words, and the newest such merge (`merged`).
+    merged: list[str] = dataclasses.field(default_factory=list)
+    merged_head: str | None = None
 
     def signature(self) -> dict:
         """The state a draft is made from: the double draft rule compares exactly these."""
-        return {"commit": self.commit, "published_id": self.published_id, "shipped_id": self.shipped_id, "kit_id": self.kit_id}
+        return {"commit": self.commit, "published_id": self.published_id, "shipped_id": self.shipped_id, "kit_id": self.kit_id,
+                "tag": self.tag, "merged_head": self.merged_head}  # fmt: skip
 
 
 def shipped_path(key: str) -> pathlib.Path:
@@ -236,6 +292,8 @@ def gather(key: str, checkout: pathlib.Path | None, published: dict | None, stat
         f.new_commits = (f.commits if base == f.published_at else count_since(checkout, base)) or 0
         f.commit = newest(checkout)
         f.subjects = subjects_since(checkout, f.published_at)
+        f.tag, f.tag_at = newest_tag(checkout)
+        f.merged, f.merged_head = merges_since(checkout, base)
     post, at = _read(shipped_path(key))
     if post is not None:
         f.what = str(post.get("what") or "").strip() or None
@@ -265,6 +323,10 @@ def decide(settings: dict | None, f: Facts, state: dict, now: float) -> tuple[st
     if state.get("drafted_at") is not None and all(state.get(k) == v for k, v in f.signature().items()):
         return None, "same_state"
     base = later(f.published_at, state.get("drafted_at"))
+    if f.tag and f.tag != state.get("tag") and (base is None or (f.tag_at is not None and f.tag_at > base)):
+        return "tagged", "tagged"
+    if f.merged and f.merged_head and f.merged_head != state.get("merged_head"):
+        return "merged", "merged"
     if s["on_shipped"] and (_fresh(f.shipped_id, f.shipped_at, state.get("shipped_id"), base)
                             or _fresh(f.kit_id, f.kit_at, state.get("kit_id"), base)):  # fmt: skip
         return "shipped", "shipped"
@@ -374,6 +436,10 @@ def build_input(f: Facts) -> str:
     first = f.published_id is None
     lines = ["THE PROJECT", f"  what it is: {f.what or '(not recorded)'}",
              "  this is its first release" if first else "  it has published releases before"]  # fmt: skip
+    if f.tag:
+        lines += [f"  its newest version tag: {f.tag}"]
+    if f.merged:
+        lines += ["", "FEATURES MERGED SINCE THE LAST RELEASE, from their branch names"] + [f"  {m}" for m in f.merged]
     if f.changes:
         lines += ["", "WHAT IS NEW, from the builder's own session record"] + [f"  {c}" for c in f.changes]
     if f.subjects:
@@ -476,6 +542,11 @@ def rules(f: Facts, verdict: Callable[[str], str | None]) -> Words | None:
     if what and not keep("what", what):
         what = ""
     points = subjects or changes
+    # A feature that landed (a merged branch) is what this release is: it leads, and what the
+    # commits say follows it as highlights.
+    feature = next((m for m in f.merged if keep("feature", tidy(m, TITLE_MAX))), None)
+    if feature:
+        points = [tidy(feature, TITLE_MAX)] + [x for x in points if x.lower() != feature.lower()]
     if points and len(points[0]) <= TITLE_MAX:
         title, highlights = points[0], points[1 : 1 + HIGHLIGHTS_MAX]
     elif points:
@@ -485,6 +556,9 @@ def rules(f: Facts, verdict: Callable[[str], str | None]) -> Words | None:
         title, highlights = what or f"{f.commits} new {'commit' if f.commits == 1 else 'commits'}", []
     else:
         return None
+    # A version tag made since the last release names this one: it leads the title.
+    if f.tag and (f.published_at is None or (f.tag_at is not None and f.tag_at > f.published_at)) and keep("tag", f.tag):
+        title = cut(f"{f.tag} · {title}", TITLE_MAX)
     notes: list[str] = []
     if what and what != title:
         notes.append(sentence(what))

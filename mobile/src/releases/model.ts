@@ -3,8 +3,9 @@
  * `__tests__/releases.test.ts` holds every word.
  *
  * A RELEASE is what a builder says they shipped: a title, a few lines, up to five highlights. The
- * owner's Mac DRAFTS one by itself (after enough commits, after a session that shipped, or on a
- * cadence the owner set), only once the owner turned drafting on for that project; the owner reads
+ * owner's Mac DRAFTS one by itself (after enough commits, after a session that shipped, on a
+ * cadence the owner set, or when git says a feature is finished: a version tagged, a branch merged),
+ * only once the owner turned drafting on for that project; the owner reads
  * the draft here, changes any word, and publishes it to their followers, or to everyone when the
  * project is public. Everyone who starred the project, or follows its owner, hears about it.
  *
@@ -14,7 +15,8 @@
  */
 
 export type ReleaseStatus = 'draft' | 'published' | 'dismissed';
-export type ReleaseTrigger = 'commits' | 'shipped' | 'cadence' | 'asked';
+/** Why the Mac drafted it (server `releases.TRIGGERS`; 0038 added `tagged` and `merged`). */
+export type ReleaseTrigger = 'commits' | 'shipped' | 'cadence' | 'asked' | 'tagged' | 'merged';
 export type Visibility = 'followers' | 'public';
 export type Cadence = 'none' | 'weekly' | 'biweekly';
 
@@ -110,6 +112,10 @@ export function triggerLine(r: Pick<MyRelease, 'trigger' | 'commits'>): string {
       return 'drafted on your schedule';
     case 'asked':
       return 'drafted when you asked';
+    case 'tagged':
+      return 'drafted when you tagged a version';
+    case 'merged':
+      return 'drafted when a feature was merged';
   }
 }
 

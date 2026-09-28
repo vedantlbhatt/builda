@@ -148,6 +148,11 @@ says what shipped, and work parked on another branch did not), merges left out, 
 first of these fires. "The baseline" is the later of the last published release and the last draft
 this Mac made.
 
+* `tagged`: a tag in HEAD's history made after the baseline, not the one the last draft saw. The
+  owner named a version, and the title leads with it: `v1.2.0 · Stops drawn along the route` (0038).
+* `merged`: a branch merged into HEAD's first parent line after the baseline, not the merge the last
+  draft saw. A feature landed, and its branch's name in words is the title: `feature/leave-now-times`
+  is "Leave now times" (a trunk, a ticket number or one word says nothing and is not used) (0038).
 * `shipped`: `on_shipped` is on, and a build post (`python -m analysis shipped`) or a demo kit
   appeared after the baseline.
 * `commits`: the commits after the baseline reach `every_commits`.

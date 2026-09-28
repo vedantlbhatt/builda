@@ -803,9 +803,23 @@ def test_every_check_list_in_the_migration_is_the_modules():
                 consts[node.targets[0].id] = ast.literal_eval(node.value)
             except ValueError:
                 continue
+    later = {}
+    for node in ast.parse(
+        (ROOT / "server/alembic/versions/0038_release_triggers.py").read_text()
+    ).body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            try:
+                later[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                continue
+    # 0038 grew the trigger list at its end; its downgrade restores exactly 0037's.
+    assert tuple(re.findall(r"'([^']+)'", later["RELEASE_TRIGGER"])) == rel.TRIGGERS
+    assert later["OLD_RELEASE_TRIGGER"] == consts["RELEASE_TRIGGER"]
+    assert rel.TRIGGERS[: len(re.findall("'", consts["RELEASE_TRIGGER"])) // 2] == tuple(
+        re.findall(r"'([^']+)'", consts["RELEASE_TRIGGER"])
+    )
     for const, values in [
         ("RELEASE_STATUS", rel.STATUSES),
-        ("RELEASE_TRIGGER", rel.TRIGGERS),
         ("RELEASE_VISIBILITY", rel.VISIBILITIES),
         ("RELEASE_CADENCE", rel.CADENCES),
     ]:

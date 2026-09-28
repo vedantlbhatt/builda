@@ -42,6 +42,8 @@ describe('a release in words', () => {
     expect(triggerLine(rel())).toBe('drafted after 12 commits');
     expect(triggerLine(rel({ trigger: 'shipped' }))).toBe('drafted after a session that shipped');
     expect(triggerLine(rel({ trigger: 'cadence' }))).toBe('drafted on your schedule');
+    expect(triggerLine(rel({ trigger: 'tagged' }))).toBe('drafted when you tagged a version');
+    expect(triggerLine(rel({ trigger: 'merged' }))).toBe('drafted when a feature was merged');
     expect(carriesLine(rel())).toBe('12 commits · a trailer');
     expect(carriesLine(rel({ commits: 1, has_trailer: false }))).toBe('1 commit');
     expect(carriesLine(rel({ commits: null, has_trailer: false }))).toBeNull();

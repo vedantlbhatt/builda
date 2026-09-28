@@ -57,14 +57,19 @@ kicks = []
 for i, t in enumerate(np.arange(q(SCN['term']), FLY, S * 2)): drums.add(hat(0.025), t, 0.022, 0.2 * np.sin(i))
 kicks += groove(FLY, LOCK)
 kicks += groove(NOW, CARD, full=False)
-kicks += groove(CARD, END)
-for t in (FLY, NOW, CARD): drums.add(crash(1.4), t, 0.07, 0.2)
+# the trailer chapter: the groove thins to hats while the note is typed and cut, and drops back in
+# on the beat the new version pours in (ad/builda.js DIR.pour, 170 frames into 'direct')
+DIRECT = SCN.get('direct', END); DROP = q(DIRECT + 190 / 60) if 'direct' in SCN else END
+kicks += groove(CARD, DIRECT)
+for i, t in enumerate(np.arange(q(DIRECT), DROP, S * 2)): drums.add(hat(0.025), t, 0.024, 0.2 * np.sin(i))
+kicks += groove(DROP, END)
+for t in (FLY, NOW, CARD, DROP): drums.add(crash(1.4), t, 0.07, 0.2)
 drums.add(kick(), FINAL, 0.75); kicks.append(FINAL)
 def bassline(t0, t1):
     for t in np.arange(q(t0), q(t1) - 1e-6, B / 2):
         root = RT[LOOPA[int(t // 2) % 4]]
         bass.add(bassnote(root + (12 if int(t / (B / 2)) % 4 == 3 else 0), 0.16), t + B / 4, 0.3)
-bassline(FLY, LOCK); bassline(CARD, END)
+bassline(FLY, LOCK); bassline(CARD, DIRECT); bassline(DROP, END)
 for t in np.arange(q(LOCK), q(CARD), 2.0): bass.add(bassnote(RT[LOOPA[int(t // 2) % 4]], 1.2), t, 0.24)
 bass.add(bassnote(RT['Cmaj9'], 1.4), FINAL, 0.4)
 
@@ -101,6 +106,27 @@ if 'board' in SCN:
 if 'money' in SCN:
     for k in range(20): sfx.add(tick(3000 + (k % 5) * 300, 0.015, 0.003), SCN['money'] + 0.25 + k * 0.045, 0.04, np.sin(k * 1.7))
     sfx.add(pop(988, 0.1), SCN['money'] + 1.2, 0.09)
+if 'direct' in SCN:
+    for i in range(26): sfx.add(tick(3400 + (i % 3) * 300, 0.03, 0.0035), DIRECT + (22 + i * 1.6) / 60, 0.045, 0.1 * np.sin(i))   # the note typed
+    sfx.add(pop(880, 0.1), DIRECT + 90 / 60, 0.1)                                                                                    # Send
+    for i in range(12): sfx.add(tick(2200 + (i % 4) * 180, 0.02, 0.003), DIRECT + (122 + i * 4) / 60, 0.03, 0.3 * np.sin(i * 1.3))  # cutting
+    sfx.add(sweep(0.8, 250, 6000, 0.45, lambda u: u ** 1.6 * (1 - u) ** 0.2), DIRECT + 170 / 60, 0.12)                               # the pour
+    sfx.add(thump(90, 36, 0.9, 0.3), DROP, 0.4)
+    for k, m in enumerate([84, 88]): b = fm(mtof(m), 0.7, 2.0, 1.2, 0.08, 0.35); sfx.add(b, DIRECT + (206 + k * 7) / 60, 0.07, 0.2 * k); verb_send.add(b, DIRECT + (206 + k * 7) / 60, 0.06)
+if 'shapes' in SCN:
+    for k, (at, m) in enumerate(zip((12, 62, 110, 158), (79, 83, 86, 91))):
+        t = SCN['shapes'] + at / 60
+        sfx.add(sweep(0.35, 500, 3500, 0.4, lambda u: np.sin(np.pi * u)), t - 0.05, 0.05)
+        b = fm(mtof(m), 0.9, 3.5, 1.2, 0.1, 0.45); sfx.add(b, t + 0.12, 0.07, -0.4 + 0.27 * k); verb_send.add(b, t + 0.12, 0.08)
+        for j in range((2, 1, 5, 1)[k]): sfx.add(square(mtof(m + 12 + j * 2), 0.05, 0.5, 0.03), t + 10 / 60 + j * 0.04, 0.03, np.sin(j + k))
+if 'release' in SCN:
+    for i in range(22): sfx.add(tick(2600 + i * 60, 0.015, 0.003), SCN['release'] + (36 + i * 1.8) / 60, 0.035, np.sin(i))   # the rule builds
+    t = SCN['release'] + 116 / 60; sfx.add(pop(988, 0.1), t, 0.11)
+    b = sum(fm(mtof(m), 1.2, 2.0, 1.5, 0.1, 0.6) for m in (72, 76, 79, 84)); sfx.add(b, t + 0.04, 0.09); verb_send.add(b, t + 0.04, 0.1)
+if 'star' in SCN:
+    t = SCN['star'] + 78 / 60; sfx.add(pop(1175, 0.09), t, 0.1)
+    for k, m in enumerate([84, 88, 91, 96, 100]): sfx.add(square(mtof(m), 0.06, 0.5, 0.035), t + 0.03 + k * 0.035, 0.035, -0.4 + 0.2 * k)
+    sfx.add(sweep(0.5, 800, 5000, 0.5), SCN['star'] + 118 / 60, 0.07)                                                             # the README rises
 for k in range(8): sfx.add(square(mtof([72, 74, 76, 79, 81, 84, 86, 88][k]), 0.07, 0.5, 0.04), END + 0.85 + k * 0.085, 0.035, -0.6 + 0.17 * k)   # the parade
 sfx.add(thump(80, 34, 1.4, 0.45), FINAL, 0.35)
 

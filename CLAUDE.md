@@ -31,6 +31,7 @@ Packages/BuilderKit/           The engine. Zero external dependencies, on purpos
 mobile/                        Expo / React Native, shipped via EAS
 server/                        FastAPI on Railway
 drops/                         A reel you shared, read and turned into work (docs/drops.md)
+ad/                            Builda's own 74 s ad, drawn from code in the app's tokens (ad/README.md)
 ```
 
 `make gen && git diff --exit-code` is the first CI gate. If it fails, someone hand-edited a
@@ -580,6 +581,7 @@ python -m capture release draft|check [--dry-run] [--no-model]  a release draft 
 python -m capture release changelog [PATH] [--dry-run]  the published releases into the checkout's CHANGELOG.md, uncommitted
 node trailer/bin/render.js sheet --facts F --cut C --format square --every 0.5 --out S.png  a contact sheet of a cut, fast
 node trailer/test/smoke.js         every scene at a quarter size, as CI renders it
+cd ad && npm run build             Builda's own ad: 60 fps, motion blurred, scored (numpy, scipy), about 18 min on 4 cores
 ```
 
 Design notes worth reading before touching the corresponding code: `docs/session-boundaries.md`
@@ -606,7 +608,7 @@ and what was measured).
 | `pytest` (drops) | 32 | that a move is inert until a person taps it (no route, parameter or setting queues one, and `:start` moves a row only out of `offered`, or `failed` by the same tap); that the same reel twice is one card and the second share does not re plan the first; that a second resolution replaces the offered moves and leaves a declined or running one exactly where it was; that the resolved CAPTION is never stored (the wire carries its length) and `shared_text` is NULL once used; that one person's board is theirs, through a second real account; and that every CHECK list in `0028_drops.py` is the spec's enum, read with `ast` because a regex that stopped at the end of a line passed on half of `DROP_REFUSAL` |
 | `unittest` (drops/) | 48 | that the one line a finished move sends back carries no home path and no stderr; the clustering over the real corpus: that the pasta posts land together, that no cluster is named a word true of every drop, that the dog post joins nothing, and that the similarity floor sits inside a plateau at least five steps wide rather than being fitted to noise |
 | `make capture-test` | 452 | boundary parity of the cloud uploader (v3 pooling), contract conformance (nested walk), refresh-on-401 rotation, capture-key auth, and that every other harness discovers, dedupes and uploads; every tool call bucketed; burn and title ids on the wire; the live watcher sends only complete lines, resumes on a 409 and heartbeats, backs off to 300 s and remembers a tail too big to post; `report --quotes`; a worktree's commits counted over every local branch; a resumed sitting's payload counting each event and message once; the notes worker (a first cut, the owner's cut kept, a failed render putting it back, every claimed note finished), the trailer in the kit's publish (a draft, a stale render or a leaking word stays on the Mac), the release drafter's triggers and words, and the changelog writer |
-| `node --test` (trailer/) | 9 + smoke | the trailer's timeline, layout and scenes as pure functions, and `test/smoke.js`: every scene rendered at a quarter size, as CI does |
+| `node --test` (trailer/) | 10 + smoke | the trailer's timeline, layout and scenes as pure functions, and `test/smoke.js`: every scene rendered at a quarter size, as CI does |
 | CI `reference` job | — | the boundary fixtures are what `scripts/measure_boundaries.py` produces |
 
 CI runs on `main`, on `claude/**` branches and on demand. The macOS job is the only Swift

@@ -3,7 +3,7 @@
 // with the app's own design system (design/tokens.json, mobile/src): dark ground, full-bleed
 // hue bands that print in 3 pt dither cells, 16x16 pixel creatures, the session strip.
 // All copy and numbers are the app's own sample data (see SPEC.md, "computed" strings).
-const { E, clamp, lerp, seg, hash } = require('./lib/ease');
+const { E, clamp, lerp, seg, hash, spring } = require('./lib/ease');
 const { GlobalFonts, Path2D, loadImage } = require('@napi-rs/canvas');
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +11,8 @@ GlobalFonts.registerFromPath(path.join(__dirname, 'fonts', 'inter.ttf'), 'InterT
 GlobalFonts.registerFromPath(path.join(__dirname, 'fonts', 'mono.ttf'), 'JBM');
 
 const W = 1080, H = 1920, S = W / 393, P = v => v * S;
-const FRAMES = 3600;
+const D = 860;   // the trailer chapter (direct, shapes, release, star), cut in after the card
+const FRAMES = 3600 + D;
 // Builda's colours, all from design/tokens.json (the one place they live), dark scheme.
 const TOK = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'design', 'tokens.json')));
 const dark = (x) => x.dark;
@@ -819,16 +820,319 @@ function sceneMoney(ctx, f) {
   txt(ctx, 'tokens, 99% cache reads', pad, y + P(66), { size: P(17), w: 600, col: T.text });
 }
 
+// ------------------------------------------------------------------ the trailer chapter
+// A project's own trailer, cut on the Mac from its demo, changed by a note typed on the phone,
+// rendered in every shape a feed takes, and the release it rides out in. The trailer inside these
+// scenes is laid out the way trailer/ lays one out (its band carrying the name, the app in its
+// device, side by side when the frame is wider than 0.95 of its height, stacked when taller), and
+// the pour between two versions is the phone's own fluid: `wipePhases` and `wipeCell` from
+// mobile/src/motion/fluid.ts, the same phases InkWipe and the renderer read.
+const { wipePhases, wipeCell } = require(path.join(__dirname, '..', 'mobile', 'src', 'motion', 'fluid.ts'));
+const V1 = { hue: 'tide', secs: 20, v: 1 }, V2 = { hue: 'ember', secs: 15, v: 2 };
+const PINK = HUE.tide;   // the sample project's own hue: the note's rule and the star are in it
+let SESS_CV = null;
+function sessionPage(sf) {
+  if (!SESS_CV) SESS_CV = createCanvas(W, H);
+  const c = SESS_CV.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); sceneSession(c, sf); return SESS_CV;
+}
+// A hue block printing in cell by cell, its dithered fringe on the edge that faces the device:
+// the bottom when stacked (s 0), the right when side by side (s 1).
+function inkRect(ctx, x, y, w, h, hue, u, s, seed) {
+  const [ink, partner] = HUE[hue], c = 8, cols = Math.ceil(w / c), rows = Math.ceil(h / c), fr = 5, side = s > 0.5;
+  if (u <= 0) return;
+  ctx.fillStyle = ink;
+  if (u >= 1) ctx.fillRect(x, y, cols * c, rows * c);
+  else for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const th = hash(i * 12.9898 + j * 78.233 + seed) * 0.72 + (side ? i / cols : j / rows) * 0.28;
+    if (th < u * 1.02) ctx.fillRect(x + i * c, y + j * c, c, c);
+  }
+  for (let k = 0; k < fr; k++) {
+    const dens = 1 - (k + 0.5) / fr, n = side ? rows : cols;
+    for (let m = 0; m < n; m++) {
+      const i = side ? cols + k : m, j = side ? m : rows + k, b = BAYER(i, j);
+      if (b > dens || hash(i * 3.1 + j * 7.7 + seed) * 0.72 + 0.28 > u * 1.02) continue;
+      ctx.fillStyle = b > dens * 0.55 ? partner : ink; ctx.fillRect(x + i * c, y + j * c, c, c);
+    }
+  }
+}
+function film(ctx, x, y, w, h, ft, V) {
+  ft = Math.max(0, ft);
+  const k = Math.min(w, h) / 393, s = E.inOutCubic(clamp((w / h - 0.86) / 0.16));
+  ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 14); ctx.clip();
+  ctx.fillStyle = T.bg; ctx.fillRect(x, y, w, h);
+  const bw = lerp(w, w * 0.54, s), bh = lerp(h * 0.42, h, s), pad = 22 * k;
+  inkRect(ctx, x, y, bw, bh, V.hue, E.outCubic(clamp(ft / 26)), s, 5 + V.v);
+  const a = E.outCubic(seg(ft, 12, 32)), ty = lerp(y + bh - 34 * k, y + h / 2 + 10 * k, s);
+  txt(ctx, 'tramline', x + pad, ty + (1 - a) * 12 * k, { size: 44 * k, w: 800, col: T.ink, track: -1.6 * k, a });
+  txt(ctx, 'live arrivals, every stop', x + pad, ty + 26 * k, { size: 14 * k, w: 600, col: T.ink, a: a * 0.8 });
+  creature(ctx, animal('whale', ft), x + bw - pad - 54 * k, y + pad, 54 * k, T.ink, clamp((ft - 6) / 24), 9 + V.v);
+  // the app in its device, rising into place
+  const dh = lerp(h * 0.5, h * 0.84, s), dw = dh * 0.5, dr = dw * 0.17;
+  const dx = lerp(x + w / 2 - dw / 2, x + w * 0.77 - dw / 2, s), dy = lerp(y + h * 0.47, y + h / 2 - dh / 2, s) + (1 - E.swift(seg(ft, 8, 46))) * 120 * k;
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 26 * k; ctx.shadowOffsetY = 10 * k;
+  ctx.fillStyle = WORLD.bezel; ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, dr); ctx.fill(); ctx.restore();
+  const ins = dw * 0.045, sx = dx + ins, sy = dy + ins, sw = dw - 2 * ins, sh = dh - 2 * ins;
+  ctx.save(); ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, dr - ins); ctx.clip();
+  ctx.fillStyle = T.bg; ctx.fillRect(sx, sy, sw, sh);
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(sessionPage(Math.min(150, 24 + ft)), sx, sy, sw, sw * H / W);
+  ctx.fillStyle = '#000'; ctx.beginPath(); ctx.roundRect(dx + dw / 2 - dw * 0.14, sy + dw * 0.04, dw * 0.28, dw * 0.08, dw * 0.04); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = WORLD.rim; ctx.lineWidth = Math.max(1, 1.2 * k); ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, dr); ctx.stroke();
+  ctx.restore();
+}
+// Two versions of a film and the ink between them: every cell is the old version, ink, or the new.
+let POUR = null, PA = null, PB = null;
+const POUR_FRAMES = 48;
+function pour(ctx, x, y, w, h, p, drawA, drawB, hue) {
+  const c = 9, cols = Math.ceil(w / c), rows = Math.ceil(h / c);
+  if (!POUR) POUR = wipePhases({ cols, rows, dir: [0.2, -0.98], frames: POUR_FRAMES, seed: 29 });
+  if (!PA) { PA = createCanvas(Math.ceil(w), Math.ceil(h)); PB = createCanvas(Math.ceil(w), Math.ceil(h)); }
+  const a = PA.getContext('2d'), b = PB.getContext('2d');
+  for (const [cv, draw] of [[a, drawA], [b, drawB]]) { cv.setTransform(1, 0, 0, 1, 0, 0); cv.clearRect(0, 0, PA.width, PA.height); draw(cv, 0, 0, w, h); }
+  const kf = clamp(p) * POUR_FRAMES, k0 = Math.floor(kf), fr = kf - k0, P0 = POUR.phaseAt(k0), P1 = POUR.phaseAt(k0 + 1);
+  const rev = [], edge = [], deep = [];
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const cc = wipeCell(lerp(POUR.read(P0, i, j), POUR.read(P1, i, j), fr), p), th = BAYER(i, j);
+    if (cc.revealed > th) rev.push(i, j); else if (cc.ink > th) (cc.depth > 0.55 + th * 0.4 ? deep : edge).push(i, j);
+  }
+  ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 14); ctx.clip();
+  ctx.drawImage(PA, x, y);
+  if (rev.length) { ctx.save(); ctx.beginPath(); for (let q = 0; q < rev.length; q += 2) ctx.rect(x + rev[q] * c, y + rev[q + 1] * c, c, c); ctx.clip(); ctx.drawImage(PB, x, y); ctx.restore(); }
+  const [ink, partner] = HUE[hue];
+  ctx.fillStyle = ink; for (let q = 0; q < edge.length; q += 2) ctx.fillRect(x + edge[q] * c, y + edge[q + 1] * c, c, c);
+  ctx.fillStyle = partner; for (let q = 0; q < deep.length; q += 2) ctx.fillRect(x + deep[q] * c, y + deep[q + 1] * c, c, c);
+  ctx.restore();
+}
+
+// 11. direct it: a note typed on the phone, the Mac cuts it, the new version pours in
+const NOTE = 'make it shorter and orange';
+const DIR = { type: 22, send: 90, cut: 122, pour: 170, done: 206 };
+const FILM = (() => { const x = P(20), w = W - 2 * P(20); return [x, 262, w, Math.round(w * 9 / 16)]; })();
+function sceneDirect(ctx, f) {
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  const pad = P(20), [fx, fy, fw, fh] = FILM;
+  txt(ctx, 'tramline (sample)', pad, 150, { size: P(13), w: 500, col: T.dim, mono: true });
+  txt(ctx, 'Ship kit', pad, 214, { size: P(24), w: 800, col: T.text, track: -1 });
+  let tx = W - pad;
+  ['Recording', 'Trailer'].forEach((l, i) => {
+    ctx.font = `600 ${P(14)}px InterT`; const tw = ctx.measureText(l).width; tx -= tw;
+    txt(ctx, l, tx, 212, { size: P(14), w: 600, col: i ? T.text : T.dim });
+    if (i) { ctx.fillStyle = PINK[0]; ctx.fillRect(tx, 212 + P(8), tw, P(2)); }
+    tx -= P(18);
+  });
+  // the film: version 1 playing, then version 2 poured in over it
+  const v1 = (c, x, y, w, h) => film(c, x, y, w, h, f + 250, V1), v2 = (c, x, y, w, h) => film(c, x, y, w, h, f - 190, V2);
+  const pu = seg(f, DIR.pour, DIR.pour + POUR_FRAMES);
+  if (f < DIR.pour) v1(ctx, fx, fy, fw, fh); else if (pu < 1) pour(ctx, fx, fy, fw, fh, pu, v1, v2, V2.hue); else v2(ctx, fx, fy, fw, fh);
+  const later = f >= DIR.pour + 20, V = later ? V2 : V1, ft = later ? Math.max(0, f - 190) : f + 250, played = ((ft / 60) % V.secs) / V.secs;
+  const py = fy + fh + P(10);
+  ctx.fillStyle = T.border; ctx.fillRect(fx, py, fw, P(1.5)); ctx.fillStyle = T.text; ctx.fillRect(fx, py, fw * played, P(1.5));
+  txt(ctx, `0:${String(Math.floor(played * V.secs)).padStart(2, '0')} / 0:${V.secs}`, fx, py + P(22), { size: P(12), w: 500, col: T.dim, mono: true });
+  txt(ctx, `version ${V.v}`, fx + fw, py + P(22), { size: P(12), w: 500, col: T.dim, mono: true, align: 'right' });
+  // the conversation
+  const y0 = py + P(74);
+  txt(ctx, 'Direct it', pad, y0, { size: P(22), w: 800, col: T.text, track: -0.8 });
+  if (f >= DIR.send) {
+    const a = E.swift(seg(f, DIR.send, DIR.send + 18)), ny = y0 + P(40) + (1 - a) * P(12);
+    txt(ctx, NOTE, pad, ny, { size: P(16), w: 700, col: T.text, a });
+    const ay = ny + P(14), lx = pad + P(14), done = f >= DIR.done;
+    const rh = f < DIR.cut ? P(24) : !done ? lerp(P(24), P(44), E.swift(seg(f, DIR.cut, DIR.cut + 14))) : lerp(P(44), P(70), E.swift(seg(f, DIR.done, DIR.done + 16)));
+    ctx.globalAlpha = a; ctx.fillStyle = done ? PINK[0] : T.raised; ctx.fillRect(pad, ay, P(3), rh); ctx.globalAlpha = 1;
+    if (f < DIR.cut) {
+      // waiting: three cells in the project's hue rising in turn
+      for (let i = 0; i < 3; i++) { ctx.fillStyle = PINK[0]; ctx.globalAlpha = a; ctx.fillRect(lx + i * P(8), ay + P(12) - P(4) * Math.max(0, Math.sin(f * 0.2 - i * 0.9)), P(5), P(5)); }
+      ctx.globalAlpha = 1;
+      const w1 = txt(ctx, 'Waiting for your Mac', lx + P(32), ay + P(17), { size: P(13), w: 500, col: T.dim, a });
+      txt(ctx, 'take back', lx + P(32) + w1 + P(10), ay + P(17), { size: P(13), w: 600, col: T.dim, a });
+    } else if (!done) {
+      // cutting: a field of cells stirred by a swirl that crosses it like a render's playhead
+      const u = E.outCubic(seg(f, DIR.cut, DIR.cut + 10)), head = ((f - DIR.cut) * 0.34) % 26 - 3;
+      for (let j = 0; j < 3; j++) for (let i = 0; i < 20; i++) {
+        const glow = Math.exp(-((i - head) ** 2) / 7) * (0.7 + 0.3 * Math.sin(f * 0.3 + j)), base = 0.18 + 0.2 * hash(i * 7.1 + j * 3.3 + Math.floor(f / 6));
+        ctx.globalAlpha = u * Math.min(1, base + glow); ctx.fillStyle = hash(i * 1.7 + j * 9.2) > 0.5 ? PINK[0] : PINK[1];
+        ctx.fillRect(lx + i * P(5), ay + P(2) + j * P(5), P(4), P(4));
+      }
+      ctx.globalAlpha = 1;
+      txt(ctx, 'Your Mac is cutting it', lx, ay + P(36), { size: P(13), w: 500, col: T.dim, a: u });
+    } else {
+      words(ctx, '20 s became 15 s', lx, ay + P(16), f, DIR.done, { size: P(13), w: 500, col: T.text });
+      words(ctx, 'the colour is ember now', lx, ay + P(38), f, DIR.done + 7, { size: P(13), w: 500, col: T.text });
+      txt(ctx, 'version 2', lx, ay + P(60), { size: P(12), w: 500, col: T.dim, mono: true, a: E.outCubic(seg(f, DIR.done + 16, DIR.done + 30)) });
+    }
+  }
+  // the field, typed into, and Send
+  const yF = 1360, hF = P(44), bw = P(74), wF = W - 2 * pad - bw - P(10);
+  const typed = f < DIR.send ? NOTE.slice(0, Math.floor(clamp((f - DIR.type) / (1.6 * NOTE.length)) * NOTE.length)) : '';
+  ctx.fillStyle = T.card; ctx.beginPath(); ctx.roundRect(pad, yF, wF, hF, P(10)); ctx.fill();
+  ctx.strokeStyle = typed ? T.dim : T.border; ctx.lineWidth = 2; ctx.stroke();
+  const tw = typed ? txt(ctx, typed, pad + P(14), yF + P(28), { size: P(15), w: 500, col: T.text }) : txt(ctx, 'What should change?', pad + P(14), yF + P(28), { size: P(15), w: 500, col: T.faint });
+  if (f > DIR.type - 20 && f < DIR.send && (typed.length < NOTE.length || Math.floor(f / 15) % 2 === 0)) { ctx.fillStyle = T.amber; ctx.fillRect(pad + P(14) + (typed ? tw : 0) + 3, yF + P(13), P(1.5), P(20)); }
+  const bx = W - pad - bw, press = 1 - 0.07 * Math.sin(Math.PI * seg(f, DIR.send - 5, DIR.send + 7)), ok = typed.length > 0;
+  ctx.save(); ctx.translate(bx + bw / 2, yF + hF / 2); ctx.scale(press, press); ctx.translate(-(bx + bw / 2), -(yF + hF / 2));
+  ctx.fillStyle = ok ? T.raised : T.bg; ctx.beginPath(); ctx.roundRect(bx, yF, bw, hF, P(10)); ctx.fill(); ctx.strokeStyle = ok ? T.dim : T.border; ctx.lineWidth = 2; ctx.stroke();
+  const sending = f >= DIR.send && f < DIR.send + 16;
+  txt(ctx, sending ? 'Sending' : 'Send', bx + bw / 2, yF + P(28), { size: P(14), w: 600, col: ok || sending ? T.text : T.faint, align: 'center' });
+  ctx.restore();
+  if (f >= DIR.send - 2 && f < DIR.send + 26) { const u = seg(f, DIR.send - 2, DIR.send + 26); ctx.fillStyle = `rgba(245,241,234,${0.22 * (1 - u)})`; ctx.beginPath(); ctx.arc(bx + bw / 2, yF + hF / 2, P(12) + P(46) * E.outCubic(u), 0, Math.PI * 2); ctx.fill(); }
+  const st = ['make it shorter', 'open on the app', 'hard cuts', 'no music'].join(' · ');
+  txt(ctx, st, pad, yF + hF + P(28), { size: P(13), w: 500, col: T.dim });
+}
+
+// 12. every shape: the same cut, laid out again for each feed it goes to
+const SHAPES = [
+  { label: '16:9', r: 16 / 9, for: 'X, YouTube, Bluesky, a README', at: 12, lit: ['X', 'Bluesky'] },
+  { label: '9:16', r: 9 / 16, for: 'Reels, TikTok, YouTube Shorts, Stories', at: 62, lit: ['TikTok'] },
+  { label: '4:5', r: 4 / 5, for: 'Instagram and LinkedIn feed, Threads', at: 110, lit: ['Instagram', 'Reddit', 'Facebook', 'LinkedIn', 'Threads'] },
+  { label: '1:1', r: 1, for: 'anywhere a square crops least', at: 158, lit: ['GitHub'] },
+];
+const CHIPS = [['X', 'Bluesky', 'TikTok', 'Instagram', 'Reddit'], ['Facebook', 'LinkedIn', 'Threads', 'GitHub']];
+function sceneShapes(ctx, f) {
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  const pad = P(20), BOX = [W - 2 * pad, 880], CY = 700;
+  const fit = r => { let w = BOX[0], h = w / r; if (h > BOX[1]) { h = BOX[1]; w = h * r; } return [W / 2 - w / 2, CY - h / 2, w, h]; };
+  let rc = FILM.slice();
+  for (const s of SHAPES) { const u = spring(f - s.at, { freq: 1.45, zeta: 0.66 }), tg = fit(s.r); rc = rc.map((v, i) => lerp(v, tg[i], u)); }
+  const [x, y, w, h] = rc;
+  film(ctx, x, y, w, h, f + AT.shapes - AT.direct - 190, V2);
+  // crop marks, the editor's corners
+  const m = P(7), l = P(12), a0 = E.outCubic(seg(f, 10, 30));
+  ctx.strokeStyle = T.faint; ctx.lineWidth = 3; ctx.globalAlpha = a0; ctx.beginPath();
+  for (const [cx, cy, sx, sy] of [[x - m, y - m, 1, 1], [x + w + m, y - m, -1, 1], [x - m, y + h + m, 1, -1], [x + w + m, y + h + m, -1, -1]]) { ctx.moveTo(cx, cy + sy * l); ctx.lineTo(cx, cy); ctx.lineTo(cx + sx * l, cy); }
+  ctx.stroke(); ctx.globalAlpha = 1;
+  // the shape's name and where it goes
+  const cur = SHAPES.reduce((acc, s, i) => (f >= s.at - 2 ? i : acc), 0), S0 = SHAPES[cur], nx = SHAPES[cur + 1];
+  const fade = 1 - (nx ? E.inCubic(seg(f, nx.at - 12, nx.at - 2)) : 0), ly = CY + BOX[1] / 2 + P(50);
+  words(ctx, S0.label, W / 2, ly, f, S0.at, { size: P(40), w: 800, col: T.text, track: -1.5, align: 'center', a: fade });
+  words(ctx, S0.for, W / 2, ly + P(28), f, S0.at + 6, { size: P(14), w: 500, col: T.dim, align: 'center', a: fade });
+  // the platforms, lit by the shape each one's post shows best (spec/shipkit.v1.json)
+  const ch = P(26), gap = P(8), [ink] = HUE[V2.hue];
+  CHIPS.forEach((row, ri) => {
+    ctx.font = `600 ${P(13)}px InterT`;
+    const ws = row.map(n => ctx.measureText(n).width + P(24)), tot = ws.reduce((p, q) => p + q, 0) + gap * (row.length - 1);
+    let cx = W / 2 - tot / 2; const cy = ly + P(62) + ri * (ch + P(10));
+    row.forEach((name, i) => {
+      const s = SHAPES.find(q => q.lit.includes(name)), on = f >= s.at + 10, now = on && s === S0, n = ri * 5 + i;
+      const a = E.outCubic(seg(f, 6 + n * 2, 22 + n * 2)), pop = now ? 1 + 0.14 * Math.sin(Math.PI * seg(f, s.at + 10, s.at + 24)) : 1;
+      ctx.save(); ctx.translate(cx + ws[i] / 2, cy + ch / 2); ctx.scale(pop, pop); ctx.translate(-(cx + ws[i] / 2), -(cy + ch / 2)); ctx.globalAlpha = a;
+      ctx.beginPath(); ctx.roundRect(cx, cy, ws[i], ch, ch / 2);
+      if (now) { ctx.fillStyle = ink; ctx.fill(); } else { ctx.strokeStyle = on ? ink : T.border; ctx.lineWidth = 2; ctx.stroke(); }
+      txt(ctx, name, cx + P(12), cy + ch * 0.68, { size: P(13), w: 600, col: now ? T.ink : on ? T.text : T.dim, a });
+      ctx.restore(); cx += ws[i] + gap;
+    });
+  });
+}
+
+// 13. the release: the Mac drafted it after a run of commits, the owner publishes it
+const REL_TITLE = 'Live arrivals at every stop';
+const REL_POINTS = ['arrival times from the live feed', 'stops sorted by the walk to them', 'a 15 second trailer, version 2'];
+const PUB = 116;
+function sceneRelease(ctx, f) {
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  const pad = P(20);
+  band(ctx, 0, 0, W, 700, 'tide', clamp(f / 26), 36, 83);
+  txt(ctx, 'tramline · release draft', pad, 400, { size: P(15), w: 700, col: T.ink, a: E.outCubic(seg(f, 14, 28)) });
+  words(ctx, 'Live arrivals', pad, 400 + P(46), f, 18, { size: P(34), w: 800, col: T.ink, track: -2 });
+  words(ctx, 'at every stop', pad, 400 + P(84), f, 26, { size: P(34), w: 800, col: T.ink, track: -2 });
+  creature(ctx, animal('whale', f), W - pad - P(84), 400 - P(40), P(84), T.ink, clamp((f - 10) / 30), 9);
+  let y = 700 + P(36) + P(26);
+  txt(ctx, 'drafted by your Mac after 12 commits', pad, y, { size: P(13), w: 500, col: T.dim, mono: true, a: E.outCubic(seg(f, 30, 46)) });
+  // the rule builds cell by cell, then the highlights beside it
+  y += P(30);
+  const cells = Math.floor(22 * E.outCubic(seg(f, 36, 76)));
+  ctx.fillStyle = PINK[0]; for (let i = 0; i < cells; i++) ctx.fillRect(pad, y + i * P(4), P(3), P(3.4));
+  REL_POINTS.forEach((pt, i) => words(ctx, pt, pad + P(16), y + P(20) + i * P(30), f, 46 + i * 9, { size: P(17), w: 600, col: T.text }));
+  // Publish
+  const by = 1380, bh = P(52), press = 1 - 0.05 * Math.sin(Math.PI * seg(f, PUB - 5, PUB + 8)), out = f >= PUB + 4;
+  const ba = E.outCubic(seg(f, 60, 80));
+  ctx.save(); ctx.globalAlpha = ba; ctx.translate(W / 2, by + bh / 2); ctx.scale(press, press); ctx.translate(-W / 2, -(by + bh / 2));
+  ctx.fillStyle = out ? PINK[0] : T.text; ctx.beginPath(); ctx.roundRect(pad, by, W - 2 * pad, bh, P(12)); ctx.fill();
+  txt(ctx, out ? 'Published' : 'Publish', W / 2, by + bh / 2 + P(6), { size: P(17), w: 700, col: out ? T.ink : T.bg, align: 'center', a: ba });
+  ctx.restore();
+  if (f >= PUB - 2 && f < PUB + 30) { const u = seg(f, PUB - 2, PUB + 30); ctx.fillStyle = `rgba(245,241,234,${0.2 * (1 - u)})`; ctx.beginPath(); ctx.arc(W / 2, by + bh / 2, P(16) + P(120) * E.outCubic(u), 0, Math.PI * 2); ctx.fill(); }
+  txt(ctx, 'out to everyone who starred it', W / 2, by + bh + P(30), { size: P(13), w: 500, col: T.dim, mono: true, align: 'center', a: E.outCubic(seg(f, PUB + 10, PUB + 26)) });
+  banner(ctx, E.back(seg(f, 0, 22)) * (1 - E.inCubic(seg(f, 56, 72))), 'A release draft is waiting', REL_TITLE);
+}
+
+// 14. a follower hears it, stars it, and the README says so
+const STAR = ['...X...', '..XXX..', 'XXXXXXX', '.XXXXX.', '..XXX..', '.XX.XX.', '.X...X.'];
+function pixelStar(ctx, x, y, cell, ink, fill) {
+  ctx.fillStyle = ink;
+  STAR.forEach((row, r) => [...row].forEach((ch, c) => {
+    if (ch !== 'X') return;
+    const edge = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].some(([rr, cc]) => !(STAR[rr] && STAR[rr][cc] === 'X'));
+    const u = edge ? 1 : clamp(fill * 1.6 - hash(r * 7 + c * 3) * 0.6);
+    if (u >= 0.5) ctx.fillRect(x + c * cell, y + r * cell, cell, cell);
+  }));
+}
+function badge(ctx, x, y, k, stars) {
+  // server/builder/badge.py, drawn at k times its 20 pt height
+  const cell = 2 * k, hgt = 20 * k, pad = 6 * k, ink = PINK[0], ground = T.bg;
+  ctx.font = `400 ${11 * k}px InterT`; const lw = pad + 7 * cell + 5 * k + ctx.measureText('builda').width + pad;
+  const right = `${stars} stars · released sep 28`, rw = pad + ctx.measureText(right).width + pad, fw = 4 * cell;
+  ctx.fillStyle = ground; ctx.fillRect(x, y, lw + fw, hgt);
+  pixelStar(ctx, x + pad, y + (hgt - 7 * cell) / 2, cell, ink, 1);
+  txt(ctx, 'builda', x + pad + 7 * cell + 5 * k, y + 14 * k, { size: 11 * k, w: 400, col: T.text });
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 10; r++) if ((c + 0.5) / 4 > BAYER(c, r)) { ctx.fillStyle = ink; ctx.fillRect(x + lw + c * cell, y + r * cell, cell, cell); }
+  ctx.fillStyle = ink; ctx.fillRect(x + lw + fw, y, rw, hgt);
+  txt(ctx, right, x + lw + fw + pad, y + 14 * k, { size: 11 * k, w: 400, col: ground });
+  return lw + fw + rw;
+}
+const TAP = 78;
+function sceneStar(ctx, f) {
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  const pad = P(20), [ink, partner] = PINK;
+  txt(ctx, 'Vedant released tramline', pad, 200, { size: P(14), w: 500, col: T.dim, a: E.outCubic(seg(f, 4, 18)) });
+  words(ctx, REL_TITLE, pad, 200 + P(40), f, 8, { size: P(26), w: 800, col: T.text, track: -1 });
+  // the star: an outline, tapped, filling in, a burst of its own pixels
+  const cell = P(3.6), sx = W - pad - 7 * cell, sy = 200 + P(8), on = f >= TAP, cxs = sx + 3.5 * cell, cys = sy + 3.5 * cell;
+  const press = 1 - 0.12 * Math.sin(Math.PI * seg(f, TAP - 5, TAP + 7));
+  ctx.save(); ctx.translate(cxs, cys); ctx.scale(press, press); ctx.translate(-cxs, -cys);
+  pixelStar(ctx, sx, sy, cell, on ? ink : T.dim, on ? E.outCubic(seg(f, TAP, TAP + 14)) : 0);
+  ctx.restore();
+  if (f >= TAP && f < TAP + 44) {
+    const u = (f - TAP) / 44;
+    for (let i = 0; i < 18; i++) {
+      const ang = (i / 18) * Math.PI * 2 + hash(i * 3.7) * 0.5, sp = P(34) + hash(i * 9.1) * P(40), tt = E.outCubic(u);
+      ctx.globalAlpha = 1 - u; ctx.fillStyle = i % 3 ? ink : partner;
+      ctx.fillRect(cxs + Math.cos(ang) * sp * tt, cys + Math.sin(ang) * sp * tt + P(18) * u * u, cell * 0.8, cell * 0.8);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the count rolls from 12 to 13
+  const my = 200 + P(72), roll = E.swift(seg(f, TAP + 4, TAP + 22));
+  const mw = txt(ctx, 'today · carries a trailer · ', pad, my, { size: P(13), w: 500, col: T.faint, mono: true, a: E.outCubic(seg(f, 14, 28)) });
+  ctx.save(); ctx.beginPath(); ctx.rect(pad + mw - 2, my - P(16), P(120), P(22)); ctx.clip();
+  txt(ctx, '12 stars', pad + mw, my - roll * P(18), { size: P(13), w: 500, col: T.faint, mono: true, a: (1 - roll) * E.outCubic(seg(f, 14, 28)) });
+  if (roll > 0) txt(ctx, '13 stars', pad + mw, my + (1 - roll) * P(18), { size: P(13), w: 600, col: T.text, mono: true, a: roll });
+  ctx.restore();
+  // the film, playing
+  const fw = W - 2 * pad, fh = Math.round(fw * 9 / 16), fy = 200 + P(96);
+  film(ctx, pad, fy, fw, fh, f + 70, V2);
+  // the README, its badge
+  const ry = lerp(H + 40, fy + fh + P(40), E.swift(seg(f, 118, 150))), rh = P(132);
+  if (f >= 116) {
+    ctx.fillStyle = T.card; ctx.beginPath(); ctx.roundRect(pad, ry, fw, rh, P(14)); ctx.fill();
+    txt(ctx, 'README.md', pad + P(16), ry + P(26), { size: P(12), w: 500, col: T.dim, mono: true });
+    ctx.fillStyle = T.border; ctx.fillRect(pad, ry + P(38), fw, 2);
+    txt(ctx, 'tramline', pad + P(16), ry + P(74), { size: P(24), w: 800, col: T.text, track: -1 });
+    badge(ctx, pad + P(16), ry + P(88), 3.1, f >= TAP ? 13 : 12);
+  }
+  banner(ctx, E.back(seg(f, 0, 22)) * (1 - E.inCubic(seg(f, 50, 66))), 'Vedant released tramline', REL_TITLE);
+}
+
 // ------------------------------------------------------------------ timeline
 const SHIFT = 360;
 const SC = [
   ['hello', 0, 260], ['picker', 250, 440], ['pair', 430, 620], ['term', 610, 860], ['fly', 810, 1260], ['lock', 1250, 1500], ['now', 1460, 1720],
-  ['phone', 1710, 2010], ['card', 2000, 2220], ['feed', 2210, 2400], ['board', 2390, 2570], ['graph', 2560, 2790], ['money', 2780, 2980], ['wrapped', 2970, 3320], ['end', 3310, FRAMES],
+  ['phone', 1710, 2010], ['card', 2000, 2220],
+  ['direct', 2210, 2510], ['shapes', 2500, 2720], ['release', 2710, 2890], ['star', 2880, 2210 + D + 10],
+  ['feed', 2210 + D, 2400 + D], ['board', 2390 + D, 2570 + D], ['graph', 2560 + D, 2790 + D], ['money', 2780 + D, 2980 + D], ['wrapped', 2970 + D, 3320 + D], ['end', 3310 + D, FRAMES],
 ];
+const AT = Object.fromEntries(SC.map(([n, a]) => [n, a]));
 function drawScene(ctx, name, f, n) {
   if (name === 'hello') sceneHello(ctx, f); else if (name === 'picker') scenePicker(ctx, f); else if (name === 'pair') scenePair(ctx, f); else if (name === 'term') sceneTerminal(ctx, f); else if (name === 'fly') sceneFly(ctx, f, n);
   else if (name === 'lock') sceneLock(ctx, f); else if (name === 'now') sceneNow(ctx, f + 34, 0); else if (name === 'session') sceneSession(ctx, f); else if (name === 'phone') scenePhone(ctx, f, n);
-  else if (name === 'card') sceneCard(ctx, f); else if (name === 'feed') sceneFeed(ctx, f); else if (name === 'money') sceneMoney(ctx, f); else if (name === 'board') sceneBoard(ctx, f); else if (name === 'graph') sceneGraph(ctx, f); else if (name === 'wrapped') sceneWrapped(ctx, f); else sceneEnd(ctx, f);
+  else if (name === 'card') sceneCard(ctx, f); else if (name === 'direct') sceneDirect(ctx, f); else if (name === 'shapes') sceneShapes(ctx, f); else if (name === 'release') sceneRelease(ctx, f); else if (name === 'star') sceneStar(ctx, f); else if (name === 'feed') sceneFeed(ctx, f); else if (name === 'money') sceneMoney(ctx, f); else if (name === 'board') sceneBoard(ctx, f); else if (name === 'graph') sceneGraph(ctx, f); else if (name === 'wrapped') sceneWrapped(ctx, f); else sceneEnd(ctx, f);
 }
 // transitions: the incoming scene dissolves in through 8x8 dither cells
 function render(ctx, t) {
@@ -856,6 +1160,11 @@ function render(ctx, t) {
       ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip(); ctx.globalAlpha = E.inOutCubic(clamp(u * 1.6)); ctx.drawImage(off, 0, 0); ctx.restore();
       return overlays(ctx, t);
     }
+    if (n0 === 'direct' && n1 === 'shapes') {
+      // the film is drawn in the same place by both: the director's page falls away around it
+      ctx.save(); ctx.globalAlpha = E.inOutCubic(u); ctx.drawImage(off, 0, 0); ctx.restore();
+      return overlays(ctx, t);
+    }
     ctx.save(); ctx.beginPath(); const c = P(3) * 4;
     for (let j = 0; j < H / c; j++) for (let i = 0; i < W / c; i++) if (BAYER(i, j) < u * 1.02) ctx.rect(i * c, j * c, c, c);
     ctx.clip(); ctx.drawImage(off, 0, 0); ctx.restore();
@@ -874,16 +1183,21 @@ function overlays(ctx, t0) {
   caption(ctx, t, 1180, 1350, ['Know when an agent', '{needs you.}']);
   caption(ctx, t, 1440, 1640, ['The story of', 'every {session.}']);
   caption(ctx, t, 1680, 1850, ['A card worth', '{sharing.}']);
-  caption(ctx, t, 1860, 2030, ['Post it.', 'Get {kudos.}']);
-  caption(ctx, t, 2040, 2200, ['Your faction,', 'ranked by {hours.}']);
-  caption(ctx, t, 2250, 2420, ['Streaks, records,', 'your {whole year.}']);
-  caption(ctx, t, 2440, 2610, ['What the tokens', '{would cost.}'], { y: 1830 });
+  // the trailer chapter, on its own clock
+  caption(ctx, t0, AT.direct + 30, AT.direct + 292, ['Ask for a change.', 'It {renders} again.'], { y: 1830 });
+  caption(ctx, t0, AT.shapes + 22, AT.shapes + 214, ['Cut for every {feed.}'], { y: 1830 });
+  caption(ctx, t0, AT.release + 78, AT.release + 176, ['Your Mac drafts it.', 'You {publish.}'], { y: 1830 });
+  caption(ctx, t0, AT.star + 22, AT.star + 214, ['Star a project.', 'Hear every {release.}'], { y: 1830 });
+  caption(ctx, t, 1860 + D, 2030 + D, ['Post it.', 'Get {kudos.}']);
+  caption(ctx, t, 2040 + D, 2200 + D, ['Your faction,', 'ranked by {hours.}']);
+  caption(ctx, t, 2250 + D, 2420 + D, ['Streaks, records,', 'your {whole year.}']);
+  caption(ctx, t, 2440 + D, 2610 + D, ['What the tokens', '{would cost.}'], { y: 1830 });
   // pushes
   banner(ctx, E.back(seg(t, 1120, 1146)) * (1 - E.inCubic(seg(t, 1250, 1270))), 'lantern needs you', 'Waiting on you for four minutes');
   banner(ctx, E.back(seg(t, 1356, 1380)) * (1 - E.inCubic(seg(t, 1440, 1460))), 'Session finished: 5h 17m in tramline', '+2,101 lines · 52 prompts');
 }
 function mbAt(t, n) { return (t > 820 && t < 1260) ? Math.max(n, 6) : n; }
 function cues() {
-  return { beats: { total: FRAMES / 60, scenes: SC.map(([n, a]) => [n, a / 60]), pushes: [(1120 + SHIFT) / 60, (1356 + SHIFT) / 60] } };
+  return { beats: { total: FRAMES / 60, scenes: SC.map(([n, a]) => [n, a / 60]), pushes: [(1120 + SHIFT) / 60, (1356 + SHIFT) / 60, (AT.release + 12) / 60, (AT.star + 12) / 60] } };
 }
-module.exports = { W, H, FRAMES, render, init, mbAt, cues, CUTS: [0, 1000, 1800, 2640, FRAMES] };
+module.exports = { W, H, FRAMES, render, init, mbAt, cues, CUTS: [0, 1060, 2040, 3060, FRAMES] };

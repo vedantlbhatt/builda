@@ -1,11 +1,11 @@
 {
   "name": "builda-ad",
   "private": true,
-  "description": "Builda's 60 s 9:16 ad, rendered entirely from code with the app's own design system.",
+  "description": "Builda's 74 s 9:16 ad, rendered entirely from code with the app's own design system.",
   "scripts": {
     "postinstall": "node tools/fonts.js",
     "build": "node run.js --crf 18 --grain 3",
-    "sheet": "node render.js sheet 0:3599:90 --cols 8 --scale 0.18 --name sheet"
+    "sheet": "node render.js sheet 0:4459:120 --cols 8 --scale 0.18 --name sheet"
   },
   "dependencies": {
     "@fontsource-variable/inter-tight": "^5.3.0",

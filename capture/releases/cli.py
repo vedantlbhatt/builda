@@ -4,6 +4,7 @@
         draft a release of this project now (trigger `asked`), print it and, unless a dry run,
         send it as the project's one draft, which the owner edits and publishes on the phone
     python -m capture release check [--dry-run] [--no-model]
+    python -m capture release changelog [PATH] [--dry-run]   the published releases, in CHANGELOG.md
         every project whose owner turned drafts on, once: a draft where a trigger fires. The demo
         worker (`python -m capture demo watch --server URL`) runs this at most every ten minutes.
 
@@ -42,6 +43,12 @@ def make_parser() -> argparse.ArgumentParser:
     c.add_argument("--no-model", action="store_true", help="the rules' words alone, no claude call")
     c.add_argument("--dry-run", action="store_true", help="say what would be drafted; send and record nothing")
     c.add_argument("--server", default=None)
+
+    g = sub.add_parser("changelog", help="write the published releases into the checkout's CHANGELOG.md")
+    g.add_argument("path", nargs="?", default=None, help="the project's checkout (default: the current directory)")
+    g.add_argument("--file", default="CHANGELOG.md", help="the changelog, relative to the checkout")
+    g.add_argument("--dry-run", action="store_true", help="print what would be added; write nothing")
+    g.add_argument("--server", default=None)
     return ap
 
 
@@ -87,6 +94,8 @@ def main(argv: list[str]) -> int:
 
     a = make_parser().parse_args(argv)
     api = draft.Api(server_of(a.server))
+    if a.verb == "changelog":
+        return cmd_changelog(a, api)
     if a.verb == "check":
         outs = draft.check(api, dry_run=a.dry_run, use_model=not a.no_model)
         for o in outs:
@@ -125,3 +134,38 @@ def main(argv: list[str]) -> int:
         return 4
     show(out)
     return 0 if out.get("status") in ("drafted", "dry_run") else 1
+
+
+def cmd_changelog(a, api) -> int:
+    """The published releases into the checkout's changelog, as an uncommitted change."""
+    from capture import client as cl
+    from capture.demo import project as pj
+
+    from . import changelog
+
+    try:
+        project = pj.from_checkout(a.path or ".")
+    except pj.ProjectError as e:
+        print(f"Refused: {e}", file=sys.stderr)
+        return 2
+    try:
+        got = api._call("GET", f"/v1/me/releases?status=published&project_key={project.key}").get("releases") or []
+    except cl.NotPaired as e:
+        print(str(e), file=sys.stderr)
+        return 3
+    except (cl.HTTPFailure, OSError) as e:
+        print(f"the server did not answer: {e}", file=sys.stderr)
+        return 4
+    path = project.checkout / a.file
+    before = path.read_text() if path.is_file() else None
+    after, n = changelog.merge(before, [r for r in got if isinstance(r, dict)])
+    if not n:
+        print(f"{path.name} already has every published release")
+        return 0
+    if a.dry_run:
+        print(after)
+        print(f"dry run: {n} {'release' if n == 1 else 'releases'} would be added to {path}")
+        return 0
+    path.write_text(after)
+    print(f"added {n} {'release' if n == 1 else 'releases'} to {path}; review it and commit it when it reads right")
+    return 0

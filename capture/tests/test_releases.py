@@ -662,3 +662,40 @@ class FeatureFinished(Temp):
         mig = (REPO / "server/alembic/versions/0038_release_triggers.py").read_text()
         self.assertIn("'tagged', 'merged'", re.sub(r"\s+", " ", mig))
 
+
+
+class Changelog(unittest.TestCase):
+    """The published releases in the checkout's CHANGELOG.md: newest first under its title, each
+    once, the owner's own words untouched, points as asterisks."""
+
+    def rel(self, n: int, day: str, **over) -> dict:
+        return {"id": f"{n:08d}-0000-4000-8000-000000000000", "status": "published", "title": f"Release {n}",
+                "notes": "", "highlights": [], "published_at": f"{day}T12:00:00+00:00", **over}  # fmt: skip
+
+    def test_a_new_file_gets_a_title_and_the_releases_newest_first(self):
+        from capture.releases import changelog
+
+        text, n = changelog.merge(None, [self.rel(1, "2026-09-01"), self.rel(2, "2026-09-20", notes="It leaves on time.", highlights=["Leave now times", " "])])
+        self.assertEqual(n, 2)
+        self.assertTrue(text.startswith("# Changelog\n\n<!-- builda release 00000002"))
+        self.assertIn("## Release 2 · 2026-09-20\n\nIt leaves on time.\n\n* Leave now times", text)
+        self.assertLess(text.index("Release 2"), text.index("Release 1"))
+        self.assertFalse(any(ln.startswith("- ") for ln in text.splitlines()), "points are asterisks")
+
+    def test_a_second_run_adds_only_what_is_new_and_keeps_the_owners_words(self):
+        from capture.releases import changelog
+
+        mine = "# Changelog\n\nHand written notes about 0.1.\n"
+        once, n1 = changelog.merge(mine, [self.rel(1, "2026-09-01")])
+        twice, n2 = changelog.merge(once, [self.rel(1, "2026-09-01"), self.rel(3, "2026-09-25")])
+        self.assertEqual((n1, n2), (1, 1))
+        self.assertEqual(changelog.merge(twice, [self.rel(1, "2026-09-01"), self.rel(3, "2026-09-25")])[1], 0)
+        self.assertTrue(twice.rstrip().endswith("Hand written notes about 0.1."))
+        self.assertLess(twice.index("Release 3"), twice.index("Release 1"))
+        self.assertEqual(twice.count("Release 1"), 1)
+
+    def test_a_draft_or_a_dismissed_one_is_never_written(self):
+        from capture.releases import changelog
+
+        _, n = changelog.merge(None, [self.rel(1, "2026-09-01", status="draft"), self.rel(2, "2026-09-02", status="dismissed")])
+        self.assertEqual(n, 0)

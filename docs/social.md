@@ -228,3 +228,12 @@ every other kit file stays its owner's alone. On the local stack the film stream
 
 The owner's own row offers "share it with the trailer": the kit's film and the release's words as
 X takes them, through the share sheet.
+
+## Releases in the repository: CHANGELOG.md
+
+`python -m capture release changelog [PATH] [--dry-run]` writes the project's published releases
+into its checkout's CHANGELOG.md (`capture/releases/changelog.py`): newest first under the file's
+title, each once (a comment carries its id, so a second run adds only what is new), the owner's own
+words untouched, points as asterisks. It runs no git: the change is the owner's to read and commit.
+MEASURED on the local stack (2026-09-28): a dry run against the RideGT checkout listed its three
+published releases, the newest first.

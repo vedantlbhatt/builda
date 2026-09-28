@@ -577,6 +577,7 @@ python -m capture demo trailer [PATH | --key KEY] [--draft]  cut the project's t
 python -m capture demo direct --key KEY "NOTE"   change the trailer by a note in your words; rules first, claude only when they understand nothing
 python -m capture demo watch --publish-requests  the one worker: trailer notes first, release drafts every 10 min, then the demo queue
 python -m capture release draft|check [--dry-run] [--no-model]  a release draft for the phone to publish (docs/social.md)
+python -m capture release changelog [PATH] [--dry-run]  the published releases into the checkout's CHANGELOG.md, uncommitted
 node trailer/bin/render.js sheet --facts F --cut C --format square --every 0.5 --out S.png  a contact sheet of a cut, fast
 node trailer/test/smoke.js         every scene at a quarter size, as CI renders it
 ```

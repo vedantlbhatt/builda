@@ -16,6 +16,7 @@ import {
   draftProblem,
   EVERY_COMMITS,
   followingWords,
+  releasePost,
   sayReleaseError,
   settingsLine,
   starsLine,
@@ -133,5 +134,20 @@ describe('the pixel star', () => {
     expect(edgeCell(0, 3)).toBe(true);
     expect(edgeCell(3, 3)).toBe(false);
     expect(edgeCell(0, 0)).toBe(false);
+  });
+});
+
+describe('a release, posted elsewhere', () => {
+  const r = { title: 'Buses you can catch', highlights: ['Leave now times on every trip', 'The stops you ride past, in order', 'A trailer cut from the demo'] };
+  test('the title, then the highlights that fit whole, each after the middle dot', () => {
+    expect(releasePost(r, 280)).toBe('Buses you can catch\n\n· Leave now times on every trip\n· The stops you ride past, in order\n· A trailer cut from the demo');
+    const tight = releasePost(r, 60);
+    expect(tight).toBe('Buses you can catch\n\n· Leave now times on every trip');
+    expect([...tight].length).toBeLessThanOrEqual(60);
+  });
+
+  test('reddit takes the title alone, and a title never runs past the limit', () => {
+    expect(releasePost(r, 300, true)).toBe('Buses you can catch');
+    expect(releasePost({ title: 'x'.repeat(90), highlights: [] }, 80)).toHaveLength(80);
   });
 });

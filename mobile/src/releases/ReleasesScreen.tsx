@@ -9,13 +9,15 @@
  */
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 
 import { api } from '../data/client';
 import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
 import { SPRING } from '../motion/springs';
+import { PLATFORM_LIMITS } from '../generated/shipkit';
 import { preferredHue } from '../projects/model';
+import { composeUrl, PLATFORM_NAMES } from '../shipkit/model';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
 import { useReduceMotion } from '../ui/motion';
 import {
@@ -27,6 +29,8 @@ import {
   HIGHLIGHT_MAX,
   HIGHLIGHTS_MAX,
   NOTES_MAX,
+  POST_TO,
+  releasePost,
   sayReleaseError,
   settingsLine,
   starsLine,
@@ -241,7 +245,32 @@ function Released({ release, ink, arriving }: { release: MyRelease; ink: string;
         <T role="mono" tone="faint">
           {meta}
         </T>
+        <PostLine release={release} />
       </View>
+    </View>
+  );
+}
+
+/** "post it on X · Bluesky · Threads · LinkedIn · Reddit": each opens that platform's compose page with the release in it. */
+function PostLine({ release }: { release: MyRelease }) {
+  return (
+    <View style={styles.postLine}>
+      <T role="meta" tone="faint">
+        post it on{' '}
+      </T>
+      {POST_TO.map((p, i) => {
+        const url = composeUrl(p, releasePost(release, PLATFORM_LIMITS[p], p === 'reddit'));
+        if (!url) return null;
+        return (
+          <Pressable key={p} accessibilityRole="link" accessibilityLabel={`Post it on ${PLATFORM_NAMES[p]}`} onPress={() => void Linking.openURL(url)} hitSlop={6}>
+            {({ pressed }) => (
+              <T role="meta" weight={600} tone={pressed ? 'text' : 'dim'}>
+                {`${i ? ' · ' : ''}${PLATFORM_NAMES[p]}`}
+              </T>
+            )}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -371,5 +400,6 @@ const styles = StyleSheet.create({
   ruleCell: { width: 3, flex: 1 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   stepper: { flexDirection: 'row', gap: 18 },
+  postLine: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 },
   step: { minWidth: 24, alignItems: 'center' },
 });

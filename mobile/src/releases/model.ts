@@ -262,3 +262,26 @@ export function draftLine(r: Pick<MyRelease, 'trigger' | 'commits' | 'has_traile
   const carries = carriesLine(r.trigger === 'commits' ? { ...r, commits: null } : r);
   return [triggerLine(r), carries].filter(Boolean).join(' · ');
 }
+
+// ------------------------------------------------------------------ posting it elsewhere
+
+/** The platforms a release is posted to straight from its row: the ones with a compose page. */
+export const POST_TO = ['x', 'bluesky', 'threads', 'linkedin', 'reddit'] as const;
+export type PostTo = (typeof POST_TO)[number];
+
+/**
+ * A release as a post for one platform, within its limit: the title, then as many highlights as fit
+ * whole (never one cut in half), each on its own line after the middle dot. Reddit takes a title
+ * only, so it is the title.
+ */
+export function releasePost(r: Pick<MyRelease, 'title' | 'highlights'>, limit: number, titleOnly = false): string {
+  const title = r.title.trim().slice(0, limit);
+  if (titleOnly) return title;
+  let out = title;
+  for (const h of r.highlights) {
+    const next = `${out}${out === title ? '\n' : ''}\n· ${h.trim()}`;
+    if ([...next].length > limit) break;
+    out = next;
+  }
+  return out;
+}

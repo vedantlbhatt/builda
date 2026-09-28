@@ -380,17 +380,24 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 describe('the wiring', () => {
-  test('nothing imports expo-video at the top of a file: the one door requires it behind the guard', () => {
+  test('nothing imports expo-video at the top of a file: the one door requires it behind the guard, and the web its own', () => {
     const offenders: string[] = [];
+    const doors = [join('src', 'demos', 'video.ts'), join('src', 'demos', 'video.web.ts')];
     for (const f of [...walk(join(MOBILE, 'src')), ...walk(join(MOBILE, 'app'))]) {
       const src = code(readFileSync(f, 'utf8'));
       if (/from\s+['"]expo-video['"]/.test(src)) offenders.push(`${relative(MOBILE, f)}: a static import`);
-      if (/require\(\s*['"]expo-video['"]\s*\)/.test(src) && !f.endsWith(join('src', 'demos', 'video.ts'))) offenders.push(`${relative(MOBILE, f)}: a require outside the door`);
+      if (/require\(\s*['"]expo-video['"]\s*\)/.test(src) && !doors.some((d) => f.endsWith(d))) offenders.push(`${relative(MOBILE, f)}: a require outside the door`);
     }
     expect(offenders).toEqual([]);
     const door = code(readFileSync(join(MOBILE, 'src/demos/video.ts'), 'utf8'));
     expect(door).toContain("requireOptionalNativeModule('ExpoVideo')");
     expect(door).toContain('onceGuarded');
+    // The web's door (the desktop shell) has no native module to ask about: the browser's own video
+    // element is always there. FOUND 2026-09-28: the native probe answers null on the web, so no
+    // demo video had ever played on the desktop.
+    const web = code(readFileSync(join(MOBILE, 'src/demos/video.web.ts'), 'utf8'));
+    expect(web).not.toContain('requireOptionalNativeModule');
+    expect(web).toContain("require('expo-video')");
   });
 
   test('expo-video is the SDK 53 line in package.json, and expo-av is not how a demo plays', () => {
@@ -536,10 +543,12 @@ describe('3. a count is said only from the whole list', () => {
     expect(after).toBe('Private project 2, its demo: a 28 second video and 6 stills. On top, the Projects tab. Opens the demo.');
   });
 
-  test('the tab reads the whole list of every project with prints, and the gallery counts only that', () => {
+  test('the tab shows prints but never a count, and the gallery counts only a whole list', () => {
+    // Since 2026-09-28 a row shows its prints on its stage and opens the project's page, where the
+    // gallery is; the tab opens no gallery, so it has no count to get wrong.
     const tab = code(readFileSync(join(MOBILE, 'src/projects/ProjectsScreen.tsx'), 'utf8'));
-    expect(tab).toContain('useDemoLists(listKeys)');
-    expect(tab).toMatch(/counted=\{whole !== null\}/);
+    expect(tab).toContain('useDemoPreviews(keys)');
+    expect(tab).not.toContain('<DemoGallery');
     expect(tab).not.toContain('useProjectDemo(');
     const g = code(readFileSync(join(MOBILE, 'src/demos/Gallery.tsx'), 'utf8'));
     expect(g).toMatch(/\{counted \? \(current\?\.count \?\? ''\) : ''\}/);

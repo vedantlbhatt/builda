@@ -112,7 +112,7 @@ export function onboardingPosition(step: OnboardingStep): { n: number; of: numbe
  * The dev tools: the root layout's `__DEV__` group, which exists in either state of the gate
  * (and in no release build).
  */
-export const DEV_ROUTES: ReadonlySet<string> = new Set(['dev-auth', 'dev-gallery', 'debug/live']);
+export const DEV_ROUTES: ReadonlySet<string> = new Set(['dev-auth', 'dev-gallery', 'dev-projects', 'debug/live']);
 
 /**
  * Where a link that arrives while onboarding is still open should go, or null to drop it.

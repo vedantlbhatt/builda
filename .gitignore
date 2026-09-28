@@ -58,3 +58,6 @@ shots/
 # The desktop shell: its web bundle is built from mobile/ (desktop/scripts/build-web.mjs).
 desktop/web/
 mobile/dist-desktop/
+
+# Local pictures and videos for the dev-projects route (app/dev-projects.tsx); never committed.
+mobile/public/dev-fixtures/

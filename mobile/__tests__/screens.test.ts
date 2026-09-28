@@ -65,7 +65,7 @@ describe('the list is the routes', () => {
 
   test('a dev route is left out only because a release build never renders it', () => {
     const dev = all.filter((f) => DEV_ONLY.test(f.src)).map((f) => f.name).sort();
-    expect(dev).toEqual(['app/debug/live.tsx', 'app/dev-auth.tsx', 'app/dev-gallery.tsx']);
+    expect(dev).toEqual(['app/debug/live.tsx', 'app/dev-auth.tsx', 'app/dev-gallery.tsx', 'app/dev-projects.tsx']);
   });
 });
 

@@ -721,23 +721,38 @@ describe('the wiring', () => {
   });
 });
 
-describe('the Projects tab leads with the projects', () => {
+describe('the Projects tab is a list of projects', () => {
   // The owner, 2026-09-14: "the projects page should show a list of projects", and "where do I
-  // see the screenshots? I don't see them": the doors, each with its prints, sat under eight
-  // screens of rivers, the race and the comparisons.
-  test('the doors come right after the hero, before every chart', () => {
-    const src = readFileSync(join(MOBILE, 'src/projects/ProjectsScreen.tsx'), 'utf8');
-    const at = (s: string) => src.indexOf(s, src.indexOf('export function ProjectsScreen'));
-    // The hero is the split of your hours now (`HoursSplit`), not a hue band.
-    const hero = at('<HoursSplit');
-    const doors = at('<ProjectDoorBand');
-    expect(hero).toBeGreaterThan(0);
-    expect(doors).toBeGreaterThan(hero);
-    for (const chart of ['<Rivers', '<RankRace', '<ComparisonBlock']) expect({ chart, after: at(chart) > doors }).toEqual({ chart, after: true });
-    // The first door is revealed first, at the page's first stage.
-    expect(src).toContain('stage >= 1 + i ?');
-    // The doors carry the numbers; a chapter after them carries none (no "01" read twice).
-    const chapters = src.slice(src.indexOf('<Rivers') - 2000);
-    expect(chapters.match(/<Band [^>]*index=/g) ?? []).toEqual([]);
+  // see the screenshots? I don't see them". Then, 2026-09-28: "Projects page sucks. It should be
+  // focused on projects ... 1 project per row with actual visuals ... I don't want to have to click
+  // anything to see it. It should just be a list of projects." The tab is the rows; the charts are
+  // a page of their own.
+  test('the tab is its rows, first, and nothing above them', () => {
+    const src = code(readFileSync(join(MOBILE, 'src/projects/ProjectsScreen.tsx'), 'utf8'));
+    expect(src).toContain('<ProjectRow');
+    // The first row is revealed at the page's first stage, each next one a stage after.
+    expect(src).toContain('stage >= i ?');
+    for (const chart of ['<HoursSplit', '<Rivers', '<RankRace', '<ComparisonBlock', '<ProjectDoorBand']) expect({ chart, on: src.includes(chart) }).toEqual({ chart, on: false });
+    // One door at the foot to the charts.
+    expect(src).toContain('href="/compare"');
+  });
+
+  test('the charts are the Compare page, whole, and its chapters carry no numbers', () => {
+    const src = code(readFileSync(join(MOBILE, 'src/projects/CompareScreen.tsx'), 'utf8'));
+    const at = (s: string) => src.indexOf(s);
+    for (const [a, b] of [['<HoursSplit', '<Rivers'], ['<Rivers', '<RankRace'], ['<RankRace', '<ComparisonBlock']] as const) expect({ a, b, ordered: at(a) > 0 && at(a) < at(b) }).toEqual({ a, b, ordered: true });
+    expect(src.match(/<Band [^>]*index=/g) ?? []).toEqual([]);
+    expect(readFileSync(join(MOBILE, 'app/compare.tsx'), 'utf8')).toContain("from '../src/projects/CompareScreen'");
+  });
+
+  test('a row plays its picture without a tap: a video loops by itself and the ink moves by itself', () => {
+    const stage = code(readFileSync(join(MOBILE, 'src/projects/Stage.tsx'), 'utf8'));
+    expect(stage).toContain('<LoopVideo');
+    expect(stage).toContain('<InkField');
+    expect(stage).toContain('<Print');
+    const row = code(readFileSync(join(MOBILE, 'src/projects/ProjectRow.tsx'), 'utf8'));
+    // A tap grows the stage into the page (the house navigation), never a chevron row.
+    expect(row).toContain('morphOpen(');
+    expect(row).not.toMatch(/chevron/i);
   });
 });

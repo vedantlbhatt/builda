@@ -156,6 +156,8 @@ export default function RootLayout() {
                 <Stack.Screen name="you/timelapse/[id]" options={{ title: 'Time lapse' }} />
                 {/* One project's page, from a door on the Projects tab (src/projects/). */}
                 <Stack.Screen name="project/[key]" options={{ title: '' }} />
+                {/* How the projects compare: the charts that were the Projects tab (src/projects/CompareScreen.tsx). */}
+                <Stack.Screen name="compare" options={{ title: '' }} />
                 {/* A project's ship kit and one Share (src/shipkit/, docs/ship-kit.md). */}
                 <Stack.Screen name="ship/[key]" options={{ title: 'Share what you built' }} />
                 {/* Settings wears the chapter pages' large title bar, set in the screen. */}
@@ -193,6 +195,7 @@ export default function RootLayout() {
                   options={{ title: 'Dev auth', headerShown: false, animation: 'none', gestureEnabled: false }}
                 />
                 <Stack.Screen name="dev-gallery" options={{ title: 'Kit gallery' }} />
+                <Stack.Screen name="dev-projects" options={{ title: 'Projects' }} />
                 {/* Drives the Live Activity, the island and the widget from fixtures. It was
                     unlisted, so it existed in release builds too, behind its own redirect. */}
                 <Stack.Screen name="debug/live" options={{ title: 'Live surfaces' }} />

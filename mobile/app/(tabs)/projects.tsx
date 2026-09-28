@@ -1,7 +1,7 @@
 /**
- * The Projects tab: where your hours go, project by project. The rivers of hours week by week,
- * the rank race, the comparisons, and each project as a door to its page. The screen and its
- * rules live in `src/projects/` (`ProjectsScreen.tsx`, `model.ts`).
+ * The Projects tab: a list of your projects, each with its picture playing and one line of words
+ * (its trailer, its demo, its screens or its ink). The charts are a page of their own, `compare`.
+ * The screen and its rules live in `src/projects/` (`ProjectsScreen.tsx`, `rows.ts`).
  */
 import { ProjectsScreen } from '../../src/projects/ProjectsScreen';
 

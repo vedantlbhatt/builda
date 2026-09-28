@@ -43,9 +43,13 @@ export interface LoopVideoProps {
   held: boolean;
   onOpen: () => void;
   onError?: () => void;
+  /** What VoiceOver says for it, when it is not the project page's demo (a Projects row's trailer). */
+  a11yLabel?: string;
+  /** What stands in the frame until the first frame draws, when there is no poster (a row's band). */
+  placeholder?: React.ReactNode;
 }
 
-export function LoopVideo({ entry, src, poster, width, height, held, onOpen, onError }: LoopVideoProps) {
+export function LoopVideo({ entry, src, poster, width, height, held, onOpen, onError, a11yLabel, placeholder }: LoopVideoProps) {
   const mod = expoVideo();
   const reduce = useReduceMotion();
   const focused = useScreenFocused();
@@ -82,14 +86,14 @@ export function LoopVideo({ entry, src, poster, width, height, held, onOpen, onE
   const posterPicture = poster ? (
     <Image source={{ uri: poster.uri, headers: poster.headers, cacheKey: `demo-${entry.id}-poster` }} style={{ width, height }} contentFit="cover" cachePolicy="memory-disk" transition={0} />
   ) : (
-    <View style={{ width, height }} />
+    <View style={{ width, height }}>{placeholder}</View>
   );
 
   return (
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`The demo video, ${entry.duration ?? 'its length unknown'}: ${entry.label}. Plays it with sound.`}
+      accessibilityLabel={a11yLabel ?? `The demo video, ${entry.duration ?? 'its length unknown'}: ${entry.label}. Plays it with sound.`}
     >
       <Animated.View ref={box} collapsable={false} style={{ width, height, overflow: 'hidden' }}>
         {canPlay && mod ? (

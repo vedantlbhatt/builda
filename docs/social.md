@@ -143,9 +143,10 @@ under its key; deleting the account cascades. The routes are in routes/releases.
 The demo worker (`python -m capture demo watch --server URL`) looks at most every ten minutes, and
 only at the projects whose owner turned `drafts_to_phone` on; `python -m capture release check` is
 the same look once, by hand, and `--dry-run` says what it would draft without sending or recording
-anything. For each project it counts the commits on every local branch of its checkout, merges left
-out, and drafts when the first of these fires. "The baseline" is the later of the last published
-release and the last draft this Mac made.
+anything. For each project it counts the commits in its checkout's own history (HEAD: a release
+says what shipped, and work parked on another branch did not), merges left out, and drafts when the
+first of these fires. "The baseline" is the later of the last published release and the last draft
+this Mac made.
 
 * `shipped`: `on_shipped` is on, and a build post (`python -m analysis shipped`) or a demo kit
   appeared after the baseline.

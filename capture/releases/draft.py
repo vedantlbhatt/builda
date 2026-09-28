@@ -7,9 +7,10 @@ A draft replaces the project's one live draft (`PUT /v1/projects/{key}/releases/
 published from here: the owner reads the draft on the phone, edits it, publishes or dismisses it.
 
 FACTS, for one project (`gather`):
-  the commits on every local branch (`GIT_LOG_REFS`, merges left out) since the last PUBLISHED
+  the commits in the checkout's own history (`HEAD`, merges left out) since the last PUBLISHED
     release (`GET /v1/me/releases?status=published`), counted with `git rev-list --count`, and the
-    newest `SUBJECTS_CAP` of their subjects as written;
+    newest `SUBJECTS_CAP` of their subjects as written. HEAD, not every local branch (attribution's
+    `GIT_LOG_REFS`): a release says what shipped, and work parked on a branch did not;
   the build post (`work/<key>/shipped.json`, from `python -m analysis shipped`): its `what` always,
     its `changes` only when the post was written after that release, since older ones were news then;
   the kit beside the demo (`<key>/kit/kit.json`), as an id and a time, for the `shipped` trigger;
@@ -68,7 +69,6 @@ import time
 from collections.abc import Callable
 
 from capture.demo import paths
-from capture.tuning import GIT_LOG_REFS
 
 HERE = pathlib.Path(__file__).resolve().parent
 SCHEMA_PATH = HERE / "draft_schema.json"
@@ -162,19 +162,19 @@ def _after(since: float | None) -> list[str]:
 
 
 def count_since(src: pathlib.Path, since: float | None) -> int | None:
-    """Commits on every local branch after `since`, merges left out; None when git cannot say."""
-    out = (_git(src, "rev-list", "--count", "--no-merges", *GIT_LOG_REFS, *_after(since)) or "").strip()
+    """Commits in HEAD's history after `since`, merges left out; None when git cannot say."""
+    out = (_git(src, "rev-list", "--count", "--no-merges", "HEAD", *_after(since)) or "").strip()
     return int(out) if out.isdigit() else None
 
 
 def newest(src: pathlib.Path) -> str | None:
-    out = (_git(src, "log", *GIT_LOG_REFS, "-n1", "--format=%H") or "").strip()
+    out = (_git(src, "log", "HEAD", "-n1", "--format=%H") or "").strip()
     return out or None
 
 
 def subjects_since(src: pathlib.Path, since: float | None, cap: int = SUBJECTS_CAP) -> list[str]:
     """The subjects of the newest `cap` commits after `since`, newest first, as written."""
-    out = _git(src, "log", *GIT_LOG_REFS, "--no-merges", f"-n{cap}", "--format=%s", *_after(since)) or ""
+    out = _git(src, "log", "HEAD", "--no-merges", f"-n{cap}", "--format=%s", *_after(since)) or ""
     return [s for s in out.splitlines() if s.strip()]
 
 

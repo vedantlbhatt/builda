@@ -178,8 +178,8 @@ class Triggers(unittest.TestCase):
 
 
 class Counting(Temp):
-    """The count runs over every local branch, merges left out, from the later of the last
-    published release and the last draft."""
+    """The count runs over the checkout's own history (HEAD), merges left out, from the later of
+    the last published release and the last draft; a branch that was never merged is not in it."""
 
     def setUp(self):
         super().setUp()
@@ -190,6 +190,9 @@ class Counting(Temp):
         self.repo.git("checkout", "-q", "main")
         self.repo.commit("feat: on main", T0 + 600)
         self.repo.git("merge", "-q", "--no-ff", "side", "-m", "Merge branch 'side'", when=T0 + 700)
+        self.repo.git("checkout", "-q", "-b", "parked")
+        self.repo.commit("feat: parked, never merged", T0 + 800)
+        self.repo.git("checkout", "-q", "main")
 
     def test_since_the_release_and_since_the_draft(self):
         # As the server writes it, between step 2 and step 3.
@@ -200,6 +203,7 @@ class Counting(Temp):
         self.assertEqual(f.commits, 4)
         self.assertEqual(f.new_commits, 4)
         self.assertEqual(f.subjects, ["feat: on main", "fix: on the side branch", "feat: step 4", "feat: step 3"])
+        self.assertNotIn("feat: parked, never merged", f.subjects, "a release says what shipped")
         self.assertEqual(f.commit, self.repo.git("rev-parse", "HEAD"))
         f = draft.gather(KEY, self.repo.path, published, {"drafted_at": T0 + 450})
         self.assertEqual((f.commits, f.new_commits), (4, 2))

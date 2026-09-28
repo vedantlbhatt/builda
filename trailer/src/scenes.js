@@ -448,12 +448,13 @@ const changelog = {
     const log = (env.facts.changelog ?? []).slice(0, CHANGELOG_MAX);
     if (!log.length) return;
     const dur = scene.t1 - scene.t0;
-    const size = (lay.side ? 30 : 26) * lay.pt;
-    const lineH = size * 1.24;
     const x = lay.side ? lay.W * 0.42 : lay.gutter * 1.2;
     const markW = Math.round(lay.cell * 1.25);
     const textX = x + markW + 16 * lay.pt;
     const maxW = (lay.side ? lay.W * 0.52 : lay.W - lay.gutter * 1.2) - (textX - x) - lay.gutter;
+    // One size for the whole list, stepped down until every commit is whole in two lines.
+    const size = changelogSize(ctx, log, maxW, (lay.side ? 30 : 26) * lay.pt);
+    const lineH = size * 1.24;
     // The heading: the count, set still (one number moves per screen, and on this one the list is
     // what moves), its unit beside it or under it.
     const head = env.facts.numbers?.commits_since ?? env.facts.numbers?.commits_latest;
@@ -489,6 +490,23 @@ const changelog = {
     });
   },
 };
+
+/**
+ * The size a changelog is set at: the asked, stepped down (to 0.72 of it) until every commit wraps
+ * to two lines, so a subject is cut short only when even that cannot hold it; such a subject is
+ * left out of the measure, so it never costs the others their size. FOUND IN THE REEL
+ * REVIEW (2026-09-28): RideGT's cut showed "Record committed trips on-device for RideGT..." at the
+ * asked size, where 0.9 of it held the whole subject.
+ */
+function changelogSize(ctx, log, maxW, asked) {
+  const whole = (c, z) => T.wrap(ctx, c, maxW, { size: z, weight: 700 }).length <= 2;
+  // A subject too long even at the floor is cut whatever the size, so it does not shrink the rest.
+  const floor = asked * 0.72;
+  const can = log.filter((c) => whole(c, floor));
+  let s = asked;
+  while (!can.every((c) => whole(c, s)) && s * 0.94 >= floor) s *= 0.94;
+  return s;
+}
 
 // ------------------------------------------------------------------------------------ stack
 
@@ -603,4 +621,4 @@ const end = {
   },
 };
 
-module.exports = { open, screens, figure, days, changelog, stack, end, FULL, formatLike, knockout };
+module.exports = { open, screens, figure, days, changelog, stack, end, FULL, formatLike, knockout, changelogSize };

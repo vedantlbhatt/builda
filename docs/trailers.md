@@ -43,6 +43,10 @@ Every frame is a pure function of its time, drawn with `@napi-rs/canvas`:
 - **The words.** Labels are the demo's own (the words its privacy check read). A label is never
   cut: it steps its size down to 0.64 of the asked before any word could go, and none does.
   FOUND IN THE DIRECTOR RUN: the square format cut "pick a place on campus" to "pick a place on".
+  The changelog keeps the same rule for the whole list at once: one size, stepped down to 0.72 of
+  the asked until every commit is whole in two lines, and only a subject that cannot fit even then
+  is cut short (and left out of the measure, so it does not shrink the others). FOUND COMPARING IT WITH RIDEGT'S REEL: RideGT's vertical cut showed "Record committed
+  trips on-device for RideGT..." where a slightly smaller size held the whole subject.
 - **Sound.** A score synthesised from the cut (mood quiet or drive, or none), two pass loudnorm to
   -14 LUFS and -1 dBTP at mux.
 - **Out.** Frames split across worker processes by range into lossless FFV1, joined once, encoded

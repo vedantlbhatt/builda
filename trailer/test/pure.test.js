@@ -166,3 +166,24 @@ test('a morph lets the outgoing content go by 0.28 and brings the incoming in fr
   assert.ok(Math.abs(outGone - 0.28) < 0.03, `out gone at ${outGone}`);
   assert.ok(Math.abs(inStarts - 0.34) < 0.03, `in starts at ${inStarts}`);
 });
+
+test('a changelog steps its size down before it cuts a subject short, and only so far', () => {
+  const { createCanvas } = require('@napi-rs/canvas');
+  const T = require('../src/type');
+  const { changelogSize } = require('../src/scenes');
+  T.registerFonts();
+  const ctx = createCanvas(10, 10).getContext('2d');
+  const pt = 1080 / 393, asked = 26 * pt, maxW = 1080 - 20 * pt * 1.2 - 16 * pt - 40 * pt;
+  const whole = (log, z) => log.every((c) => T.wrap(ctx, c, maxW, { size: z, weight: 700 }).length <= 2);
+  // Short subjects keep the asked size.
+  assert.equal(changelogSize(ctx, ['Fix the map', 'Add stars'], maxW, asked), asked);
+  // RideGT's own subjects, which were cut at the asked size, are whole at a smaller one.
+  const ridegt = ['Record committed trips on-device for RideGT analytics', "Record every upcoming stop's estimate, not just the next one"];
+  assert.ok(!whole(ridegt, asked), 'the case this is for: cut at the asked size');
+  const z = changelogSize(ctx, ridegt, maxW, asked);
+  assert.ok(z < asked && z >= asked * 0.72 && whole(ridegt, z), `${z} holds them whole`);
+  // A subject nothing holds is cut at any size, so it leaves the others theirs.
+  const long = 'a '.repeat(200).trim();
+  assert.equal(changelogSize(ctx, [long], maxW, asked), asked);
+  assert.equal(changelogSize(ctx, [...ridegt, long], maxW, asked), z);
+});

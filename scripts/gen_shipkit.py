@@ -32,6 +32,7 @@ import gen_analysis as ga  # noqa: E402
 ROOT = ga.ROOT
 SPEC = ROOT / "spec" / "shipkit.v1.json"
 DEVICES = ROOT / "spec" / "devices.v1.json"
+TRAILER = ROOT / "spec" / "trailer.v1.json"
 TOKENS = ROOT / "design" / "tokens.json"
 ROOT_OBJECT = "ShareCopy"
 REFUSAL_ENUMS = ("request_refusal", "kit_refusal", "queue_skip")
@@ -65,6 +66,9 @@ def check(s: dict) -> None:
             t = f["type"]
             if t == "enum":
                 assert f["values"] in e, f"{where} names an enum the spec lacks"
+            elif t == "list" and f["item"] == "enum":
+                assert f["values"] in e, f"{where} is a list of codes from an enum the spec lacks"
+                assert "max_items" in f, f"{where} is a list with no cap"
             elif t in ("object", "list"):
                 assert f["item"] in s["objects"] or f["item"] in ga.PY_SCALARS, f"{where}: item {f['item']!r}"
                 if t == "list" and f["item"] == "string":
@@ -87,6 +91,15 @@ def check(s: dict) -> None:
     assert e["kit_format"] == formats, f"kit_format {e['kit_format']} must be spec/devices.v1.json's formats {formats}, in order"
     assert set(s["platform_format"].values()) <= set(formats)
     assert [f"video_{f}" for f in formats] == e["kit_slot"][: len(formats)], "one video slot per format, first, in order"
+    # The trailer's slots are the LAST ones, a video per format in the same order and then its GIF: appended,
+    # so every older slot keeps its place and 0030's CHECK list stays a prefix of the spec's (0036).
+    trailer_slots = [f"trailer_{f}" for f in formats] + ["trailer_loop"]
+    assert e["kit_slot"][-len(trailer_slots):] == trailer_slots, f"the kit_slot enum ends {trailer_slots}"
+    trailer = json.loads(TRAILER.read_text())
+    assert e["trailer_scene"] == trailer["enums"]["scene_kind"], "trailer_scene is spec/trailer.v1.json's scene_kind, in order"
+    assert s["caps"]["trailer_ms"] >= trailer["seconds"]["max"] * 1000, "a trailer file holds the trailer's longest cut"
+    assert s["caps"]["trailer_ms"] > s["caps"]["video_ms"], "a trailer may run longer than a demo's video"
+    assert s["caps"]["trailers"] == len(formats), "one trailer video per format"
     hues = set(json.loads(TOKENS.read_text())["spectrum"]["hues"])
     assert set(e["hue"]) <= hues, f"hues design/tokens.json lacks: {sorted(set(e['hue']) - hues)}"
     assert s["caps"]["gif_bytes"] == devices["loop"]["max_bytes"], "the GIF cap is the device table's loop.max_bytes"

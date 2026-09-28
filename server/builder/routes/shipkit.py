@@ -34,6 +34,7 @@ from ..builder_profile import excluded_keys
 from ..db import db_session
 from ..shipkit_spec import (
     PLATFORM_LIMITS,
+    SHIPKIT_CAPS,
     SHIPKIT_VERSION,
     DemoRequestFinish,
     DemoRequestIn,
@@ -374,6 +375,11 @@ def put_kit(key: str, body: KitDocument, device: CurrentDevice = Depends(current
     platforms = [c.platform for c in body.captions]
     if len(platforms) != len(set(platforms)):
         raise HTTPException(422, "one caption per platform")
+    # The trailer's length as its cut says: more than nothing, and no longer than a trailer file
+    # may run (spec caps.trailer_ms). A code, as every refusal new to this door is.
+    longest = SHIPKIT_CAPS["trailer_ms"] / 1000
+    if body.trailer is not None and not 0 < body.trailer.seconds <= longest:
+        raise HTTPException(422, "trailer_seconds")
     replaced: list[str] = []
     with db_session(viewer_id=uid) as db:
         db.execute(text("SELECT id FROM users WHERE id = CAST(:u AS uuid) FOR UPDATE"), {"u": uid})

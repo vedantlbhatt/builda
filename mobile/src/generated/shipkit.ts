@@ -4,7 +4,7 @@ export const SHIPKIT_VERSION = 1;
 
 export type Platform = "x" | "linkedin" | "threads" | "instagram" | "tiktok" | "bluesky";
 export type KitFormat = "vertical" | "feed" | "landscape" | "square";
-export type KitSlot = "video_vertical" | "video_feed" | "video_landscape" | "video_square" | "loop" | "still" | "framed_still" | "before_after" | "app_store_iphone" | "app_store_ipad";
+export type KitSlot = "video_vertical" | "video_feed" | "video_landscape" | "video_square" | "loop" | "still" | "framed_still" | "before_after" | "app_store_iphone" | "app_store_ipad" | "trailer_vertical" | "trailer_feed" | "trailer_landscape" | "trailer_square" | "trailer_loop";
 export type KitContentType = "image/png" | "image/jpeg" | "image/gif" | "video/mp4";
 export type CaptionSource = "model" | "template";
 export type RequestStatus = "queued" | "claimed" | "done" | "failed" | "cancelled";
@@ -12,12 +12,13 @@ export type RequestRefusal = "not_runnable" | "capture_failed" | "privacy_refuse
 export type KitRefusal = "device_aspect_mismatch" | "blank_segment" | "render_failed" | "invented_number" | "names_a_repository" | "over_limit" | "no_model" | "loop_too_large" | "aspect_too_far" | "no_ipad_capture" | "not_an_ios_app" | "no_previous_demo" | "no_video" | "privacy_not_checked";
 export type QueueSkip = "not_a_repository" | "excluded" | "nothing_shipped" | "not_demoable" | "already_filmed" | "already_queued";
 export type Hue = "tide" | "ember" | "iris" | "brass" | "orchid" | "cobalt" | "coral" | "heather" | "amber";
+export type TrailerScene = "open" | "screens" | "figure" | "days" | "changelog" | "stack" | "end";
 
 /** Legal values for every enum, in spec order. */
 export const SHIPKIT_ENUMS = {
   platform: ["x", "linkedin", "threads", "instagram", "tiktok", "bluesky"],
   kit_format: ["vertical", "feed", "landscape", "square"],
-  kit_slot: ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad"],
+  kit_slot: ["video_vertical", "video_feed", "video_landscape", "video_square", "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad", "trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square", "trailer_loop"],
   kit_content_type: ["image/png", "image/jpeg", "image/gif", "video/mp4"],
   caption_source: ["model", "template"],
   request_status: ["queued", "claimed", "done", "failed", "cancelled"],
@@ -25,6 +26,7 @@ export const SHIPKIT_ENUMS = {
   kit_refusal: ["device_aspect_mismatch", "blank_segment", "render_failed", "invented_number", "names_a_repository", "over_limit", "no_model", "loop_too_large", "aspect_too_far", "no_ipad_capture", "not_an_ios_app", "no_previous_demo", "no_video", "privacy_not_checked"],
   queue_skip: ["not_a_repository", "excluded", "nothing_shipped", "not_demoable", "already_filmed", "already_queued"],
   hue: ["tide", "ember", "iris", "brass", "orchid", "cobalt", "coral", "heather", "amber"],
+  trailer_scene: ["open", "screens", "figure", "days", "changelog", "stack", "end"],
 } as const;
 
 /** Characters a caption may run to, per platform. */
@@ -119,12 +121,21 @@ export interface KitPresign {
   width: number;
   /** 1-8192: pixels down. */
   height: number;
-  /** 1-31000: a video's length. Null for an image or the GIF. */
+  /** 1-41000: a video's length, a demo format's at most caps.video_ms and a trailer's at most caps.trailer_ms. Null for an image or a GIF. */
   duration_ms?: number | null;
   /** 0-63: its place among the files of its slot. */
   position: number;
   /** What a still shows, the demo's own label (the demo channel's label rule). Null for a video. (max 80 chars) */
   label?: string | null;
+}
+
+export interface KitTrailer {
+  /** 1-1000: the version of the trailer's cut these files are (spec/trailer.v1.json Cut.version). */
+  version: number;
+  /** How long the trailer runs, as its cut says: more than 0 and at most caps.trailer_ms in seconds. */
+  seconds: number;
+  /** What each scene shows, in order, as the trailer spec's scene_kind codes. Never a scene's words. (max 10 items) */
+  scenes: TrailerScene[];
 }
 
 export interface KitDocument {
@@ -142,6 +153,8 @@ export interface KitDocument {
   changelog: string[];
   /** What the kit could not make, each with its code. (max 20 items) */
   refused: Refused[];
+  /** The project's trailer, when the kit carries its files (the trailer_ slots): which cut, how long, and what its scenes show. Null when it carries none. */
+  trailer?: KitTrailer | null;
 }
 
 export interface DemoRequestIn {

@@ -242,6 +242,16 @@ sweep nor the kit sweep can mistake the other's objects for orphans; exclusion, 
 with nothing pending, replacing the older kit's rows and objects then. The contract declares the
 channel (`privacy/upload-contract.json` `ship_kit`) and PRIVACY.md says what a kit sends.
 
+**The trailer rides in the kit** (migration `0036_trailer_kit_slots`). Five slots appended at the
+END of `kit_slot`, so every older slot keeps its place: `trailer_vertical`, `trailer_feed`,
+`trailer_landscape`, `trailer_square` (MP4, one per format, up to `caps.trailer_ms`, 41 s: the
+trailer spec's longest cut and a second of slack, where a demo's video stays at `caps.video_ms`)
+and `trailer_loop` (GIF, the `loop` cap). The document's `trailer` (`KitTrailer`: `version` of the
+cut, `seconds`, `scenes` as `trailer_scene` codes, which `make gen` holds to spec/trailer.v1.json's
+`scene_kind`) says what those files are, and is null when the kit carries none: every Mac before
+the trailer sends none. `GET /v1/projects/{key}/kit` lists the trailer's files with the rest, owner
+only like every other file. A refusal new to this door is a code: `trailer_seconds`.
+
 ```
 POST   /v1/demos/requests            {project_key, hue}   the phone asks (201, or 200 with the live one)
 GET    /v1/demos/requests?project_key=&status=            newest first

@@ -41,8 +41,9 @@
   },
   "thread_max": 5,
   "caps": {
-    "_comment": "What one published kit may hold. Videos: one per format. Stills: the demo's own, at most 8, and each framed once. The App Store sets: at most 8 a slot. A GIF at most the device table's loop.max_bytes; a video at most the demo channel's 40 MiB; an image at most its 6 MiB.",
+    "_comment": "What one published kit may hold. Videos: one per format. Stills: the demo's own, at most 8, and each framed once. The App Store sets: at most 8 a slot. A GIF at most the device table's loop.max_bytes; a video at most the demo channel's 40 MiB; an image at most its 6 MiB. The trailer (spec/trailer.v1.json) rides the same caps in its own slots: one video per format and one GIF, a video up to trailer_ms long, which holds the trailer's longest cut (seconds.max) and a second of slack, where a demo's video is held to video_ms.",
     "videos": 4,
+    "trailers": 4,
     "loops": 1,
     "stills": 8,
     "framed_stills": 8,
@@ -52,6 +53,7 @@
     "image_bytes": 6291456,
     "gif_bytes": 8388608,
     "video_ms": 31000,
+    "trailer_ms": 41000,
     "pixels": 8192
   },
   "enums": {
@@ -59,7 +61,8 @@
     "kit_format": ["vertical", "feed", "landscape", "square"],
     "kit_slot": [
       "video_vertical", "video_feed", "video_landscape", "video_square",
-      "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad"
+      "loop", "still", "framed_still", "before_after", "app_store_iphone", "app_store_ipad",
+      "trailer_vertical", "trailer_feed", "trailer_landscape", "trailer_square", "trailer_loop"
     ],
     "kit_content_type": ["image/png", "image/jpeg", "image/gif", "video/mp4"],
     "caption_source": ["model", "template"],
@@ -75,7 +78,8 @@
     "queue_skip": [
       "not_a_repository", "excluded", "nothing_shipped", "not_demoable", "already_filmed", "already_queued"
     ],
-    "hue": ["tide", "ember", "iris", "brass", "orchid", "cobalt", "coral", "heather", "amber"]
+    "hue": ["tide", "ember", "iris", "brass", "orchid", "cobalt", "coral", "heather", "amber"],
+    "trailer_scene": ["open", "screens", "figure", "days", "changelog", "stack", "end"]
   },
   "refusals": {
     "device_aspect_mismatch": "the device came out a different shape in this format than it is, so the format was not kept",
@@ -131,9 +135,14 @@
       {"name": "bytes", "type": "int", "doc": "1-41943040: the file's size, what the upload must send exactly."},
       {"name": "width", "type": "int", "doc": "1-8192: pixels across."},
       {"name": "height", "type": "int", "doc": "1-8192: pixels down."},
-      {"name": "duration_ms", "type": "int", "nullable": true, "doc": "1-31000: a video's length. Null for an image or the GIF."},
+      {"name": "duration_ms", "type": "int", "nullable": true, "doc": "1-41000: a video's length, a demo format's at most caps.video_ms and a trailer's at most caps.trailer_ms. Null for an image or a GIF."},
       {"name": "position", "type": "int", "doc": "0-63: its place among the files of its slot."},
       {"name": "label", "type": "string", "max": "label", "nullable": true, "doc": "What a still shows, the demo's own label (the demo channel's label rule). Null for a video."}
+    ],
+    "KitTrailer": [
+      {"name": "version", "type": "int", "doc": "1-1000: the version of the trailer's cut these files are (spec/trailer.v1.json Cut.version)."},
+      {"name": "seconds", "type": "number", "doc": "How long the trailer runs, as its cut says: more than 0 and at most caps.trailer_ms in seconds."},
+      {"name": "scenes", "type": "list", "item": "enum", "values": "trailer_scene", "max_items": 10, "doc": "What each scene shows, in order, as the trailer spec's scene_kind codes. Never a scene's words."}
     ],
     "KitDocument": [
       {"name": "shipkit_version", "type": "int", "doc": "== spec version."},
@@ -142,7 +151,8 @@
       {"name": "hue", "type": "enum", "values": "hue", "doc": "The project hue the formats are drawn in."},
       {"name": "captions", "type": "list", "item": "KitCaption", "max_items": 6, "doc": "One per platform that has a caption."},
       {"name": "changelog", "type": "list", "item": "string", "max": "subject", "max_items": 30, "doc": "What changed since the last demo: commit subjects, newest first, as written. Never a commit hash."},
-      {"name": "refused", "type": "list", "item": "Refused", "max_items": 20, "doc": "What the kit could not make, each with its code."}
+      {"name": "refused", "type": "list", "item": "Refused", "max_items": 20, "doc": "What the kit could not make, each with its code."},
+      {"name": "trailer", "type": "object", "item": "KitTrailer", "nullable": true, "doc": "The project's trailer, when the kit carries its files (the trailer_ slots): which cut, how long, and what its scenes show. Null when it carries none."}
     ],
     "DemoRequestIn": [
       {"name": "project_key", "type": "sha256hex", "doc": "The project: the repository's salted hash, whole."},

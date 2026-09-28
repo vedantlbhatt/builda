@@ -213,6 +213,8 @@ def swift_type(s: dict, f: dict) -> str:
         base = pascal(f["values"])
     elif t == "object":
         base = f["item"]
+    elif t == "list" and f["item"] == "enum":
+        base = f"[{pascal(f['values'])}]"
     elif t == "list":
         item = f["item"]
         base = f"[{item if item in s['objects'] else SWIFT_SCALARS[item]}]"
@@ -320,6 +322,8 @@ def ts_type(s: dict, f: dict) -> str:
         base = pascal(f["values"])
     elif t == "object":
         base = f["item"]
+    elif t == "list" and f["item"] == "enum":
+        base = pascal(f["values"]) + "[]"
     elif t == "list":
         item = f["item"]
         base = (item if item in s["objects"] else TS_SCALARS[item]) + "[]"
@@ -385,6 +389,8 @@ def py_field(s: dict, f: dict, scalars: dict[str, str] = PY_SCALARS) -> str:
         item = f["item"]
         if item in s["objects"]:
             inner = item
+        elif item == "enum":
+            inner = "str"
         elif item == "string" and ml is not None:
             inner = f"Annotated[str, Field(max_length={ml})]"
         else:
@@ -443,6 +449,23 @@ def py_model(
             "            )\n"
             "        return v\n"
         )
+    # A list of codes (`"item": "enum"`): every element one of its enum's values. One validator a
+    # field, the enum named inline, so a module's field table need not know about lists.
+    for f in fs:
+        if f["type"] == "list" and f["item"] == "enum":
+            out += (
+                "\n"
+                f"    @field_validator({json.dumps(f['name'])})\n"
+                "    @classmethod\n"
+                f"    def _validate_{f['name']}_codes(cls, v, info):\n"
+                f"        allowed = {enum_table}[{json.dumps(f['values'])}]\n"
+                "        bad = [x for x in (v or []) if x not in allowed]\n"
+                "        if bad:\n"
+                "            raise ValueError(\n"
+                "                '%s has %r, not in %r' % (info.field_name, bad, allowed)\n"
+                "            )\n"
+                "        return v\n"
+            )
     map_fields = [f["name"] for f in fs if f["type"] == "map"]
     if map_fields:
         names = ", ".join(json.dumps(n) for n in map_fields)
@@ -535,6 +558,8 @@ def json_prop(s: dict, f: dict) -> dict:
         item = f["item"]
         if item in s["objects"]:
             items: dict = {"$ref": f"#/$defs/{item}"}
+        elif item == "enum":
+            items = {"type": "string", "enum": list(s["enums"][f["values"]])}
         else:
             items = dict(JSON_SCALARS[item])
             if item == "string" and ml is not None:

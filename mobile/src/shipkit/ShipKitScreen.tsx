@@ -25,6 +25,7 @@ import type { Platform } from '../generated/shipkit';
 import { preferredHue } from '../projects/model';
 import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
 import { SPRING } from '../motion/springs';
+import { InkWipe, WIPE_MS } from '../motion/InkWipe';
 import { useMorph } from '../motion/useMorph';
 import { Director } from '../trailer/Director';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
@@ -184,7 +185,11 @@ function KitBody({ view, projectKey, ink, reload }: { view: KitView; projectKey:
       <T role="meta" tone="dim" style={styles.gap}>
         {tab.for}
       </T>
-      {film ? <FilmFrame file={film} width={Math.min(inner, 420 * tab.aspect)} aspect={tab.aspect} /> : <T tone="dim">{`No ${noun} was made in this shape.`}</T>}
+      {film ? (
+        <FilmFrame file={film} width={Math.min(inner, 420 * tab.aspect)} aspect={tab.aspect} version={s.cut === 'trailer' ? (view.trailer?.version ?? null) : null} ink={ink} />
+      ) : (
+        <T tone="dim">{`No ${noun} was made in this shape.`}</T>
+      )}
       {film ? (
         <View style={styles.switchRow}>
           <T>{`Send the ${noun}`}</T>
@@ -398,27 +403,38 @@ const LEAVE_MS = 700;
  * and the new one comes in from 0.34, rising into place. So 9:16 to 1:1 reads as one frame
  * changing shape, and the trailer to the recording as one film giving way to another, never as
  * a box that jumped.
+ *
+ * A NEW VERSION of the trailer in the same shape (a note answered, the kit read again) is not a
+ * change of shape, and it gets the trailer's own scene change instead: its ink rises through the
+ * frame (`InkWipe`, the wipe the film is cut with), the old version is swapped for the new one
+ * while the band covers the most of it, and the ink drains off the top. Your change pours in.
  */
-function FilmFrame({ file, width, aspect }: { file: KitFileRow; width: number; aspect: number }) {
+function FilmFrame({ file, width, aspect, version, ink }: { file: KitFileRow; width: number; aspect: number; version: number | null; ink: string }) {
   const height = Math.round(width / aspect);
   const { box, contentOut, contentIn } = useMorph({ w: width, h: height, r: FRAME_RADIUS }, file.id);
-  const [layers, setLayers] = useState<{ cur: Layer; prev: Layer | null }>({ cur: { file, width, height }, prev: null });
+  const [layers, setLayers] = useState<{ cur: Layer; prev: Layer | null; pour: boolean; swapped: boolean }>({ cur: { file, width, height }, prev: null, pour: false, swapped: true });
+  const seen = useRef(version);
   useEffect(() => {
     if (layers.cur.file.id === file.id && layers.cur.width === width) return;
-    setLayers((l) => ({ cur: { file, width, height }, prev: l.cur.file.id === file.id ? null : l.cur }));
-    const t = setTimeout(() => setLayers((l) => ({ ...l, prev: null })), LEAVE_MS);
+    const pour = version !== null && seen.current !== null && version !== seen.current && layers.cur.width === width;
+    seen.current = version;
+    setLayers((l) => ({ cur: { file, width, height }, prev: l.cur.file.id === file.id ? null : l.cur, pour, swapped: !pour }));
+    const t = setTimeout(() => setLayers((l) => ({ ...l, prev: null, pour: false, swapped: true })), pour ? WIPE_MS + 60 : LEAVE_MS);
     return () => clearTimeout(t);
   }, [file.id, width]); // eslint-disable-line react-hooks/exhaustive-deps
+  const deep = Object.values(SPECTRUM).find((h) => h.ink === ink)?.partner ?? ink;
   return (
     <Animated.View style={[styles.frame, box]}>
-      {layers.prev ? (
-        <Animated.View style={[centred(layers.prev), contentOut]} pointerEvents="none">
+      {/* The outgoing film: under a morph it leaves on contentOut; under the ink it stays whole until the band covers the frame. */}
+      {layers.prev && (!layers.pour || !layers.swapped) ? (
+        <Animated.View style={[centred(layers.prev), layers.pour ? null : contentOut]} pointerEvents="none">
           <KitVideo file={layers.prev.file} width={layers.prev.width} aspect={layers.prev.width / layers.prev.height} />
         </Animated.View>
       ) : null}
-      <Animated.View style={[centred(layers.cur), contentIn]}>
+      <Animated.View style={[centred(layers.cur), layers.pour ? { opacity: layers.swapped ? 1 : 0 } : contentIn]}>
         <KitVideo file={layers.cur.file} width={layers.cur.width} aspect={layers.cur.width / layers.cur.height} />
       </Animated.View>
+      <InkWipe width={width} height={height} ink={ink} deep={deep} run={layers.pour ? layers.cur.file.id : null} onCovered={() => setLayers((l) => ({ ...l, swapped: true }))} />
     </Animated.View>
   );
 }

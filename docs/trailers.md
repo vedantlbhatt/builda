@@ -88,8 +88,10 @@ Under the trailer is the conversation:
    `--publish-requests`, publishes the kit with the new trailer in it.
 4. It finishes the note (`POST /v1/trailer/notes/{id}:finish`) done with the version and the change
    codes, or failed with a refusal code. The phone reads it on its next poll, words it, and reads the
-   kit again, so the new version is the one playing. A version the Mac made but did not publish is
-   said to be on the Mac.
+   kit again, so the new version is the one playing. It arrives the way the film changes scenes:
+   the trailer's own ink (`InkWipe`, the same `wipePhases` and `wipeCell`) rises through the frame,
+   the versions swap while the band covers it, and it drains off the top. A version the Mac made but
+   did not publish is said to be on the Mac.
 
 The worker answers notes BEFORE it films anything: a note is a render of a minute or so with you
 looking at the phone, a demo is half an hour nobody is waiting on. It is still one worker, so a

@@ -25,6 +25,7 @@ import type { Platform } from '../generated/shipkit';
 import { preferredHue } from '../projects/model';
 import { GROUND, SPECTRUM, type HueName } from '../insights/palette';
 import { SPRING } from '../motion/springs';
+import { useMorph } from '../motion/useMorph';
 import { Director } from '../trailer/Director';
 import { Button, SymbolIcon, T, TextField, useColors } from '../ui';
 import { useReduceMotion } from '../ui/motion';
@@ -183,7 +184,7 @@ function KitBody({ view, projectKey, ink, reload }: { view: KitView; projectKey:
       <T role="meta" tone="dim" style={styles.gap}>
         {tab.for}
       </T>
-      {film ? <KitVideo file={film} width={Math.min(inner, 420 * tab.aspect)} aspect={tab.aspect} /> : <T tone="dim">{`No ${noun} was made in this shape.`}</T>}
+      {film ? <FilmFrame file={film} width={Math.min(inner, 420 * tab.aspect)} aspect={tab.aspect} /> : <T tone="dim">{`No ${noun} was made in this shape.`}</T>}
       {film ? (
         <View style={styles.switchRow}>
           <T>{`Send the ${noun}`}</T>
@@ -385,6 +386,54 @@ function useSource(url: string): MediaSourceRef | null {
   return src;
 }
 
+/** The frame's corner, in points: a film has a frame, not a card's rounding. */
+const FRAME_RADIUS = 10;
+/** How long the outgoing film is kept, past the spring's settle (about 600 ms on ISLAND). */
+const LEAVE_MS = 700;
+
+/**
+ * The film in its frame, and the one motion on this screen that matters: when the format or the
+ * cut changes, the FRAME morphs to the new shape on the island's spring (useMorph: it passes the
+ * new size and comes back), the film that was there is gone by 0.28 of it and grows as it leaves,
+ * and the new one comes in from 0.34, rising into place. So 9:16 to 1:1 reads as one frame
+ * changing shape, and the trailer to the recording as one film giving way to another, never as
+ * a box that jumped.
+ */
+function FilmFrame({ file, width, aspect }: { file: KitFileRow; width: number; aspect: number }) {
+  const height = Math.round(width / aspect);
+  const { box, contentOut, contentIn } = useMorph({ w: width, h: height, r: FRAME_RADIUS }, file.id);
+  const [layers, setLayers] = useState<{ cur: Layer; prev: Layer | null }>({ cur: { file, width, height }, prev: null });
+  useEffect(() => {
+    if (layers.cur.file.id === file.id && layers.cur.width === width) return;
+    setLayers((l) => ({ cur: { file, width, height }, prev: l.cur.file.id === file.id ? null : l.cur }));
+    const t = setTimeout(() => setLayers((l) => ({ ...l, prev: null })), LEAVE_MS);
+    return () => clearTimeout(t);
+  }, [file.id, width]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Animated.View style={[styles.frame, box]}>
+      {layers.prev ? (
+        <Animated.View style={[centred(layers.prev), contentOut]} pointerEvents="none">
+          <KitVideo file={layers.prev.file} width={layers.prev.width} aspect={layers.prev.width / layers.prev.height} />
+        </Animated.View>
+      ) : null}
+      <Animated.View style={[centred(layers.cur), contentIn]}>
+        <KitVideo file={layers.cur.file} width={layers.cur.width} aspect={layers.cur.width / layers.cur.height} />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+interface Layer {
+  file: KitFileRow;
+  width: number;
+  height: number;
+}
+
+/** A layer at its own size, centred in the morphing frame, which clips it. */
+function centred(l: Layer) {
+  return { position: 'absolute' as const, left: '50%' as const, top: '50%' as const, width: l.width, height: l.height, marginLeft: -l.width / 2, marginTop: -l.height / 2 };
+}
+
 function KitVideo({ file, width, aspect }: { file: KitFileRow; width: number; aspect: number }) {
   const mod = expoVideo();
   const src = useSource(file.url);
@@ -471,6 +520,7 @@ const styles = StyleSheet.create({
   block: { marginTop: 28 },
   gap: { marginTop: 8 },
   tabs: { flexDirection: 'row', gap: 8 },
+  frame: { alignSelf: 'center', overflow: 'hidden', backgroundColor: GROUND.card },
   cuts: { flexDirection: 'row', gap: 22, alignItems: 'flex-end', paddingBottom: 8 },
   cutRule: { position: 'absolute', left: 0, bottom: 0, height: 2 },
   cutLine: { marginTop: 8 },

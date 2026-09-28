@@ -1,0 +1,16 @@
+{
+  "name": "builda-trailer",
+  "private": true,
+  "description": "A project's trailer, drawn frame by frame in Builda's own design language from what the Mac knows about the project (docs/trailers.md).",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test test/",
+    "render": "node bin/render.js"
+  },
+  "dependencies": {
+    "@fontsource/inter": "5.2.8",
+    "@fontsource/jetbrains-mono": "5.2.8",
+    "@napi-rs/canvas": "0.1.80"
+  }
+}

@@ -139,6 +139,26 @@ jobs:
           BUILDER_TEST_DB: postgresql+psycopg://postgres:postgres@localhost/builder_test
         run: pytest -q
 
+  # The trailer renderer (docs/trailers.md): its pure parts held by node:test, then a short render at
+  # a small size end to end (ffmpeg, the fonts, the canvas, every scene, both transitions), so a
+  # change that breaks a render is caught before a Mac spends minutes on one.
+  trailer:
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.18' }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - working-directory: trailer
+        run: npm ci
+      - name: unit tests
+        working-directory: trailer
+        run: node --test test/*.test.js
+      - name: a render, end to end
+        working-directory: trailer
+        run: node test/smoke.js
+
   # NOT here yet: an `xcode` job building the iOS or macOS app targets. It is added after
   # the first successful TestFlight submission, because until the signing chain is proven
   # by hand a CI failure teaches nothing about whether the app can actually ship.

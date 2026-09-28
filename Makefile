@@ -24,7 +24,8 @@ help:
 # three languages.
 #
 # Order (docs/overnight-integration.md section 6): contract, strip, tokens, analysis,
-# narrative, shipped, report, live, drops, devices, shipkit, copy, live_fixtures, fixtures.
+# narrative, shipped, report, live, drops, devices, shipkit, trailer, copy, live_fixtures, fixtures.
+# gen_trailer reads design/tokens.json and mobile/src/motion/pixelMotion.ts (as text), nothing generated.
 # gen_shipkit reads spec/devices.v1.json (its formats are the device table's), so it runs after
 # gen_devices; neither reads anything a later generator writes. gen_contract reads
 # spec/live.v1.json only for its leaf paths, so it may run first; gen_copy and
@@ -47,6 +48,7 @@ gen:
 	@python3 scripts/gen_drops.py
 	@python3 scripts/gen_devices.py
 	@python3 scripts/gen_shipkit.py
+	@python3 scripts/gen_trailer.py
 	@if [ -f scripts/gen_copy.py ]; then python3 scripts/gen_copy.py; else echo "gen_copy.py: not written yet, nothing to generate"; fi
 	@python3 scripts/gen_stack_logos.py
 	@python3 scripts/gen_live_fixtures.py
@@ -74,6 +76,7 @@ check-gen: gen
 		mobile/src/generated server/builder/contract.py server/builder/strip.py \
 		drops/tables.py drops/schema.json \
 		capture/demo/devices_table.py capture/shipkit/tables.py capture/shipkit/copy_schema.json \
+		capture/trailer/tables.py capture/trailer/edit_schema.json server/builder/trailer_spec.py \
 		server/builder/shipkit_spec.py \
 		server/builder/analysis_spec.py server/builder/report_spec.py \
 		server/builder/narrative_spec.py server/builder/shipped_spec.py \
